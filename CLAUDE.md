@@ -28,10 +28,13 @@ docs/                  — PRD, Architecture, IterationPlan
 ## 关键架构模式
 
 - **Sidecar 通信**: Tauri → 随机端口(49152-65535) + 256-bit Bearer Token → Node.js HTTP，仅绑定 127.0.0.1
-- **Middleware Pipeline**: before (串行) → LLM 调用 → after (并行)，当前有 PermissionMiddleware + ContextMiddleware
+- **Middleware Pipeline**: 12 层中间件链 Permission → SessionRouting → Context → Memory → RAG → LCM → Skill → [LLM] → MemoryFlush → GapDetection → Evolution → Metabolism
 - **ModelRouter**: Agent 配置 → 用户偏好 → 系统默认 → 硬编码 fallback (gpt-4o-mini)
 - **Agent Builder**: 6 阶段会话式创建 (role → expertise → style → constraints → preview → done)
-- **Soul/Memory**: SOUL.md (YAML frontmatter + Markdown) + MEMORY.md 存储在 `~/.evoclaw/agents/{id}/`
+- **Memory Architecture**: 8 层记忆系统 (L0 LCM无损压缩 → L1 身份文件 → L2 MEMORY.md → L3 Daily Logs → L4 知识图谱 → L5 向量检索 → L6 Metabolism → L7 Growth Vectors)
+- **Session Key 路由**: `agent:<agentId>:<channel>:dm:<peerId>` / `agent:<agentId>:<channel>:group:<groupId>`
+- **记忆隔离**: MEMORY.md 仅私聊加载，群聊不暴露个人记忆
+- **Soul/Memory**: SOUL.md + MEMORY.md + memory/YYYY-MM-DD.md 存储在 `~/.evoclaw/agents/{id}/`
 - **Permission Model**: 7 类别 × 4 作用域 (once/session/always/deny)，带审计日志
 
 ## 开发命令
@@ -50,7 +53,9 @@ pnpm build:desktop        # 构建桌面应用
 
 better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/infrastructure/db/migrations/*.sql`。
 
-核心表: agents, conversations, messages, memories, permissions, audit_log, model_configs
+核心表: agents, conversations, messages, memories, permissions, audit_log, model_configs, summaries (LCM DAG), facts (知识图谱), growth_vectors
+
+存储引擎策略: better-sqlite3 + sqlite-vec + FTS5 单引擎覆盖全部需求，不引入外部数据库
 
 ## 编码规范
 
@@ -65,4 +70,5 @@ better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/in
 - `pnpm.onlyBuiltDependencies` 已配置 better-sqlite3 和 esbuild
 - Anthropic provider 使用动态 import 避免硬依赖 `@ai-sdk/anthropic`
 - Node.js >= 22，Rust >= 1.94
-- 设计文档: `docs/PRD.md`, `docs/Architecture.md`, `docs/IterationPlan.md`
+- **不使用本地模型**：所有 LLM 调用（含 LCM 摘要、Metabolism 事实提取）统一走 ModelRouter
+- 设计文档: `docs/PRD.md` (v3.0), `docs/Architecture.md` (v3.0), `docs/IterationPlan.md` (v2.0)

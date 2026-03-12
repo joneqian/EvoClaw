@@ -1,8 +1,9 @@
 # EvoClaw 技术架构设计文档
 
-> **文档版本**: v1.0
+> **文档版本**: v2.0
 > **创建日期**: 2026-03-11
-> **文档状态**: 初版
+> **更新日期**: 2026-03-12
+> **文档状态**: 已更新
 
 ---
 
@@ -25,39 +26,49 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      展示层 (Presentation)                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │ 对话界面  │  │ Agent    │  │ 进化仪表  │  │ 知识库/Skill  │  │
-│  │ Chat UI  │  │ Builder  │  │ Dashboard │  │ 管理界面      │  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬────────┘  │
-│       └──────────────┴─────────────┴───────────────┘           │
-│                          │ IPC (Tauri Commands)                 │
-├──────────────────────────┼──────────────────────────────────────┤
-│                      应用层 (Application)                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │ 对话管理  │  │ Agent    │  │ 进化引擎  │  │ Skill 管理    │  │
-│  │ Service  │  │ Lifecycle│  │ Evolution │  │ SkillManager  │  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬────────┘  │
-│       └──────────────┴─────────────┴───────────────┘           │
-│                          │                                      │
-├──────────────────────────┼──────────────────────────────────────┤
-│                      领域层 (Domain)                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │ Agent    │  │ Memory   │  │ Capability│  │ Security      │  │
-│  │ Core     │  │ Engine   │  │ Graph     │  │ Core          │  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────┬────────┘  │
-│       └──────────────┴─────────────┴───────────────┘           │
-│                          │                                      │
-├──────────────────────────┼──────────────────────────────────────┤
-│                   基础设施层 (Infrastructure)                     │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ │
-│  │ SQLite  │ │ SQLite- │ │ Model   │ │ Sandbox │ │ Keychain│ │
-│  │ Store   │ │ vec     │ │ Runtime │ │ Engine  │ │ Vault   │ │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘ │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐                          │
-│  │ MCP     │ │ File    │ │ Network │                          │
-│  │ Bridge  │ │ System  │ │ Client  │                          │
-│  └─────────┘ └─────────┘ └─────────┘                          │
+│                   Tauri 主进程 (Rust)                             │
+│  ┌────────────────────────┐  ┌──────────────────────────────┐  │
+│  │ Rust 安全层              │  │ UI WebView                   │  │
+│  │ · 加密/解密 (libsodium) │  │ React 19 + Tailwind CSS 4   │  │
+│  │ · Keychain 集成         │  │                              │  │
+│  │ · 沙箱引擎              │  │  ┌────────┐ ┌────────────┐  │  │
+│  │ · Skill 签名验证        │  │  │Chat UI │ │Agent Builder│ │  │
+│  │ · 文件系统监控          │  │  ├────────┤ ├────────────┤  │  │
+│  └────────────┬───────────┘  │  │Dashboard│ │Skill/KB Mgr│ │  │
+│               │               │  └────────┘ └────────────┘  │  │
+│               │ Tauri IPC     │              │               │  │
+│               │               └──────────────┼───────────────┘  │
+├───────────────┼──────────────────────────────┼──────────────────┤
+│               │        HTTP/IPC              │                  │
+│  ┌────────────▼──────────────────────────────▼───────────────┐  │
+│  │              Node.js Sidecar (TypeScript)                  │  │
+│  │                                                           │  │
+│  │  ┌─────────────────────────────────────────────────────┐  │  │
+│  │  │              请求处理中间件链 (借鉴 DeerFlow)         │  │  │
+│  │  │  Permission → Context → Memory → Summarize → ...    │  │  │
+│  │  └─────────────────────────┬───────────────────────────┘  │  │
+│  │                            │                              │  │
+│  │  ┌──────────┐ ┌──────────┐│┌──────────┐ ┌────────────┐  │  │
+│  │  │ Agent    │ │ Evolution│││ Skill    │ │ RAG        │  │  │
+│  │  │ Engine   │ │ Engine   │││ Manager  │ │ Engine     │  │  │
+│  │  └──────────┘ └──────────┘│└──────────┘ └────────────┘  │  │
+│  │                           │                              │  │
+│  │  ┌──────────┐ ┌──────────┐│┌──────────────────────────┐  │  │
+│  │  │ Model    │ │ Channel  │││ MCP Bridge               │  │  │
+│  │  │ Router   │ │ Manager  │││ (@modelcontextprotocol)   │  │  │
+│  │  └─────┬────┘ └─────┬────┘│└──────────────────────────┘  │  │
+│  │        │             │     │                              │  │
+│  └────────┼─────────────┼─────┼──────────────────────────────┘  │
+│           │             │     │                                  │
+├───────────┼─────────────┼─────┼──────────────────────────────────┤
+│           │             │     │    基础设施                       │
+│  ┌────────▼───┐ ┌──────▼──┐ ┌▼─────────┐ ┌─────────────────┐  │
+│  │ Cloud LLM  │ │ IM APIs │ │ SQLite   │ │ SQLite-vec      │  │
+│  │ Providers  │ │ 飞书    │ │ (加密)   │ │ (向量索引)      │  │
+│  │ (7 家)     │ │ 企微    │ │          │ │                 │  │
+│  │ via Vercel │ │ QQ      │ │          │ │                 │  │
+│  │ AI SDK     │ │         │ │          │ │                 │  │
+│  └────────────┘ └─────────┘ └──────────┘ └─────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,30 +77,31 @@
 | # | 原则 | 含义 | 来源/教训 |
 |---|------|------|-----------|
 | 1 | **安全默认 (Secure by Default)** | 所有安全机制出厂启用，不可完全关闭 | OpenClaw 明文凭证、93.4% 认证绕过的教训 |
-| 2 | **离线优先 (Offline First)** | 核心功能无网可用，云端是增强而非依赖 | 与 ChatGPT Desktop 的关键差异 |
+| 2 | **一体化体验 (All-in-One)** | 主服务 + 桌面应用合一，双击即用 | OpenClaw 需命令行启服务的教训 |
 | 3 | **进化驱动 (Evolution Driven)** | 每次交互都是 Agent 进化的机会 | EvoClaw 核心品牌标识 |
 | 4 | **最小权限 (Least Privilege)** | Agent/Skill 只获得完成任务所需的最小权限 | iOS 权限模型借鉴 |
-| 5 | **本地为王 (Local First)** | 用户数据永不离开设备，除非用户主动发起 | OpenClaw 3万+ 暴露实例的教训 |
-| 6 | **渐进增强 (Progressive Enhancement)** | 从简单可用开始，逐步解锁高级能力 | 降低上手门槛的产品策略 |
-| 7 | **模型无关 (Model Agnostic)** | 不绑定任何 LLM Provider | DeerFlow 反射式模型工厂的经验 |
+| 5 | **数据安全 (Data Security)** | 用户数据本地加密存储，仅 LLM API 和 Channel 消息对外通信 | OpenClaw 3万+ 暴露实例的教训 |
+| 6 | **中间件架构 (Middleware Chain)** | 借鉴 DeerFlow，请求处理通过可插拔中间件链 | DeerFlow 11 层中间件的经验 |
+| 7 | **模型无关 (Model Agnostic)** | 通过 Vercel AI SDK 统一接口，不绑定任何 Provider | DeerFlow 反射式模型工厂的经验 |
 
 ### 1.3 技术选型决策表
 
 | 维度 | 选型 | 理由 | 替代方案 | 不选原因 |
 |------|------|------|----------|----------|
-| **桌面框架** | Tauri 2.0 | 原生性能、体积小（~10MB vs Electron ~150MB）、Rust 安全性 | Electron | 体积臃肿、内存占用高 |
+| **桌面框架** | Tauri 2.0 | 体积小（~15MB）、Rust 安全层、原生系统集成 | Electron | 体积臃肿（~150MB）、内存占用高 |
 | **前端** | React 19 + TypeScript | 生态最大、人才最多、Tauri 完美支持 | Vue 3 / Svelte | React 在桌面应用场景更成熟 |
-| **样式** | Tailwind CSS 4 | 原子化 CSS、零运行时、与 React 配合良好 | CSS Modules | 开发效率较低 |
-| **核心引擎** | TypeScript (Node.js ≥22) | PRD 约束、与前端共享类型、MCP SDK 原生 TypeScript | Rust | 开发效率优先，Tauri 已提供 Rust 安全层 |
-| **Tauri 插件** | Rust (Tauri Plugin) | 安全敏感操作（加密、沙箱）用 Rust 实现 | 全 TypeScript | 安全关键路径需要 Rust 的内存安全 |
-| **本地推理** | llama.cpp (通过 node-llama-cpp) | 跨平台、社区活跃、GGUF 格式支持 | Ollama | Ollama 需独立进程，增加部署复杂度 |
-| **Apple 加速** | MLX (macOS 可选) | Apple Silicon 上性能 2-3x | 仅 llama.cpp | MLX 仅限 macOS，作为可选加速 |
-| **向量存储** | SQLite-vec | 嵌入式、零依赖、与 SQLite 共享连接 | LanceDB / ChromaDB | 额外依赖，SQLite-vec 足以满足万级文档 |
-| **结构化存储** | better-sqlite3 | 同步 API、Node 原生、高性能 | Drizzle ORM | 对 SQLite 直接操作更灵活 |
-| **MCP 集成** | @modelcontextprotocol/sdk | 官方 SDK，TypeScript 原生 | 自研适配层 | 降低维护成本 |
-| **IPC 通信** | Tauri Commands + Events | Tauri 原生 IPC，类型安全 | WebSocket / HTTP | 不必要的复杂度 |
-| **加密** | libsodium (通过 sodium-native) | 行业标准、审计过的加密库 | Node.js crypto | libsodium API 更安全，不易误用 |
-| **进程管理** | Tauri Sidecar | 管理 llama.cpp 等原生进程 | child_process | Tauri Sidecar 提供生命周期管理 |
+| **样式** | Tailwind CSS 4 | 原子化 CSS、零运行时 | CSS Modules | 开发效率较低 |
+| **后端架构** | Node.js Sidecar | 完整 Node 生态 + Tauri 生命周期管理 | 全 Tauri IPC | Node 生态完整性无可替代 |
+| **核心引擎** | TypeScript (Node.js ≥22) | 与前端共享类型、MCP SDK 原生 TS | Rust | 业务逻辑迭代速度优先 |
+| **安全关键路径** | Rust (Tauri Plugin) | 加密/沙箱/签名 需要内存安全保证 | TypeScript | 安全敏感操作不应使用 GC 语言 |
+| **模型调用** | Vercel AI SDK (`ai`) | 统一多 Provider 接口、流式、Tool Calling 内置 | LangChain.js | LangChain 过重、抽象层过多 |
+| **Agent 框架** | 自研 + 中间件链 | 进化引擎无现有框架提供；中间件模式借鉴 DeerFlow | LangGraph | Python 生态，与 TS 不兼容 |
+| **MCP 集成** | @modelcontextprotocol/sdk | 官方 TypeScript SDK | 自研适配层 | 降低维护成本 |
+| **向量存储** | SQLite-vec | 嵌入式、零依赖、与 SQLite 共享连接 | LanceDB / ChromaDB | 额外依赖不必要 |
+| **结构化存储** | better-sqlite3 | 同步 API、Node 原生、高性能 | Drizzle ORM | 直接操作更灵活 |
+| **加密** | libsodium (sodium-native) | 行业标准审计过的加密库 | Node.js crypto | libsodium API 更安全 |
+| **进程管理** | Tauri Sidecar | 管理 Node.js 后端进程生命周期 | child_process | Tauri Sidecar 提供完整生命周期管理 |
+| **Channel SDK** | 各平台官方 SDK | 飞书/企微/QQ 官方 Node SDK | 自研 HTTP 封装 | 官方 SDK 维护更及时 |
 
 ---
 
@@ -100,95 +112,167 @@
 **职责**：用户界面渲染、用户交互处理、状态呈现
 
 ```
-packages/ui/
-├── app/                    # 主应用路由
-│   ├── chat/               # 对话界面
-│   ├── builder/            # Agent 创建向导
-│   ├── dashboard/          # 进化仪表盘
-│   ├── knowledge/          # 知识库管理
-│   ├── skills/             # Skill 市场/管理
-│   ├── settings/           # 设置
-│   └── security/           # 安全仪表盘
-├── components/             # 共享 UI 组件
-│   ├── chat/               # 消息气泡、输入框、反馈按钮
-│   ├── charts/             # 雷达图、折线图、热力图
-│   ├── permission/         # 权限弹窗组件
-│   └── common/             # 按钮、卡片、模态框等
-├── hooks/                  # React Hooks
-├── stores/                 # 状态管理 (Zustand)
-└── lib/                    # IPC 调用封装
+apps/desktop/src/              # React 前端
+├── app/                       # 主应用路由
+│   ├── chat/                  # 对话界面
+│   ├── builder/               # Agent 创建向导
+│   ├── dashboard/             # 进化仪表盘
+│   ├── knowledge/             # 知识库管理
+│   ├── skills/                # Skill 市场/管理
+│   ├── channels/              # Channel 管理
+│   ├── settings/              # 设置
+│   └── security/              # 安全仪表盘
+├── components/                # 共享 UI 组件
+│   ├── chat/                  # 消息气泡、输入框、反馈按钮
+│   ├── charts/                # 雷达图、折线图、热力图
+│   ├── permission/            # 权限弹窗组件
+│   └── common/                # 按钮、卡片、模态框等
+├── hooks/                     # React Hooks
+├── stores/                    # 状态管理 (Zustand)
+└── lib/                       # 后端 API 调用封装
 ```
 
-**关键接口**：通过 Tauri Commands (IPC) 调用应用层
+**关键接口**：前端通过 HTTP 调用 Node.js Sidecar 后端
 
 ```typescript
-// IPC 调用示例
-interface TauriCommands {
+// 后端 API 接口示例
+interface BackendAPI {
   // 对话
-  'chat:send': (agentId: string, message: string) => AsyncStream<ChatChunk>
-  'chat:feedback': (messageId: string, type: 'up' | 'down', comment?: string) => void
+  'POST /chat/:agentId/send': (message: string) => SSE<ChatChunk>
+  'POST /chat/:agentId/feedback': (messageId: string, type: 'up' | 'down') => void
 
   // Agent
-  'agent:create-guided': (userInput: string) => AsyncStream<BuilderStep>
-  'agent:list': () => AgentSummary[]
-  'agent:get': (id: string) => AgentDetail
+  'POST /agent/create-guided': (userInput: string) => SSE<BuilderStep>
+  'GET  /agent/list': () => AgentSummary[]
+  'GET  /agent/:id': () => AgentDetail
 
   // 进化
-  'evolution:dashboard': (agentId: string) => DashboardData
-  'evolution:log': (agentId: string, range: TimeRange) => EvolutionEntry[]
+  'GET  /evolution/:agentId/dashboard': () => DashboardData
+  'GET  /evolution/:agentId/log': (range: TimeRange) => EvolutionEntry[]
 
-  // 安全
+  // 安全（通过 Tauri IPC 调用 Rust 层）
   'permission:request': (agentId: string, perm: Permission) => PermissionDecision
-  'permission:list': (agentId: string) => PermissionGrant[]
+  'credential:get': (key: string) => string
+  'credential:set': (key: string, value: string) => void
 }
 ```
 
 ### 2.2 应用层 (Application Layer)
 
-**职责**：用例编排、跨领域协调、事务管理
+**职责**：用例编排、跨领域协调、中间件链管理
 
 ```
 packages/core/src/application/
-├── chat-service.ts         # 对话管理：消息路由、流式响应、上下文组装
-├── agent-lifecycle.ts      # Agent 生命周期：创建、启动、暂停、归档
-├── agent-builder.ts        # 语义化创建引导：多轮对话 → SOUL.md + MEMORY.md
-├── evolution-service.ts    # 进化编排：记忆沉淀、反馈处理、能力评估
-├── skill-manager.ts        # Skill 管理：发现、安装、卸载、更新
-├── knowledge-service.ts    # 知识库管理：摄取、索引、检索
-├── collaboration-service.ts # 多 Agent 协作：工作流编排、消息路由
-└── model-router.ts         # 模型路由：根据任务/网络/偏好选择模型
+├── middleware/                 # 请求处理中间件链 (借鉴 DeerFlow)
+│   ├── permission-middleware.ts    # 权限检查
+│   ├── context-middleware.ts       # 上下文组装
+│   ├── memory-middleware.ts        # 记忆注入
+│   ├── summarization-middleware.ts # 长对话压缩
+│   ├── rag-middleware.ts           # 知识库检索注入
+│   ├── skill-middleware.ts         # Skill/Tool 注册
+│   └── pipeline.ts                 # 中间件链编排
+├── chat-service.ts             # 对话管理
+├── agent-lifecycle.ts          # Agent 生命周期
+├── agent-builder.ts            # 语义化创建引导
+├── evolution-service.ts        # 进化编排
+├── skill-manager.ts            # Skill 管理
+├── knowledge-service.ts        # 知识库管理
+├── collaboration-service.ts    # 多 Agent 协作
+└── model-router.ts             # 模型路由
 ```
 
-**关键协调逻辑**：
+**中间件链设计**（借鉴 DeerFlow）：
+
+```
+用户消息
+    │
+    ▼
+┌─────────────────────────┐
+│  PermissionMiddleware    │ ← 权限检查（调用 Rust 安全层）
+├─────────────────────────┤
+│  ContextMiddleware       │ ← 组装 SOUL.md + 历史消息
+├─────────────────────────┤
+│  MemoryMiddleware        │ ← 注入相关记忆条目
+├─────────────────────────┤
+│  RAGMiddleware           │ ← 知识库语义检索，注入相关文档
+├─────────────────────────┤
+│  SummarizationMiddleware │ ← Token 接近上限时压缩历史
+├─────────────────────────┤
+│  SkillMiddleware         │ ← 注册可用 Tool/Skill
+├─────────────────────────┤
+│  GapDetectionMiddleware  │ ← 能力缺口检测（后置）
+├─────────────────────────┤
+│  EvolutionMiddleware     │ ← 记忆蒸馏 + 反馈处理（后置，异步）
+└─────────────────────────┘
+    │
+    ▼
+  Vercel AI SDK → 云端 LLM
+```
 
 ```typescript
-// 对话服务编排示例（伪代码）
+// 中间件接口
+interface Middleware {
+  name: string
+  // 前置处理：在 LLM 调用前
+  before?(ctx: ChatContext): Promise<ChatContext>
+  // 后置处理：在 LLM 响应后（可异步）
+  after?(ctx: ChatContext, response: ChatResponse): Promise<void>
+}
+
+// 中间件链
+class MiddlewarePipeline {
+  private middlewares: Middleware[] = []
+
+  use(middleware: Middleware): this {
+    this.middlewares.push(middleware)
+    return this
+  }
+
+  async process(ctx: ChatContext): Promise<ChatResponse> {
+    // 1. 顺序执行所有 before
+    for (const mw of this.middlewares) {
+      if (mw.before) ctx = await mw.before(ctx)
+    }
+
+    // 2. 调用 LLM
+    const response = await this.callModel(ctx)
+
+    // 3. 异步执行所有 after（不阻塞响应）
+    Promise.all(
+      this.middlewares.map(mw => mw.after?.(ctx, response))
+    ).catch(err => logger.error('Middleware after error', err))
+
+    return response
+  }
+}
+```
+
+**对话服务编排**：
+
+```typescript
 class ChatService {
+  private pipeline: MiddlewarePipeline
+
+  constructor() {
+    this.pipeline = new MiddlewarePipeline()
+      .use(new PermissionMiddleware())
+      .use(new ContextMiddleware())
+      .use(new MemoryMiddleware())
+      .use(new RAGMiddleware())
+      .use(new SummarizationMiddleware())
+      .use(new SkillMiddleware())
+      .use(new GapDetectionMiddleware())
+      .use(new EvolutionMiddleware())
+  }
+
   async handleMessage(agentId: string, userMessage: string) {
-    // 1. 权限检查
-    await this.security.validateSession(agentId)
-
-    // 2. 上下文组装
-    const context = await this.contextAssembler.build({
+    const ctx: ChatContext = {
+      agentId,
+      userMessage,
       soul: await this.agentRepo.getSoul(agentId),
-      memory: await this.memoryEngine.getRelevant(agentId, userMessage),
-      knowledge: await this.ragEngine.retrieve(agentId, userMessage),
-      history: await this.chatRepo.getRecent(agentId, 20),
-    })
-
-    // 3. 模型路由
-    const model = await this.modelRouter.select(agentId, userMessage)
-
-    // 4. 流式推理
-    const stream = model.stream(context, userMessage)
-
-    // 5. 后置处理（异步，不阻塞响应）
-    stream.onComplete(async (response) => {
-      await this.evolutionEngine.distillMemory(agentId, userMessage, response)
-      await this.capabilityGraph.updateFromInteraction(agentId, userMessage, response)
-    })
-
-    return stream
+      model: await this.modelRouter.select(agentId),
+    }
+    return this.pipeline.process(ctx)
   }
 }
 ```
@@ -202,7 +286,7 @@ packages/core/src/domain/
 ├── agent/
 │   ├── agent.ts            # Agent 聚合根
 │   ├── soul.ts             # SOUL.md 解析/生成
-│   └── types.ts            # Agent 类型定义
+│   └── types.ts
 ├── memory/
 │   ├── memory-engine.ts    # 记忆引擎核心
 │   ├── distiller.ts        # 记忆蒸馏器
@@ -220,6 +304,10 @@ packages/core/src/domain/
 │   ├── skill-registry.ts   # Skill 注册表
 │   ├── gap-detector.ts     # 能力缺口检测
 │   └── types.ts
+├── channel/
+│   ├── channel-adapter.ts  # Channel 抽象接口
+│   ├── message-normalizer.ts # 消息标准化
+│   └── types.ts
 └── collaboration/
     ├── workflow.ts          # 协作工作流 DAG
     ├── message-bus.ts       # Agent 间消息总线
@@ -228,37 +316,39 @@ packages/core/src/domain/
 
 ### 2.4 基础设施层 (Infrastructure Layer)
 
-**职责**：外部系统适配、数据持久化、系统资源访问
-
 ```
 packages/core/src/infrastructure/
 ├── db/
-│   ├── sqlite-store.ts     # SQLite 连接管理 + 结构化查询
+│   ├── sqlite-store.ts     # SQLite 连接管理
 │   ├── vector-store.ts     # SQLite-vec 向量操作
 │   └── migrations/         # Schema 迁移脚本
 ├── model/
 │   ├── provider-registry.ts # 模型 Provider 注册表
-│   ├── cloud/
-│   │   ├── anthropic.ts    # Claude API
-│   │   ├── openai.ts       # GPT API
-│   │   └── google.ts       # Gemini API
-│   └── local/
-│       ├── llama-cpp.ts    # llama.cpp 集成
-│       └── mlx.ts          # MLX 集成 (macOS)
-├── security/
+│   ├── openai.ts           # OpenAI (via Vercel AI SDK)
+│   ├── anthropic.ts        # Anthropic
+│   ├── deepseek.ts         # DeepSeek
+│   ├── minimax.ts          # MiniMax
+│   ├── glm.ts              # 智谱 GLM
+│   ├── doubao.ts           # 字节豆包
+│   └── qwen.ts             # 通义千问
+├── security/               # Rust Tauri Plugin 的 TS 调用封装
 │   ├── keychain.ts         # 系统 Keychain 适配
 │   ├── sandbox.ts          # 沙箱执行引擎
 │   ├── crypto.ts           # 加密/解密操作
 │   └── signature.ts        # Skill 签名验证
+├── channel/
+│   ├── feishu-adapter.ts   # 飞书适配器
+│   ├── wecom-adapter.ts    # 企业微信适配器
+│   └── qq-adapter.ts       # QQ 适配器
 ├── mcp/
 │   ├── mcp-bridge.ts       # MCP 协议桥接
-│   └── adapters/           # 各 MCP Server 适配器
+│   └── adapters/
 ├── rag/
 │   ├── ingestion.ts        # 文档摄取管道
 │   ├── chunker.ts          # 文本分块器
-│   ├── embedder.ts         # 嵌入生成器
+│   ├── embedder.ts         # 嵌入生成器（云端 API）
 │   └── retriever.ts        # 检索器
-├── skill-registry/
+├── skill-source/
 │   ├── npm-source.ts       # npm registry 搜索
 │   ├── clawhub-source.ts   # ClawHub 搜索
 │   └── skills-sh-source.ts # skills.sh 搜索
@@ -274,34 +364,6 @@ packages/core/src/infrastructure/
 ### 3.1 安全子系统
 
 #### 权限模型设计
-
-```
-┌─────────────────────────────────────────────┐
-│              Permission Model                │
-├─────────────────────────────────────────────┤
-│                                             │
-│  权限类别 (Category)                         │
-│  ├── filesystem    文件系统读写              │
-│  ├── network       网络访问                  │
-│  ├── exec          系统命令执行              │
-│  ├── clipboard     剪贴板访问                │
-│  ├── notification  系统通知                  │
-│  ├── keychain      凭证访问                  │
-│  └── agent-comm    Agent 间通信              │
-│                                             │
-│  授权粒度 (Scope)                            │
-│  ├── once          仅本次                    │
-│  ├── session       本次会话                  │
-│  ├── always        始终允许                  │
-│  └── deny          始终拒绝                  │
-│                                             │
-│  资源限定 (Resource)                         │
-│  ├── path: "/Users/*/Documents/**"          │
-│  ├── domain: "api.anthropic.com"            │
-│  └── command: "git *"                       │
-│                                             │
-└─────────────────────────────────────────────┘
-```
 
 ```typescript
 interface PermissionGrant {
@@ -323,82 +385,50 @@ Agent 请求操作
     │
     ▼
 ┌─────────────────┐
-│ 查询权限缓存     │
+│ 查询权限缓存     │  ← Node.js 层内存缓存
 └────┬────────────┘
      │
      ├── 命中 "always allow" → 放行
      ├── 命中 "always deny"  → 拒绝
      ├── 命中 "session"      → 检查会话有效性 → 放行/弹窗
-     └── 未命中              → 弹窗请求授权
+     └── 未命中              → 通过 Tauri IPC 弹窗请求授权
                                     │
                               ┌─────┴─────┐
                               │ 用户决策   │
-                              ├── 仅本次   │ → 放行，不缓存
+                              ├── 仅本次   │ → 放行，不持久化
                               ├── 始终允许 │ → 放行，持久化
                               ├── 始终拒绝 │ → 拒绝，持久化
-                              └── 取消     │ → 拒绝，不缓存
+                              └── 取消     │ → 拒绝
 ```
 
-#### 凭证管理架构
+#### 凭证管理架构（Rust 实现）
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                 Credential Vault                  │
+│            Credential Vault (Rust Plugin)          │
 ├──────────────────────────────────────────────────┤
 │                                                  │
-│  ┌─────────────┐                                 │
-│  │ Vault API   │  ← 唯一对外接口                 │
-│  │ get / set   │                                 │
-│  │ delete      │                                 │
-│  └──────┬──────┘                                 │
-│         │                                        │
-│  ┌──────▼──────────────────────────────────────┐ │
-│  │ Platform Keychain Adapter                   │ │
-│  │ ┌──────────┐ ┌──────────┐ ┌──────────────┐ │ │
-│  │ │ macOS    │ │ Windows  │ │ Linux        │ │ │
-│  │ │ Keychain │ │ Cred Mgr │ │ Secret Svc   │ │ │
-│  │ └──────────┘ └──────────┘ └──────────────┘ │ │
-│  └─────────────────────────────────────────────┘ │
+│  Tauri IPC 接口:                                  │
+│  · credential:get(service, account) → value      │
+│  · credential:set(service, account, value)       │
+│  · credential:delete(service, account)           │
+│                                                  │
+│  ┌──────────────────────────────────────────┐    │
+│  │ Platform Keychain Adapter (Rust)         │    │
+│  │ ┌──────────┐ ┌──────────┐ ┌───────────┐ │    │
+│  │ │ macOS    │ │ Windows  │ │ Linux     │ │    │
+│  │ │ Keychain │ │ Cred Mgr │ │ Secret    │ │    │
+│  │ │ (Security│ │ (WinCred)│ │ Service   │ │    │
+│  │ │ Framework)│ │         │ │ (libsecret)│ │    │
+│  │ └──────────┘ └──────────┘ └───────────┘ │    │
+│  └──────────────────────────────────────────┘    │
 │                                                  │
 │  安全保证:                                        │
-│  · 内存中凭证使用后立即清零                        │
-│  · 日志中凭证自动脱敏 (****)                       │
-│  · 进程间传递凭证使用 mTLS                         │
-│                                                  │
+│  · Rust 内存安全：凭证使用后自动释放              │
+│  · 日志自动脱敏 (****)                            │
+│  · 仅 Tauri 主进程可调用，Sidecar 通过 IPC 间接访问│
 └──────────────────────────────────────────────────┘
 ```
-
-#### 沙箱执行引擎
-
-```typescript
-interface SandboxPolicy {
-  filesystem: {
-    readable: string[]     // 允许读取的路径 glob
-    writable: string[]     // 允许写入的路径 glob
-    denied: string[]       // 禁止访问的路径
-  }
-  network: {
-    allowedDomains: string[]  // 允许的域名
-    blockedDomains: string[]  // 禁止的域名
-    maxConnections: number
-  }
-  exec: {
-    allowedCommands: string[] // 允许的命令 glob
-    maxDuration: number       // 最长执行时间 (ms)
-    maxMemory: number         // 最大内存 (bytes)
-  }
-  resources: {
-    maxCpuPercent: number
-    maxFileSize: number
-  }
-}
-```
-
-**沙箱实现策略**：
-- **macOS**: App Sandbox + `sandbox-exec` profile
-- **Windows**: Windows Sandbox API / 受限 Job Object
-- **Linux**: seccomp + namespaces
-- **统一抽象层**: Tauri Plugin (Rust) 封装平台差异
 
 #### Skill 签名与验证链
 
@@ -411,29 +441,26 @@ Skill 安装请求
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 2. 验证数字签名      │  ← Ed25519 签名验证
-│    (签名无效 → 拒绝) │     发布者公钥从 Registry 获取
+│ 2. 签名验证 (Rust)   │  ← Ed25519 签名验证（Rust Plugin）
+│    签名无效 → 拒绝   │
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 3. 静态分析          │  ← 扫描代码中的危险模式
-│    (网络请求/文件写入 │     (eval, fetch, fs.write 等)
-│     是否与声明匹配)  │
+│ 3. 静态分析 (TS)     │  ← 扫描危险模式 (eval, fetch, fs.write)
+│    发现危险 → 警告   │
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 4. 沙箱试运行        │  ← 在受限沙箱中运行测试用例
-│    (监控实际行为)     │     对比声明的 capabilities
+│ 4. 沙箱试运行 (Rust) │  ← Rust 沙箱中运行测试用例
+│    行为异常 → 拒绝   │
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 5. 用户确认          │  ← 展示分析报告 + 安全评分
-│    (显示所需权限)     │
+│ 5. 用户确认 (UI)     │  ← 展示分析报告 + 安全评分
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 6. 安装 + 注册       │  ← 写入本地 Skill 注册表
-│    (运行时行为审计)   │     启用运行时审计日志
+│ 6. 安装 + 注册       │  ← 写入 Skill 注册表 + 启用审计
 └─────────────────────┘
 ```
 
@@ -444,61 +471,60 @@ Skill 安装请求
 ```
 ┌──────────┐    创建引导     ┌──────────┐    激活     ┌──────────┐
 │ 不存在   │ ──────────────→ │ 草稿     │ ────────→  │ 活跃     │
-│          │                 │ (Draft)  │            │ (Active) │
-└──────────┘                 └──────────┘            └─────┬────┘
-                                  ↑                        │
-                            保存为草稿               ┌─────┴─────┐
-                                  │                │            │
-                             ┌────┴───┐      暂停  │     归档    │
-                             │ 测试中  │ ←────────  │            │
-                             │(Testing)│            ▼            ▼
-                             └────────┘      ┌──────────┐ ┌──────────┐
-                                             │ 暂停     │ │ 归档     │
-                                             │(Paused)  │ │(Archived)│
-                                             └──────────┘ └──────────┘
+└──────────┘                 │ (Draft)  │            │ (Active) │
+                             └─────┬────┘            └─────┬────┘
+                                   │                       │
+                             实时预览/测试           ┌─────┴─────┐
+                                   │                │            │
+                             ┌─────▼────┐      暂停 │     归档   │
+                             │ 测试中   │ ←────────  │            │
+                             │(Testing) │            ▼            ▼
+                             └──────────┘      ┌──────────┐ ┌──────────┐
+                                               │ 暂停     │ │ 归档     │
+                                               │(Paused)  │ │(Archived)│
+                                               └──────────┘ └──────────┘
 ```
 
 #### SOUL.md 数据模型
 
 ```typescript
 interface Soul {
-  // 基本信息
   name: string
-  role: string            // 一句话角色描述
-  avatar?: string         // 头像路径
+  role: string
+  avatar?: string
 
-  // 人格特质
   personality: {
     tone: 'formal' | 'friendly' | 'humorous' | 'concise'
-    expertise: string[]   // 专长领域
-    language: string[]    // 支持语言
+    expertise: string[]
+    language: string[]
   }
 
-  // 行为约束
   constraints: {
-    always: string[]      // 必须遵守的规则
-    never: string[]       // 禁止的行为
+    always: string[]
+    never: string[]
   }
 
-  // 交互风格
   interaction: {
     responseLength: 'short' | 'medium' | 'detailed'
-    proactiveAsk: boolean     // 是否主动追问
-    citeSources: boolean      // 是否引用来源
+    proactiveAsk: boolean
+    citeSources: boolean
   }
 
-  // 能力配置
   capabilities: {
-    skills: string[]          // 已安装 Skill ID
-    knowledgeBases: string[]  // 绑定的知识库 ID
-    tools: string[]           // MCP 工具 ID
+    skills: string[]
+    knowledgeBases: string[]
+    tools: string[]
   }
 
-  // 进化配置
   evolution: {
-    memoryDistillation: boolean   // 是否自动沉淀记忆
-    feedbackLearning: boolean     // 是否从反馈学习
-    autoSkillDiscovery: boolean   // 是否自动发现 Skill
+    memoryDistillation: boolean
+    feedbackLearning: boolean
+    autoSkillDiscovery: boolean
+  }
+
+  model: {
+    preferred?: string       // 首选模型 ID
+    fallback?: string        // 备选模型 ID
   }
 }
 ```
@@ -506,26 +532,15 @@ interface Soul {
 #### MEMORY.md 数据模型
 
 ```typescript
-interface Memory {
-  // 用户偏好
-  preferences: PreferenceEntry[]
-  // 领域知识
-  knowledge: KnowledgeEntry[]
-  // 纠正记录
-  corrections: CorrectionEntry[]
-  // 进化快照
-  snapshots: EvolutionSnapshot[]
-}
-
 interface PreferenceEntry {
   id: string
   category: string        // "coding_style" | "format" | "tone" | ...
-  key: string             // "variable_naming"
-  value: string           // "camelCase"
-  confidence: number      // 0-1, 基于观察次数
-  observedCount: number   // 被观察到的次数
-  lastObserved: number    // 最后观察时间
-  source: 'inferred' | 'explicit'  // 推断 vs 用户明确告知
+  key: string
+  value: string
+  confidence: number      // 0-1
+  observedCount: number
+  lastObserved: number
+  source: 'inferred' | 'explicit'
 }
 
 interface KnowledgeEntry {
@@ -540,10 +555,10 @@ interface KnowledgeEntry {
 
 interface CorrectionEntry {
   id: string
-  original: string        // Agent 原始回答
-  corrected: string       // 用户纠正内容
-  rule: string            // 提取的规则
-  appliedCount: number    // 该规则被应用的次数
+  original: string
+  corrected: string
+  rule: string
+  appliedCount: number
   createdAt: number
 }
 ```
@@ -558,19 +573,19 @@ interface CorrectionEntry {
 │          Agent Builder (应用层)                │
 │                                              │
 │  Phase 1: 角色定位                            │
-│  → "你想要什么类型的编程助手？前端/后端/全栈？" │
+│  → "你想要什么类型的编程助手？"               │
 │  ← "主要写 TypeScript，前后端都做"            │
 │                                              │
 │  Phase 2: 专长深挖                            │
-│  → "你主要用什么框架？React? Vue? Node?"      │
+│  → "你主要用什么框架？"                       │
 │  ← "React + Node.js + PostgreSQL"            │
 │                                              │
 │  Phase 3: 风格偏好                            │
-│  → "你喜欢什么样的回答风格？详细解释还是直接？" │
+│  → "你喜欢什么样的回答风格？"                 │
 │  ← "简洁直接，给代码就行"                     │
 │                                              │
 │  Phase 4: 行为约束                            │
-│  → "有什么特别的要求或禁忌吗？"               │
+│  → "有什么特别的要求吗？"                     │
 │  ← "不要用 class 组件，只用函数式"            │
 │                                              │
 │  Phase 5: 预览 & 测试                         │
@@ -581,8 +596,6 @@ interface CorrectionEntry {
 │  → [保存 SOUL.md + 初始 MEMORY.md]            │
 └──────────────────────────────────────────────┘
 ```
-
-**Builder 实现**: 使用一个专门的 "Builder Agent"（内置 LLM 提示词）驱动多轮对话，每轮提取结构化信息填充 Soul 模板。
 
 ### 3.3 进化引擎 (Evolution Engine) — 核心差异化
 
@@ -600,203 +613,78 @@ interface CorrectionEntry {
 │                              │                               │
 │                    ┌─────────▼─────────┐                     │
 │                    │ Evolution Scorer  │                     │
-│                    │ 进化评分引擎       │                     │
 │                    └─────────┬─────────┘                     │
 │                              │                               │
 │                    ┌─────────▼─────────┐                     │
 │                    │ Evolution Log     │                     │
-│                    │ 进化日志           │                     │
 │                    └──────────────────┘                      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### 记忆沉淀管道 (Memory Distillation Pipeline)
+#### 记忆沉淀管道
 
 ```
-对话完成
+对话完成 (EvolutionMiddleware.after 触发)
     │
     ▼
 ┌─────────────────────┐
-│ 1. 对话分析          │  ← LLM 分析本次对话
-│    提取候选记忆       │     提示词："从以下对话中提取用户偏好、
-│                     │     新知识、纠正信息"
+│ 1. LLM 对话分析      │  ← 使用同一模型或低成本模型
+│    提取候选记忆       │     提示词："提取用户偏好、知识、纠正"
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 2. 去重 & 合并       │  ← 与已有记忆对比
-│    避免重复记忆       │     相似度 > 0.85 则合并而非新增
+│ 2. 去重 & 合并       │  ← 向量相似度 > 0.85 则合并
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 3. 置信度计算        │  ← 首次观察: 0.3
-│    多次观察提升置信度  │     再次确认: +0.2 (上限 0.95)
-└─────────┬───────────┘     用户明确告知: 直接 0.9
+│ 3. 置信度计算        │  ← 首次: 0.3, 再次确认: +0.2
+│                     │     用户明确告知: 直接 0.9
+└─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 4. 写入 MEMORY.md   │  ← 结构化写入对应分类
-│    更新能力图谱       │     同时更新 Capability Graph
+│ 4. 写入 MEMORY.md   │  ← 同时更新 Capability Graph
+│    + 进化日志        │
 └─────────────────────┘
 ```
 
-**关键设计决策**：记忆蒸馏使用 LLM 而非规则引擎。理由：用户表达多样化，基于规则的提取覆盖率低（预估 <40%），LLM 提取准确率可达 80%+。成本通过以下方式控制：
-- 仅在对话结束时批量处理（不是每条消息都触发）
-- 优先使用本地小模型处理蒸馏任务
-- 缓存重复模式，减少 LLM 调用次数
-
-#### 反馈学习系统
+#### 能力图谱与评分算法
 
 ```typescript
-interface FeedbackEvent {
-  messageId: string
-  agentId: string
-  type: 'thumbs_up' | 'thumbs_down' | 'correction'
-  comment?: string           // 用户文字说明
-  context: {
-    userMessage: string      // 用户原始提问
-    agentResponse: string    // Agent 回答
-    topic: string            // 话题分类
-  }
-}
-
-// 反馈处理流程
-class FeedbackLoop {
-  async processFeedback(event: FeedbackEvent) {
-    if (event.type === 'thumbs_up') {
-      // 正面反馈：强化当前行为模式
-      await this.reinforcePattern(event)
-    } else if (event.type === 'thumbs_down') {
-      // 负面反馈：分析原因，生成纠正规则
-      const analysis = await this.analyzeNegativeFeedback(event)
-      await this.memory.addCorrection({
-        original: event.context.agentResponse,
-        corrected: analysis.suggestedImprovement,
-        rule: analysis.extractedRule,
-      })
-    } else if (event.type === 'correction') {
-      // 用户明确纠正：高置信度写入
-      await this.memory.addCorrection({
-        original: event.context.agentResponse,
-        corrected: event.comment!,
-        rule: await this.extractRule(event),
-        confidence: 0.9,
-      })
-    }
-
-    // 更新能力图谱
-    await this.capabilityGraph.updateFromFeedback(event)
-  }
-}
-```
-
-#### 能力图谱 (Capability Graph)
-
-```typescript
-interface CapabilityGraph {
-  agentId: string
-  dimensions: CapabilityDimension[]
-  lastUpdated: number
-}
-
 interface CapabilityDimension {
-  name: string            // "typescript_coding" | "research" | "writing" | ...
+  name: string            // "typescript_coding" | "research" | ...
   score: number           // 0-100
   trend: 'rising' | 'stable' | 'declining'
   evidence: {
     totalInteractions: number
-    positiveRate: number  // 正面反馈率
-    correctionRate: number // 被纠正的比率
-    skillsUsed: string[]  // 使用的相关 Skill
+    positiveRate: number
+    correctionRate: number
+    skillsUsed: string[]
   }
   history: { date: number; score: number }[]
 }
-```
 
-**评分算法**：
-
-```
-score = baseScore
-      + (positiveRate × 20)
-      - (correctionRate × 15)
-      + (skillCount × 5)
-      + (memoryCount × 2)
-      + (interactionFrequency × 3)
-
+// 评分算法
+// score = 50 (base)
+//       + (positiveRate × 20)
+//       - (correctionRate × 15)
+//       + (skillCount × 5)
+//       + (memoryCount × 2)
+//       + (interactionFrequency × 3)
 // 约束: 0 ≤ score ≤ 100
-// baseScore: 新维度起始 50 分
-// 每日衰减: 7 天无交互则 score -= 1/day (最低 30)
-```
-
-#### 进化日志数据模型
-
-```typescript
-interface EvolutionEntry {
-  id: string
-  agentId: string
-  timestamp: number
-  type: 'memory_added' | 'memory_merged' | 'skill_learned' | 'capability_change' | 'feedback_applied' | 'milestone'
-  summary: string           // 人类可读摘要
-  details: Record<string, unknown>
-  impact: {
-    dimensions: string[]    // 影响的能力维度
-    scoreDelta: number      // 分数变化
-  }
-}
-
-// 周报生成（每周一自动触发）
-interface WeeklyReport {
-  agentId: string
-  weekStart: number
-  weekEnd: number
-  highlights: string[]       // "学会了 3 个新技能"
-  memoriesAdded: number
-  capabilityChanges: { dimension: string; from: number; to: number }[]
-  topSkills: { name: string; usageCount: number }[]
-  feedbackSummary: { positive: number; negative: number; corrections: number }
-}
+// 衰减: 7 天无交互则 score -= 1/day (最低 30)
 ```
 
 ### 3.4 Skill/MCP 管理系统
 
 #### 能力缺口检测
 
-```
-Agent 执行任务
-    │
-    ├── 成功 → 正常流程
-    │
-    └── 失败/质量差
-           │
-           ▼
-    ┌────────────────────┐
-    │ Gap Detector        │
-    │                    │
-    │ 分析失败原因:       │
-    │ 1. 工具调用失败     │ → 缺少对应 Skill
-    │ 2. 格式处理失败     │ → 缺少文件格式支持
-    │ 3. 知识不足         │ → 可能需要知识库补充
-    │ 4. 模型能力不足     │ → 需要更强模型
-    │ 5. 纯质量问题       │ → 优化提示词/记忆
-    │                    │
-    │ 输出: GapAnalysis   │
-    └─────────┬──────────┘
-              ▼
-    ┌────────────────────┐
-    │ 是能力缺口?         │
-    │                    │
-    │ 是 → 触发 Skill    │
-    │      Discovery     │
-    │                    │
-    │ 否 → 记录到进化日志 │
-    └────────────────────┘
-```
-
 ```typescript
 interface GapAnalysis {
   taskDescription: string
-  failureType: 'tool_missing' | 'format_unsupported' | 'knowledge_gap' | 'model_limit' | 'quality'
+  failureType: 'tool_missing' | 'format_unsupported' | 'knowledge_gap' | 'quality'
   confidence: number
-  suggestedCapability: string   // "excel_parsing" | "pdf_reading" | ...
-  searchQuery: string           // 用于搜索 Skill 的查询词
+  suggestedCapability: string
+  searchQuery: string
 }
 ```
 
@@ -807,34 +695,28 @@ interface SkillSource {
   name: string
   search(query: string): Promise<SkillCandidate[]>
   download(id: string): Promise<SkillPackage>
-  getMetadata(id: string): Promise<SkillMetadata>
 }
 
 interface SkillCandidate {
   id: string
   name: string
   description: string
-  version: string
   source: string             // "npm" | "clawhub" | "skills.sh"
-  rating: number             // 0-5
+  rating: number
   downloads: number
-  securityScore: number      // 0-100, 基于签名/审计/历史
-  capabilities: string[]     // 提供的能力列表
-  permissions: string[]      // 需要的权限列表
+  securityScore: number
+  capabilities: string[]
+  permissions: string[]
 }
 ```
 
 #### 安全安装管道
 
 ```
-┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐
-│Discovery│ →  │Verify  │ →  │Analyze │ →  │Sandbox │ →  │Confirm │ →  │Install │
-│搜索候选 │    │签名验证 │    │静态分析 │    │试运行   │    │用户确认 │    │注册    │
-└────────┘    └────────┘    └────────┘    └────────┘    └────────┘    └────────┘
-                  │              │              │
-                  ▼              ▼              ▼
-              签名无效 →     发现危险      行为异常 →
-              拒绝并告知     代码 → 警告   拒绝并告知
+Discovery → Verify(Rust) → Analyze(TS) → Sandbox(Rust) → Confirm(UI) → Install
+    │            │              │              │
+    ▼            ▼              ▼              ▼
+  多源搜索    签名无效→拒绝   危险代码→警告   行为异常→拒绝
 ```
 
 ### 3.5 本地知识库 (RAG 引擎)
@@ -846,101 +728,29 @@ interface SkillCandidate {
     │
     ▼
 ┌─────────────────┐
-│ 1. 格式检测      │  ← mime-types 检测
-│    & 解析器选择   │     .md → MarkdownParser
-│                 │     .pdf → PDFParser (pdf-parse)
-│                 │     .docx → DocxParser (mammoth)
-│                 │     .txt → PlainTextParser
-│                 │     .py/.ts → CodeParser (tree-sitter)
+│ 1. 格式检测/解析 │  ← .md → MarkdownParser
+│                 │     .pdf → pdf-parse
+│                 │     .docx → mammoth
+│                 │     .py/.ts → tree-sitter
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ 2. 文本提取      │  ← 提取纯文本 + 元数据
-│    & 清洗        │     去除格式噪音、特殊字符
+│ 2. 智能分块      │  ← 递归分块: 标题 → 段落 → 句子
+│   (512 tokens)  │     50 tokens 重叠
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ 3. 智能分块      │  ← 策略见下方
-│    Chunking      │
+│ 3. 嵌入生成      │  ← 云端 Embedding API
+│                 │     (text-embedding-3-small 或国产替代)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ 4. 嵌入生成      │  ← 本地: all-MiniLM-L6-v2 (via onnxruntime)
-│    Embedding     │     云端: text-embedding-3-small (可选)
-└────────┬────────┘
-         ▼
-┌─────────────────┐
-│ 5. 向量写入      │  ← SQLite-vec INSERT
-│    + 元数据索引   │     同时写入全文索引 (FTS5)
+│ 4. 向量写入      │  ← SQLite-vec INSERT
+│   + FTS5 全文    │     同时写入 FTS5 索引
 └─────────────────┘
 ```
 
-#### 分块策略
-
-```typescript
-interface ChunkingConfig {
-  strategy: 'fixed' | 'semantic' | 'recursive'
-  maxChunkSize: 512        // tokens
-  overlapSize: 50          // tokens
-  respectBoundaries: true  // 尊重段落/标题边界
-}
-
-// 默认策略: recursive（递归分块）
-// 1. 按标题分割 (# / ## / ###)
-// 2. 超长段落按段落分割 (\n\n)
-// 3. 超长段落按句子分割 (。/. /! /?)
-// 4. 超长句子按固定大小分割
-// 每个 chunk 包含:
-//   - 文本内容
-//   - 来源文件路径
-//   - 标题层级上下文
-//   - 在文档中的位置
-```
-
-#### SQLite-vec 存储方案
-
-```sql
--- 文档表
-CREATE TABLE documents (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  knowledge_base_id TEXT NOT NULL,
-  file_path TEXT NOT NULL,
-  file_name TEXT NOT NULL,
-  file_type TEXT NOT NULL,
-  file_hash TEXT NOT NULL,       -- 用于增量更新检测
-  chunk_count INTEGER DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  FOREIGN KEY (agent_id) REFERENCES agents(id)
-);
-
--- 文本块表
-CREATE TABLE chunks (
-  id TEXT PRIMARY KEY,
-  document_id TEXT NOT NULL,
-  content TEXT NOT NULL,
-  metadata TEXT,                  -- JSON: {heading, position, ...}
-  token_count INTEGER,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (document_id) REFERENCES documents(id)
-);
-
--- 向量索引 (SQLite-vec)
-CREATE VIRTUAL TABLE chunk_embeddings USING vec0(
-  chunk_id TEXT PRIMARY KEY,
-  embedding FLOAT[384]           -- all-MiniLM-L6-v2 维度
-);
-
--- 全文搜索索引 (FTS5) 用于混合检索
-CREATE VIRTUAL TABLE chunks_fts USING fts5(
-  content,
-  content='chunks',
-  content_rowid='rowid'
-);
-```
-
-#### 检索与排序
+#### 混合检索
 
 ```
 用户查询
@@ -950,64 +760,136 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
 │         混合检索 (Hybrid)         │
 │                                  │
 │  ┌────────────┐  ┌────────────┐  │
-│  │ 向量检索    │  │ 全文检索    │  │
-│  │ (语义相似)  │  │ (关键词)   │  │
+│  │ 向量检索    │  │ FTS5 检索   │  │
 │  │ Top-20     │  │ Top-20     │  │
 │  └─────┬──────┘  └─────┬──────┘  │
-│        │               │         │
 │        └───────┬───────┘         │
 │                ▼                 │
 │     ┌────────────────┐          │
 │     │  RRF 融合排序   │          │
-│     │  (Reciprocal    │          │
-│     │   Rank Fusion)  │          │
-│     └───────┬────────┘          │
-│             ▼                   │
-│     ┌────────────────┐          │
 │     │  Top-5 结果     │          │
 │     └────────────────┘          │
 └──────────────────────────────────┘
-    │
-    ▼
-  注入 LLM 上下文
 ```
 
-### 3.6 多 Agent 协作
+### 3.6 Channel 系统
 
-#### Agent 通信协议
+```
+┌──────────────────────────────────────────────────┐
+│                Channel Manager                    │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │           Channel Adapter 接口              │  │
+│  │                                            │  │
+│  │  interface ChannelAdapter {                │  │
+│  │    id: string                              │  │
+│  │    name: string                            │  │
+│  │    connect(config: ChannelConfig): void    │  │
+│  │    disconnect(): void                      │  │
+│  │    onMessage(handler: MessageHandler): void│  │
+│  │    sendMessage(to: string, msg: Msg): void │  │
+│  │    getStatus(): ConnectionStatus           │  │
+│  │  }                                        │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  │ 飞书        │ │ 企业微信    │ │ QQ         │   │
+│  │ Adapter    │ │ Adapter    │ │ Adapter    │   │
+│  │            │ │            │ │            │   │
+│  │ @larksuiteoapi│ │ wecom-sdk │ │ qq-bot-sdk│   │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘   │
+│        │              │              │           │
+│  ┌─────▼──────────────▼──────────────▼─────────┐ │
+│  │          消息标准化层 (MessageNormalizer)      │ │
+│  │  · 统一消息格式 (text/file/image/card)       │ │
+│  │  · 平台特性适配 (飞书卡片/企微模板)          │ │
+│  │  · 会话上下文映射 (平台会话 → Agent 会话)    │ │
+│  └─────────────────────┬───────────────────────┘ │
+│                        │                         │
+│                        ▼                         │
+│              ChatService.handleMessage()         │
+│              (与桌面端共用同一处理管道)            │
+└──────────────────────────────────────────────────┘
+```
+
+**关键设计**：Channel 消息经过标准化后，复用与桌面端完全相同的中间件链和 Agent 引擎。Agent 的记忆、进化在所有 Channel 间共享。
+
+### 3.7 模型适配层
+
+```
+┌──────────────────────────────────────────────────┐
+│              Model Router                         │
+│                                                  │
+│  输入: Agent 配置 + 用户偏好                      │
+│                                                  │
+│  路由策略:                                        │
+│  ┌────────────────┐                              │
+│  │ Agent 指定模型?  │── 是 ──→ 使用指定模型       │
+│  └───────┬────────┘                              │
+│          │ 否                                    │
+│  ┌───────▼────────┐                              │
+│  │ 用户全局偏好?   │── 有 ──→ 使用偏好模型       │
+│  └───────┬────────┘                              │
+│          │ 无                                    │
+│          ▼                                       │
+│    使用系统默认模型                                │
+└──────────────────────────────────────────────────┘
+```
 
 ```typescript
-interface AgentMessage {
-  id: string
-  from: string              // 源 Agent ID
-  to: string                // 目标 Agent ID
-  type: 'task' | 'result' | 'query' | 'notification'
-  payload: {
-    content: string
-    attachments?: Attachment[]
-    metadata?: Record<string, unknown>
-  }
-  workflow_id?: string      // 所属工作流 ID
-  step_id?: string          // 所属步骤 ID
-  timestamp: number
+// 基于 Vercel AI SDK 的统一模型接口
+import { generateText, streamText } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
+import { createAnthropic } from '@ai-sdk/anthropic'
+
+// 7 家 Provider 注册
+const providers = {
+  openai: createOpenAI({ apiKey: vault.get('openai') }),
+  anthropic: createAnthropic({ apiKey: vault.get('anthropic') }),
+  deepseek: createOpenAI({                // DeepSeek 兼容 OpenAI 接口
+    apiKey: vault.get('deepseek'),
+    baseURL: 'https://api.deepseek.com/v1',
+  }),
+  minimax: createOpenAI({
+    apiKey: vault.get('minimax'),
+    baseURL: 'https://api.minimax.chat/v1',
+  }),
+  glm: createOpenAI({
+    apiKey: vault.get('glm'),
+    baseURL: 'https://open.bigmodel.cn/api/paas/v4',
+  }),
+  doubao: createOpenAI({
+    apiKey: vault.get('doubao'),
+    baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+  }),
+  qwen: createOpenAI({
+    apiKey: vault.get('qwen'),
+    baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  }),
 }
+
+// 统一调用
+const result = await streamText({
+  model: providers.deepseek('deepseek-chat'),
+  messages: context.messages,
+  tools: context.tools,
+})
 ```
+
+### 3.8 多 Agent 协作
 
 #### 协作拓扑
 
 ```
-管道模式 (Pipeline):
-  Agent A → Agent B → Agent C → 最终结果
+管道模式:  Agent A → Agent B → Agent C → 结果
 
-星形模式 (Star):
-  Agent B ←─┐
-  Agent C ←─┤── Lead Agent ──→ 合成结果
-  Agent D ←─┘
+星形模式:  Agent B ←─┐
+           Agent C ←─┤── Lead Agent ──→ 合成结果
+           Agent D ←─┘
 
-DAG 模式 (有向无环图):
-  Agent A ──→ Agent C ──┐
-  Agent B ──→ Agent D ──┼──→ Agent F → 结果
-              Agent E ──┘
+DAG 模式:  Agent A ──→ Agent C ──┐
+           Agent B ──→ Agent D ──┼──→ Agent F → 结果
+                       Agent E ──┘
 ```
 
 ```typescript
@@ -1022,79 +904,8 @@ interface WorkflowStep {
   id: string
   agentId: string
   type: 'agent' | 'human-review' | 'condition'
-  input: string               // 输入描述/模板
+  input: string
   timeout: number
-}
-
-interface WorkflowEdge {
-  from: string                // step ID
-  to: string                  // step ID
-  condition?: string          // 条件表达式
-}
-```
-
-### 3.7 模型适配层
-
-```
-┌──────────────────────────────────────────────────┐
-│                 Model Router                      │
-│                                                  │
-│  输入: 任务描述 + 网络状态 + 用户偏好 + 隐私级别   │
-│                                                  │
-│  路由策略:                                        │
-│  ┌────────────────┐                              │
-│  │ 离线?           │── 是 ──→ 本地模型            │
-│  └───────┬────────┘                              │
-│          │ 否                                    │
-│  ┌───────▼────────┐                              │
-│  │ 隐私敏感?       │── 是 ──→ 本地模型            │
-│  └───────┬────────┘                              │
-│          │ 否                                    │
-│  ┌───────▼────────┐                              │
-│  │ 简单任务?       │── 是 ──→ 本地模型 (省成本)   │
-│  │ (分类/摘要/翻译)│                              │
-│  └───────┬────────┘                              │
-│          │ 否 (复杂任务)                          │
-│  ┌───────▼────────┐                              │
-│  │ 用户偏好模型?    │── 有 ──→ 指定云端模型        │
-│  └───────┬────────┘                              │
-│          │ 无                                    │
-│          ▼                                       │
-│    默认云端模型 (按 Agent SOUL 配置)               │
-└──────────────────────────────────────────────────┘
-```
-
-```typescript
-interface ModelProvider {
-  id: string
-  name: string
-  type: 'cloud' | 'local'
-
-  // 能力声明
-  capabilities: {
-    maxContextTokens: number
-    supportedModalities: ('text' | 'image' | 'audio')[]
-    streamingSupport: boolean
-  }
-
-  // 统一接口
-  chat(messages: Message[], options: ChatOptions): AsyncIterable<ChatChunk>
-  embed(texts: string[]): Promise<number[][]>
-
-  // 健康检查
-  isAvailable(): Promise<boolean>
-}
-
-// 模型 Provider 注册表
-class ProviderRegistry {
-  private providers: Map<string, ModelProvider> = new Map()
-
-  register(provider: ModelProvider): void
-  get(id: string): ModelProvider
-  listAvailable(): ModelProvider[]
-
-  // 任务复杂度评估（用于路由决策）
-  estimateComplexity(task: string): 'simple' | 'moderate' | 'complex'
 }
 ```
 
@@ -1109,33 +920,32 @@ class ProviderRegistry {
 -- 核心表
 -- ==========================================
 
--- Agent 表
 CREATE TABLE agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft',  -- draft|active|paused|archived
-  soul_content TEXT NOT NULL,             -- SOUL.md 原始内容
+  status TEXT NOT NULL DEFAULT 'draft',
+  soul_content TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 
--- 对话表
 CREATE TABLE conversations (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
+  channel TEXT DEFAULT 'desktop',       -- desktop|feishu|wecom|qq
+  channel_session_id TEXT,              -- 平台侧会话 ID
   title TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 
--- 消息表
 CREATE TABLE messages (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL,
-  role TEXT NOT NULL,                     -- user|assistant|system
+  role TEXT NOT NULL,
   content TEXT NOT NULL,
-  model_id TEXT,                          -- 使用的模型
+  model_id TEXT,
   token_count INTEGER,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (conversation_id) REFERENCES conversations(id)
@@ -1145,7 +955,6 @@ CREATE TABLE messages (
 -- 记忆与进化
 -- ==========================================
 
--- 记忆条目表
 CREATE TABLE memories (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
@@ -1155,96 +964,84 @@ CREATE TABLE memories (
   value TEXT NOT NULL,
   confidence REAL DEFAULT 0.5,
   observed_count INTEGER DEFAULT 1,
-  source TEXT NOT NULL,                   -- inferred|explicit|knowledge_base
+  source TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 
--- 能力图谱表
 CREATE TABLE capability_scores (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
   dimension TEXT NOT NULL,
   score REAL NOT NULL,
-  trend TEXT DEFAULT 'stable',            -- rising|stable|declining
+  trend TEXT DEFAULT 'stable',
   evidence TEXT,                          -- JSON
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents(id),
   UNIQUE(agent_id, dimension)
 );
 
--- 能力历史表
 CREATE TABLE capability_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agent_id TEXT NOT NULL,
   dimension TEXT NOT NULL,
   score REAL NOT NULL,
-  recorded_at INTEGER NOT NULL,
-  FOREIGN KEY (agent_id) REFERENCES agents(id)
+  recorded_at INTEGER NOT NULL
 );
 
--- 进化日志表
 CREATE TABLE evolution_log (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
   type TEXT NOT NULL,
   summary TEXT NOT NULL,
-  details TEXT,                           -- JSON
-  impact_dimensions TEXT,                 -- JSON array
+  details TEXT,
+  impact_dimensions TEXT,
   impact_score_delta REAL,
   created_at INTEGER NOT NULL,
   FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 
--- 反馈表
 CREATE TABLE feedback (
   id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
-  type TEXT NOT NULL,                     -- thumbs_up|thumbs_down|correction
+  type TEXT NOT NULL,
   comment TEXT,
   processed INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (message_id) REFERENCES messages(id),
-  FOREIGN KEY (agent_id) REFERENCES agents(id)
+  FOREIGN KEY (message_id) REFERENCES messages(id)
 );
 
 -- ==========================================
 -- Skill 管理
 -- ==========================================
 
--- 已安装 Skill 表
 CREATE TABLE installed_skills (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   version TEXT NOT NULL,
-  source TEXT NOT NULL,                   -- npm|clawhub|skills.sh
+  source TEXT NOT NULL,
   capabilities TEXT NOT NULL,             -- JSON array
   permissions TEXT NOT NULL,              -- JSON array
   security_score REAL,
   signature_verified INTEGER DEFAULT 0,
-  installed_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  installed_at INTEGER NOT NULL
 );
 
--- Agent-Skill 关联表
 CREATE TABLE agent_skills (
   agent_id TEXT NOT NULL,
   skill_id TEXT NOT NULL,
   enabled INTEGER DEFAULT 1,
   usage_count INTEGER DEFAULT 0,
   last_used_at INTEGER,
-  PRIMARY KEY (agent_id, skill_id),
-  FOREIGN KEY (agent_id) REFERENCES agents(id),
-  FOREIGN KEY (skill_id) REFERENCES installed_skills(id)
+  PRIMARY KEY (agent_id, skill_id)
 );
 
 -- ==========================================
 -- 安全
 -- ==========================================
 
--- 权限授予表
 CREATE TABLE permissions (
   id TEXT PRIMARY KEY,
   agent_id TEXT NOT NULL,
@@ -1253,18 +1050,16 @@ CREATE TABLE permissions (
   resource TEXT,
   granted_by TEXT NOT NULL,
   granted_at INTEGER NOT NULL,
-  expires_at INTEGER,
-  FOREIGN KEY (agent_id) REFERENCES agents(id)
+  expires_at INTEGER
 );
 
--- 审计日志表
 CREATE TABLE audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   agent_id TEXT,
   action TEXT NOT NULL,
   category TEXT NOT NULL,
   resource TEXT,
-  result TEXT NOT NULL,                   -- allowed|denied|error
+  result TEXT NOT NULL,
   details TEXT,
   created_at INTEGER NOT NULL
 );
@@ -1273,7 +1068,6 @@ CREATE TABLE audit_log (
 -- 知识库
 -- ==========================================
 
--- 知识库表
 CREATE TABLE knowledge_bases (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -1282,56 +1076,97 @@ CREATE TABLE knowledge_bases (
   updated_at INTEGER NOT NULL
 );
 
--- documents 和 chunks 表见 3.5 节
+CREATE TABLE documents (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  knowledge_base_id TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_hash TEXT NOT NULL,
+  chunk_count INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 
--- Agent-知识库关联表
+CREATE TABLE chunks (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  metadata TEXT,
+  token_count INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+-- 向量索引 (SQLite-vec)
+CREATE VIRTUAL TABLE chunk_embeddings USING vec0(
+  chunk_id TEXT PRIMARY KEY,
+  embedding FLOAT[1536]                   -- text-embedding-3-small 维度
+);
+
+-- 全文搜索索引
+CREATE VIRTUAL TABLE chunks_fts USING fts5(
+  content, content='chunks', content_rowid='rowid'
+);
+
 CREATE TABLE agent_knowledge_bases (
   agent_id TEXT NOT NULL,
   knowledge_base_id TEXT NOT NULL,
-  PRIMARY KEY (agent_id, knowledge_base_id),
-  FOREIGN KEY (agent_id) REFERENCES agents(id),
-  FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id)
+  PRIMARY KEY (agent_id, knowledge_base_id)
 );
 
 -- ==========================================
--- 模型管理
+-- Channel
 -- ==========================================
 
--- 模型配置表
+CREATE TABLE channels (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,                     -- feishu|wecom|qq
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,                   -- JSON (加密存储连接配置)
+  status TEXT DEFAULT 'disconnected',     -- connected|disconnected|error
+  connected_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE channel_mappings (
+  channel_id TEXT NOT NULL,
+  channel_user_id TEXT NOT NULL,          -- 平台用户 ID
+  agent_id TEXT NOT NULL,                 -- 绑定的 Agent
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (channel_id, channel_user_id)
+);
+
+-- ==========================================
+-- 模型 & 协作
+-- ==========================================
+
 CREATE TABLE model_configs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  type TEXT NOT NULL,                     -- cloud|local
-  provider TEXT NOT NULL,                 -- anthropic|openai|google|llama.cpp|mlx
-  model_id TEXT NOT NULL,                 -- claude-sonnet-4-20250514|gpt-4|...
-  config TEXT,                            -- JSON (temperature, max_tokens, etc.)
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  config TEXT,
   is_default INTEGER DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
--- ==========================================
--- 协作
--- ==========================================
-
--- 工作流表
 CREATE TABLE workflows (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  steps TEXT NOT NULL,                    -- JSON array of WorkflowStep
-  edges TEXT NOT NULL,                    -- JSON array of WorkflowEdge
+  steps TEXT NOT NULL,
+  edges TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
 
--- 工作流执行表
 CREATE TABLE workflow_runs (
   id TEXT PRIMARY KEY,
   workflow_id TEXT NOT NULL,
-  status TEXT NOT NULL,                   -- running|completed|failed|paused
+  status TEXT NOT NULL,
   current_step TEXT,
-  results TEXT,                           -- JSON
+  results TEXT,
   started_at INTEGER NOT NULL,
-  completed_at INTEGER,
-  FOREIGN KEY (workflow_id) REFERENCES workflows(id)
+  completed_at INTEGER
 );
 ```
 
@@ -1340,57 +1175,43 @@ CREATE TABLE workflow_runs (
 ```
 ~/.evoclaw/                             # 应用根目录
 ├── config.json                         # 全局配置（加密）
-├── evoclaw.db                          # SQLite 主数据库（加密）
+├── evoclaw.db                          # SQLite 主数据库（SQLCipher 加密）
 ├── evoclaw-vec.db                      # SQLite-vec 向量数据库
-├── agents/                             # Agent 数据目录
-│   ├── {agent-id}/
-│   │   ├── SOUL.md                     # 人格定义
-│   │   ├── MEMORY.md                   # 记忆（人类可读视图）
-│   │   └── workspace/                  # Agent 工作区
-├── knowledge/                          # 知识库文件
-│   ├── {kb-id}/
-│   │   ├── originals/                  # 原始文件
-│   │   └── index/                      # 索引缓存
-├── skills/                             # 已安装 Skill
-│   ├── {skill-id}/
-│   │   ├── package.json
-│   │   └── ...
-├── models/                             # 本地模型
-│   ├── llama-3-8b-q4.gguf
-│   └── all-MiniLM-L6-v2.onnx          # 嵌入模型
-├── logs/                               # 日志（加密）
+├── agents/
+│   └── {agent-id}/
+│       ├── SOUL.md
+│       ├── MEMORY.md                   # 人类可读视图
+│       └── workspace/
+├── knowledge/
+│   └── {kb-id}/
+│       ├── originals/
+│       └── index/
+├── skills/
+│   └── {skill-id}/
+│       └── ...
+├── logs/                               # 加密日志
 │   ├── audit.log
 │   └── app.log
-└── cache/                              # 缓存（可清除）
-    ├── embeddings/                     # 嵌入缓存
-    └── model-cache/                    # 模型推理缓存
+└── cache/
+    └── embeddings/
 ```
 
 ### 4.3 数据迁移策略
 
 ```typescript
-// 迁移采用版本号递增方式
+// 版本号递增迁移
 // packages/core/src/infrastructure/db/migrations/
+// 001_initial.sql
+// 002_add_channels.sql
+// 003_xxx.sql
 
-// 001_initial.sql     — 基础表创建
-// 002_add_feedback.sql — 新增反馈表
-// 003_xxx.sql         — ...
-
-interface Migration {
-  version: number
-  name: string
-  up: string    // SQL
-  down: string  // SQL (回滚)
-}
-
-// 启动时自动检查并执行迁移
 class MigrationRunner {
   async run() {
-    const currentVersion = await this.getCurrentVersion()
-    const pendingMigrations = this.migrations.filter(m => m.version > currentVersion)
-    for (const migration of pendingMigrations) {
-      await this.db.exec(migration.up)
-      await this.setVersion(migration.version)
+    const current = await this.getCurrentVersion()
+    const pending = this.migrations.filter(m => m.version > current)
+    for (const m of pending) {
+      await this.db.exec(m.up)
+      await this.setVersion(m.version)
     }
   }
 }
@@ -1408,58 +1229,55 @@ evoclaw/
 ├── pnpm-workspace.yaml
 ├── turbo.json                      # Turborepo 构建配置
 ├── apps/
-│   ├── desktop/                    # Tauri 桌面应用
-│   │   ├── src-tauri/              # Rust 后端 (Tauri + 安全插件)
-│   │   │   ├── Cargo.toml
-│   │   │   ├── src/
-│   │   │   │   ├── main.rs
-│   │   │   │   ├── commands/       # Tauri IPC Commands
-│   │   │   │   ├── plugins/        # 自定义 Tauri 插件
-│   │   │   │   │   ├── sandbox.rs  # 沙箱插件
-│   │   │   │   │   ├── keychain.rs # Keychain 插件
-│   │   │   │   │   └── crypto.rs   # 加密插件
-│   │   │   │   └── lib.rs
-│   │   │   └── tauri.conf.json
-│   │   ├── src/                    # React 前端
-│   │   │   ├── app/
-│   │   │   ├── components/
-│   │   │   └── ...
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   └── cli/                        # CLI 工具（开发/调试用）
-│       ├── src/
+│   └── desktop/                    # Tauri 桌面应用
+│       ├── src-tauri/              # Rust 后端
+│       │   ├── Cargo.toml
+│       │   ├── src/
+│       │   │   ├── main.rs
+│       │   │   ├── commands/       # Tauri IPC Commands
+│       │   │   └── plugins/        # Tauri Plugins (Rust)
+│       │   │       ├── sandbox.rs
+│       │   │       ├── keychain.rs
+│       │   │       ├── crypto.rs
+│       │   │       └── signature.rs
+│       │   └── tauri.conf.json
+│       ├── src/                    # React 前端
+│       │   ├── app/
+│       │   ├── components/
+│       │   ├── hooks/
+│       │   ├── stores/
+│       │   └── lib/
 │       └── package.json
 ├── packages/
-│   ├── core/                       # 核心引擎 (TypeScript)
+│   ├── core/                       # 核心引擎 (TypeScript, Node.js Sidecar)
 │   │   ├── src/
-│   │   │   ├── application/        # 应用层服务
-│   │   │   ├── domain/             # 领域层模型
-│   │   │   └── infrastructure/     # 基础设施层
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   ├── ui/                         # 共享 UI 组件库
+│   │   │   ├── application/        # 应用层 (中间件链、服务)
+│   │   │   ├── domain/             # 领域层 (Agent、Memory、Evolution)
+│   │   │   ├── infrastructure/     # 基础设施层 (DB、Model、Channel)
+│   │   │   └── server.ts           # HTTP 服务入口 (Hono)
+│   │   └── package.json
+│   ├── model-providers/            # 模型 Provider (基于 Vercel AI SDK)
 │   │   ├── src/
-│   │   │   ├── components/
-│   │   │   ├── hooks/
-│   │   │   └── stores/
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   ├── model-providers/            # 模型 Provider 集成
-│   │   ├── src/
-│   │   │   ├── anthropic.ts
 │   │   │   ├── openai.ts
-│   │   │   ├── google.ts
-│   │   │   ├── llama-cpp.ts
+│   │   │   ├── anthropic.ts
+│   │   │   ├── deepseek.ts
+│   │   │   ├── minimax.ts
+│   │   │   ├── glm.ts
+│   │   │   ├── doubao.ts
+│   │   │   ├── qwen.ts
 │   │   │   └── index.ts
 │   │   └── package.json
-│   ├── mcp-bridge/                 # MCP 协议桥接
+│   ├── channels/                   # Channel 适配器
 │   │   ├── src/
+│   │   │   ├── adapter.ts          # 抽象接口
+│   │   │   ├── feishu.ts           # 飞书
+│   │   │   ├── wecom.ts            # 企业微信
+│   │   │   ├── qq.ts               # QQ
+│   │   │   └── normalizer.ts       # 消息标准化
+│   │   └── package.json
+│   ├── mcp-bridge/                 # MCP 协议桥接
 │   │   └── package.json
 │   ├── skill-runtime/              # Skill 运行时
-│   │   ├── src/
-│   │   │   ├── loader.ts
-│   │   │   ├── sandbox.ts
-│   │   │   └── registry.ts
 │   │   └── package.json
 │   ├── rag/                        # RAG 引擎
 │   │   ├── src/
@@ -1474,8 +1292,8 @@ evoclaw/
 │       │   ├── utils/
 │       │   └── constants/
 │       └── package.json
-└── tools/                          # 开发工具
-    ├── scripts/                    # 构建脚本
+└── tools/
+    ├── scripts/
     └── templates/                  # Agent/Skill 模板
 ```
 
@@ -1483,27 +1301,21 @@ evoclaw/
 
 ```
 apps/desktop
-  ├── packages/core          (核心引擎)
-  ├── packages/ui            (UI 组件)
+  ├── packages/core          (Node.js Sidecar)
   └── packages/shared        (共享类型)
 
 packages/core
   ├── packages/model-providers
+  ├── packages/channels
   ├── packages/mcp-bridge
   ├── packages/skill-runtime
   ├── packages/rag
   └── packages/shared
 
-packages/ui
-  └── packages/shared
-
 packages/model-providers
   └── packages/shared
 
-packages/mcp-bridge
-  └── packages/shared
-
-packages/skill-runtime
+packages/channels
   └── packages/shared
 
 packages/rag
@@ -1514,10 +1326,9 @@ packages/rag
 
 ```
 开发:
-  pnpm dev              → Tauri dev mode (热重载)
+  pnpm dev              → Tauri dev (热重载前端 + Sidecar)
   pnpm dev:core         → 仅核心引擎开发
   pnpm test             → Vitest 全量测试
-  pnpm test:core        → 核心引擎测试
   pnpm lint             → Oxlint 检查
 
 构建:
@@ -1525,7 +1336,7 @@ packages/rag
   pnpm build:desktop    → Tauri 桌面应用构建
 
 发布:
-  pnpm release:mac      → macOS DMG/App
+  pnpm release:mac      → macOS DMG/App (Universal)
   pnpm release:win      → Windows MSI/NSIS
   pnpm release:linux    → AppImage/deb/rpm
 ```
@@ -1538,11 +1349,11 @@ packages/rag
 
 | OpenClaw 漏洞 | 威胁描述 | EvoClaw 防御方案 |
 |---------------|----------|------------------|
-| **ClawJacked (WebSocket 劫持)** | 恶意网站通过 WebSocket 连接劫持本地 Agent | 不使用 WebSocket 暴露本地服务；使用 Tauri IPC（仅应用内部通信） |
-| **明文凭证存储** | API Key 明文存在配置文件中 | 所有凭证通过系统 Keychain 存储，内存中使用后立即清零 |
-| **ClawHub 恶意 Skill** | 20% 的 Skill 包含恶意代码 | 签名验证 + 静态分析 + 沙箱试运行 三重防线 |
-| **认证绕过 (93.4%)** | 外部可未认证访问 Agent | 无外部网络接口；Tauri IPC 天然隔离 |
-| **公开暴露实例 (3万+)** | Agent 被互联网发现和攻击 | 无监听端口；纯本地应用无网络攻击面 |
+| **ClawJacked (WebSocket 劫持)** | 恶意网站劫持本地 Agent | 不对外暴露 WebSocket；Sidecar 仅监听 localhost，Tauri 进程管理 |
+| **明文凭证存储** | API Key 明文存储 | Rust Plugin 通过系统 Keychain 存储，内存中使用后清零 |
+| **ClawHub 恶意 Skill** | 20% 恶意 Skill | 签名验证(Rust) + 静态分析 + 沙箱试运行(Rust) 三重防线 |
+| **认证绕过 (93.4%)** | 外部未认证访问 | Sidecar 仅绑定 127.0.0.1 + 随机端口 + 启动 Token 认证 |
+| **公开暴露 (3万+)** | 被互联网发现和攻击 | 无公网监听端口；Channel 消息通过平台 SDK 推送 |
 
 ### 6.2 数据流安全分析
 
@@ -1550,33 +1361,44 @@ packages/rag
 ┌─────────────────────────────────────────────────────────────┐
 │                       数据流安全                              │
 │                                                             │
-│  用户输入 ──→ [明文] ──→ Tauri IPC ──→ [应用进程内]          │
-│                              │                              │
-│                   ┌──────────┼──────────┐                   │
-│                   │          │          │                    │
-│                   ▼          ▼          ▼                    │
-│             ┌──────────┐ ┌───────┐ ┌──────────┐             │
-│             │ SQLite   │ │ Model │ │ 文件系统  │             │
-│             │ (加密)   │ │ API   │ │ (加密)   │             │
-│             └──────────┘ └───┬───┘ └──────────┘             │
-│                              │                              │
-│                    ┌─────────▼─────────┐                    │
-│                    │ 唯一出站: LLM API  │                    │
-│                    │ · TLS 1.3 加密     │                    │
-│                    │ · 仅发送对话内容   │                    │
-│                    │ · 不发送凭证/记忆  │                    │
-│                    │ · 可审查的网络日志 │                    │
-│                    └───────────────────┘                    │
+│  用户输入 ──→ UI (WebView) ──→ HTTP ──→ Node.js Sidecar     │
+│                                  │  (localhost + token)     │
+│                       ┌──────────┼──────────┐               │
+│                       │          │          │                │
+│                       ▼          ▼          ▼                │
+│                 ┌──────────┐ ┌───────┐ ┌──────────┐         │
+│                 │ SQLite   │ │ Model │ │ Channel  │         │
+│                 │ (加密)   │ │ API   │ │ 平台 API │         │
+│                 └──────────┘ └───┬───┘ └────┬─────┘         │
+│                                  │          │               │
+│                         ┌────────▼──────────▼────────┐      │
+│                         │ 出站流量（仅两类）:          │      │
+│                         │ 1. LLM API (TLS 1.3)       │      │
+│                         │    · 仅发送对话内容         │      │
+│                         │    · 不发送凭证/记忆原文    │      │
+│                         │ 2. Channel 平台 API         │      │
+│                         │    · 发送 Agent 回复        │      │
+│                         │    · 使用平台官方 SDK       │      │
+│                         └────────────────────────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 6.3 零信任原则
+### 6.3 Sidecar 安全策略
 
-1. **不信任 Skill**：所有 Skill 在沙箱中运行，即使签名验证通过
-2. **不信任网络**：LLM API 调用使用 TLS 1.3，证书 pinning
-3. **不信任存储**：SQLite 数据库使用 SQLCipher 加密（AES-256）
-4. **不信任进程**：Agent 执行环境与主进程隔离
-5. **不信任自己**：开源代码可审计，内置网络活动监控面板
+```
+Tauri 启动时:
+  1. 生成随机端口 (49152-65535)
+  2. 生成一次性启动 Token (256-bit)
+  3. 启动 Node.js Sidecar，传入端口和 Token
+  4. Sidecar 绑定 127.0.0.1:${port}
+  5. 所有 HTTP 请求须携带 Authorization: Bearer ${token}
+  6. Tauri 退出时自动 kill Sidecar 进程
+
+保证:
+  · 外部进程无法猜测端口和 Token
+  · 仅 Tauri 主进程知道连接信息
+  · 进程生命周期完全由 Tauri 管理
+```
 
 ---
 
@@ -1586,45 +1408,39 @@ packages/rag
 
 | 操作 | 目标 | 潜在瓶颈 | 优化策略 |
 |------|------|----------|----------|
-| 应用启动 | <3s 冷启 / <1s 热启 | SQLite 连接 + 模型加载 | 延迟加载模型；预编译 SQLite statements |
-| 对话首 Token | <500ms (本地) / <2s (云端) | 上下文组装 + 记忆检索 | 记忆预加载；向量检索缓存 |
-| RAG 检索 | <500ms | 向量搜索 + FTS5 查询 | 索引预热；查询结果缓存 |
-| 记忆蒸馏 | 后台 <5s | LLM 调用 | 异步处理，不阻塞响应 |
-| Skill 安装 | <30s | 下载 + 签名验证 + 沙箱试运行 | 并行执行验证步骤 |
+| 应用启动 | <3s 冷 / <1s 热 | Sidecar 启动 + SQLite 连接 | Sidecar 预编译；延迟初始化非核心模块 |
+| 对话首 Token | <2s | 上下文组装 + 中间件链 | 记忆预加载；中间件并行化（无依赖的并行执行） |
+| RAG 检索 | <500ms | 向量搜索 + FTS5 | 索引预热；查询结果缓存 |
+| 记忆蒸馏 | 后台 <5s | LLM 调用 | 异步后置中间件，不阻塞响应 |
+| Channel 消息 | <1s 接收处理 | SDK 长轮询/WebSocket | 独立线程处理 Channel 消息 |
+| Skill 安装 | <30s | 下载 + Rust 签名验证 + 沙箱 | 并行执行验证步骤 |
 
 ### 7.2 缓存策略
 
 ```
-┌──────────────────────────────────────────────┐
-│                缓存层级                        │
-│                                              │
-│  L1: 内存缓存 (进程内)                        │
-│  · 当前会话上下文                              │
-│  · 活跃 Agent 的 SOUL.md 解析结果              │
-│  · 权限判定缓存                               │
-│  · 最近 RAG 检索结果                           │
-│  TTL: 会话级别                                │
-│                                              │
-│  L2: SQLite 缓存表                            │
-│  · 嵌入向量缓存（避免重复计算）                 │
-│  · 记忆蒸馏结果缓存                            │
-│  · Skill 搜索结果缓存                          │
-│  TTL: 24 小时                                 │
-│                                              │
-│  L3: 文件系统缓存                              │
-│  · 模型推理 KV 缓存                            │
-│  · 文档解析缓存                               │
-│  TTL: 7 天                                    │
-│                                              │
-└──────────────────────────────────────────────┘
+L1: 内存缓存 (Node.js 进程内)
+  · 活跃 Agent SOUL 解析结果
+  · 权限判定缓存
+  · 最近 RAG 检索结果
+  TTL: 会话级
+
+L2: SQLite 缓存表
+  · 嵌入向量缓存
+  · 记忆蒸馏结果缓存
+  · Skill 搜索结果缓存
+  TTL: 24 小时
+
+L3: 文件系统缓存
+  · 文档解析缓存
+  TTL: 7 天
 ```
 
-### 7.3 异步处理架构
+### 7.3 异步处理
 
 ```typescript
 // 不阻塞用户交互的后台任务
 const backgroundTasks = {
-  // 对话完成后
+  // 对话完成后 (EvolutionMiddleware.after)
   afterChat: [
     'memoryDistillation',     // 记忆蒸馏
     'capabilityUpdate',       // 能力图谱更新
@@ -1633,9 +1449,9 @@ const backgroundTasks = {
 
   // 定时任务
   scheduled: [
-    { task: 'weeklyReport', cron: '0 9 * * 1' },       // 每周一 9:00
-    { task: 'memoryConsolidation', cron: '0 3 * * *' }, // 每天凌晨 3:00
-    { task: 'cacheCleanup', cron: '0 4 * * 0' },       // 每周日 4:00
+    { task: 'weeklyReport', cron: '0 9 * * 1' },
+    { task: 'memoryConsolidation', cron: '0 3 * * *' },
+    { task: 'cacheCleanup', cron: '0 4 * * 0' },
   ],
 
   // 文件系统监听
@@ -1649,107 +1465,139 @@ const backgroundTasks = {
 
 ## 8. 部署架构
 
-### 8.1 桌面应用打包
+### 8.1 一体化桌面应用
 
 ```
-┌──────────────────────────────────────────────┐
-│              Tauri 构建流水线                   │
-│                                              │
-│  源代码 ──→ TypeScript 编译 ──→ Vite 打包     │
-│              Rust 编译 ──→ 原生二进制          │
-│                                              │
-│  macOS:                                      │
-│  · .app Bundle (Universal: x86_64 + arm64)   │
-│  · .dmg 安装镜像                              │
-│  · 签名: Developer ID + Notarization         │
-│  · 最小体积: ~15MB (不含模型)                  │
-│                                              │
-│  Windows:                                    │
-│  · .msi 安装包 (NSIS)                         │
-│  · 签名: Authenticode                        │
-│                                              │
-│  Linux:                                      │
-│  · .AppImage (通用)                           │
-│  · .deb (Debian/Ubuntu)                      │
-│  · .rpm (Fedora/RHEL)                        │
-│                                              │
-└──────────────────────────────────────────────┘
+用户双击 EvoClaw.app
+    │
+    ▼
+┌──────────────────────────────────────┐
+│           Tauri 主进程                 │
+│                                      │
+│  1. 初始化 Rust 安全层               │
+│     · 加载 Keychain Plugin           │
+│     · 初始化 Crypto Plugin           │
+│     · 启动沙箱 Plugin                │
+│                                      │
+│  2. 启动 Node.js Sidecar             │
+│     · 生成随机端口 + Token           │
+│     · 启动 Core 服务                 │
+│     · 等待健康检查通过               │
+│                                      │
+│  3. 打开 WebView                     │
+│     · 加载 React 前端                │
+│     · 连接 Sidecar 后端              │
+│                                      │
+│  4. 启动 Channel Manager             │
+│     · 重连已配置的 Channel           │
+│                                      │
+│  用户感知: 一个应用，双击即用          │
+└──────────────────────────────────────┘
 ```
 
-### 8.2 自动更新机制
+### 8.2 打包方案
 
 ```
-Tauri Updater 内置方案:
+macOS:
+  · .app Bundle (Universal: x86_64 + arm64)
+  · .dmg 安装镜像
+  · 签名: Developer ID + Notarization
+  · 体积: ~30MB (含 Sidecar Node.js 运行时)
 
+Windows:
+  · .msi 安装包 (NSIS)
+  · 签名: Authenticode
+  · 体积: ~40MB
+
+Linux:
+  · .AppImage (通用)
+  · .deb (Debian/Ubuntu)
+  · .rpm (Fedora/RHEL)
+```
+
+### 8.3 自动更新
+
+```
 应用启动
     │
     ▼
-检查更新服务器 (GitHub Releases / 自建)
+检查更新 (GitHub Releases / 自建 CDN)
     │
     ├── 无更新 → 正常运行
-    │
     └── 有更新
            │
            ▼
-      ┌──────────────────┐
-      │ 下载差量更新包     │  ← 仅下载变更部分
-      │ 验证签名          │  ← Ed25519 签名验证
-      │ 通知用户          │  ← "发现新版本 v0.2.0，是否更新？"
-      └──────────┬───────┘
-                 │
-           ┌─────┴─────┐
-           │ 立即更新    │ → 下载安装重启
-           │ 稍后提醒    │ → 下次启动再提醒
-           └───────────┘
+      下载差量更新包 → 验证签名 (Ed25519)
+           │
+           ▼
+      通知用户 → "发现新版本 v0.2.0，是否更新？"
+           │
+      ┌────┴────┐
+      │立即更新 │ → 安装重启
+      │稍后提醒 │ → 下次启动再提醒
+      └────────┘
 ```
 
-### 8.3 未来移动端架构预留
+### 8.4 未来移动端预留
 
 ```
 当前架构已为移动端预留:
 
-packages/core/           ← 纯 TypeScript，可移植到任何 JS 运行时
-packages/shared/         ← 共享类型，跨平台复用
-packages/model-providers/ ← 模型接口统一，移动端只需替换 local 实现
+packages/core/            ← 纯 TypeScript，可移植
+packages/shared/          ← 共享类型，跨平台复用
+packages/model-providers/ ← 模型接口统一
+packages/channels/        ← Channel 适配器可复用
 
-未来移动端路径:
-· iOS: Swift UI + packages/core (通过 JavaScriptCore 或 WebView)
-· Android: Kotlin + packages/core (通过 WebView 或 Hermes)
-· 或者: React Native + packages/core (最大复用)
+未来路径:
+· React Native + packages/core (最大复用)
+· 或 iOS Swift / Android Kotlin + core 通过 HTTP API 调用
 ```
 
 ---
 
 ## 附录 A：关键技术决策记录 (ADR)
 
-### ADR-001: 选择 Tauri 而非 Electron
+### ADR-001: Tauri + Node.js Sidecar（方案 B）
 
-- **决策**: 使用 Tauri 2.0
-- **理由**: 体积优势（~15MB vs ~150MB）；Rust 安全层；原生系统集成更好（Keychain、沙箱）
-- **风险**: Tauri 生态不如 Electron 成熟
-- **缓解**: Tauri 2.0 已趋于稳定；核心逻辑在 TypeScript 层，降低对 Tauri 的耦合
+- **决策**: Tauri 管 UI + Rust 安全层，Node.js 作为 Sidecar 跑核心业务
+- **理由**: Tauri 原生性能 + Rust 安全层；Node.js 完整生态 + MCP/AI SDK 原生支持
+- **替代方案 A (全 Tauri)**: Tauri 内嵌 Node 不成熟
+- **替代方案 C (Electron)**: 体积臃肿，内存占用高
+- **风险**: 两进程间通信有开销
+- **缓解**: localhost HTTP + 启动 Token，延迟 <1ms
 
-### ADR-002: 选择 SQLite-vec 而非独立向量数据库
+### ADR-002: 自研 Agent Runtime + Vercel AI SDK
 
-- **决策**: 使用 SQLite-vec 作为向量存储
-- **理由**: 嵌入式、零部署依赖、与 SQLite 共享连接；万级文档规模足够
-- **风险**: 十万级以上文档性能可能不足
-- **缓解**: 预留 `VectorStore` 接口，可切换到 LanceDB
+- **决策**: 自研 Agent 编排（中间件链 + 进化引擎），模型调用使用 Vercel AI SDK
+- **理由**: LangChain 是 Python 生态；LangChain.js 过重；进化引擎无现成框架；Vercel AI SDK 轻量现代
+- **借鉴**: DeerFlow 中间件链模式
+- **自研范围**: 中间件链、进化引擎、记忆蒸馏、能力图谱
+- **复用范围**: Vercel AI SDK（模型调用）、MCP SDK（工具集成）
 
-### ADR-003: 记忆蒸馏使用 LLM 而非规则引擎
+### ADR-003: TypeScript + Rust 混合开发
 
-- **决策**: 使用 LLM 分析对话并提取记忆
-- **理由**: 用户表达多样化，规则覆盖率低；LLM 理解语义更准确
-- **成本控制**: 仅对话结束时批量处理；优先使用本地小模型；缓存重复模式
+- **决策**: 业务逻辑用 TypeScript，安全关键路径用 Rust
+- **Rust 负责**: 加密解密、Keychain 集成、沙箱引擎、签名验证、文件系统监控
+- **TypeScript 负责**: Agent 引擎、进化引擎、模型适配、RAG、Channel、UI
+- **理由**: 日常迭代最多的业务逻辑用 TS 高效开发；安全层用 Rust 杜绝内存安全问题
 
-### ADR-004: 不暴露任何网络端口
+### ADR-004: 不暴露公网端口
 
-- **决策**: 不使用 HTTP/WebSocket 对外服务，完全依赖 Tauri IPC
+- **决策**: Sidecar 仅绑定 127.0.0.1 + 随机端口 + Token 认证
 - **理由**: 从根本上消除 OpenClaw 的 ClawJacked 类攻击面
-- **代价**: 不支持浏览器访问，必须使用桌面应用
-- **接受原因**: 本地应用的定位不需要浏览器访问
+- **Channel 消息**: 通过平台 SDK 主动拉取/WebSocket 推送，不需要 Webhook 公网回调
+  - 飞书/企微: 长轮询 或 WebSocket 推送
+  - QQ: QQ 开放平台 WebSocket
+
+### ADR-005: 不支持本地模型
+
+- **决策**: 移除本地模型（llama.cpp/ollama）和离线模式
+- **理由**: 部署本地模型门槛太高（4-8GB 下载、GPU 配置）与"零门槛"定位矛盾
+- **替代**: 提供 7 家云端 Provider，含多家价格极低的国产模型（DeepSeek 等）
+- **未来**: 如本地模型部署体验成熟（如系统级 AI 运行时），可考虑重新引入
 
 ---
 
-> **文档状态**: 初版完成
+> **文档版本**: v2.0 -- 新增 Channel 系统、Tauri+Sidecar 架构、Vercel AI SDK、中间件链模式；移除本地模型/离线模式
+> **文档状态**: 已更新
 > **下次评审**: 待定

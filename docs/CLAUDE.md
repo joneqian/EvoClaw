@@ -8,4 +8,10 @@
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
 | #2657 | 4:10 PM | ✅ | Complete Product Requirements Document (PRD) created for EvoClaw | ~757 |
+
+### Mar 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #2663 | 3:02 PM | ✅ | Major architecture revision to v2.0 with Tauri+Sidecar and Channel system | ~988 |
 </claude-mem-context>

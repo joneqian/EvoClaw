@@ -5,7 +5,7 @@ import { chatRoutes } from './routes/chat.js'
 import { healthRoutes } from './routes/health.js'
 import { agentRoutes } from './routes/agents.js'
 import { permissionRoutes } from './routes/permissions.js'
-import { initDatabase } from './infrastructure/db/sqlite-store.js'
+import { initDatabase, closeDatabase, flushDatabase } from './infrastructure/db/sqlite-store.js'
 import { runMigrations } from './infrastructure/db/migration-runner.js'
 
 const app = new Hono()
@@ -38,6 +38,20 @@ const port = parseInt(process.env['EVOCLAW_PORT'] || '3721', 10)
 async function main() {
   const db = initDatabase()
   runMigrations(db)
+
+  // Periodic flush: encrypt DB to disk every 60s
+  const flushInterval = setInterval(() => {
+    try { flushDatabase() } catch { /* ignore flush errors */ }
+  }, 60_000)
+
+  // Graceful shutdown: flush + close DB
+  const shutdown = () => {
+    clearInterval(flushInterval)
+    closeDatabase()
+    process.exit(0)
+  }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     console.log(`EvoClaw Sidecar running on http://127.0.0.1:${info.port}`)

@@ -11,7 +11,7 @@ describe('AgentBuilder', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'evoclaw-test-'))
-    const db = initDatabase(join(tmpDir, 'test.db'))
+    const db = initDatabase(join(tmpDir, 'test.db'), true)
     runMigrations(db)
   })
 

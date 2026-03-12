@@ -59,10 +59,10 @@ v0.1 MVP (8 周)                    v0.5 (8 周)              v1.0 (10 周)
 
 #### ✅ Sprint 1 验收标准
 
-- [ ] `pnpm dev` 一条命令启动完整开发环境（Tauri + Sidecar + 热重载）
-- [ ] 在 UI 中输入消息，能通过 OpenAI API 获得流式回复
-- [ ] API Key 通过 Keychain 存储，`~/.evoclaw/` 目录中无明文凭证
-- [ ] SQLite 数据库 SQLCipher 加密，直接打开为乱码
+- [x] `pnpm dev` 一条命令启动完整开发环境（Tauri + Sidecar + 热重载）
+- [x] 在 UI 中输入消息，能通过 OpenAI API 获得流式回复
+- [x] API Key 通过 Keychain 存储，`~/.evoclaw/` 目录中无明文凭证
+- [x] SQLite 数据库 AES-256-GCM 全库加密，直接打开为乱码（密钥存于 Keychain）
 
 ---
 

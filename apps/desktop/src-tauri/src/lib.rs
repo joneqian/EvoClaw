@@ -74,12 +74,27 @@ pub fn run() {
         child: Mutex::new(None),
     };
 
+    // Get or create DB encryption key from Keychain
+    let db_key = match keychain::get("evoclaw", "db-encryption-key") {
+        Ok(key) => key,
+        Err(_) => {
+            // First run: generate a 256-bit hex key and store in Keychain
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let key_bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
+            let key = key_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+            let _ = keychain::set("evoclaw", "db-encryption-key", &key);
+            key
+        }
+    };
+
     // Start Node.js sidecar
     let sidecar_child = std::process::Command::new("node")
         .arg("--experimental-specifier-resolution=node")
         .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../packages/core/dist/server.js"))
         .env("EVOCLAW_PORT", port.to_string())
         .env("EVOCLAW_TOKEN", &token)
+        .env("EVOCLAW_DB_KEY", &db_key)
         .spawn();
 
     match sidecar_child {

@@ -94,5 +94,18 @@ temp/
 # Auto Claude data directory
 .auto-claude/
 
-
 dump.rdb
+
+# Rust / Tauri
+target/
+*.rs.bk
+
+# Turbo
+.turbo/
+
+# pnpm
+pnpm-debug.log*
+
+# Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/

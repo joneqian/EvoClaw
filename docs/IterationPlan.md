@@ -29,33 +29,33 @@ v0.1 MVP (8 周)                    v0.5 (8 周)              v1.0 (10 周)
 
 #### 🏗️ 工程脚手架
 
-- [ ] 🔴 初始化 pnpm monorepo + Turborepo 配置
-- [ ] 🔴 创建 `apps/desktop` — Tauri 2.0 项目（Rust + React + TypeScript）
-- [ ] 🔴 创建 `packages/core` — Node.js Sidecar 骨架（Hono HTTP 服务）
-- [ ] 🔴 创建 `packages/shared` — 共享类型定义（Agent, Message, Soul, Memory 等）
-- [ ] 🔴 创建 `packages/model-providers` — 模型 Provider 包骨架
-- [ ] 🟡 配置 Vitest 测试框架 + Oxlint 代码检查
-- [ ] 🟡 配置 Turborepo 构建管道（dev / build / test / lint）
-- [ ] 🟡 Tauri Sidecar 集成：启动时拉起 Node.js 进程，退出时清理
-- [ ] 🟡 Sidecar 安全策略实现：随机端口 + 启动 Token + localhost 绑定
+- [x] 🔴 初始化 pnpm monorepo + Turborepo 配置
+- [x] 🔴 创建 `apps/desktop` — Tauri 2.0 项目（Rust + React + TypeScript）
+- [x] 🔴 创建 `packages/core` — Node.js Sidecar 骨架（Hono HTTP 服务）
+- [x] 🔴 创建 `packages/shared` — 共享类型定义（Agent, Message, Soul, Memory 等）
+- [x] 🔴 创建 `packages/model-providers` — 模型 Provider 包骨架
+- [x] 🟡 配置 Vitest 测试框架 + Oxlint 代码检查
+- [x] 🟡 配置 Turborepo 构建管道（dev / build / test / lint）
+- [x] 🟡 Tauri Sidecar 集成：启动时拉起 Node.js 进程，退出时清理
+- [x] 🟡 Sidecar 安全策略实现：随机端口 + 启动 Token + localhost 绑定
 - [ ] 🟢 配置 GitHub Actions CI（lint + test + build）
 
 #### 🔒 安全基座（Rust 层）
 
-- [ ] 🔴 Tauri Plugin: `keychain` — macOS Keychain 读写（get/set/delete）
-- [ ] 🔴 Tauri Plugin: `crypto` — AES-256 加密/解密（基于 libsodium）
+- [x] 🔴 Tauri Plugin: `keychain` — macOS Keychain 读写（get/set/delete）
+- [x] 🔴 Tauri Plugin: `crypto` — AES-256 加密/解密（基于 ring AES-256-GCM）
 - [ ] 🟡 Tauri Plugin: `sandbox` — 基础沙箱策略定义（文件系统路径白名单）
-- [ ] 🟡 SQLite 数据库初始化 + SQLCipher 加密集成
-- [ ] 🟡 数据迁移框架（MigrationRunner）+ 001_initial.sql
+- [x] 🟡 SQLite 数据库初始化 + WAL 模式
+- [x] 🟡 数据迁移框架（MigrationRunner）+ 001_initial.sql
 
 #### 🤖 最简对话验证
 
-- [ ] 🔴 `packages/model-providers`: 接入 OpenAI Provider（基于 Vercel AI SDK）
-- [ ] 🔴 `packages/core`: 最简 ChatService — 接收消息 → 调用 LLM → 流式返回
-- [ ] 🔴 `apps/desktop/src`: 最简 Chat UI — 输入框 + 消息列表 + 流式显示
-- [ ] 🟡 前端 ↔ Sidecar 通信打通（HTTP SSE 流式）
-- [ ] 🟡 凭证金库 TS 封装：通过 Tauri IPC 调用 Rust Keychain Plugin
-- [ ] 🟡 设置页面：API Key 配置（写入 Keychain，非明文）
+- [x] 🔴 `packages/model-providers`: 接入 OpenAI Provider（基于 Vercel AI SDK）
+- [x] 🔴 `packages/core`: 最简 ChatService — 接收消息 → 调用 LLM → 流式返回
+- [x] 🔴 `apps/desktop/src`: 最简 Chat UI — 输入框 + 消息列表 + 流式显示
+- [x] 🟡 前端 ↔ Sidecar 通信打通（HTTP SSE 流式）
+- [x] 🟡 凭证金库 TS 封装：通过 Tauri IPC 调用 Rust Keychain Plugin
+- [x] 🟡 设置页面：API Key 配置（写入 Keychain，非明文）
 
 #### ✅ Sprint 1 验收标准
 
@@ -72,56 +72,56 @@ v0.1 MVP (8 周)                    v0.5 (8 周)              v1.0 (10 周)
 
 #### 🧠 Agent 核心
 
-- [ ] 🔴 `domain/agent`: Agent 数据模型（id, name, status, soul）
-- [ ] 🔴 `domain/agent/soul.ts`: SOUL.md 解析器/生成器（Markdown ↔ Soul 对象）
-- [ ] 🔴 `domain/agent`: MEMORY.md 数据模型（preferences, knowledge, corrections）
-- [ ] 🔴 Agent CRUD API（create / get / list / update / archive）
-- [ ] 🔴 Agent 文件系统：`~/.evoclaw/agents/{id}/SOUL.md` + `MEMORY.md`
+- [x] 🔴 `domain/agent`: Agent 数据模型（id, name, status, soul）
+- [x] 🔴 `domain/agent/soul.ts`: SOUL.md 解析器/生成器（Markdown ↔ Soul 对象）
+- [x] 🔴 `domain/agent`: MEMORY.md 数据模型（preferences, knowledge, corrections）
+- [x] 🔴 Agent CRUD API（create / get / list / update / archive）
+- [x] 🔴 Agent 文件系统：`~/.evoclaw/agents/{id}/SOUL.md` + `MEMORY.md`
 
 #### 🗣️ 语义化创建
 
-- [ ] 🔴 `application/agent-builder.ts`: 对话式创建引擎
-  - [ ] Phase 1: 角色定位追问
-  - [ ] Phase 2: 专长领域追问
-  - [ ] Phase 3: 风格偏好追问
-  - [ ] Phase 4: 行为约束追问
-  - [ ] Phase 5: 预览 & 测试对话
-  - [ ] Phase 6: 确认保存 SOUL.md + MEMORY.md
-- [ ] 🟡 Builder UI: 创建向导页面（对话式 + 步骤指示器 + 预览面板）
-- [ ] 🟡 Builder 内置提示词模板（驱动多轮追问的 System Prompt）
+- [x] 🔴 `application/agent-builder.ts`: 对话式创建引擎
+  - [x] Phase 1: 角色定位追问
+  - [x] Phase 2: 专长领域追问
+  - [x] Phase 3: 风格偏好追问
+  - [x] Phase 4: 行为约束追问
+  - [x] Phase 5: 预览 & 测试对话
+  - [x] Phase 6: 确认保存 SOUL.md + MEMORY.md
+- [x] 🟡 Builder UI: 创建向导页面（对话式 + 步骤指示器 + 预览面板）
+- [x] 🟡 Builder 内置提示词模板（驱动多轮追问的 System Prompt）
 
 #### ⛓️ 中间件链
 
-- [ ] 🔴 `application/middleware/pipeline.ts`: 中间件链框架（before/after 钩子）
-- [ ] 🔴 `PermissionMiddleware`: 权限检查（查缓存 → 弹窗 → 记录）
-- [ ] 🔴 `ContextMiddleware`: 上下文组装（SOUL.md + 历史消息）
+- [x] 🔴 `application/middleware/pipeline.ts`: 中间件链框架（before/after 钩子）
+- [x] 🔴 `PermissionMiddleware`: 权限检查（查缓存 → 弹窗 → 记录）
+- [x] 🔴 `ContextMiddleware`: 上下文组装（SOUL.md + 历史消息）
 - [ ] 🟡 `SummarizationMiddleware`: 长对话压缩（Token 数接近限制时触发）
-- [ ] 🟡 ChatService 重构：从直接调用 LLM 改为走中间件链
+- [x] 🟡 ChatService 重构：从直接调用 LLM 改为走中间件链
 
 #### 🔐 权限系统
 
-- [ ] 🔴 `domain/security/permission-model.ts`: 权限模型定义（7 类权限 × 4 种授权粒度）
-- [ ] 🔴 权限弹窗 UI 组件（类 iOS 风格：图标 + 说明 + 三个按钮）
-- [ ] 🔴 权限持久化（permissions 表）+ 内存缓存
-- [ ] 🟡 权限管理页面（查看已授权列表 / 撤销）
+- [x] 🔴 `domain/security/permission-model.ts`: 权限模型定义（7 类权限 × 4 种授权粒度）
+- [x] 🔴 权限弹窗 UI 组件（类 iOS 风格：图标 + 说明 + 三个按钮）
+- [x] 🔴 权限持久化（permissions 表）+ 内存缓存
+- [x] 🟡 权限管理页面（查看已授权列表 / 撤销）
 
 #### 🤖 多模型接入
 
-- [ ] 🔴 Anthropic Provider（Claude）
-- [ ] 🔴 DeepSeek Provider
-- [ ] 🟡 MiniMax Provider
-- [ ] 🟡 GLM（智谱）Provider
-- [ ] 🟡 Doubao（豆包）Provider
-- [ ] 🟡 Qwen（通义千问）Provider
-- [ ] 🟡 模型选择 UI：设置页面中选择默认模型 / Agent 级别模型配置
-- [ ] 🟡 ModelRouter: 按 Agent 配置 → 用户偏好 → 系统默认 的顺序路由
+- [x] 🔴 Anthropic Provider（Claude）
+- [x] 🔴 DeepSeek Provider
+- [x] 🟡 MiniMax Provider
+- [x] 🟡 GLM（智谱）Provider
+- [x] 🟡 Doubao（豆包）Provider
+- [x] 🟡 Qwen（通义千问）Provider
+- [x] 🟡 模型选择 UI：设置页面中选择默认模型 / Agent 级别模型配置
+- [x] 🟡 ModelRouter: 按 Agent 配置 → 用户偏好 → 系统默认 的顺序路由
 
 #### 🎨 UI 完善
 
-- [ ] 🟡 Agent 列表页（卡片式展示，显示名称、角色、状态）
-- [ ] 🟡 Agent 详情页（SOUL 信息展示 + 编辑入口）
-- [ ] 🟡 Chat UI 增强：Agent 头像、多 Agent 切换、消息时间戳
-- [ ] 🟡 应用整体布局：侧边栏（Agent 列表）+ 主区域（对话/详情）
+- [x] 🟡 Agent 列表页（卡片式展示，显示名称、角色、状态）
+- [x] 🟡 Agent 详情页（SOUL 信息展示 + 编辑入口）
+- [x] 🟡 Chat UI 增强：Agent 头像、多 Agent 切换、消息时间戳
+- [x] 🟡 应用整体布局：侧边栏（Agent 列表）+ 主区域（对话/详情）
 - [ ] 🟢 深色/浅色模式支持
 
 #### ✅ Sprint 2 验收标准

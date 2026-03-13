@@ -1,0 +1,2056 @@
+# EvoClaw 迭代计划
+
+> **文档版本**: v3.0
+> **创建日期**: 2026-03-13
+> **文档状态**: 待执行
+> **执行方式**: Claude 自主开发 + 测试
+> **基于**: PRD v4.0 + Architecture v4.0 + AgentSystemDesign.md + MemorySystemDesign.md
+
+---
+
+## 总览
+
+```
+Sprint 1-2    Sprint 3-4    Sprint 5-6    Sprint 7-8    Sprint 9-10
+ 工程基座       Agent 引擎     记忆系统       能力扩展       Channel + 发布
+  |              |              |              |              |
+  v              v              v              v              v
+Monorepo       PI 集成        L0/L1/L2       RAG + Skill    飞书/企微
+Tauri 壳       ReAct 循环     提取+检索      自发现          应用打包
+SQLite 基础    8 文件工作区    衰减+隔离      Provider       集成测试
+安全基座       对话式创建      ContextPlugin  进化引擎       内测发布
+```
+
+**当前代码状态**: 项目仅有设计文档，零源代码。一切从头构建。
+
+---
+
+## Sprint 1: 工程基座 + Tauri 壳（Week 1-2）
+
+### 目标
+搭建完整的 monorepo 工程骨架、Tauri 桌面应用壳、Node.js Sidecar 通信、SQLite 数据库基础、Rust 安全层。
+
+### TODO-LIST
+
+#### 1.1 Monorepo 初始化
+- [ ] 创建 `pnpm-workspace.yaml`，定义 `apps/*` 和 `packages/*`
+- [ ] 创建根 `package.json`（pnpm 10，Node.js >= 22）
+- [ ] 配置 `turbo.json`（build/test/lint/dev pipeline）
+- [ ] 创建根 `tsconfig.json`（base config：strict, ES2022, NodeNext）
+- [ ] 配置 `.gitignore`（node_modules, dist, target, .evoclaw, *.db）
+- [ ] 配置 `.npmrc`（pnpm settings）
+- [ ] 配置 Oxlint（`.oxlintrc.json`）
+- [ ] 配置 Vitest（`vitest.workspace.ts`）
+
+#### 1.2 packages/shared 创建
+- [ ] 创建 `packages/shared/package.json`
+- [ ] 创建 `packages/shared/tsconfig.json`
+- [ ] 定义核心类型 `src/types/agent.ts`：AgentConfig, AgentStatus, AgentFile
+- [ ] 定义核心类型 `src/types/memory.ts`：MemoryUnit, MemoryCategory, MergeType, KnowledgeGraphEntry
+- [ ] 定义核心类型 `src/types/message.ts`：ChatMessage, AgentEvent, SessionKey
+- [ ] 定义核心类型 `src/types/permission.ts`：PermissionGrant, PermissionCategory, PermissionScope
+- [ ] 定义核心类型 `src/types/channel.ts`：ChannelType, Binding, ChannelMessage
+- [ ] 定义核心类型 `src/types/provider.ts`：ProviderConfig, ModelConfig
+- [ ] 定义常量 `src/constants.ts`：默认路径、端口范围、token 限制
+- [ ] 创建 `src/index.ts` 统一导出
+- [ ] 编写类型测试（`src/__tests__/types.test.ts`）
+
+#### 1.3 packages/core Sidecar 初始化
+- [ ] 创建 `packages/core/package.json`（依赖：hono, better-sqlite3, @mariozechner/pi-ai, @mariozechner/pi-agent-core, @mariozechner/pi-coding-agent）
+- [ ] 创建 `packages/core/tsconfig.json`
+- [ ] 实现 `src/server.ts`：Hono HTTP 服务入口
+  - 随机端口绑定 127.0.0.1（49152-65535 范围）
+  - 256-bit Bearer Token 认证中间件
+  - 健康检查 `GET /health`
+  - CORS 仅允许 localhost
+  - 错误处理中间件
+- [ ] 实现 `src/infrastructure/db/sqlite-store.ts`：SQLite 连接管理
+  - WAL 模式开启
+  - 连接池（单连接 + mutex）
+  - DB 路径：`~/.evoclaw/data/evoclaw.db`
+  - 基本 CRUD 封装
+- [ ] 实现 `src/infrastructure/db/migration-runner.ts`：迁移执行器
+  - 读取 `migrations/*.sql` 文件
+  - 按序号排序执行
+  - 记录已执行迁移到 `_migrations` 表
+- [ ] 创建 `src/infrastructure/db/migrations/001_initial.sql`：
+  - `agents` 表（id, name, status, config_json, created_at, updated_at）
+  - `permissions` 表（id, agent_id, category, scope, resource, granted_at, expires_at, granted_by）
+  - `model_configs` 表（id, provider, model_id, api_key_ref, config_json, is_default, created_at）
+  - `audit_log` 表（id, agent_id, action, details, created_at）
+- [ ] 编写 SQLite 单元测试（`src/__tests__/sqlite-store.test.ts`）
+- [ ] 编写迁移执行器测试（`src/__tests__/migration-runner.test.ts`）
+- [ ] 编写 Hono 服务测试（`src/__tests__/server.test.ts`）
+- [ ] 创建 esbuild 构建脚本（`build.ts`），输出 CJS bundle 用于 Sidecar
+
+#### 1.4 apps/desktop Tauri 初始化
+- [ ] 使用 `pnpm create tauri-app` 初始化 Tauri 2.0 项目
+- [ ] 配置 `src-tauri/tauri.conf.json`：
+  - Sidecar 配置（指向 packages/core 的 bundle）
+  - 窗口配置（最小尺寸、标题）
+  - 安全配置（CSP）
+- [ ] 配置 React 19 + TypeScript 前端
+- [ ] 配置 Tailwind CSS 4
+- [ ] 实现前端路由骨架（React Router）：
+  - `/chat` — 对话页面（占位）
+  - `/agents` — Agent 列表（占位）
+  - `/settings` — 设置页面（占位）
+- [ ] 实现 Sidecar 启动逻辑（`src-tauri/src/sidecar.rs`）：
+  - 启动 Node.js 进程
+  - 传递随机端口 + Token
+  - 进程生命周期管理（启动/重启/关闭）
+- [ ] 实现前端 API 封装（`src/lib/api.ts`）：
+  - 从 Tauri IPC 获取 Sidecar 端口和 Token
+  - HTTP 请求封装（带 Bearer Token）
+  - 健康检查轮询
+- [ ] 实现 Zustand store 骨架（`src/stores/app-store.ts`）
+- [ ] 验证 Tauri → Sidecar → HTTP 全链路通信
+- [ ] 编写 Sidecar 通信集成测试
+
+#### 1.5 Rust 安全层
+- [ ] 实现 `src-tauri/src/credential.rs`：凭证管理 Tauri Plugin
+  - macOS Keychain 集成（security-framework crate）
+  - `credential:get(service, account)` IPC 命令
+  - `credential:set(service, account, value)` IPC 命令
+  - `credential:delete(service, account)` IPC 命令
+  - 日志自动脱敏
+- [ ] 实现 `src-tauri/src/crypto.rs`：加密模块
+  - AES-256-GCM 加解密（ring crate）
+  - 密钥从 Keychain 获取
+- [ ] 编写 Rust 单元测试
+- [ ] 前端凭证管理页面（设置 → API Key 管理）：
+  - Provider 列表（OpenAI, Anthropic, DeepSeek, Qwen, GLM, 豆包, MiniMax, Kimi）
+  - API Key 输入 → Keychain 存储
+  - 连接测试按钮
+
+#### 1.6 Sprint 1 验收
+- [ ] `pnpm install && pnpm build` 全链路通过
+- [ ] `pnpm test` 全部通过
+- [ ] `pnpm lint` 零错误
+- [ ] Tauri 应用可启动，显示占位 UI
+- [ ] Sidecar 自动启动，HTTP 通信正常
+- [ ] SQLite 数据库自动创建，迁移自动执行
+- [ ] API Key 可通过设置页面存入/读取 Keychain
+
+---
+
+## Sprint 2: PI 框架集成 + Agent 引擎（Week 3-4）
+
+### 目标
+集成 PI 框架、实现 Agent 生命周期管理、8 文件工作区、会话式创建引导、ReAct 循环运行、基础对话 UI。
+
+### TODO-LIST
+
+#### 2.1 PI 框架集成
+- [ ] 安装 PI 包：`@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`, `@mariozechner/pi-coding-agent`
+- [ ] 实现 `src/provider/provider-registry.ts`：国内 Provider 注册
+  - `registerQwen()`：通义千问（DashScope API）
+  - `registerGLM()`：智谱 GLM
+  - `registerDoubao()`：字节豆包
+  - API Key 从 Keychain 获取（通过 Sidecar HTTP 调 Tauri IPC）
+- [ ] 实现 `src/provider/model-resolver.ts`：模型选择逻辑
+  - Agent 配置 → 用户偏好 → 系统默认 → fallback (gpt-4o-mini)
+  - 验证模型可用性（API Key 是否存在）
+- [ ] 编写 Provider 注册测试（`src/__tests__/provider-registry.test.ts`）
+- [ ] 编写 Model Resolver 测试（`src/__tests__/model-resolver.test.ts`）
+
+#### 2.2 Agent 生命周期管理
+- [ ] 实现 `src/agent/agent-manager.ts`：Agent CRUD
+  - `createAgent(config)` → 创建目录结构 + 写入 agents 表
+  - `getAgent(id)` / `listAgents()` / `deleteAgent(id)`
+  - `updateAgentStatus(id, status)` — Draft/Active/Paused/Archived
+  - 确保 `~/.evoclaw/agents/{id}/workspace/` 目录结构正确
+- [ ] 实现 `src/agent/types.ts`：Agent 运行时类型
+  - AgentRunConfig, AgentSession, AgentEvent
+- [ ] 创建默认 Agent 模板文件：
+  - 默认 `SOUL.md`（通用助手行为哲学）
+  - 默认 `IDENTITY.md`（name/emoji 配置）
+  - 默认 `AGENTS.md`（基础操作规程）
+  - 默认 `TOOLS.md`（工具文档模板）
+  - 默认 `HEARTBEAT.md`（空清单）
+  - 空 `USER.md` / `MEMORY.md`（bootstrap 时动态渲染）
+- [ ] 编写 Agent Manager 测试（`src/__tests__/agent-manager.test.ts`）
+
+#### 2.3 PI 嵌入式运行器
+- [ ] 实现 `src/agent/embedded-runner.ts`：核心运行入口
+  - `runEmbeddedAgent(config, message, onEvent)` 函数
+  - 创建 PI `createAgentSession`
+  - 订阅 PI 事件流（agent_start, message_update, tool_execution_*, agent_end）
+  - 超时管理（默认 600s + AbortController）
+- [ ] 实现 `src/bridge/event-forwarder.ts`：事件转发
+  - PI AgentEvent → SSE（Server-Sent Events）
+  - 映射事件类型：text_delta, tool_start, tool_end, thinking, error
+- [ ] 实现 `src/bridge/tool-injector.ts`：工具注入（初版仅阶段 1-3）
+  - 阶段 1：PI 内置工具（read/write/edit/bash）直接使用
+  - 阶段 2：权限拦截层（桩实现，暂时 auto-allow）
+  - 阶段 3：EvoClaw 工具（桩实现，后续 Sprint 填充）
+- [ ] 添加 Hono 路由 `POST /chat/:agentId/send`：
+  - 解析消息 → 构建 AgentRunConfig → 调用 embedded-runner
+  - 返回 SSE 流
+- [ ] 编写嵌入式运行器测试（`src/__tests__/embedded-runner.test.ts`）：mock PI session
+
+#### 2.4 Lane 队列
+- [ ] 实现 `src/agent/lane-queue.ts`：并发控制
+  - 三个 Lane：main(4), subagent(8), cron(2)
+  - 同一 Session Key 串行执行
+  - 排队/执行/完成生命周期
+  - 超时取消
+- [ ] 编写 Lane 队列测试（`src/__tests__/lane-queue.test.ts`）
+
+#### 2.5 对话式 Agent 创建
+- [ ] 实现 `src/agent/agent-builder.ts`：会话式创建引导
+  - 6 阶段流程：role → expertise → style → constraints → preview → done
+  - 每阶段收集用户输入 → 通过 LLM 生成对应文件内容
+  - 生成完整 8 文件工作区
+  - 支持中途预览和测试
+- [ ] 添加 Hono 路由 `POST /agent/create-guided`：
+  - 接收用户输入 → 驱动 Builder 流程 → 返回 SSE（步骤进度 + 预览内容）
+- [ ] 添加 Hono 路由 `GET /agent/list`、`GET /agent/:id`
+- [ ] 编写 Agent Builder 测试（`src/__tests__/agent-builder.test.ts`）
+
+#### 2.6 前端对话 UI
+- [ ] 实现 Chat 页面（`apps/desktop/src/app/chat/`）：
+  - Agent 选择侧栏
+  - 消息列表（气泡样式，Markdown 渲染）
+  - 输入框（支持 Enter 发送，Shift+Enter 换行）
+  - SSE 流式接收 + 实时渲染
+  - 工具执行状态显示（"正在执行 read..."）
+  - 思考中状态指示器
+- [ ] 实现 Agent 列表页面（`apps/desktop/src/app/agents/`）：
+  - Agent 卡片列表（name, emoji, status）
+  - 创建新 Agent 入口
+- [ ] 实现 Agent 创建向导 UI（`apps/desktop/src/app/builder/`）：
+  - 步骤指示器
+  - 对话式输入界面
+  - 预览面板（显示生成的文件内容）
+- [ ] 实现 Zustand stores：
+  - `chat-store.ts`（消息列表、当前 Agent、发送状态）
+  - `agent-store.ts`（Agent 列表、创建状态）
+
+#### 2.7 Sprint 2 验收
+- [ ] 可通过对话式引导创建新 Agent（生成 8 文件工作区）
+- [ ] 可选择 Agent 进行对话，LLM 流式响应
+- [ ] PI ReAct 循环正常运行（Agent 可调用 read/write/edit/bash 工具）
+- [ ] 支持至少 3 个 Provider（OpenAI + DeepSeek + 一个国产）
+- [ ] Lane 队列正确限制并发
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 3: 记忆系统 — 数据层 + 提取 Pipeline（Week 5-6）
+
+### 目标
+实现 memory_units 表、L0/L1/L2 三层存储、记忆提取 Pipeline、文本清洗、反馈循环防护、merge/independent 语义。
+
+### TODO-LIST
+
+#### 3.1 记忆数据库迁移
+- [ ] 创建 `migrations/002_memory_units.sql`：
+  - `memory_units` 表完整 schema（id, agent_id, user_id, l0_index, l1_overview, l2_content, category, merge_type, merge_key, scope, visibility, visibility_channels, activation, access_count, last_access_at, pinned, source_session_key, source_message_ids, confidence, created_at, updated_at, archived_at）
+  - 4 个索引（agent_id, category, merge_key, activation）
+- [ ] 创建 `migrations/003_knowledge_graph.sql`：
+  - `knowledge_graph` 表（id, agent_id, user_id, subject_id, predicate, object_id, object_literal, confidence, source_memory_id, created_at, updated_at）
+  - 3 个索引
+- [ ] 创建 `migrations/004_conversation_log.sql`：
+  - `conversation_log` 表（id, agent_id, session_key, role, content, tool_name, tool_input, tool_output, compaction_status, compaction_ref, token_count, created_at）
+  - 2 个索引
+- [ ] 创建 `migrations/005_capability_graph.sql`：
+  - `capability_graph` 表（id, agent_id, capability, level, use_count, success_rate, last_used_at, created_at, updated_at, UNIQUE(agent_id, capability)）
+- [ ] 创建 `migrations/006_tool_audit_log.sql`：
+  - `tool_audit_log` 表
+- [ ] 验证迁移自动执行正确
+- [ ] 编写迁移集成测试
+
+#### 3.2 记忆存储层
+- [ ] 实现 `src/memory/memory-store.ts`：memory_units CRUD
+  - `insert(unit: MemoryUnit)` → INSERT
+  - `update(id, partial)` → UPDATE
+  - `getById(id)` → SELECT 全字段
+  - `getByIds(ids)` → 批量获取
+  - `getL1ByIds(ids)` → 仅 L0 + L1（不加载 L2）
+  - `findByMergeKey(agentId, mergeKey)` → 查重
+  - `listByAgent(agentId, filter?)` → 分页列表
+  - `archive(id)` → 设置 archived_at
+  - `pin(id)` / `unpin(id)` → 钉选
+  - `bumpActivation(ids)` → access_count += 1, activation += 0.1
+  - `delete(id)` → 物理删除
+- [ ] 编写 memory-store 测试（`src/__tests__/memory-store.test.ts`）
+
+#### 3.3 文本清洗 + 反馈循环防护
+- [ ] 实现 `src/memory/text-sanitizer.ts`：
+  - `MARKERS` 常量（零宽空格标记：EVOCLAW_MEM_START/END, EVOCLAW_RAG_START/END）
+  - `sanitizeForExtraction(text)` 函数：
+    - 剥离注入的记忆/RAG 上下文（正则匹配标记对）
+    - 剥离元数据 JSON 块
+    - 过滤命令消息（`/` 开头）
+    - CJK 感知最小长度检查（CJK: 4 字符, 其他: 10 字符）
+    - 截断超长内容（24000 字符上限）
+  - `wrapMemoryContext(content)` → 包裹标记
+  - `wrapRAGContext(content)` → 包裹标记
+- [ ] 编写文本清洗测试（`src/__tests__/text-sanitizer.test.ts`）：
+  - 测试标记剥离正确性
+  - 测试 CJK 长度检查
+  - 测试命令过滤
+  - 测试嵌套标记处理
+
+#### 3.4 记忆提取 Pipeline
+- [ ] 实现 `src/memory/extraction-prompt.ts`：提取 Prompt 模板
+  - 完整的 system prompt（分类规则、L0/L1/L2 层级要求、输出 XML 格式、安全四步裁决）
+  - `buildExtractionPrompt(conversationText)` → 拼接 system + user prompt
+- [ ] 实现 `src/memory/xml-parser.ts`：解析 LLM 提取结果
+  - `parseExtractionResult(xml)` → ParsedMemory[]
+  - 解析 `<memories>` 和 `<relations>` 两个部分
+  - 容错处理（LLM 可能生成不完美的 XML）
+  - 验证 category 在 9 类范围内
+  - 验证 merge_key 格式
+- [ ] 实现 `src/memory/merge-resolver.ts`：merge 型记忆 upsert
+  - `resolveMerge(agentId, parsed: ParsedMemory)` →
+    - 查 merge_key 是否已存在
+    - 存在 → UPDATE L1/L2（L0 不变，保持向量索引稳定）
+    - 不存在 → INSERT 新记录
+- [ ] 实现 `src/memory/memory-extractor.ts`：完整 Pipeline 编排
+  - `extractAndPersist(messages: ChatMessage[], agentId: string)` →
+    - Stage 1: 预处理（sanitizeForExtraction）
+    - Stage 2: LLM 调用（buildExtractionPrompt → model call → parseExtractionResult）
+    - Stage 3: 持久化（merge-resolver + knowledge_graph INSERT + conversation_log 标记）
+  - 处理 `<no_extraction>` 响应（无有效记忆时静默跳过）
+- [ ] 编写 XML 解析器测试（`src/__tests__/xml-parser.test.ts`）
+- [ ] 编写 merge-resolver 测试（`src/__tests__/merge-resolver.test.ts`）
+- [ ] 编写 memory-extractor 集成测试（`src/__tests__/memory-extractor.test.ts`）
+
+#### 3.5 知识图谱存储
+- [ ] 实现 `src/memory/knowledge-graph.ts`：
+  - `insertRelation(relation)` → INSERT
+  - `queryBySubject(subjectId, predicate?)` → 出边查询
+  - `queryByObject(objectId, predicate?)` → 入边查询
+  - `queryBoth(entityId)` → 双向查询
+  - `expandEntities(entityIds)` → 关系扩展（用于检索 Phase 1）
+- [ ] 编写知识图谱测试（`src/__tests__/knowledge-graph.test.ts`）
+
+#### 3.6 对话日志
+- [ ] 实现 `src/memory/conversation-logger.ts`：
+  - `log(entry: ConversationLogEntry)` → INSERT
+  - `getPendingMessages(agentId, sessionKey)` → 获取未提取的消息
+  - `markExtracted(ids, memoryUnitId)` → 标记为已提取
+  - `markCompacted(ids, summaryId)` → 标记为已压缩
+- [ ] 编写对话日志测试
+
+#### 3.7 Sprint 3 验收
+- [ ] 数据库迁移自动执行，6 张新表正确创建
+- [ ] 记忆提取 Pipeline 端到端运行：对话文本 → 预处理 → LLM 提取 → XML 解析 → 持久化
+- [ ] merge 型记忆正确去重更新，L0 不变
+- [ ] independent 型记忆正确独立插入
+- [ ] 反馈循环防护：注入的记忆上下文被正确剥离
+- [ ] 知识图谱关系正确存储和查询
+- [ ] `pnpm test` 全部通过（≥ 80% 覆盖率）
+
+---
+
+## Sprint 4: 记忆系统 — 检索 + ContextPlugin + 衰减（Week 7-8）
+
+### 目标
+实现 FTS5+sqlite-vec 混合搜索、三阶段渐进检索、ContextPlugin 引擎、hotness 衰减、USER.md 动态渲染、LCM 压缩。
+
+### TODO-LIST
+
+#### 4.1 双索引构建
+- [ ] 实现 `src/infrastructure/db/fts-store.ts`：FTS5 全文索引管理
+  - 创建 `memory_fts` 虚拟表（l0_index + l1_overview）
+  - `indexMemory(id, l0, l1)` → 插入 FTS 索引
+  - `updateIndex(id, l0, l1)` → 更新
+  - `search(query, limit)` → BM25 搜索，返回 id + score
+  - 自动同步（memory_units 写入时同步更新 FTS）
+- [ ] 实现 `src/infrastructure/db/vector-store.ts`：sqlite-vec 向量索引
+  - 安装配置 `sqlite-vec` 扩展
+  - 创建 `memory_vec` 虚拟表（1024 维 float embedding）
+  - `indexEmbedding(id, embedding)` → 插入向量
+  - `search(queryEmbedding, limit)` → 向量相似度搜索
+  - 嵌入生成：调用 LLM embedding API（通过 PI 或直接 HTTP）
+- [ ] 编写 FTS 测试（`src/__tests__/fts-store.test.ts`）
+- [ ] 编写向量存储测试（`src/__tests__/vector-store.test.ts`）
+
+#### 4.2 混合搜索引擎
+- [ ] 实现 `src/memory/hybrid-searcher.ts`：FTS5 + sqlite-vec 融合
+  - `hybridSearch(query, agentId, options)` → SearchResult[]
+  - Phase 1 实现：
+    - FTS5 关键词搜索 l0_index（权重 0.3）
+    - sqlite-vec 向量搜索（权重 0.5）
+    - knowledge_graph 关系扩展（权重 0.2）
+    - 返回 Top-30 候选
+  - Phase 2 实现：
+    - `finalScore = searchScore × hotness × categoryBoost × correctionBoost`
+    - hotness 计算：`sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`
+    - categoryBoost 矩阵（factual/preference/temporal/skill/general）
+    - 去重：同 merge_key 只保留最新
+    - 可见性过滤（private/shared/channel_only）
+    - 取 Top-10，加载 L1 overview
+  - Phase 3 实现：
+    - 触发条件检测（追问信号、[详情已省略]标记、case+技能型查询）
+    - L2 按需加载（Token 预算 ≤ 8K）
+  - `bumpActivation(ids)` → 被召回时激活
+- [ ] 实现查询理解 `src/memory/query-analyzer.ts`（Phase 0）：
+  - 关键词提取
+  - 时间表达式识别（"上周讨论的" → 日期范围）
+  - 查询类型判断：factual / preference / temporal / skill / general
+- [ ] 编写混合搜索测试（`src/__tests__/hybrid-searcher.test.ts`）
+- [ ] 编写查询分析器测试（`src/__tests__/query-analyzer.test.ts`）
+
+#### 4.3 ContextPlugin 引擎
+- [ ] 实现 `src/context/plugin.interface.ts`：ContextPlugin 接口
+  - 5 个可选钩子：bootstrap, beforeTurn, compact, afterTurn, shutdown
+  - BootstrapContext, TurnContext, CompactContext, ShutdownContext 类型
+- [ ] 实现 `src/context/context-engine.ts`：插件调度引擎
+  - 串行 beforeTurn（按 priority 排序）
+  - Token 预算检查（> 85% 上限 → 逆序 compact）
+  - forceTruncate 兜底
+  - 并行 afterTurn（Promise.allSettled）
+- [ ] 实现插件 `src/context/plugins/session-router.ts`（priority: 10）：
+  - 解析 Session Key → 确定 channel、chatType、peerId
+  - 设置可见性范围
+- [ ] 实现插件 `src/context/plugins/permission.ts`（priority: 20）：
+  - 权限检查（暂用内存缓存，后续对接 Rust 层）
+  - 权限弹窗请求接口
+- [ ] 实现插件 `src/context/plugins/context-assembler.ts`（priority: 30）：
+  - 按文件加载矩阵选择性加载工作区文件
+  - 组装 system prompt（SOUL.md + AGENTS.md + USER.md + MEMORY.md + ...）
+  - 20,000 字符上限截断（按优先级）
+  - compact 钩子：LCM 压缩（保留最近 3 轮 + 摘要更早消息）
+- [ ] 实现插件 `src/context/plugins/memory-recall.ts`（priority: 40）：
+  - beforeTurn：调用 hybridSearch 三阶段检索 → 注入上下文（带标记包裹）
+  - compact：降级为仅注入 L0
+- [ ] 实现插件 `src/context/plugins/memory-extract.ts`（afterTurn）：
+  - 调用 memory-extractor.extractAndPersist()
+- [ ] 编写 ContextEngine 测试（`src/__tests__/context-engine.test.ts`）
+- [ ] 编写各插件单元测试
+
+#### 4.4 Hotness 衰减 + 归档
+- [ ] 实现 `src/memory/decay-scheduler.ts`：
+  - `tick()` → 计算所有非钉选/非归档记忆的 hotness → 更新 activation
+  - 归档冷记忆（activation < 0.1 且 30 天未访问）
+  - 调度：每小时执行一次（setInterval）
+- [ ] 编写衰减调度器测试（`src/__tests__/decay-scheduler.test.ts`）
+
+#### 4.5 USER.md / MEMORY.md 动态渲染
+- [ ] 实现 `src/memory/user-md-renderer.ts`：
+  - `renderUserMd(agentId)` → 从 memory_units 查询 profile + preference + correction → 生成 Markdown
+  - `renderMemoryMd(agentId)` → 查询 activation > 0.3 的记忆 → 生成 Markdown
+  - `renderDailyLog(agentId, date)` → 从 conversation_log 渲染当日日志
+- [ ] 编写渲染器测试（`src/__tests__/user-md-renderer.test.ts`）
+
+#### 4.6 PI 记忆桥接
+- [ ] 实现 `src/bridge/memory-extension.ts`：PI ↔ 记忆系统桥接
+  - `before_agent_start` 钩子：渲染 USER.md/MEMORY.md → 写文件 → 记忆检索+注入
+  - `agent_end` 钩子：触发记忆提取 Pipeline
+  - `tool_result_persist` 钩子：记录工具执行到 conversation_log
+  - `session_before_compact` 钩子：Pre-compaction Memory Flush
+- [ ] 集成到 embedded-runner.ts 的 extensions 参数
+- [ ] 编写桥接集成测试
+
+#### 4.7 前端记忆管理 UI
+- [ ] 实现记忆管理页面（`apps/desktop/src/app/memory/`）：
+  - 记忆列表（按类别分组展示）
+  - 搜索框（调用 `POST /memory/:agentId/search`）
+  - 每条记忆显示：L0 摘要、类别标签、activation 值、钉选状态
+  - 展开查看 L1/L2 详情
+  - 钉选/取消钉选操作
+  - 删除记忆操作
+- [ ] 添加 Hono 路由：
+  - `POST /memory/:agentId/search` → 混合搜索
+  - `GET /memory/:agentId/units` → 分页列表
+  - `PUT /memory/:agentId/units/:id/pin` → 钉选
+  - `DELETE /memory/:agentId/units/:id` → 删除
+
+#### 4.8 行为反馈
+- [ ] 实现反馈收集：
+  - 对话 UI 中每条 Agent 回复添加 👍/👎 按钮
+  - 👎 可附带文字纠正
+  - 负面反馈自动提取为 correction 类记忆
+- [ ] 添加 Hono 路由 `POST /chat/:agentId/feedback`
+- [ ] 编写反馈处理测试
+
+#### 4.9 Sprint 4 验收
+- [ ] 三阶段渐进检索端到端运行（FTS5 + sqlite-vec + 知识图谱扩展）
+- [ ] ContextPlugin 引擎正确调度 10 个插件
+- [ ] 对话中自动进行记忆提取 + 下次对话自动召回相关记忆
+- [ ] hotness 衰减正确运行（7 天半衰期验证）
+- [ ] USER.md / MEMORY.md 从数据库正确渲染
+- [ ] 记忆管理 UI 可查看/搜索/钉选/删除记忆
+- [ ] 反馈循环防护生效（注入的记忆不被重复提取）
+- [ ] LCM 压缩在长对话中正确触发
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 5: Session Key 路由 + 权限模型（Week 9-10）
+
+### 目标
+实现完整的 Session Key 路由、记忆安全隔离、权限弹窗模型、Binding Router、工具审计日志。
+
+### TODO-LIST
+
+#### 5.1 Session Key 路由
+- [ ] 实现 `src/routing/session-key.ts`：
+  - `generateSessionKey(agentId, channel, chatType, peerId?)` → 格式化 key
+  - `parseSessionKey(key)` → 解析为结构体
+  - Session Key 格式：`agent:{agentId}:{channel}:{chatType}:{peerId}`
+- [ ] 实现 `src/routing/binding-router.ts`：Binding 路由
+  - `resolveAgent(message: ChannelMessage)` → 最具体匹配优先
+  - 匹配优先级：peerId 精确 > accountId + channel > channel > 默认 Agent
+  - `addBinding(binding)` / `removeBinding(id)` / `listBindings()`
+- [ ] 创建 `migrations/007_bindings.sql`：bindings 表
+- [ ] 编写路由测试（`src/__tests__/session-key.test.ts`、`src/__tests__/binding-router.test.ts`）
+
+#### 5.2 记忆安全隔离
+- [ ] 更新 `memory-recall.ts` 插件：
+  - 私聊：加载 USER.md + MEMORY.md + memory/*.md + 全可见性记忆
+  - 群聊：仅加载 SOUL.md + AGENTS.md + 该群历史上下文
+  - 群聊中不查询 private 可见性的 memory_units
+- [ ] 更新 `context-assembler.ts` 插件：
+  - 按文件加载矩阵控制文件加载
+  - 群聊不加载 USER.md / MEMORY.md
+- [ ] 编写记忆隔离集成测试（模拟同一 Agent 在私聊/群聊场景）
+
+#### 5.3 权限模型完整实现
+- [ ] 实现 `src/bridge/security-extension.ts`：权限拦截
+  - 内存权限缓存（PermissionCache）
+  - `checkPermission(agentId, category, resource)` → allow/deny/ask
+  - `grantPermission(agentId, grant)` → 持久化到 permissions 表
+  - `revokePermission(id)` → 删除
+- [ ] 实现 `src/tools/permission-interceptor.ts`：工具权限拦截
+  - bash 命令危险性检测（rm -rf, DROP TABLE, etc.）
+  - 消息发送类工具强制确认
+  - 文件系统访问路径检查
+- [ ] 实现前端权限弹窗组件（`apps/desktop/src/components/permission/`）：
+  - 权限请求弹窗（显示 Agent、操作、资源）
+  - "仅本次" / "始终允许" / "始终拒绝" 三选项
+  - 通过 Tauri IPC 与 Sidecar 通信
+- [ ] 创建 `migrations/008_cron_jobs.sql`：cron_jobs 表
+- [ ] 编写权限模型测试
+
+#### 5.4 工具审计日志
+- [ ] 更新 `tool-injector.ts`：
+  - 所有工具执行写入 `tool_audit_log` 表
+  - 记录 agent_id, session_key, tool_name, params, result_summary, permission, duration_ms
+- [ ] 编写审计日志测试
+
+#### 5.5 安全设置 UI
+- [ ] 实现安全设置页面（`apps/desktop/src/app/settings/security/`）：
+  - 已授权权限列表（可撤销）
+  - 审计日志查看
+  - 各 Agent 的工具权限管理
+
+#### 5.6 Sprint 5 验收
+- [ ] Session Key 正确生成和解析
+- [ ] Binding 路由正确匹配（最具体优先）
+- [ ] 群聊中零泄露（不加载私聊记忆）
+- [ ] 权限弹窗正确触发和持久化
+- [ ] 危险命令触发确认弹窗
+- [ ] 审计日志完整记录
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 6: 本地知识库 RAG（Week 11-12）
+
+### 目标
+实现文件摄取引擎、本地向量索引、语义检索、知识库管理 UI。
+
+### TODO-LIST
+
+#### 6.1 文件摄取引擎
+- [ ] 实现 `src/rag/file-ingester.ts`：
+  - 支持格式：Markdown (.md), TXT (.txt), PDF (.pdf), 代码文件 (.ts/.js/.py)
+  - 文件分块策略：按段落/标题分块，每块 512-1024 tokens
+  - 增量索引：文件修改时间变化才重新索引
+  - 支持拖拽导入和文件夹批量导入
+  - PDF 解析：使用 `pdf-parse` 或类似库
+- [ ] 实现 `src/rag/chunk-splitter.ts`：文档分块
+  - Markdown：按 ## 标题分块
+  - 纯文本：按段落分块
+  - 代码：按函数/类定义分块
+  - 每块附带元数据（文件名、块序号、所属标题）
+
+#### 6.2 知识库向量索引
+- [ ] 实现 `src/rag/rag-indexer.ts`：
+  - 批量生成 embedding → 写入 sqlite-vec
+  - 索引状态管理（pending/indexed/error）
+  - 后台异步索引（不阻塞 UI）
+  - 增量更新：文件变更检测 → 重新索引变更块
+- [ ] 创建 `migrations/009_knowledge_base.sql`：
+  - `knowledge_base_files` 表（id, agent_id, file_path, file_hash, chunk_count, status, indexed_at）
+  - `knowledge_base_chunks` 表（id, file_id, content, metadata_json, embedding_id）
+
+#### 6.3 RAG 检索插件
+- [ ] 更新 `src/context/plugins/rag.ts`（priority: 50）：
+  - beforeTurn：查询向量相似度 → 注入相关文档片段（带 RAG 标记包裹）
+  - compact：移除相关度最低的文档片段
+  - Token 预算：RAG 注入上限 4K tokens
+- [ ] 编写 RAG 插件测试
+
+#### 6.4 知识库管理 UI
+- [ ] 实现知识库管理页面（`apps/desktop/src/app/knowledge/`）：
+  - 已索引文件列表（状态、大小、块数）
+  - 拖拽/选择文件导入
+  - 删除/重新索引操作
+  - 索引进度条
+- [ ] 添加 Hono 路由：
+  - `POST /knowledge/:agentId/ingest` → 文件摄取
+  - `GET /knowledge/:agentId/files` → 文件列表
+  - `DELETE /knowledge/:agentId/files/:fileId` → 删除
+  - `POST /knowledge/:agentId/reindex` → 重新索引
+
+#### 6.5 Sprint 6 验收
+- [ ] 可导入 Markdown/TXT/PDF 文件到知识库
+- [ ] 向量索引后台异步完成
+- [ ] 对话中自动检索知识库相关内容并注入上下文
+- [ ] 增量索引正常工作（文件变更后自动更新）
+- [ ] 知识库管理 UI 可查看/删除/重建索引
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 7: Skill 自发现 + Provider 完善（Week 13-14）
+
+### 目标
+实现 Skill 发现/安装流程、能力缺口检测、ClawHub/skills.sh 对接、完善所有 Provider。
+
+### TODO-LIST
+
+#### 7.1 Skill 发现
+- [ ] 实现 `src/skill/skill-discoverer.ts`：
+  - `search(query, sources?)` → 搜索 ClawHub API + skills.sh API
+  - 返回结果：name, description, version, author, downloads, rating, source
+  - 缓存搜索结果（10 分钟 TTL）
+- [ ] 实现 `src/skill/skill-installer.ts`：
+  - `install(skillUrl, agentId?)` → 下载 + 安装流程
+  - 下载到临时目录
+  - 解析 SKILL.md 元数据
+  - 安装到 `~/.evoclaw/skills/` 或 `~/.evoclaw/agents/{id}/workspace/skills/`
+- [ ] 实现 `src/skill/skill-gate.ts`：门控检查
+  - 检查 requires.bins（which 命令检测）
+  - 检查 requires.env（process.env 检测）
+  - 检查 requires.os（process.platform 检测）
+  - 不满足 → 提示安装缺失依赖或静默跳过
+
+#### 7.2 Skill 安全分析
+- [ ] 实现 `src/skill/skill-analyzer.ts`：静态分析
+  - 扫描 Skill 文件中的危险模式：eval, new Function, fetch (外发), fs.write (写文件越界)
+  - 生成安全评估报告（risk_level: low/medium/high + findings[]）
+  - high risk → 阻止安装
+  - medium risk → 警告 + 需用户确认
+
+#### 7.3 能力缺口检测
+- [ ] 实现 `src/context/plugins/gap-detection.ts`（afterTurn 插件）：
+  - 检测 Agent 回复中的"无法完成"信号
+  - 分析失败原因：是否为缺少 Skill/工具导致
+  - 自动搜索匹配 Skill → 推荐给用户
+  - UI 通知："我发现一个可能有用的 Skill: xxx，需要安装吗？"
+
+#### 7.4 ToolRegistry 插件
+- [ ] 实现 `src/context/plugins/tool-registry.ts`（priority: 60）：
+  - beforeTurn：扫描已安装 Skill → 注册到 PI 工具系统
+  - Skill 加载优先级：工作区 > 本地安装 > 内置
+  - 门控检查：不满足条件的 Skill 静默跳过
+
+#### 7.5 Provider 完善
+- [ ] 验证并完善所有 Provider 配置：
+  - OpenAI (gpt-4o, gpt-4o-mini)
+  - Anthropic (claude-sonnet, claude-opus)
+  - DeepSeek (deepseek-v3, deepseek-r1)
+  - MiniMax (abab6.5s)
+  - Kimi/Moonshot
+  - 通义千问 (qwen-max, qwen-plus, qwen-turbo)
+  - 智谱 GLM (glm-4-plus, glm-4-flash)
+  - 字节豆包 (doubao-pro-32k)
+- [ ] 实现 Provider 设置 UI（`apps/desktop/src/app/settings/providers/`）：
+  - 各 Provider 开关
+  - API Key 配置（Keychain 存储）
+  - 模型选择
+  - 连接测试
+  - 默认模型设置
+
+#### 7.6 Skill 管理 UI
+- [ ] 实现 Skill 管理页面（`apps/desktop/src/app/skills/`）：
+  - 已安装 Skill 列表
+  - 搜索安装入口（搜索 ClawHub + skills.sh）
+  - 安装进度 + 安全评估结果展示
+  - 卸载操作
+- [ ] 添加 Hono 路由：
+  - `POST /skill/search` → 搜索
+  - `POST /skill/install` → 安装
+  - `GET /skill/list` → 已安装列表
+  - `DELETE /skill/:id` → 卸载
+
+#### 7.7 Sprint 7 验收
+- [ ] 可搜索 ClawHub/skills.sh 的 Skill
+- [ ] Skill 安装流程完整（下载 → 分析 → 门控 → 用户确认 → 安装）
+- [ ] 安装的 Skill 在下次对话中可被 Agent 调用
+- [ ] 能力缺口检测正确识别并推荐 Skill
+- [ ] 所有 8 个 Provider 可正常配置和使用
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 8: 进化引擎 + Heartbeat/Cron（Week 15-16）
+
+### 目标
+实现能力图谱、满意度检测、进化日志、Heartbeat 心跳、Cron 定时任务。
+
+### TODO-LIST
+
+#### 8.1 进化引擎
+- [ ] 实现 `src/evolution/capability-graph.ts`：
+  - `detectCapabilities(messages, toolCalls)` → 识别使用的能力维度
+  - `updateCapability(agentId, capability, success)` → 更新 level/use_count/success_rate
+  - `getCapabilityGraph(agentId)` → 返回能力图谱数据
+- [ ] 实现 `src/evolution/feedback-detector.ts`：
+  - `detectSatisfaction(messages)` → 分析用户满意度信号
+  - 正面信号："谢谢"、"完美"、👍
+  - 负面信号："不对"、"重来"、👎
+  - 返回 satisfaction score (0-1)
+- [ ] 实现 `src/evolution/growth-tracker.ts`：
+  - `computeGrowthVector(agentId)` → 计算成长向量
+  - 记忆增量、能力变化、反馈趋势
+  - 持久化成长记录
+- [ ] 实现 `src/context/plugins/evolution.ts`（afterTurn 插件）：
+  - 调用 capability-graph + feedback-detector + growth-tracker
+- [ ] 编写进化引擎测试
+
+#### 8.2 Heartbeat 调度器
+- [ ] 实现 `src/scheduler/heartbeat-runner.ts`：
+  - 配置加载：间隔、活跃时段、目标
+  - 定时触发（setInterval）
+  - 活跃时段检查（activeHours）
+  - lightContext 模式（仅加载 HEARTBEAT.md）
+  - HEARTBEAT_OK 响应静默丢弃
+  - 非 OK 响应发送给用户
+- [ ] 实现 `src/scheduler/active-hours.ts`：时段检查
+- [ ] 编写 Heartbeat 测试
+
+#### 8.3 Cron 调度器
+- [ ] 实现 `src/scheduler/cron-runner.ts`：
+  - Cron 表达式解析（使用 `cron-parser` 库）
+  - 隔离会话执行（不共享主会话上下文）
+  - 结果发送到指定 Channel
+  - 超时管理
+- [ ] Cron 管理 API：
+  - `POST /cron` → 创建
+  - `GET /cron` → 列表
+  - `PUT /cron/:id` → 更新
+  - `DELETE /cron/:id` → 删除
+
+#### 8.4 进化 UI
+- [ ] 实现进化仪表盘（`apps/desktop/src/app/dashboard/`）：
+  - 能力雷达图（5+ 维度）
+  - 记忆统计（总量、分类分布、activation 分布）
+  - 最近进化事件列表
+- [ ] 实现 Heartbeat/Cron 设置 UI（在 Agent 设置中）：
+  - Heartbeat 间隔/活跃时段配置
+  - Cron 任务列表管理
+
+#### 8.5 Sprint 8 验收
+- [ ] 能力图谱随对话自动更新
+- [ ] 进化仪表盘正确展示能力数据
+- [ ] Heartbeat 按配置定时运行，HEARTBEAT_OK 不打扰用户
+- [ ] Cron 任务按表达式定时执行
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 9: Channel 接入 — 飞书 + 企微（Week 17-18）
+
+### 目标
+实现 Channel 抽象层、飞书 Channel、企微 Channel、Binding 路由集成、Channel 管理 UI。
+
+### TODO-LIST
+
+#### 9.1 Channel 抽象层
+- [ ] 实现 `src/channel/channel-adapter.ts`：Channel 适配器接口
+  - `connect(config)` → 建立连接
+  - `disconnect()` → 断开连接
+  - `onMessage(handler)` → 注册消息回调
+  - `sendMessage(peerId, content)` → 发送消息
+  - `getStatus()` → 连接状态
+- [ ] 实现 `src/channel/message-normalizer.ts`：消息标准化
+  - 各平台消息格式 → 统一的 ChannelMessage 格式
+  - 支持文本、文件、图片消息
+- [ ] 实现 `src/channel/channel-manager.ts`：Channel 生命周期管理
+  - 注册/注销 Channel 适配器
+  - 连接状态监控
+  - 自动重连
+
+#### 9.2 飞书 Channel
+- [ ] 实现 `src/channel/adapters/feishu.ts`：
+  - 飞书机器人 API 集成（`@larksuiteoapi/node-sdk`）
+  - Webhook 消息接收
+  - 私聊 + 群聊消息处理
+  - 文本 + 富文本 + 文件消息收发
+  - @机器人 触发检测
+  - Bot Token 从 Keychain 获取
+- [ ] 编写飞书适配器测试（mock API）
+
+#### 9.3 企微 Channel
+- [ ] 实现 `src/channel/adapters/wecom.ts`：
+  - 企业微信应用 API 集成
+  - 回调消息接收
+  - 私聊 + 群聊消息处理
+  - 文本 + 图片消息收发
+  - @应用 触发检测
+- [ ] 编写企微适配器测试（mock API）
+
+#### 9.4 桌面 Channel
+- [ ] 实现 `src/channel/adapters/desktop.ts`：
+  - 桌面应用内的默认 Channel
+  - 直接通过 Hono HTTP 通信
+  - 桌面通知发送（desktop_notify 工具）
+
+#### 9.5 Channel 工具（阶段 4）
+- [ ] 实现 `src/tools/channel-tools.ts`：
+  - `feishu_send(peerId, content)` → 飞书发消息
+  - `feishu_card(peerId, card)` → 飞书卡片消息
+  - `wecom_send(peerId, content)` → 企微发消息
+  - `desktop_notify(title, body)` → 桌面通知
+  - 按当前通道动态注入（仅注入当前 Channel 的工具）
+- [ ] 更新 `tool-injector.ts`：阶段 4 注入逻辑
+
+#### 9.6 Binding 路由集成
+- [ ] 集成 Binding Router + Channel Manager：
+  - 消息到达 → Binding 路由 → 确定 Agent → 生成 Session Key → Lane 队列排队 → 执行
+  - 结果通过对应 Channel 回复
+- [ ] 编写全链路集成测试
+
+#### 9.7 Channel 管理 UI
+- [ ] 实现 Channel 管理页面（`apps/desktop/src/app/channels/`）：
+  - Channel 连接状态列表
+  - 飞书 Bot 配置（App ID + App Secret）
+  - 企微应用配置（Corp ID + Agent ID + Secret）
+  - Binding 规则管理（Channel → Agent 绑定）
+  - 连接/断开操作
+- [ ] 添加 Hono 路由：
+  - `POST /channel/connect` → 连接
+  - `POST /channel/disconnect` → 断开
+  - `GET /channel/status` → 状态
+  - `POST /binding` / `GET /binding` / `DELETE /binding/:id` → Binding 管理
+
+#### 9.8 Sprint 9 验收
+- [ ] 飞书 Bot 可接收和回复私聊/群聊消息
+- [ ] 企微应用可接收和回复私聊/群聊消息
+- [ ] 同一 Agent 跨 Channel 私聊记忆共享（默认配置）
+- [ ] 群聊中不暴露私聊记忆（零泄露验证）
+- [ ] Binding 路由正确匹配
+- [ ] Channel 断连自动重连
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 10: 集成测试 + macOS 打包 + 内测发布（Week 19-20）
+
+### 目标
+全系统集成测试、性能优化、macOS 应用打包、准备内测发布。
+
+### TODO-LIST
+
+#### 10.1 集成测试
+- [ ] 端到端测试场景：
+  - [ ] 新用户首次启动：应用启动 → Sidecar 自动启动 → SQLite 初始化 → 迁移执行
+  - [ ] Agent 创建流程：对话式引导 → 8 文件生成 → Agent 激活
+  - [ ] 基础对话：用户发消息 → PI ReAct 循环 → 流式响应
+  - [ ] 记忆沉淀：对话后 → 记忆提取 → memory_units 写入
+  - [ ] 记忆召回：下次对话 → 三阶段检索 → 记忆注入上下文
+  - [ ] 长对话压缩：10+ 轮对话 → LCM 触发 → 摘要生成 → 上下文精简
+  - [ ] Hotness 衰减：模拟时间推移 → activation 下降 → 归档
+  - [ ] 反馈循环防护：注入记忆 → 提取不含注入内容
+  - [ ] 记忆隔离：桌面私聊 → 记忆存储 → 群聊不可见
+  - [ ] 权限弹窗：Agent 执行 bash → 弹窗确认 → 执行/拒绝
+  - [ ] RAG 检索：导入文件 → 索引 → 对话中检索相关内容
+  - [ ] Skill 安装：能力缺口 → 搜索 Skill → 安装 → 下次使用
+  - [ ] 飞书 Channel：飞书消息 → Binding 路由 → Agent 响应 → 飞书回复
+  - [ ] Heartbeat：定时触发 → HEARTBEAT_OK 静默 / 有事项通知用户
+  - [ ] 多 Provider：切换 Provider → 对话正常
+
+#### 10.2 性能优化
+- [ ] 应用启动优化：冷启动 < 3 秒目标
+  - Sidecar 预加载
+  - SQLite 连接懒初始化
+- [ ] 记忆检索优化：三阶段检索 < 200ms
+  - FTS5 查询优化
+  - sqlite-vec 查询优化
+  - 索引覆盖率检查
+- [ ] 内存占用优化：空闲 < 200MB
+  - React 组件懒加载
+  - 大列表虚拟滚动
+- [ ] 流式响应优化：
+  - SSE 连接复用
+  - 减少序列化开销
+
+#### 10.3 UI 打磨
+- [ ] 暗色/亮色主题支持（跟随系统）
+- [ ] 中文 UI 文案审校
+- [ ] 错误提示中文化 + 修复建议
+- [ ] 空状态引导（无 Agent 时引导创建，无记忆时说明工作原理）
+- [ ] 键盘快捷键（Cmd+N 新对话，Cmd+K 搜索等）
+- [ ] 应用图标设计
+
+#### 10.4 macOS 应用打包
+- [ ] 配置 Tauri 构建：
+  - 应用签名（Developer ID）
+  - DMG 安装包
+  - 自动更新配置（tauri-plugin-updater）
+  - 最小系统要求：macOS 13+
+- [ ] 构建产物验证：
+  - DMG 安装测试
+  - 首次启动权限请求（Keychain 访问）
+  - Gatekeeper 兼容性
+  - Apple Silicon + Intel 双架构
+
+#### 10.5 文档和内测准备
+- [ ] 编写用户使用指南（内置到应用内帮助页面）
+- [ ] 编写 API Key 配置指南（各 Provider 的获取方式）
+- [ ] 编写飞书/企微 Bot 创建指南
+- [ ] 创建内测反馈收集渠道
+- [ ] 准备种子用户邀请
+
+#### 10.6 Sprint 10 验收（MVP 发布标准）
+- [ ] macOS 应用可正常安装和启动（冷启动 < 3 秒）
+- [ ] 新用户 2 分钟内完成首次有效对话
+- [ ] 对话式 Agent 创建成功率 ≥ 90%
+- [ ] 记忆检索准确率 ≥ 80%（三阶段渐进检索 Top-5 匹配率）
+- [ ] 记忆隔离零泄露（群聊不暴露私聊记忆）
+- [ ] 连续使用 1 周后记忆沉淀 ≥ 5 条用户偏好记录
+- [ ] 飞书/企微 Channel 正常工作
+- [ ] Skill 自发现成功率 ≥ 60%
+- [ ] 安全零事故（无明文凭证泄露）
+- [ ] `pnpm test` 全部通过，覆盖率 ≥ 80%
+- [ ] `pnpm lint` 零错误
+
+---
+
+## v0.5 — "图谱、可视化、更聪明"（2026 Q3，约 8 周）
+
+---
+
+## Sprint 11: 知识图谱增强 + 实体关系提取（Week 21-22）
+
+### 目标
+从"知识图谱存储可用"升级到"知识图谱驱动智能检索"：自动从对话中提取实体关系、图查询深度集成到记忆检索、图数据 CRUD 管理。
+
+### TODO-LIST
+
+#### 11.1 实体关系自动提取增强
+- [ ] 升级 `src/memory/extraction-prompt.ts`：增强关系提取 prompt
+  - 扩展 `<relations>` 输出，支持更丰富的关系类型：
+    - 人物关系：knows, works_with, reports_to, mentored_by
+    - 项目关系：works_on, contributes_to, owns, maintains
+    - 技术关系：uses, prefers, skilled_in, learning
+    - 组织关系：belongs_to, located_in, part_of
+    - 时间关系：happened_at, started_at, deadline
+  - 要求 LLM 输出关系置信度（confidence 0.0-1.0）
+  - 要求 LLM 标注关系方向（directed / bidirectional）
+- [ ] 升级 `src/memory/xml-parser.ts`：解析增强的关系结构
+  - 新增 `direction` 字段解析
+  - 关系去重逻辑（同 subject+predicate+object 更新而非重复插入）
+- [ ] 升级 `src/memory/knowledge-graph.ts`：图查询增强
+  - `findPath(entityA, entityB, maxDepth)` → 两实体间最短路径
+  - `getSubgraph(entityId, depth)` → 以某实体为中心的子图
+  - `getRelatedEntities(entityId, predicates?)` → 指定关系类型的邻居
+  - `mergeEntities(keepId, removeId)` → 实体合并（去重）
+  - `getEntityStats(agentId)` → 实体/关系统计
+- [ ] 编写图查询增强测试（`src/__tests__/knowledge-graph-enhanced.test.ts`）
+
+#### 11.2 知识图谱驱动检索
+- [ ] 升级 `src/memory/hybrid-searcher.ts`：图谱权重增强
+  - Phase 1 图扩展升级：
+    - 不仅扩展 1 度关系，支持 2 度关系扩展（如 A→uses→B→part_of→C）
+    - 扩展结果按路径长度衰减权重（1度: 0.2, 2度: 0.1）
+    - 关系类型权重：直接关系(uses/prefers) > 间接关系(knows/belongs_to)
+  - Phase 2 新增图谱 boost：
+    - 命中知识图谱路径的记忆额外加 0.1 boost
+    - 同一子图内的记忆优先聚合展示
+- [ ] 编写图谱驱动检索测试
+
+#### 11.3 知识图谱 CRUD API
+- [ ] 添加 Hono 路由：
+  - `GET /knowledge-graph/:agentId/entities` → 实体列表（分页）
+  - `GET /knowledge-graph/:agentId/entity/:id/relations` → 指定实体的关系
+  - `GET /knowledge-graph/:agentId/subgraph` → 子图查询（query 参数: entityId + depth）
+  - `POST /knowledge-graph/:agentId/merge` → 合并重复实体
+  - `DELETE /knowledge-graph/:agentId/relation/:id` → 删除关系
+  - `GET /knowledge-graph/:agentId/stats` → 统计信息
+
+#### 11.4 知识图谱可视化 UI
+- [ ] 实现图谱可视化页面（`apps/desktop/src/app/knowledge-graph/`）：
+  - 使用 `@antv/g6` 或 `d3-force` 渲染力导向图
+  - 实体节点（按 category 颜色区分）
+  - 关系边（标注 predicate）
+  - 交互式探索：
+    - 点击节点展开/折叠邻居
+    - 鼠标悬停显示实体 L1 概览
+    - 双击节点跳转到对应记忆详情
+    - 搜索定位实体
+    - 拖拽布局
+  - 筛选器：按关系类型、置信度过滤
+  - 支持导出图片
+- [ ] 编写图谱可视化组件测试
+
+#### 11.5 Sprint 11 验收
+- [ ] 对话自动提取 5+ 种关系类型
+- [ ] 2 度关系扩展在检索中生效
+- [ ] 图查询 API 正确返回实体/关系/子图/路径
+- [ ] 图谱可视化页面可交互探索实体关系网络
+- [ ] 重复实体可合并
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 12: 进化仪表盘完善 + 周报（Week 23-24）
+
+### 目标
+完善能力雷达图、记忆增长曲线、Skill 热力图、自动周报/月报、对比视图。
+
+### TODO-LIST
+
+#### 12.1 能力雷达图
+- [ ] 升级 `src/evolution/capability-graph.ts`：
+  - 预定义能力维度（至少 8 个）：coding, writing, analysis, translation, planning, research, communication, creativity
+  - 能力自动识别增强：从工具使用 + 对话内容 + Skill 调用推断能力
+  - 历史快照：每日记录能力值到 `capability_snapshots` 表
+- [ ] 创建 `migrations/010_capability_snapshots.sql`：
+  - `capability_snapshots` 表（id, agent_id, capability, level, snapshot_date, created_at）
+- [ ] 实现前端能力雷达图组件（`apps/desktop/src/components/charts/radar-chart.tsx`）：
+  - 使用 `recharts` 或 `@antv/g2` 渲染雷达图
+  - 至少 5-8 个维度
+  - 支持叠加历史数据对比（本周 vs 上周）
+  - 点击维度显示详情（使用次数、成功率、趋势）
+
+#### 12.2 记忆增长曲线
+- [ ] 实现记忆统计 API：
+  - `GET /evolution/:agentId/memory-stats` → 按日/周统计记忆增量
+    - 按 category 分组统计
+    - 按 activation 分段统计（高/中/低/归档）
+    - 总量趋势
+- [ ] 实现前端记忆增长曲线组件（`apps/desktop/src/components/charts/memory-growth.tsx`）：
+  - 折线图：记忆总量随时间增长
+  - 堆叠面积图：按 category 分布变化
+  - activation 分布饼图/环形图
+  - 时间范围选择器（近一周/一月/三月/全部）
+
+#### 12.3 Skill 使用热力图
+- [ ] 实现 Skill 使用统计：
+  - 记录每次 Skill 调用到 `tool_audit_log`
+  - `GET /evolution/:agentId/skill-heatmap` → 按日期 × Skill 的使用次数矩阵
+- [ ] 实现前端热力图组件（`apps/desktop/src/components/charts/skill-heatmap.tsx`）：
+  - X 轴: 日期，Y 轴: Skill 名称
+  - 颜色深浅表示使用频率
+  - 悬停显示具体使用次数和成功率
+
+#### 12.4 自动周报/月报
+- [ ] 实现 `src/evolution/report-generator.ts`：
+  - `generateWeeklyReport(agentId)` → 自动生成周报 Markdown
+    - 本周新增记忆数量和类别分布
+    - 能力值变化（对比上周）
+    - 新学会的 Skill
+    - 用户反馈趋势（正面/负面比）
+    - 关键对话摘要（调用 LLM 生成）
+    - 知识图谱增长（新增实体/关系数）
+  - `generateMonthlyReport(agentId)` → 月报
+    - 月度成长总结
+    - 记忆衰减/归档统计
+    - 能力图谱综合变化
+    - Skill 使用排行
+- [ ] 创建 Cron 任务自动生成：
+  - 每周一 09:00 自动生成上周周报
+  - 每月 1 日 09:00 自动生成上月月报
+- [ ] 添加 Hono 路由：
+  - `GET /evolution/:agentId/reports` → 报告列表
+  - `GET /evolution/:agentId/report/:id` → 报告详情
+  - `POST /evolution/:agentId/report/generate` → 手动触发生成
+
+#### 12.5 对比视图
+- [ ] 实现对比功能：
+  - 同一 Agent 不同时期对比（选两个日期范围）
+  - 不同 Agent 之间对比（选两个 Agent）
+- [ ] 前端对比页面（`apps/desktop/src/app/dashboard/compare.tsx`）：
+  - 雷达图叠加对比
+  - 记忆量并列柱状图
+  - 能力变化趋势对比折线图
+
+#### 12.6 进化仪表盘主页重构
+- [ ] 重构仪表盘主页（`apps/desktop/src/app/dashboard/index.tsx`）：
+  - 顶部：Agent 选择器 + 时间范围选择
+  - 左上：能力雷达图
+  - 右上：关键指标卡片（记忆总量、能力均值、反馈正面率、Skill 数）
+  - 中部：记忆增长曲线
+  - 下左：Skill 使用热力图
+  - 下右：最近进化事件时间线
+  - 底部入口：周报/月报 + 对比视图 + 知识图谱
+- [ ] 添加进化日志 API：
+  - `GET /evolution/:agentId/log` → 进化事件时间线（新技能、能力变化、记忆里程碑）
+
+#### 12.7 Sprint 12 验收
+- [ ] 能力雷达图展示 5+ 维度，数据来源于实际交互
+- [ ] 记忆增长曲线按日/周/月正确聚合
+- [ ] Skill 热力图正确展示使用频率分布
+- [ ] 周报自动生成，内容准确反映 Agent 成长
+- [ ] 对比视图可比较同一 Agent 不同时期或不同 Agent
+- [ ] 仪表盘加载时间 < 2 秒
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 13: QQ Channel + 模板市场（Week 25-26）
+
+### 目标
+接入 QQ 开放平台 Channel、构建 Agent 模板市场（含社区 SOUL.md 导入）。
+
+### TODO-LIST
+
+#### 13.1 QQ Channel
+- [ ] 实现 `src/channel/adapters/qq.ts`：
+  - QQ 开放平台 API 集成（`qq-guild-bot` SDK 或直接 HTTP）
+  - Bot 身份认证（AppID + Token + AppSecret）
+  - 私聊消息收发
+  - QQ 群消息收发（@机器人 触发）
+  - 文本 + 图片 + 文件消息格式适配
+  - Webhook / WebSocket 消息接收
+  - 消息标准化为 ChannelMessage 格式
+- [ ] QQ Channel 工具：
+  - `qq_send(peerId, content)` → 发送消息
+  - 注册到阶段 4 工具注入
+- [ ] 更新 Channel 管理 UI：
+  - QQ Bot 配置（AppID + AppSecret + Token）
+  - QQ Channel 连接状态显示
+- [ ] 编写 QQ 适配器测试（mock API）
+- [ ] QQ Channel 集成测试（Binding 路由 + 记忆隔离）
+
+#### 13.2 模板市场
+- [ ] 实现 `src/agent/template-store.ts`：模板管理
+  - 内置模板数据结构：
+    ```
+    ~/.evoclaw/templates/
+    ├── built-in/
+    │   ├── research-assistant/   # 研究助手
+    │   ├── coding-buddy/        # 编程伙伴
+    │   ├── writing-assistant/    # 写作助手
+    │   ├── life-manager/        # 生活管家
+    │   ├── study-coach/         # 学习教练
+    │   ├── translator/          # 翻译助手
+    │   ├── data-analyst/        # 数据分析师
+    │   └── project-manager/     # 项目管理
+    └── community/
+        └── ...                  # 用户导入的社区模板
+    ```
+  - `listTemplates()` → 返回模板列表（名称、描述、预览截图）
+  - `getTemplate(id)` → 返回模板完整内容（8 文件）
+  - `createFromTemplate(templateId, customizations?)` → 基于模板创建 Agent
+- [ ] 编写 8 个内置模板（每个包含完整 8 文件）：
+  - [ ] 研究助手：擅长搜索、总结、分析、论文阅读
+  - [ ] 编程伙伴：代码审查、调试、测试、架构设计
+  - [ ] 写作助手：长文写作、润色、翻译、格式化
+  - [ ] 生活管家：日程管理、提醒、信息整理
+  - [ ] 学习教练：知识梳理、测验、学习计划
+  - [ ] 翻译助手：多语言翻译、术语管理、风格适配
+  - [ ] 数据分析师：数据清洗、统计分析、可视化
+  - [ ] 项目管理：任务分解、进度跟踪、会议纪要
+
+#### 13.3 社区 SOUL.md 模板导入
+- [ ] 实现 `src/agent/template-importer.ts`：
+  - `importFromUrl(url)` → 从 URL 下载 SOUL.md（支持 GitHub raw URL）
+  - `importFromFile(filePath)` → 从本地文件导入
+  - `importFromOpenClaw(soulMd)` → 解析 OpenClaw 格式 SOUL.md
+    - 自动补全缺失的文件（IDENTITY.md, AGENTS.md 等）
+    - 兼容 103+ awesome-openclaw-agents 模板
+  - 导入前预览（展示 SOUL.md 内容 + 推断的 Agent 特征）
+  - 存储到 `~/.evoclaw/templates/community/`
+
+#### 13.4 模板市场 UI
+- [ ] 实现模板市场页面（`apps/desktop/src/app/templates/`）：
+  - 模板卡片网格（图标 + 名称 + 描述 + 标签）
+  - 内置模板区域 + 社区模板区域
+  - 模板详情弹窗（预览所有文件内容）
+  - "基于此模板创建 Agent" 按钮
+  - 导入社区模板入口（URL 或文件选择）
+  - 搜索/筛选功能
+- [ ] 更新 Agent 创建流程：
+  - 创建入口增加"从模板创建"选项
+  - 选择模板 → 可选自定义 → 生成 Agent
+- [ ] 添加 Hono 路由：
+  - `GET /template/list` → 模板列表
+  - `GET /template/:id` → 模板详情
+  - `POST /template/import` → 导入社区模板
+  - `POST /agent/create-from-template` → 从模板创建 Agent
+
+#### 13.5 Sprint 13 验收
+- [ ] QQ Channel 可接收和回复私聊/群聊消息
+- [ ] QQ 群聊不暴露私聊记忆
+- [ ] 模板市场展示 8 个内置模板
+- [ ] 可基于模板一键创建 Agent
+- [ ] 可导入 OpenClaw 社区 SOUL.md 模板
+- [ ] 导入的模板自动补全缺失文件
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 14: Docker 沙箱 + Skill 签名验证（Week 27-28）
+
+### 目标
+实现 Docker 可选沙箱（3 模式）、Docker 安装引导、Skill 数字签名验证 + 沙箱试运行。
+
+### TODO-LIST
+
+#### 14.1 Docker 沙箱管理
+- [ ] 实现 `src/sandbox/docker-manager.ts`：
+  - `isDockerAvailable()` → 检测 Docker 是否安装并运行（`which docker` + `docker info`）
+  - `createContainer(config)` → 创建容器
+    - 镜像选择（默认 `node:22-slim`）
+    - 挂载 Agent 工作区到 `/workspace`
+    - 网络模式（none/host/bridge，默认 none）
+    - 额外挂载路径（只读）
+  - `execInContainer(containerId, command, timeout)` → 在容器内执行命令
+  - `destroyContainer(containerId)` → 销毁容器
+  - `cleanupStaleContainers()` → 清理僵尸容器
+  - 容器生命周期：per-Agent 独立容器 vs 共享容器（按 scope 配置）
+- [ ] 实现 `src/sandbox/sandbox-config.ts`：
+  - 沙箱配置类型（SandboxConfig: mode + scope + docker settings）
+  - 配置持久化到 SQLite
+  - 默认配置：mode = 'off'
+
+#### 14.2 Docker 安装引导
+- [ ] 实现 `src/sandbox/docker-installer.ts`：
+  - `checkAndGuide()` → 检测 Docker → 未安装则引导
+  - macOS 引导：
+    - 推荐 Colima（轻量级，无需 Docker Desktop 许可证）
+    - 提供 `brew install colima docker` 命令
+    - 安装后自动验证
+  - Windows 引导（预留）：
+    - 提示启用 WSL2 + 安装 Docker Engine
+  - Linux 引导（预留）：
+    - 提供 apt/yum 安装命令
+  - 引导完成后自动拉取默认镜像
+- [ ] 实现前端沙箱引导弹窗（`apps/desktop/src/components/sandbox/`）：
+  - Docker 状态检测结果展示
+  - 安装步骤引导（复制命令 + 链接）
+  - 安装进度反馈
+  - 跳过选项（保持 off 模式）
+
+#### 14.3 沙箱感知工具
+- [ ] 升级 `src/tools/sandbox-tools.ts`：
+  - 沙箱感知的 `bash` 工具：
+    - mode=off → 直接执行
+    - mode=selective → 仅 bash/exec 在容器内执行，其他工具正常
+    - mode=all → 所有文件操作和命令都在容器内
+  - 沙箱感知的 `write`/`edit` 工具（mode=all 时重定向到容器）
+  - 执行超时控制（默认 60s）
+- [ ] 更新 `tool-injector.ts`：阶段 2 根据沙箱模式替换工具
+- [ ] 编写沙箱工具测试（mock Docker 调用）
+
+#### 14.4 沙箱设置 UI
+- [ ] 实现沙箱设置页面（`apps/desktop/src/app/settings/sandbox/`）：
+  - 沙箱模式选择（Off / Selective / All）
+  - Docker 状态指示器
+  - "检测/安装 Docker" 按钮
+  - 每 Agent 沙箱配置（scope: agent/shared）
+  - 自定义镜像/挂载路径/网络模式
+- [ ] 添加 Hono 路由：
+  - `GET /sandbox/status` → Docker 状态
+  - `PUT /sandbox/config` → 更新配置
+  - `POST /sandbox/install-guide` → 获取安装引导
+
+#### 14.5 Skill 签名验证
+- [ ] 实现 `src-tauri/src/skill_verify.rs`：Rust 层签名验证
+  - Ed25519 签名验证（ring crate）
+  - 公钥来源：内置 ClawHub 公钥 + skills.sh 公钥 + 用户自定义
+  - 验证 SKILL.md 中的 signature 字段
+  - 返回验证结果（valid/invalid/unsigned）
+- [ ] 升级 `src/skill/skill-analyzer.ts`：增强安全扫描
+  - 签名验证（通过 Tauri IPC 调用 Rust 层）
+  - 静态分析增强：
+    - 检测 Shell 命令注入模式
+    - 检测环境变量泄露模式
+    - 检测网络外发（非白名单域名）
+    - 检测文件系统越界（访问 `~/.evoclaw` 之外的路径）
+  - 安全评级：A（签名+无风险）/ B（签名+低风险）/ C（未签名）/ D（高风险）/ F（阻止安装）
+
+#### 14.6 Skill 沙箱试运行
+- [ ] 实现 `src/skill/skill-sandbox-runner.ts`：
+  - 在 Docker 容器内试运行 Skill
+  - 监控容器内的异常行为：
+    - 未声明的网络请求
+    - 文件写入越界
+    - 异常进程创建
+  - 试运行超时：30 秒
+  - 试运行结果报告（通过/警告/失败）
+
+#### 14.7 升级 Skill 安装流程
+- [ ] 更新 `src/skill/skill-installer.ts`：完整安全流程
+  - 下载 → 签名验证 → 静态分析 → 门控检查 → 沙箱试运行(可选) → 用户确认 → 安装
+  - 每一步异常都中止并给出明确原因
+  - 安全评级显示在确认弹窗中
+- [ ] 更新 Skill 管理 UI：
+  - 安装时展示安全评级
+  - 签名状态标识
+  - 安全扫描结果详情
+
+#### 14.8 Sprint 14 验收
+- [ ] 沙箱模式切换正常（off → selective → all）
+- [ ] Docker 未安装时引导流程顺畅
+- [ ] selective 模式下 bash 命令在容器内执行
+- [ ] all 模式下所有文件操作在容器内
+- [ ] Skill 签名验证正确（valid/invalid/unsigned）
+- [ ] 高风险 Skill 自动阻止安装
+- [ ] 沙箱试运行检测到异常行为时报告
+- [ ] 安全评级正确展示
+- [ ] `pnpm test` 全部通过
+
+---
+
+## v1.0 — "完整产品"（2026 Q4，约 10 周）
+
+---
+
+## Sprint 15: 子 Agent 派生 + Agent 间通信（Week 29-30）
+
+### 目标
+实现子 Agent 派生机制、Agent 间直接通信、派生深度和并发控制。
+
+### TODO-LIST
+
+#### 15.1 子 Agent 派生
+- [ ] 实现 `src/agent/sub-agent-spawner.ts`：
+  - `spawn(parentAgentId, config)` → 创建子 Agent 会话
+    - 继承父 Agent 的 SOUL.md（不继承 USER.md/MEMORY.md）
+    - 独立的 Session + 独立的 JSONL 会话记录
+    - 指定任务 prompt + 约束条件
+  - `getSubAgentStatus(subAgentId)` → 查询状态
+  - `sendToSubAgent(subAgentId, message)` → 向子 Agent 发消息
+  - `getSubAgentHistory(subAgentId)` → 获取子 Agent 对话记录
+  - `terminateSubAgent(subAgentId)` → 终止
+- [ ] 实现安全约束：
+  - 派生深度限制：`maxSpawnDepth` 默认 1（最多 2 层嵌套）
+  - 并发限制：`maxConcurrent` 默认 4
+  - 子 Agent 超时：继承父 Agent 超时设置
+  - 子 Agent 不继承父 Agent 的私密记忆
+- [ ] 注册 PI 工具族：
+  - `sessions_spawn` → 创建子 Agent
+  - `sessions_list` → 列出活跃子 Agent
+  - `sessions_history` → 获取子 Agent 对话记录
+  - `sessions_send` → 向子 Agent 发消息
+- [ ] 编写子 Agent 测试（`src/__tests__/sub-agent-spawner.test.ts`）
+
+#### 15.2 Agent 间通信
+- [ ] 实现 `src/agent/agent-comm.ts`：
+  - Agent 间直接通信机制（非父子关系）
+  - 配置接口：
+    ```typescript
+    interface AgentToAgentConfig {
+      enabled: boolean       // 默认 false
+      allow: string[]        // 允许通信的 Agent ID 列表
+    }
+    ```
+  - `sendMessage(fromAgentId, toAgentId, message)` → 发送
+  - `onMessage(agentId, handler)` → 注册接收回调
+  - 消息类型：text, file_ref, data_object
+  - 安全检查：仅 allowlist 中的 Agent 可通信
+- [ ] 注册工具：
+  - `agent_send(targetAgentId, message)` → 发消息给其他 Agent
+  - 工具可用性由 AgentToAgentConfig 控制
+- [ ] 编写 Agent 通信测试
+
+#### 15.3 子 Agent UI
+- [ ] 更新对话 UI：
+  - 子 Agent 派生时显示状态指示（"正在派生子 Agent..."）
+  - 子 Agent 运行中显示进度
+  - 子 Agent 结果回传后在对话中展示
+  - 可展开查看子 Agent 的完整对话记录
+
+#### 15.4 Sprint 15 验收
+- [ ] 父 Agent 可成功派生子 Agent 执行任务
+- [ ] 子 Agent 结果正确回传给父 Agent
+- [ ] 派生深度限制生效（超过 maxSpawnDepth 拒绝派生）
+- [ ] 并发限制生效
+- [ ] Agent 间通信默认关闭，显式开启后正常工作
+- [ ] 子 Agent 不继承父 Agent 的私密记忆
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 16: 协作工作流 + 人工审核（Week 31-32）
+
+### 目标
+实现多 Agent 协作工作流定义、DAG 执行引擎、人工审核节点、协作状态可视化。
+
+### TODO-LIST
+
+#### 16.1 协作工作流定义
+- [ ] 实现 `src/agent/workflow-parser.ts`：
+  - 从自然语言描述解析协作流程（调用 LLM）
+  - 输出结构化 DAG：
+    ```typescript
+    interface WorkflowDAG {
+      id: string
+      name: string
+      nodes: WorkflowNode[]
+      edges: WorkflowEdge[]
+    }
+    interface WorkflowNode {
+      id: string
+      agentId: string
+      prompt: string
+      type: 'agent' | 'human_review' | 'condition'
+      timeout?: number
+    }
+    interface WorkflowEdge {
+      from: string
+      to: string
+      condition?: string
+    }
+    ```
+  - 示例输入："研究员找资料 → 写手写初稿 → 编辑润色"
+  - 生成 3 节点线性 DAG
+- [ ] 实现 `src/agent/workflow-builder-ui.ts`：
+  - 可视化 DAG 编辑器（拖拽节点、连线）
+  - 节点类型选择（Agent / 人工审核 / 条件分支）
+  - 每个 Agent 节点配置（选择 Agent + 任务描述）
+- [ ] 创建 `migrations/011_workflows.sql`：
+  - `workflows` 表（id, name, dag_json, status, created_at, updated_at）
+  - `workflow_runs` 表（id, workflow_id, status, current_node, results_json, started_at, completed_at）
+
+#### 16.2 DAG 执行引擎
+- [ ] 实现 `src/agent/workflow-executor.ts`：
+  - `startWorkflow(workflowId, initialInput)` → 启动工作流
+  - DAG 拓扑排序 → 按依赖顺序执行
+  - 每个 Agent 节点：
+    - 收集上游输出作为输入
+    - 调用 embedded-runner 执行
+    - 记录输出
+    - 传递给下游节点
+  - 人工审核节点：暂停等待用户确认
+  - 条件分支节点：根据上游输出判断走哪条边
+  - 失败处理：单节点失败不影响其他分支 + 支持重试
+  - 超时管理
+- [ ] 编写 DAG 执行引擎测试
+
+#### 16.3 人工审核节点
+- [ ] 实现人工审核机制：
+  - 工作流执行到 human_review 节点时暂停
+  - 推送通知给用户（桌面通知 + Channel 通知）
+  - 展示待审核内容（上游 Agent 的输出）
+  - 用户操作：通过 / 拒绝 / 修改后通过
+  - 通过后继续执行下游节点
+  - 拒绝后标记工作流失败或回退
+- [ ] 实现审核 UI 组件（`apps/desktop/src/components/workflow/review-panel.tsx`）
+
+#### 16.4 协作状态可视化
+- [ ] 实现协作状态页面（`apps/desktop/src/app/workflow/`）：
+  - 工作流列表（活跃/已完成/失败）
+  - 工作流详情：
+    - DAG 可视化（节点状态着色：等待灰色/运行中蓝色/完成绿色/失败红色/审核黄色）
+    - 每个节点的输入/输出展示
+    - 消息流向动画
+    - 实时进度更新
+  - 工作流创建入口（自然语言/可视化编辑器）
+- [ ] 添加 Hono 路由：
+  - `POST /workflow` → 创建工作流
+  - `GET /workflow` → 列表
+  - `POST /workflow/:id/start` → 启动
+  - `GET /workflow/:id/status` → 状态
+  - `POST /workflow/:id/review/:nodeId` → 人工审核决定
+
+#### 16.5 Sprint 16 验收
+- [ ] 自然语言描述可生成协作 DAG
+- [ ] 3+ 节点工作流正确执行
+- [ ] 人工审核节点正确暂停/继续
+- [ ] 单节点失败不影响其他分支
+- [ ] 协作状态实时可视化
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 17: 跨平台 — Windows + Linux（Week 33-34）
+
+### 目标
+Tauri 跨平台构建，Windows 和 Linux 版本适配，平台特定安全层。
+
+### TODO-LIST
+
+#### 17.1 Windows 适配
+- [ ] 配置 Tauri Windows 构建：
+  - NSIS 安装包配置
+  - 应用图标（.ico）
+  - 安装路径默认值
+  - 开机自启配置（可选）
+- [ ] 实现 Windows Credential Manager 集成：
+  - `src-tauri/src/credential.rs` 添加 Windows 分支
+  - 使用 `windows-credentials` crate
+  - 验证凭证存取正确性
+- [ ] Windows 路径适配：
+  - `~/.evoclaw/` → `%APPDATA%/evoclaw/` 或 `%USERPROFILE%/.evoclaw/`
+  - 路径分隔符处理
+  - 长路径支持
+- [ ] Node.js Sidecar Windows 适配：
+  - 进程管理（Windows 进程 API）
+  - 端口绑定验证
+  - 杀进程清理
+- [ ] Windows E2E 测试（在 CI 或手动验证）：
+  - 安装/卸载流程
+  - Sidecar 通信
+  - Keychain 凭证存取
+  - SQLite 数据库正常工作
+  - 基础对话功能
+
+#### 17.2 Linux 适配
+- [ ] 配置 Tauri Linux 构建：
+  - AppImage 格式
+  - .deb 包（Ubuntu/Debian）
+  - 应用图标（.png, .svg）
+  - 桌面快捷方式（.desktop 文件）
+- [ ] 实现 Linux Secret Service 集成：
+  - `src-tauri/src/credential.rs` 添加 Linux 分支
+  - 使用 `libsecret` (via `secret-service` crate)
+  - 降级方案：Secret Service 不可用时使用加密文件存储
+- [ ] Linux 路径适配：
+  - `~/.evoclaw/` 使用标准 XDG 路径
+  - 权限检查（文件 600/目录 700）
+- [ ] Linux E2E 测试（在 CI 或手动验证）：
+  - AppImage 启动验证
+  - 依赖库检查（libwebkit2gtk 等）
+  - Secret Service 凭证存取
+  - SQLite 正常工作
+
+#### 17.3 CI/CD 跨平台构建
+- [ ] 配置 GitHub Actions：
+  - macOS (Apple Silicon + Intel) 构建
+  - Windows (x64) 构建
+  - Linux (x64) 构建
+  - 自动运行测试
+  - 构建产物上传到 Release
+  - 自动更新服务配置（tauri-plugin-updater）
+- [ ] 版本管理：
+  - Changesets 或 conventional commits
+  - 自动 changelog 生成
+  - 语义化版本号
+
+#### 17.4 平台差异文档
+- [ ] 更新用户指南：
+  - Windows 安装说明
+  - Linux 安装说明（AppImage 权限设置）
+  - 各平台 Docker 安装引导差异
+  - 各平台凭证管理说明
+
+#### 17.5 Sprint 17 验收
+- [ ] Windows 应用正常安装、启动、使用
+- [ ] Linux AppImage 正常启动、使用
+- [ ] 三平台凭证管理各自使用系统级安全存储
+- [ ] CI/CD 自动构建三平台产物
+- [ ] 自动更新机制工作正常
+- [ ] `pnpm test` 三平台全部通过
+
+---
+
+## Sprint 18: 安全仪表盘 + Agent 导入/导出（Week 35-36）
+
+### 目标
+完善安全仪表盘、Agent 完整导入/导出、多知识库隔离。
+
+### TODO-LIST
+
+#### 18.1 安全仪表盘
+- [ ] 实现安全仪表盘页面（`apps/desktop/src/app/security/`）：
+  - **安全总览卡片**：
+    - 加密状态（✅ AES-256-GCM 已启用）
+    - 凭证安全（✅ 系统 Keychain / ⚠️ 降级文件存储）
+    - 沙箱状态（Off / Selective / All）
+    - 最近安全事件数（24h / 7d）
+  - **已授权权限清单**：
+    - 按 Agent 分组展示所有权限授予
+    - 每条显示：类别、范围、资源、授予时间、授予方式
+    - 一键撤销按钮
+    - 批量撤销（撤销某 Agent 的所有权限）
+  - **Skill 安全评分**：
+    - 已安装 Skill 安全评级列表（A/B/C/D）
+    - 签名状态标识
+    - 点击查看详细安全扫描报告
+  - **审计日志**：
+    - 时间线展示所有安全事件
+    - 筛选器：按事件类型（权限变更/Skill 安装/凭证访问/工具执行）
+    - 搜索功能
+    - 导出日志（CSV/JSON）
+  - **安全建议**：
+    - 基于当前配置给出安全改进建议
+    - 如"建议启用沙箱模式"、"有 3 个 Skill 未签名验证"
+- [ ] 添加 Hono 路由：
+  - `GET /security/overview` → 安全总览数据
+  - `GET /security/permissions` → 权限列表
+  - `DELETE /security/permission/:id` → 撤销权限
+  - `GET /security/audit-log` → 审计日志（分页 + 筛选）
+  - `GET /security/audit-log/export` → 导出日志
+
+#### 18.2 Agent 导入/导出
+- [ ] 实现 `src/agent/agent-exporter.ts`：
+  - `exportAgent(agentId)` → 打包导出
+    - 包含内容：
+      - 完整 8 文件工作区（SOUL.md, IDENTITY.md, etc.）
+      - 已安装 Skill 列表（仅列表，不含 Skill 文件本身）
+      - Agent 配置（model 设置、Heartbeat/Cron 配置）
+      - 可选：memory_units 数据（需用户确认，涉及隐私）
+      - 可选：knowledge_graph 数据
+    - 导出格式：`.evoclaw-agent` (实际是 zip)
+    - 元数据文件：`manifest.json`（版本、创建时间、EvoClaw 版本）
+  - `validateExport(filePath)` → 验证导出文件完整性
+- [ ] 实现 `src/agent/agent-importer.ts`：
+  - `importAgent(filePath, options?)` → 导入 Agent
+    - 解压 + 验证 manifest
+    - 创建新 Agent 目录
+    - 复制工作区文件
+    - 恢复配置
+    - 可选：恢复记忆数据
+    - 提示安装缺失的 Skill
+    - 冲突处理：Agent ID 重复时自动重命名
+- [ ] 实现导入/导出 UI：
+  - Agent 详情页添加"导出"按钮
+  - Agent 列表页添加"导入"入口（文件选择）
+  - 导入预览（展示将导入的内容 + 选项）
+  - 导出选项弹窗（是否包含记忆数据）
+- [ ] 添加 Hono 路由：
+  - `POST /agent/:id/export` → 导出
+  - `POST /agent/import` → 导入（multipart/form-data）
+
+#### 18.3 多知识库隔离
+- [ ] 实现 `src/rag/knowledge-base-manager.ts`：
+  - 支持创建多个独立知识库：
+    ```
+    ~/.evoclaw/knowledge-bases/
+    ├── work-docs/        # 工作文档
+    ├── personal-notes/   # 个人笔记
+    └── code-repo/        # 代码库
+    ```
+  - `createKnowledgeBase(name, description)` → 创建
+  - `deleteKnowledgeBase(id)` → 删除（含索引）
+  - `listKnowledgeBases()` → 列表
+  - `bindToAgent(kbId, agentId)` → Agent 绑定知识库
+  - `unbindFromAgent(kbId, agentId)` → 解绑
+- [ ] 更新 `migrations/012_multi_knowledge_base.sql`：
+  - `knowledge_bases` 表（id, name, description, created_at）
+  - `agent_knowledge_base_bindings` 表（agent_id, kb_id）
+  - 更新 `knowledge_base_files` 表添加 `kb_id` 字段
+- [ ] 更新 RAG 插件：
+  - 检索时仅搜索当前 Agent 绑定的知识库
+- [ ] 更新知识库管理 UI：
+  - 知识库列表（创建/删除/重命名）
+  - Agent ↔ 知识库绑定管理
+  - 每个知识库独立的文件管理
+
+#### 18.4 Sprint 18 验收
+- [ ] 安全仪表盘完整展示安全状态
+- [ ] 权限可一键撤销
+- [ ] 审计日志可搜索/筛选/导出
+- [ ] Agent 可完整导出为 `.evoclaw-agent` 文件
+- [ ] 导出的 Agent 可在其他 EvoClaw 实例导入
+- [ ] 多知识库独立运行，Agent 可绑定不同知识库
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 19: v1.0 集成测试 + 性能调优 + 发布（Week 37-38）
+
+### 目标
+v1.0 全功能集成测试、性能调优、跨平台发布。
+
+### TODO-LIST
+
+#### 19.1 v1.0 全功能集成测试
+- [ ] 扩展 Sprint 10 的集成测试，新增：
+  - [ ] 知识图谱可视化：实体/关系正确渲染 + 交互
+  - [ ] 进化仪表盘：雷达图/曲线图/热力图数据准确
+  - [ ] 周报自动生成：内容准确反映 Agent 成长
+  - [ ] QQ Channel：消息收发 + 记忆隔离
+  - [ ] 模板市场：从模板创建 Agent + 社区模板导入
+  - [ ] Docker 沙箱：selective/all 模式下工具执行正确
+  - [ ] Skill 签名验证：签名 Skill 通过 / 未签名 Skill 警告 / 高风险阻止
+  - [ ] 子 Agent 派生：父子 Agent 通信正确
+  - [ ] 协作工作流：3 节点 DAG 执行 + 人工审核
+  - [ ] Agent 导入/导出：导出后导入还原正确
+  - [ ] 多知识库：不同 Agent 检索不同知识库
+  - [ ] Windows：核心功能在 Windows 上正常
+  - [ ] Linux：核心功能在 Linux 上正常
+
+#### 19.2 性能压测
+- [ ] 记忆系统压测：
+  - 10 万条 memory_units 下检索延迟 < 200ms
+  - 1 万条 knowledge_graph 下图查询延迟 < 100ms
+  - 1000 个文档知识库索引速度 < 30 分钟
+- [ ] 并发压测：
+  - 4 个 main Lane 并发对话不卡顿
+  - 8 个 subagent Lane 并发执行
+  - 3 路 Channel 同时收发消息
+- [ ] 内存压测：
+  - 长时间运行（8 小时）内存不泄漏
+  - 多 Agent 切换内存回收正常
+
+#### 19.3 跨平台发布
+- [ ] macOS：DMG 签名 + 公证
+- [ ] Windows：NSIS 安装包 + 代码签名
+- [ ] Linux：AppImage + .deb
+- [ ] 自动更新服务部署
+- [ ] 发布 GitHub Release
+- [ ] 用户文档网站（可选，或使用 GitHub Wiki）
+
+#### 19.4 Sprint 19 验收（v1.0 发布标准）
+- [ ] 三平台应用正常安装和运行
+- [ ] 全部 PRD v4.0 功能实现（除 v2.0 规划的部分）
+- [ ] 性能指标达标（启动 < 3s, 检索 < 200ms, 内存 < 500MB）
+- [ ] 安全审计零高危漏洞
+- [ ] 测试覆盖率 ≥ 80%
+- [ ] 三平台 CI/CD 绿灯
+
+---
+
+## v2.0 — "生态与社区"（2027 Q1-Q2，约 10 周）
+
+---
+
+## Sprint 20: Growth Vectors + Crystallization（Week 39-40）
+
+### 目标
+实现成长向量追踪、30 天门控结晶化为永久特质写入 SOUL.md。
+
+### TODO-LIST
+
+#### 20.1 Growth Vectors
+- [ ] 实现 `src/evolution/growth-vector.ts`：
+  - 成长向量：每个能力维度的变化趋势（方向 + 速度）
+  - 每日快照记录 → 计算 7 日/30 日滑动窗口趋势
+  - 向量分类：
+    - 上升趋势（能力持续提升）
+    - 稳定（能力已成熟）
+    - 下降趋势（长期未使用）
+    - 突破（短期内大幅提升）
+  - `getGrowthVectors(agentId)` → 返回所有维度的成长向量
+  - `getBreakthroughs(agentId, period)` → 返回突破事件列表
+- [ ] 创建 `migrations/013_growth_vectors.sql`：
+  - `growth_vectors` 表（id, agent_id, capability, direction, velocity, window_days, snapshot_date）
+
+#### 20.2 Crystallization（结晶化）
+- [ ] 实现 `src/evolution/crystallizer.ts`：
+  - 结晶条件：某能力的成长向量在 30+ 天内持续为"稳定"或"上升"
+  - 结晶过程：
+    1. 检测满足条件的能力
+    2. 调用 LLM 生成该能力的"永久特质"描述
+    3. 追加到 SOUL.md 的 `## Crystallized Traits` 部分
+    4. 标记该能力为"已结晶"（不再衰减）
+  - 结晶前用户确认（弹窗展示即将写入 SOUL.md 的内容）
+  - 结晶历史记录
+- [ ] 调度：每周执行一次结晶检测
+- [ ] 编写结晶化测试
+
+#### 20.3 Growth Vectors UI
+- [ ] 更新进化仪表盘：
+  - 成长向量可视化（箭头图，每维度显示方向和速度）
+  - 突破事件时间线
+  - 结晶化历史记录
+  - 已结晶特质展示
+
+#### 20.4 Sprint 20 验收
+- [ ] 成长向量每日正确快照
+- [ ] 7 日/30 日趋势计算准确
+- [ ] 30 天稳定能力触发结晶化流程
+- [ ] 结晶后的特质正确写入 SOUL.md
+- [ ] 结晶前用户确认弹窗正常
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 21: EvoClaw Hub 社区平台（Week 41-42）
+
+### 目标
+构建 Agent 模板和 Skill 的社区分享平台（Hub），支持发布/搜索/下载。
+
+### TODO-LIST
+
+#### 21.1 Hub 后端服务（独立部署）
+- [ ] 创建 `packages/hub/` 新包：
+  - Hono + SQLite（或 PostgreSQL）后端服务
+  - 数据模型：
+    - `hub_templates` 表（id, author, name, description, tags, files_json, downloads, rating, created_at）
+    - `hub_skills` 表（id, author, name, description, skill_md, downloads, rating, platform_source, created_at）
+    - `hub_users` 表（id, github_id, name, avatar, created_at）
+    - `hub_reviews` 表（id, item_type, item_id, user_id, rating, comment, created_at）
+  - API 接口：
+    - `POST /hub/template/publish` → 发布模板（需 GitHub 认证）
+    - `GET /hub/template/search` → 搜索模板
+    - `GET /hub/template/:id` → 下载模板
+    - `POST /hub/skill/publish` → 发布 Skill
+    - `GET /hub/skill/search` → 搜索 Skill
+    - `POST /hub/review` → 评价
+    - `GET /hub/trending` → 热门排行
+  - GitHub OAuth 认证
+
+#### 21.2 Hub 桌面集成
+- [ ] 实现 `src/hub/hub-client.ts`：Hub API 客户端
+  - 搜索模板/Skill
+  - 下载并安装
+  - 发布本地模板/Skill 到 Hub
+  - 评价/评论
+- [ ] 更新模板市场 UI：
+  - 新增 "EvoClaw Hub" 标签页（与内置/社区并列）
+  - Hub 模板搜索和浏览
+  - 一键下载安装
+  - 发布本地模板到 Hub
+- [ ] 更新 Skill 管理 UI：
+  - 新增 Hub Skill 搜索
+  - Hub + ClawHub + skills.sh 三来源统一搜索
+  - 发布本地 Skill 到 Hub
+- [ ] 用户认证（GitHub OAuth）：
+  - 设置页面登录 Hub 账号
+  - 发布/评价需要登录
+
+#### 21.3 Agent 人格分享
+- [ ] 实现 Agent 人格分享流程：
+  - 选择 Agent → "分享到 Hub"
+  - 自动清理隐私信息（移除 USER.md, MEMORY.md 中的个人数据）
+  - 仅分享 SOUL.md + IDENTITY.md + AGENTS.md（人格定义部分）
+  - 添加描述、标签、截图
+  - 发布到 Hub
+
+#### 21.4 Sprint 21 验收
+- [ ] Hub 后端服务部署运行
+- [ ] 可通过桌面应用搜索和下载 Hub 上的模板/Skill
+- [ ] 可发布本地模板/Skill 到 Hub
+- [ ] 评价系统正常工作
+- [ ] Agent 人格分享正确清理隐私数据
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 22: 移动端伴侣应用（Week 43-44）
+
+### 目标
+开发 iOS/Android 伴侣应用，远程连接桌面端 EvoClaw 服务。
+
+### TODO-LIST
+
+#### 22.1 移动端架构设计
+- [ ] 技术选型：React Native / Expo（复用 React 技能和部分组件）
+- [ ] 创建 `apps/mobile/` 新项目
+- [ ] 架构方案：
+  - 移动端是"遥控器"，不运行 Agent — 通过局域网/Tailscale 连接桌面端 Sidecar
+  - 桌面端暴露安全 API（局域网绑定 + mTLS 或配对码认证）
+  - 移动端只做 UI 渲染和消息收发
+
+#### 22.2 桌面端远程 API
+- [ ] 实现 `src/remote/remote-server.ts`：
+  - 可选启用远程访问（默认关闭）
+  - 局域网 IP + 端口暴露
+  - 配对码认证（6 位数字，桌面端显示 → 移动端输入）
+  - 配对成功后颁发长期 Token（Keychain 存储）
+  - API 范围控制（移动端可调用的 API 子集）
+  - WebSocket 支持（SSE 在移动端兼容性差）
+- [ ] 安全保障：
+  - 仅局域网访问（不暴露到公网）
+  - 配对码有效期 5 分钟
+  - 连接数限制（最多 3 个移动端）
+
+#### 22.3 移动端核心功能
+- [ ] 实现移动端对话 UI：
+  - Agent 选择
+  - 消息列表（Markdown 渲染）
+  - 输入框 + 语音输入（iOS/Android 原生）
+  - 流式响应展示
+  - 通知推送
+- [ ] 实现移动端快捷功能：
+  - 常用 Agent 快捷入口
+  - 快速提问（Widget / 通知栏快捷方式）
+  - 记忆查看（只读）
+  - 进化数据查看（只读）
+- [ ] iOS + Android 构建配置
+
+#### 22.4 Sprint 22 验收
+- [ ] 移动端可通过配对码连接桌面端
+- [ ] 移动端可选择 Agent 并进行对话
+- [ ] 流式响应在移动端正常渲染
+- [ ] 断网重连正常工作
+- [ ] iOS + Android 构建通过
+
+---
+
+## Sprint 23: 企业版功能（Week 45-46）
+
+### 目标
+实现团队 Agent 共享、管理员权限控制、审计合规功能。
+
+### TODO-LIST
+
+#### 23.1 团队管理
+- [ ] 实现 `src/enterprise/team-manager.ts`：
+  - 团队创建/邀请/移除成员
+  - 团队 Agent 共享（指定 Agent 可被团队成员使用）
+  - 共享 Agent 的记忆隔离（每个成员有独立的 memory_units）
+  - 共享知识库（团队级别的知识库）
+- [ ] 创建 `migrations/014_enterprise.sql`：
+  - `teams` 表（id, name, owner_id, created_at）
+  - `team_members` 表（team_id, user_id, role, joined_at）
+  - `team_agent_shares` 表（team_id, agent_id, permissions_json）
+
+#### 23.2 管理员权限控制
+- [ ] 实现管理员功能：
+  - 管理员角色（owner / admin / member）
+  - 管理员可设置：
+    - 允许的 Provider 列表（如禁止使用某些 Provider）
+    - 默认沙箱模式（强制所有成员启用沙箱）
+    - Skill 安装白名单（仅允许安装审批过的 Skill）
+    - 数据导出权限
+  - 审计日志聚合（查看团队所有成员的操作日志）
+
+#### 23.3 审计合规
+- [ ] 实现合规报告生成：
+  - 数据访问报告（谁在什么时候访问了什么数据）
+  - 凭证使用报告（API Key 使用频率和范围）
+  - 异常行为报告（异常权限请求、非工作时间操作）
+  - 定期审计提醒（可配置周期）
+- [ ] 数据保留策略：
+  - 可配置的对话日志保留期（30/90/180/365 天）
+  - 过期数据自动清理
+  - 清理前导出备份
+
+#### 23.4 企业版 UI
+- [ ] 实现团队管理页面（`apps/desktop/src/app/team/`）：
+  - 团队成员列表 + 邀请
+  - 共享 Agent 管理
+  - 策略配置（Provider/沙箱/Skill 白名单）
+  - 审计日志查看
+  - 合规报告生成/导出
+
+#### 23.5 Sprint 23 验收
+- [ ] 团队可创建并邀请成员
+- [ ] 共享 Agent 每个成员记忆独立
+- [ ] 管理员策略正确执行（Provider 限制、沙箱强制、Skill 白名单）
+- [ ] 合规报告正确生成
+- [ ] 数据保留策略正确执行
+- [ ] `pnpm test` 全部通过
+
+---
+
+## Sprint 24: 更多 Channel + Plugin SDK + v2.0 发布（Week 47-48）
+
+### 目标
+接入钉钉 Channel、开放 Plugin SDK、v2.0 最终集成和发布。
+
+### TODO-LIST
+
+#### 24.1 钉钉 Channel
+- [ ] 实现 `src/channel/adapters/dingtalk.ts`：
+  - 钉钉开放平台 API 集成
+  - 企业内部应用 + 群机器人
+  - 私聊 + 群聊消息收发
+  - 卡片消息支持
+  - @机器人 触发
+- [ ] 钉钉工具注册：
+  - `dingtalk_send(peerId, content)` → 发消息
+- [ ] 更新 Channel 管理 UI：钉钉配置
+- [ ] 编写钉钉适配器测试
+
+#### 24.2 微信 Channel（预研）
+- [ ] 调研微信开放平台 API 可行性
+- [ ] 实现 `src/channel/adapters/wechat.ts`（如可行）：
+  - 微信公众号/企业号 API
+  - 或 WeChatFerry 等第三方方案评估
+- [ ] 如不可行，记录技术限制和替代方案
+
+#### 24.3 Plugin SDK
+- [ ] 创建 `packages/plugin-sdk/` 新包：
+  - 定义 Plugin 接口规范：
+    ```typescript
+    interface EvoClawPlugin {
+      name: string
+      version: string
+      // 可扩展的钩子
+      contextPlugins?: ContextPlugin[]
+      tools?: AgentTool[]
+      channels?: ChannelAdapter[]
+      commands?: UserCommand[]
+      // 生命周期
+      activate(api: PluginAPI): Promise<void>
+      deactivate(): Promise<void>
+    }
+    ```
+  - Plugin API 封装：
+    - 记忆读写 API
+    - Agent 管理 API
+    - UI 扩展 API（添加设置页面/仪表盘面板）
+    - 事件订阅 API
+  - Plugin 加载器：扫描 `~/.evoclaw/plugins/` 目录
+  - Plugin 隔离：每个 Plugin 在独立的 VM 或 Worker 中运行
+- [ ] 编写 Plugin SDK 文档：
+  - 快速开始指南
+  - API 参考文档
+  - 示例 Plugin
+- [ ] 编写 2 个示例 Plugin：
+  - `plugin-pomodoro`：番茄钟 Plugin（定时提醒 + 工作统计）
+  - `plugin-clipboard-history`：剪贴板历史 Plugin（监控剪贴板 + 快速粘贴）
+
+#### 24.4 多设备同步（基础版）
+- [ ] 实现端到端加密同步：
+  - 同步范围：Agent 工作区文件 + memory_units + knowledge_graph
+  - 同步方式：通过 WebDAV / Syncthing / 自建中继
+  - 端到端加密：在本地加密后上传，其他设备下载后解密
+  - 冲突解决：最后写入者胜出（Last Writer Wins）+ 冲突记录
+- [ ] 同步设置 UI：
+  - 同步服务配置
+  - 同步状态监控
+  - 冲突查看和手动解决
+
+#### 24.5 v2.0 全功能集成测试
+- [ ] 扩展集成测试覆盖所有 v2.0 功能：
+  - [ ] Growth Vectors + Crystallization
+  - [ ] EvoClaw Hub 发布/下载
+  - [ ] 移动端远程连接
+  - [ ] 团队管理 + 权限控制
+  - [ ] 钉钉 Channel
+  - [ ] Plugin 加载和运行
+  - [ ] 多设备同步
+
+#### 24.6 v2.0 发布
+- [ ] 三平台构建 + 签名 + 发布
+- [ ] 更新文档网站
+- [ ] Plugin SDK 发布到 npm
+- [ ] Hub 服务公开上线
+- [ ] 发布公告 + 社区宣传
+
+#### 24.7 Sprint 24 验收（v2.0 发布标准）
+- [ ] 钉钉 Channel 正常工作
+- [ ] Plugin SDK 文档完整，示例 Plugin 可运行
+- [ ] EvoClaw Hub 公开可访问
+- [ ] 移动端伴侣应用可用
+- [ ] 企业版核心功能可用
+- [ ] 成长向量 + 结晶化正常运行
+- [ ] 全平台 CI/CD 绿灯
+- [ ] 测试覆盖率 ≥ 80%
+- [ ] `pnpm test` 全部通过
+
+---
+
+## 完整里程碑总览
+
+```
+Phase 1: v0.1 MVP（Sprint 1-10, Week 1-20）
+  安全基座 + PI 集成 + 记忆系统 + RAG + Skill + Channel + macOS 发布
+
+Phase 2: v0.5 进化版（Sprint 11-14, Week 21-28）
+  知识图谱增强 + 进化仪表盘 + QQ Channel + 模板市场 + Docker 沙箱 + Skill 签名
+
+Phase 3: v1.0 完整版（Sprint 15-19, Week 29-38）
+  多 Agent 协作 + 协作工作流 + 跨平台 + 安全仪表盘 + 导入/导出 + 多知识库
+
+Phase 4: v2.0 生态版（Sprint 20-24, Week 39-48）
+  Growth Vectors + EvoClaw Hub + 移动端 + 企业版 + Plugin SDK + 钉钉 + 多设备同步
+```
+
+| 版本 | Sprint | 周数 | 发布时间 |
+|------|--------|------|---------|
+| v0.1 MVP | 1-10 | 20 周 | 2026 Q2 末 |
+| v0.5 | 11-14 | 8 周 | 2026 Q3 末 |
+| v1.0 | 15-19 | 10 周 | 2026 Q4 末 |
+| v2.0 | 20-24 | 10 周 | 2027 Q1-Q2 |
+
+> **文档版本**: v4.0 — 基于 PRD v4.0 + Architecture v4.0 的完整迭代计划
+> **执行方式**: Claude 自主开发 + 测试，每个 Sprint 包含完整 TODO-LIST
+> **总计**: 24 个 Sprint（48 周），覆盖 v0.1 → v0.5 → v1.0 → v2.0 全版本

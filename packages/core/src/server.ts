@@ -7,6 +7,9 @@ import crypto from 'node:crypto';
 import { PORT_RANGE, TOKEN_BYTES } from '@evoclaw/shared';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
+import { AgentManager } from './agent/agent-manager.js';
+import { createAgentRoutes } from './routes/agents.js';
+import { createChatRoutes } from './routes/chat.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -18,8 +21,20 @@ function generateToken(): string {
   return crypto.randomBytes(TOKEN_BYTES).toString('hex');
 }
 
+/** createApp 配置选项 */
+export interface CreateAppOptions {
+  token: string;
+  store?: SqliteStore;
+  agentManager?: AgentManager;
+}
+
 /** 创建 Hono 应用实例 */
-export function createApp(token: string) {
+export function createApp(tokenOrOptions: string | CreateAppOptions) {
+  const options = typeof tokenOrOptions === 'string'
+    ? { token: tokenOrOptions }
+    : tokenOrOptions;
+  const { token, store, agentManager } = options;
+
   const app = new Hono();
 
   // CORS — 仅允许 localhost
@@ -39,6 +54,14 @@ export function createApp(token: string) {
     if (c.req.path === '/health') return next();
     return bearerAuth({ token })(c, next);
   });
+
+  // 挂载业务路由
+  if (agentManager) {
+    app.route('/agents', createAgentRoutes(agentManager));
+  }
+  if (store && agentManager) {
+    app.route('/chat', createChatRoutes(store, agentManager));
+  }
 
   // 全局错误处理
   app.onError((err, c) => {
@@ -65,7 +88,8 @@ async function main() {
   const migrationRunner = new MigrationRunner(db);
   await migrationRunner.run();
 
-  const app = createApp(token);
+  const agentManager = new AgentManager(db);
+  const app = createApp({ token, store: db, agentManager });
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     // 输出连接信息供 Tauri 读取

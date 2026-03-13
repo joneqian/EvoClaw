@@ -1,48 +1,71 @@
+import { useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
 import SettingsPage from './pages/SettingsPage';
+import { useAppStore } from './stores/app-store';
+import { healthCheck } from './lib/api';
+
+/** 导航链接样式 */
+function navClassName({ isActive }: { isActive: boolean }): string {
+  return `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+    isActive ? 'bg-[#00d4aa]/10 text-[#00a88a]' : 'text-gray-600 hover:bg-gray-100'
+  }`;
+}
 
 export default function App() {
+  const { sidecarConnected, setSidecarConnected } = useAppStore();
+
+  /** 定期检查 Sidecar 连接状态 */
+  const checkConnection = useCallback(async () => {
+    const ok = await healthCheck();
+    setSidecarConnected(ok);
+  }, [setSidecarConnected]);
+
+  useEffect(() => {
+    // 立即检查一次
+    checkConnection();
+    // 每 10 秒检查一次
+    const timer = setInterval(checkConnection, 10_000);
+    return () => clearInterval(timer);
+  }, [checkConnection]);
+
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900">
       {/* Sidebar */}
-      <nav className="w-56 bg-white border-r border-gray-200 flex flex-col p-4 gap-1">
-        <h1 className="text-xl font-bold mb-6 px-3">🐾 EvoClaw</h1>
-        <NavLink
-          to="/chat"
-          className={({ isActive }) =>
-            `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-            }`
-          }
-        >
-          对话
-        </NavLink>
-        <NavLink
-          to="/agents"
-          className={({ isActive }) =>
-            `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-            }`
-          }
-        >
-          Agent 管理
-        </NavLink>
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-            }`
-          }
-        >
-          设置
-        </NavLink>
+      <nav className="w-56 bg-white border-r border-gray-200 flex flex-col">
+        <div className="p-4 pb-2">
+          <h1 className="text-xl font-bold px-3 mb-6">🐾 EvoClaw</h1>
+        </div>
+        <div className="flex-1 flex flex-col gap-1 px-4">
+          <NavLink to="/chat" className={navClassName}>
+            💬 对话
+          </NavLink>
+          <NavLink to="/agents" className={navClassName}>
+            🤖 Agent 管理
+          </NavLink>
+          <NavLink to="/settings" className={navClassName}>
+            ⚙️ 设置
+          </NavLink>
+        </div>
+
+        {/* 连接状态 */}
+        <div className="p-4 border-t border-gray-100">
+          <div className="flex items-center gap-2 px-3">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                sidecarConnected ? 'bg-green-400' : 'bg-red-400'
+              }`}
+            />
+            <span className="text-xs text-gray-400">
+              {sidecarConnected ? 'Sidecar 已连接' : 'Sidecar 未连接'}
+            </span>
+          </div>
+        </div>
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<ChatPage />} />
           <Route path="/chat" element={<ChatPage />} />

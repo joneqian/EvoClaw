@@ -1,0 +1,44 @@
+import type { AgentConfig } from '@evoclaw/shared';
+
+/** Agent 运行配置 */
+export interface AgentRunConfig {
+  agent: AgentConfig;
+  systemPrompt: string;
+  workspaceFiles: Record<string, string>;
+  modelId: string;
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+}
+
+/** Agent 事件类型 */
+export type RuntimeEventType =
+  | 'agent_start'
+  | 'text_delta'
+  | 'text_done'
+  | 'thinking_delta'
+  | 'tool_start'
+  | 'tool_update'
+  | 'tool_end'
+  | 'agent_done'
+  | 'error';
+
+/** Agent 运行时事件 */
+export interface RuntimeEvent {
+  type: RuntimeEventType;
+  timestamp: number;
+  /** 文本增量 */
+  delta?: string;
+  /** 完整文本 */
+  text?: string;
+  /** 工具名称 */
+  toolName?: string;
+  /** 工具参数 */
+  toolArgs?: Record<string, unknown>;
+  /** 工具结果 */
+  toolResult?: string;
+  /** 是否工具执行出错 */
+  isError?: boolean;
+  /** 错误信息 */
+  error?: string;
+}

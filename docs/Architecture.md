@@ -120,7 +120,7 @@ PI 事件流 -> React UI 渲染路径:
 | **模型调用** | PI 框架 (pi-ai) | 多 Provider LLM 抽象，`registerProvider()` 支持国内 Provider，PI 生态验证 | Vercel AI SDK | PI 已内置 Agent 运行时集成 |
 | **Agent 框架** | PI 框架 (pi-agent-core + pi-coding-agent) | ReAct 循环、文件工具、JSONL 持久化、Skills 加载内置；302k+ Star 项目验证 | 自研 + 中间件链 | 2-3 周开发量可直接复用 |
 | **沙箱** | Docker (可选，引导安装) | 工具执行隔离，3 模式（off/selective/all） | 无沙箱 | 安全敏感用户需要隔离执行环境 |
-| **Skill 生态** | ClawHub + skills.sh (AgentSkills 规范) | 13,700+ Skills 直接兼容，PI AgentSkills 规范 | 自建生态 | 自建需要数年积累 |
+| **Skill 生态** | ClawHub API + GitHub URL 直装 (AgentSkills 规范) | ClawHub 提供公开 HTTP API（向量搜索 + ZIP 下载）；skills.sh 无公开 API，其 Skill 托管在 GitHub 可直接 URL 安装 | 自建生态 | 自建需要数年积累 |
 | **MCP 集成** | @modelcontextprotocol/sdk | 官方 TypeScript SDK | 自研适配层 | 降低维护成本 |
 | **向量存储** | SQLite-vec | 嵌入式、零依赖、与 SQLite 共享连接 | LanceDB / ChromaDB | 额外依赖不必要 |
 | **全文检索** | FTS5 | SQLite 内置、零额外依赖、与向量检索共用连接 | Tantivy / MeiliSearch | 保持单引擎架构 |
@@ -227,7 +227,7 @@ const plugins: ContextPlugin[] = [
   new ContextAssemblerPlugin(),    // priority: 30, 组装 SOUL.md + USER.md + 历史消息
   new MemoryRecallPlugin(),        // priority: 40, 三阶段记忆检索 + 注入
   new RAGPlugin(),                 // priority: 50, 知识库语义检索 + 文档注入
-  new ToolRegistryPlugin(),        // priority: 60, 注册可用 Tool/Skill/MCP
+  new ToolRegistryPlugin(),        // priority: 60, 注入 Skill 目录(XML) + MCP 工具注册
 
   // --- compact 阶段（token 超限时触发，逆序执行） ---
   // MemoryRecallPlugin.compact:  降级为仅注入 L0 索引
@@ -383,8 +383,15 @@ async function handleChatMessage(agentId: string, userMessage: string) {
     │
 阶段 5: MCP + 用户 Skill
     │  MCP Server 暴露的工具
-    │  ClawHub / skills.sh 安装的 Skills
+    │  ClawHub / GitHub 安装的 Skills
     │  工作区级 Skills（workspace/skills/）
+    │
+    ▼
+Skill 注入方式（遵循 PI 渐进式注入模式）
+    · Tier 1: 目录注入 — Skill name + description 以 XML 目录形式追加到 system prompt（~50-100 tokens/skill）
+    · Tier 2: 按需加载 — 模型判断相关时，用 Read 工具读取完整 SKILL.md 指令
+    · Skill 不注册新工具 — 通过指令引导模型使用已有工具（Read/Bash/Write）
+    · allowed-tools 仅做权限预批准，不定义新工具
     │
     ▼
 策略过滤
@@ -429,8 +436,8 @@ packages/core/src/
 │   └── permission-interceptor.ts  # 工具权限拦截器
 │
 ├── skill/
-│   ├── skill-discoverer.ts        # Skill 发现（ClawHub + skills.sh API）
-│   ├── skill-installer.ts         # Skill 下载 + 安装
+│   ├── skill-discoverer.ts        # Skill 发现（ClawHub API 搜索 + 本地扫描）
+│   ├── skill-installer.ts         # Skill 下载 + 安装（ClawHub ZIP + GitHub URL）
 │   ├── skill-analyzer.ts          # Skill 静态分析（安全扫描）
 │   └── skill-gate.ts              # 门控检查（bins/env/os）
 │
@@ -479,7 +486,7 @@ packages/core/src/
 │       ├── context-assembler.ts   # SOUL.md + USER.md + 历史消息组装 + LCM 压缩
 │       ├── memory-recall.ts       # 三阶段记忆检索
 │       ├── rag.ts                 # 知识库检索
-│       ├── tool-registry.ts       # Tool/Skill/MCP 注册
+│       ├── tool-registry.ts       # Skill 目录注入(XML) + MCP 工具注册
 │       ├── memory-extract.ts      # 记忆提取 pipeline
 │       ├── evolution.ts           # 进化评分 + 能力图谱
 │       ├── gap-detection.ts       # 能力缺口检测
@@ -600,12 +607,12 @@ Skill 安装请求
     │
     ▼
 ┌─────────────────────┐
-│ 1. 搜索               │ <- ClawHub API / skills.sh API
+│ 1. 搜索               │ <- ClawHub API (GET /api/v1/search) / GitHub URL
 │    展示匹配结果        │
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
-│ 2. 下载               │ <- 下载 Skill 包到临时目录
+│ 2. 下载               │ <- ClawHub ZIP (GET /api/v1/download) / GitHub clone
 └─────────┬───────────┘
           ▼
 ┌─────────────────────┐
@@ -953,25 +960,54 @@ class EvolutionPlugin implements ContextPlugin {
 
 ### 3.6 Skill/MCP 管理系统
 
-EvoClaw 的 Skill 发现和安装直接对接现有生态平台：
+EvoClaw 的 Skill 发现和安装对接现有生态平台：
 
-| 平台 | Skills 数量 | 接入方式 |
-|------|------------|---------|
-| **ClawHub** (clawhub.com) | 13,700+ | API 搜索 + 下载 |
-| **skills.sh** | 持续增长 | API 搜索 + 下载 |
-| **本地工作区** | 用户自定义 | 直接加载 |
+| 平台 | Skills 数量 | 接入方式 | 备注 |
+|------|------------|---------|------|
+| **ClawHub** (clawhub.ai) | 13,700+ | HTTP API（`/api/v1/search` 向量搜索 + `/api/v1/download` ZIP 下载） | 主搜索源，Convex 后端，无需认证即可搜索和下载 |
+| **GitHub URL 直装** | 不限 | `git clone` 或 ZIP 下载 | 兼容 skills.sh 生态（其 Skill 均托管在 GitHub），支持 `owner/repo` 简写格式 |
+| **本地工作区** | 用户自定义 | 直接加载 | `~/.evoclaw/skills/` 全局 + 工作区级 |
 
-Skill 格式遵循 PI / OpenClaw 的 AgentSkills 规范，每个 Skill 是一个目录：
+> **注意**: skills.sh 是 Vercel 维护的 Agent Skills Directory（88,000+ 安装量），但**不提供公开 REST API**，仅有 CLI（`npx skills add/find`）。其 Skill 均托管在 GitHub 仓库，因此通过 GitHub URL 直装方式兼容。
+
+Skill 格式遵循 AgentSkills 规范（由 Anthropic 发起，30+ Agent 产品支持），每个 Skill 是一个目录：
 
 ```
 skill-daily-report/
-├── SKILL.md            # Skill 声明（元数据 + 使用说明）
-├── prompt.md           # Skill 的 prompt 模板
-├── setup.sh            # 可选：安装依赖脚本
-└── examples/           # 可选：使用示例
+├── SKILL.md            # 唯一必需文件 — YAML frontmatter (元数据) + Markdown body (指令)
+├── scripts/            # 可选：辅助脚本（通过 Bash 工具执行）
+├── references/         # 可选：参考文档
+└── assets/             # 可选：资源文件
 ```
 
-PI 内置的门控系统在安装/加载前自动检查 `requires.bins`、`requires.env`、`requires.os` 等条件，不满足门控条件的 Skill 静默跳过。
+> **注意**: PI 没有独立的 `prompt.md` 文件。SKILL.md 的 Markdown body 本身就是指令内容。
+
+**SKILL.md frontmatter schema**:
+```yaml
+---
+name: pdf-processing          # 必需，1-64 字符，小写 + 连字符
+description: >                # 必需，1-1024 字符（无 description 则 Skill 不加载）
+  Extract PDF text, fill forms
+compatibility: >              # 可选，纯信息性（不做程序化检查）
+  Requires git and docker
+allowed-tools: Bash(git:*) Read  # 可选，权限预批准（实验性）
+disable-model-invocation: true   # 可选，隐藏自动激活目录（仅 /skill:name 可触发）
+metadata:
+  author: example-org
+  version: "1.0"
+---
+```
+
+**Skill 注入机制**（PI 渐进式两级注入）:
+1. **Tier 1 — 目录注入（始终）**: `formatSkillsForPrompt()` 将所有 Skill 的 name + description + location 以 `<available_skills>` XML 块追加到 system prompt（每 Skill ~50-100 tokens）
+2. **Tier 2 — 按需加载**: 模型判断某 Skill 与当前任务相关时，用标准 Read 工具读取完整 SKILL.md — 没有专门的 activate_skill 工具
+
+**Skill 扫描路径**（PI 默认，EvoClaw 沿用）:
+- 用户级: `~/.evoclaw/skills/`（低优先级）
+- Agent 工作区级: `~/.evoclaw/agents/{id}/workspace/skills/`（高优先级，覆盖同名）
+- 根目录 `.md` 文件直接作为 Skill，子目录中只识别 `SKILL.md`
+
+**门控**: PI 框架本身 **不实现** `requires.bins/env/os` 的程序化检查（AgentSkills 规范也未定义）。EvoClaw 作为自定义扩展实现门控检查（Sprint 7.1 skill-gate.ts），这是超出 PI 规范的增强功能。
 
 ### 3.7 Channel 系统
 

@@ -40,7 +40,9 @@ docs/                  — PRD, Architecture, AgentSystemDesign, MemorySystemDes
 - **Binding Router**: 最具体优先匹配，Channel → Agent 绑定
 - **Heartbeat + Cron**: Heartbeat 共享主会话上下文，Cron 隔离会话运行
 - **Lane Queue**: main(4) / subagent(8) / cron(可配置) 并发车道，每 session key 串行
-- **Skill 生态**: ClawHub (13,700+ Skills) + skills.sh，遵循 AgentSkills 规范 (SKILL.md)
+- **Skill 生态**: ClawHub API (clawhub.ai, `/api/v1/search` 向量搜索 + `/api/v1/download` ZIP 下载) + GitHub URL 直装 (兼容 skills.sh 生态)，遵循 AgentSkills 规范 (SKILL.md)。注意：skills.sh 无公开 REST API，仅有 CLI
+- **Skill 注入**: PI 渐进式两级注入 — Tier 1: `<available_skills>` XML 目录注入 system prompt (~50-100 tokens/skill)；Tier 2: 模型用 Read 工具按需加载完整 SKILL.md。没有独立 prompt.md 文件，SKILL.md body 就是指令。Skill 不注册新工具，通过指令引导模型使用已有工具
+- **Skill 门控**: PI/AgentSkills 规范不实现 requires.bins/env/os 门控，EvoClaw 作为自定义扩展实现
 - **Permission Model**: 7 类别 × 4 作用域 (once/session/always/deny)，带审计日志
 
 ## 开发命令

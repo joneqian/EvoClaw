@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
+import MemoryPage from './pages/MemoryPage';
 import SettingsPage from './pages/SettingsPage';
 import { useAppStore } from './stores/app-store';
 import { healthCheck } from './lib/api';
@@ -44,6 +45,9 @@ export default function App() {
           <NavLink to="/agents" className={navClassName}>
             🤖 Agent 管理
           </NavLink>
+          <NavLink to="/memory" className={navClassName}>
+            🧠 记忆管理
+          </NavLink>
           <NavLink to="/settings" className={navClassName}>
             ⚙️ 设置
           </NavLink>
@@ -70,6 +74,7 @@ export default function App() {
           <Route path="/" element={<ChatPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/memory" element={<MemoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>

@@ -10,6 +10,8 @@ import { MigrationRunner } from './infrastructure/db/migration-runner.js';
 import { AgentManager } from './agent/agent-manager.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createChatRoutes } from './routes/chat.js';
+import { createMemoryRoutes } from './routes/memory.js';
+import { createFeedbackRoutes } from './routes/feedback.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -61,6 +63,11 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   }
   if (store && agentManager) {
     app.route('/chat', createChatRoutes(store, agentManager));
+    // 反馈路由挂载到 /chat，与聊天路由共用前缀
+    app.route('/chat', createFeedbackRoutes(store));
+  }
+  if (store) {
+    app.route('/memory', createMemoryRoutes(store));
   }
 
   // 全局错误处理

@@ -61,3 +61,16 @@ export async function post<T>(path: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+
+/** PUT 请求 */
+export async function put<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PUT',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+/** DELETE 请求 */
+export async function del<T>(path: string): Promise<T> {
+  return request<T>(path, { method: 'DELETE' });
+}

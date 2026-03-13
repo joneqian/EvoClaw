@@ -6,6 +6,7 @@
 
 import type { MemoryCategory, MemoryUnit, MemoryVisibility, MergeType } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import type { VectorStore } from '../infrastructure/db/vector-store.js';
 
 /** 将数据库行 (snake_case) 映射为 MemoryUnit (camelCase) */
 export function rowToUnit(row: Record<string, unknown>): MemoryUnit {
@@ -66,7 +67,10 @@ interface ListFilter {
  * 记忆存储 — 封装 memory_units 表的所有 CRUD 操作
  */
 export class MemoryStore {
-  constructor(private db: SqliteStore) {}
+  constructor(
+    private db: SqliteStore,
+    private vectorStore?: VectorStore,
+  ) {}
 
   /** 插入一条新的记忆单元 */
   insert(unit: MemoryUnit): void {
@@ -85,6 +89,9 @@ export class MemoryStore {
       row.visibility, row.source_session_key,
       row.created_at, row.updated_at, row.archived_at,
     );
+
+    // 异步索引 embedding（不阻塞写入）
+    this.queueEmbeddingIndex(unit.id, `${unit.l0Index} ${unit.l1Overview}`);
   }
 
   /** 部分更新记忆单元的指定字段 */
@@ -124,6 +131,14 @@ export class MemoryStore {
       `UPDATE memory_units SET ${setClauses.join(', ')} WHERE id = ?`,
       ...values,
     );
+
+    // l0/l1 变化时重新索引 embedding
+    if (partial.l0Index !== undefined || partial.l1Overview !== undefined) {
+      const unit = this.getById(id);
+      if (unit) {
+        this.queueEmbeddingIndex(id, `${unit.l0Index} ${unit.l1Overview}`);
+      }
+    }
   }
 
   /** 根据 ID 查询单条记忆 */
@@ -261,5 +276,14 @@ export class MemoryStore {
   /** 永久删除记忆 */
   delete(id: string): void {
     this.db.run('DELETE FROM memory_units WHERE id = ?', id);
+    this.vectorStore?.removeEmbedding(id);
+  }
+
+  /** 异步队列索引 embedding */
+  private queueEmbeddingIndex(id: string, text: string): void {
+    if (!this.vectorStore) return;
+    this.vectorStore.indexText(id, text, 'memory').catch(() => {
+      // embedding 失败不影响主流程
+    });
   }
 }

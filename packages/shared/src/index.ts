@@ -4,4 +4,5 @@ export * from './types/message.js';
 export * from './types/permission.js';
 export * from './types/channel.js';
 export * from './types/provider.js';
+export * from './types/knowledge.js';
 export * from './constants.js';

@@ -90,7 +90,7 @@ describe('VectorStore', () => {
 
   it('indexText 应调用 embeddingFn 并索引生成的向量', async () => {
     const mockEmbeddingFn = vi.fn().mockResolvedValue(vec(0.5, 0.5, 0.5, 0.5));
-    const store = new VectorStore(mockEmbeddingFn);
+    const store = new VectorStore(undefined, mockEmbeddingFn);
 
     await store.indexText('mem-text', '这是一段测试文本');
 

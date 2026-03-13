@@ -58,8 +58,13 @@ export class HybridSearcher {
       }
     }
 
-    // 1b: 向量搜索（权重 0.5）— 需要 embeddingFn
-    // 暂时跳过，后续接入 embedding API 后启用
+    // 1b: 向量搜索（权重 0.5）— 有 embeddingFn 时启用
+    if (this.vectorStore.hasEmbeddingFn) {
+      const vectorResults = await this.vectorStore.searchByText(query, candidateLimit, 'memory');
+      for (const r of vectorResults) {
+        candidateScores.set(r.memoryId, (candidateScores.get(r.memoryId) ?? 0) + r.score * 0.5);
+      }
+    }
 
     // 1c: 知识图谱关系扩展（权重 0.2）
     if (analysis.keywords.length > 0) {

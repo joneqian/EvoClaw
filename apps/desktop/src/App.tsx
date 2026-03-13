@@ -3,6 +3,8 @@ import { Routes, Route, NavLink } from 'react-router-dom';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
 import MemoryPage from './pages/MemoryPage';
+import KnowledgePage from './pages/KnowledgePage';
+import SecurityPage from './pages/SecurityPage';
 import SettingsPage from './pages/SettingsPage';
 import { useAppStore } from './stores/app-store';
 import { healthCheck } from './lib/api';
@@ -48,6 +50,12 @@ export default function App() {
           <NavLink to="/memory" className={navClassName}>
             🧠 记忆管理
           </NavLink>
+          <NavLink to="/knowledge" className={navClassName}>
+            📚 知识库
+          </NavLink>
+          <NavLink to="/security" className={navClassName}>
+            🔒 安全设置
+          </NavLink>
           <NavLink to="/settings" className={navClassName}>
             ⚙️ 设置
           </NavLink>
@@ -75,6 +83,8 @@ export default function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/memory" element={<MemoryPage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>

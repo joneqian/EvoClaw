@@ -12,6 +12,10 @@ import { createAgentRoutes } from './routes/agents.js';
 import { createChatRoutes } from './routes/chat.js';
 import { createMemoryRoutes } from './routes/memory.js';
 import { createFeedbackRoutes } from './routes/feedback.js';
+import { createSecurityRoutes } from './routes/security.js';
+import { createKnowledgeRoutes } from './routes/knowledge.js';
+import { VectorStore } from './infrastructure/db/vector-store.js';
+import { createEmbeddingProvider } from './rag/embedding-provider.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -28,6 +32,7 @@ export interface CreateAppOptions {
   token: string;
   store?: SqliteStore;
   agentManager?: AgentManager;
+  vectorStore?: VectorStore;
 }
 
 /** 创建 Hono 应用实例 */
@@ -35,7 +40,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   const options = typeof tokenOrOptions === 'string'
     ? { token: tokenOrOptions }
     : tokenOrOptions;
-  const { token, store, agentManager } = options;
+  const { token, store, agentManager, vectorStore } = options;
 
   const app = new Hono();
 
@@ -67,7 +72,11 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/chat', createFeedbackRoutes(store));
   }
   if (store) {
-    app.route('/memory', createMemoryRoutes(store));
+    app.route('/memory', createMemoryRoutes(store, vectorStore));
+    app.route('/security', createSecurityRoutes(store));
+    if (vectorStore) {
+      app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
+    }
   }
 
   // 全局错误处理
@@ -95,8 +104,24 @@ async function main() {
   const migrationRunner = new MigrationRunner(db);
   await migrationRunner.run();
 
+  // 初始化 Embedding Provider（如有 API key）
+  let vectorStore: VectorStore | undefined;
+  const embeddingApiKey = process.env.EVOCLAW_EMBEDDING_API_KEY;
+  const embeddingBaseUrl = process.env.EVOCLAW_EMBEDDING_BASE_URL;
+  if (embeddingApiKey && embeddingBaseUrl) {
+    const provider = createEmbeddingProvider(
+      embeddingBaseUrl,
+      embeddingApiKey,
+      process.env.EVOCLAW_EMBEDDING_PROVIDER,
+    );
+    const embeddingFn = (text: string) => provider.generate(text);
+    vectorStore = new VectorStore(db, embeddingFn);
+  } else {
+    vectorStore = new VectorStore(db);
+  }
+
   const agentManager = new AgentManager(db);
-  const app = createApp({ token, store: db, agentManager });
+  const app = createApp({ token, store: db, agentManager, vectorStore });
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     // 输出连接信息供 Tauri 读取

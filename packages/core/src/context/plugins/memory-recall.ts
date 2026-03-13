@@ -1,6 +1,7 @@
 import type { ContextPlugin, TurnContext, CompactContext } from '../plugin.interface.js';
-import type { HybridSearcher } from '../../memory/hybrid-searcher.js';
+import type { HybridSearcher, SearchOptions } from '../../memory/hybrid-searcher.js';
 import { wrapMemoryContext } from '../../memory/text-sanitizer.js';
+import { isGroupChat } from '../../routing/session-key.js';
 import type { ChatMessage } from '@evoclaw/shared';
 
 /** 创建记忆召回插件 */
@@ -14,9 +15,16 @@ export function createMemoryRecallPlugin(searcher: HybridSearcher): ContextPlugi
       const lastUserMsg = [...ctx.messages].reverse().find(m => m.role === 'user');
       if (!lastUserMsg) return;
 
-      const results = await searcher.hybridSearch(lastUserMsg.content, ctx.agentId, {
-        limit: 10,
-      });
+      // 根据聊天类型决定记忆可见性过滤
+      const searchOpts: SearchOptions = { limit: 10 };
+
+      if (isGroupChat(ctx.sessionKey)) {
+        // 群聊模式：仅加载 shared / channel_only 记忆，不加载 private
+        searchOpts.visibility = 'shared';
+      }
+      // 私聊模式（direct）：不设置 visibility 过滤，加载所有记忆（含 private）
+
+      const results = await searcher.hybridSearch(lastUserMsg.content, ctx.agentId, searchOpts);
 
       if (results.length === 0) return;
 

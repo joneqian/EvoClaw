@@ -1,5 +1,6 @@
 import type { ContextPlugin, TurnContext, CompactContext, BootstrapContext } from '../plugin.interface.js';
 import type { ChatMessage } from '@evoclaw/shared';
+import { isGroupChat } from '../../routing/session-key.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -59,7 +60,13 @@ export const contextAssemblerPlugin: ContextPlugin = {
 
     // 组装 system prompt
     const parts: string[] = [];
-    const priorityOrder = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'USER.md', 'MEMORY.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+    const fullOrder = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'USER.md', 'MEMORY.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+
+    // 群聊模式：跳过 USER.md 和 MEMORY.md（隐私隔离）
+    const groupExcluded = new Set(['USER.md', 'MEMORY.md']);
+    const priorityOrder = isGroupChat(ctx.sessionKey)
+      ? fullOrder.filter(f => !groupExcluded.has(f))
+      : fullOrder;
 
     let totalChars = 0;
     for (const file of priorityOrder) {

@@ -1,24 +1,9 @@
 import type { ContextPlugin, TurnContext } from '../plugin.interface.js';
-import type { SessionKey } from '@evoclaw/shared';
+import { parseSessionKey } from '../../routing/session-key.js';
 
-/** 解析后的 Session 信息 */
-export interface SessionInfo {
-  agentId: string;
-  channel: string;
-  chatType: string;
-  peerId: string;
-}
-
-/** 解析 Session Key */
-export function parseSessionKey(key: SessionKey): SessionInfo {
-  const parts = key.split(':');
-  return {
-    agentId: parts[1] ?? '',
-    channel: parts[2] ?? 'default',
-    chatType: parts[3] ?? 'direct',
-    peerId: parts[4] ?? '',
-  };
-}
+// 重新导出以保持向后兼容
+export { parseSessionKey };
+export type { ParsedSession as SessionInfo } from '../../routing/session-key.js';
 
 /** Session 路由插件 — 解析 Session Key 并设置可见性范围 */
 export const sessionRouterPlugin: ContextPlugin = {

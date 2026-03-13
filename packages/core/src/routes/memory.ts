@@ -7,13 +7,13 @@ import { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 
 /** 创建记忆管理路由 */
-export function createMemoryRoutes(db: SqliteStore): Hono {
+export function createMemoryRoutes(db: SqliteStore, vectorStore?: VectorStore): Hono {
   const app = new Hono();
-  const memoryStore = new MemoryStore(db);
   const ftsStore = new FtsStore(db);
-  const vectorStore = new VectorStore();
+  const vs = vectorStore ?? new VectorStore();
   const kgStore = new KnowledgeGraphStore(db);
-  const searcher = new HybridSearcher(ftsStore, vectorStore, kgStore, memoryStore);
+  const memoryStore = new MemoryStore(db, vs);
+  const searcher = new HybridSearcher(ftsStore, vs, kgStore, memoryStore);
 
   /** POST /:agentId/search — 混合搜索 */
   app.post('/:agentId/search', async (c) => {

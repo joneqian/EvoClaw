@@ -138,10 +138,11 @@ describe('tool-injector', () => {
     expect(tools).toEqual([]);
   });
 
-  it('permissionInterceptor 应始终返回 allow（Sprint 2 桩实现）', () => {
-    expect(permissionInterceptor('read', {})).toBe('allow');
-    expect(permissionInterceptor('write', { path: '/tmp/test' })).toBe('allow');
-    expect(permissionInterceptor('bash', { command: 'rm -rf /' })).toBe('allow');
+  it('permissionInterceptor 无拦截器配置时默认允许', () => {
+    const r1 = permissionInterceptor('read', {});
+    expect(r1).toEqual({ allowed: true });
+    const r2 = permissionInterceptor('write', { path: '/tmp/test' });
+    expect(r2).toEqual({ allowed: true });
   });
 });
 

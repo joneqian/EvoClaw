@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Main body gradient: deep blue to teal/cyan -->
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="45%" stop-color="#1a6b6a"/>
+      <stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+    <!-- Belly lighter tint -->
+    <linearGradient id="bellyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a8d8a"/>
+      <stop offset="100%" stop-color="#5af0d0"/>
+    </linearGradient>
+    <!-- Head crest / casque -->
+    <linearGradient id="crestGrad" x1="0%" y1="100%" x2="80%" y2="0%">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#1a6070"/>
+    </linearGradient>
+    <!-- Tail gradient -->
+    <linearGradient id="tailGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="50%" stop-color="#1a6b6a"/>
+      <stop offset="100%" stop-color="#00d4aa"/>
+    </linearGradient>
+    <!-- Chameleon eye: warm yellow-orange radial -->
+    <radialGradient id="eyeGrad" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#fff5cc"/>
+      <stop offset="55%" stop-color="#ffcc33"/>
+      <stop offset="100%" stop-color="#dd8800"/>
+    </radialGradient>
+    <!-- Leg fill -->
+    <linearGradient id="legGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#186060"/>
+    </linearGradient>
+    <!-- Subtle tech-dot pattern on body -->
+    <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(20)">
+      <circle cx="6" cy="6" r="1.5" fill="#ffffff" opacity="0.07"/>
+      <circle cx="18" cy="18" r="1" fill="#ffffff" opacity="0.05"/>
+    </pattern>
+  </defs>
+
+  <!-- ===================== TAIL ===================== -->
+  <!-- Spiral tail behind the body, curling inward ~2.5 turns -->
+  <path d="
+    M 148,305
+    C 128,328  82,365  62,342
+    C 38,314   68,278  98,272
+    C 128,266  148,292 136,310
+    C 124,328  102,322 102,308
+    C 102,296  114,293 118,302
+  " fill="none" stroke="url(#tailGrad)" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- ================ BACK LEG ================= -->
+  <path d="
+    M 205,335
+    C 200,355 192,378 188,398
+    C 186,408 192,414 202,412
+    L 222,408
+    C 228,406 229,400 225,394
+    C 218,378 215,358 218,340
+    Z
+  " fill="url(#legGrad)"/>
+  <!-- Back foot claws -->
+  <line x1="190" y1="413" x2="182" y2="424" stroke="#1e3a5f" stroke-width="5" stroke-linecap="round"/>
+  <line x1="200" y1="414" x2="195" y2="426" stroke="#1e3a5f" stroke-width="5" stroke-linecap="round"/>
+  <line x1="210" y1="412" x2="208" y2="425" stroke="#1e3a5f" stroke-width="5" stroke-linecap="round"/>
+  <!-- Claw tips (teal highlight) -->
+  <line x1="182" y1="424" x2="179" y2="430" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="195" y1="426" x2="193" y2="432" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="208" y1="425" x2="207" y2="431" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- ================== BODY =================== -->
+  <!-- Plump, rounded bean shape -->
+  <path id="bodyShape" d="
+    M 310,195
+    C 365,192 418,225 432,278
+    C 446,332 415,382 365,398
+    C 312,414 232,405 192,372
+    C 152,340 132,298 142,255
+    C 152,215 202,192 252,188
+    C 272,186 292,188 310,195
+    Z
+  " fill="url(#bodyGrad)"/>
+
+  <!-- Tech-dot pattern overlay -->
+  <use href="#bodyShape" fill="url(#dots)"/>
+
+  <!-- Belly highlight area -->
+  <path d="
+    M 285,245
+    C 342,248 382,275 388,315
+    C 394,355 368,380 335,385
+    C 295,392 245,382 220,358
+    C 198,338 198,312 212,288
+    C 228,265 265,250 285,245
+    Z
+  " fill="url(#bellyGrad)" opacity="0.25"/>
+
+  <!-- ================== HEAD =================== -->
+  <!-- Round head with snout pointing right -->
+  <path id="headShape" d="
+    M 355,220
+    C 382,198 422,182 452,198
+    C 478,212 484,244 474,266
+    C 464,286 438,300 412,300
+    C 388,300 364,285 354,265
+    C 344,245 345,230 355,220
+    Z
+  " fill="url(#bodyGrad)"/>
+
+  <!-- Tech dots on head -->
+  <use href="#headShape" fill="url(#dots)"/>
+
+  <!-- Casque / head crest -->
+  <path d="
+    M 375,222
+    C 378,198 392,172 414,162
+    C 430,155 440,168 435,184
+    C 430,200 418,210 404,216
+    C 392,222 382,224 375,222
+    Z
+  " fill="url(#crestGrad)"/>
+
+  <!-- Mouth line / snout -->
+  <path d="M 474,260 C 480,256 484,250 482,244" fill="none" stroke="#12304a" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Friendly smile -->
+  <path d="M 458,272 C 468,278 478,274 482,264" fill="none" stroke="#12304a" stroke-width="2.5" stroke-linecap="round"/>
+
+  <!-- Nostril dot -->
+  <circle cx="480" cy="250" r="2.5" fill="#12304a"/>
+
+  <!-- =================== EYE ==================== -->
+  <!-- Eye socket shadow -->
+  <circle cx="418" cy="240" r="36" fill="#0d2840" opacity="0.15"/>
+
+  <!-- Outer eye orb -->
+  <circle cx="418" cy="240" r="31" fill="url(#eyeGrad)"/>
+
+  <!-- Eyelid ring -->
+  <circle cx="418" cy="240" r="31" fill="none" stroke="#1e3a5f" stroke-width="4.5"/>
+
+  <!-- Upper eyelid shadow arc -->
+  <path d="M 394,224 C 404,216 432,216 442,224" fill="none" stroke="#1e3a5f" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+
+  <!-- Pupil: vertical ellipse for chameleon look, slightly offset right -->
+  <ellipse cx="424" cy="240" rx="11" ry="18" fill="#0a1525"/>
+
+  <!-- Big highlight -->
+  <circle cx="430" cy="229" r="8" fill="#ffffff" opacity="0.92"/>
+
+  <!-- Small highlight -->
+  <circle cx="414" cy="249" r="4" fill="#ffffff" opacity="0.55"/>
+
+  <!-- ================ FRONT LEG ================= -->
+  <path d="
+    M 345,345
+    C 348,365 352,388 350,404
+    C 349,414 355,420 366,418
+    L 390,412
+    C 396,410 397,403 392,398
+    C 382,382 372,360 365,342
+    Z
+  " fill="url(#legGrad)"/>
+  <!-- Front foot claws -->
+  <line x1="354" y1="418" x2="344" y2="430" stroke="#1e3a5f" stroke-width="5.5" stroke-linecap="round"/>
+  <line x1="364" y1="420" x2="358" y2="433" stroke="#1e3a5f" stroke-width="5.5" stroke-linecap="round"/>
+  <line x1="374" y1="418" x2="372" y2="432" stroke="#1e3a5f" stroke-width="5.5" stroke-linecap="round"/>
+  <!-- Claw tips -->
+  <line x1="344" y1="430" x2="341" y2="437" stroke="#00d4aa" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="358" y1="433" x2="356" y2="440" stroke="#00d4aa" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="372" y1="432" x2="371" y2="439" stroke="#00d4aa" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- ============ DECORATIVE SPOTS ============= -->
+  <!-- Subtle lighter patches suggesting color-change -->
+  <circle cx="255" cy="285" r="14" fill="#00d4aa" opacity="0.12"/>
+  <circle cx="305" cy="325" r="17" fill="#4aedc4" opacity="0.1"/>
+  <circle cx="225" cy="335" r="11" fill="#00d4aa" opacity="0.09"/>
+  <circle cx="345" cy="295" r="9" fill="#4aedc4" opacity="0.13"/>
+  <circle cx="275" cy="365" r="12" fill="#00d4aa" opacity="0.08"/>
+
+  <!-- ============= PERCH / BRANCH ============== -->
+  <path d="
+    M 90,440
+    C 140,434 260,428 360,432
+    C 410,434 445,438 470,436
+  " fill="none" stroke="#1e3a5f" stroke-width="9" stroke-linecap="round" opacity="0.25"/>
+</svg>

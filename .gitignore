@@ -109,3 +109,6 @@ pnpm-debug.log*
 # Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
+
+# EvoClaw
+.evoclaw/

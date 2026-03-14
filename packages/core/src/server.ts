@@ -22,6 +22,10 @@ import { createProviderRoutes } from './routes/provider.js';
 import { createCronRoutes } from './routes/cron.js';
 import { CronRunner } from './scheduler/cron-runner.js';
 import { LaneQueue } from './agent/lane-queue.js';
+import { ChannelManager } from './channel/channel-manager.js';
+import { DesktopAdapter } from './channel/adapters/desktop.js';
+import { createChannelRoutes } from './routes/channel.js';
+import { createBindingRoutes } from './routes/binding.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -40,6 +44,7 @@ export interface CreateAppOptions {
   agentManager?: AgentManager;
   vectorStore?: VectorStore;
   cronRunner?: CronRunner;
+  channelManager?: ChannelManager;
 }
 
 /** 创建 Hono 应用实例 */
@@ -47,7 +52,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   const options = typeof tokenOrOptions === 'string'
     ? { token: tokenOrOptions }
     : tokenOrOptions;
-  const { token, store, agentManager, vectorStore, cronRunner } = options;
+  const { token, store, agentManager, vectorStore, cronRunner, channelManager } = options;
 
   const app = new Hono();
 
@@ -89,6 +94,10 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/provider', createProviderRoutes(store));
     if (cronRunner) {
       app.route('/cron', createCronRoutes(cronRunner));
+    }
+    app.route('/binding', createBindingRoutes(store));
+    if (channelManager) {
+      app.route('/channel', createChannelRoutes(channelManager));
     }
   }
 
@@ -140,11 +149,18 @@ async function main() {
   const cronRunner = new CronRunner(db, laneQueue);
   cronRunner.start();
 
-  const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner });
+  // 初始化 ChannelManager + Desktop 适配器
+  const channelManager = new ChannelManager();
+  const desktopAdapter = new DesktopAdapter();
+  channelManager.registerAdapter(desktopAdapter);
+  desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
+
+  const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner, channelManager });
 
   // 进程退出时清理
   const cleanup = () => {
     cronRunner.stop();
+    channelManager.disconnectAll();
   };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);

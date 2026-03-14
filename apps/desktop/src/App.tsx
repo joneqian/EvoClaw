@@ -8,6 +8,7 @@ import SkillPage from './pages/SkillPage';
 import SecurityPage from './pages/SecurityPage';
 import SettingsPage from './pages/SettingsPage';
 import EvolutionPage from './pages/EvolutionPage';
+import ChannelPage from './pages/ChannelPage';
 import { useAppStore } from './stores/app-store';
 import { healthCheck } from './lib/api';
 
@@ -61,6 +62,9 @@ export default function App() {
           <NavLink to="/evolution" className={navClassName}>
             📊 进化
           </NavLink>
+          <NavLink to="/channel" className={navClassName}>
+            📡 Channel
+          </NavLink>
           <NavLink to="/security" className={navClassName}>
             🔒 安全设置
           </NavLink>
@@ -94,6 +98,7 @@ export default function App() {
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/skills" element={<SkillPage />} />
           <Route path="/evolution" element={<EvolutionPage />} />
+          <Route path="/channel" element={<ChannelPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

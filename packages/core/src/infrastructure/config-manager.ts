@@ -1,14 +1,20 @@
 /**
  * ConfigManager — evo_claw.json 配置管理器
  *
- * 统一管理应用配置，替代 .env + model_configs 表。
- * 默认路径: ~/.evoclaw/evo_claw.json
+ * 统一管理应用配置。默认路径: ~/.evoclaw/evo_claw.json
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import type { EvoClawConfig, ConfigValidation, ProviderEntry, EmbeddingModelRef } from '@evoclaw/shared';
+import type {
+  EvoClawConfig,
+  ConfigValidation,
+  ProviderEntry,
+  ModelEntry,
+  ModelReference,
+} from '@evoclaw/shared';
+import { parseModelRef } from '@evoclaw/shared';
 
 /** 默认配置目录 */
 const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.evoclaw');
@@ -16,21 +22,10 @@ const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.evoclaw');
 /** 默认配置文件名 */
 const CONFIG_FILENAME = 'evo_claw.json';
 
-/** 空配置模板 */
-const EMPTY_CONFIG: EvoClawConfig = {
-  providers: {},
-  models: {
-    default: { provider: '', modelId: '' },
-  },
-};
-
 export class ConfigManager {
   private configPath: string;
   private config: EvoClawConfig;
 
-  /**
-   * @param configPath 配置文件路径，默认 ~/.evoclaw/evo_claw.json
-   */
   constructor(configPath?: string) {
     this.configPath = configPath ?? path.join(DEFAULT_CONFIG_DIR, CONFIG_FILENAME);
     this.config = this.loadFromDisk();
@@ -41,20 +36,12 @@ export class ConfigManager {
     try {
       if (fs.existsSync(this.configPath)) {
         const raw = fs.readFileSync(this.configPath, 'utf-8');
-        const parsed = JSON.parse(raw) as Partial<EvoClawConfig>;
-        // 合并默认值，防止字段缺失
-        return {
-          providers: parsed.providers ?? {},
-          models: {
-            default: parsed.models?.default ?? { provider: '', modelId: '' },
-            embedding: parsed.models?.embedding,
-          },
-        };
+        return JSON.parse(raw) as EvoClawConfig;
       }
     } catch (err) {
       console.error('[config] 加载配置失败:', err);
     }
-    return structuredClone(EMPTY_CONFIG);
+    return {};
   }
 
   /** 保存配置到磁盘 */
@@ -86,39 +73,52 @@ export class ConfigManager {
   validate(): ConfigValidation {
     const missing: string[] = [];
 
-    // 检查是否有 default model 配置
-    if (!this.config.models.default.provider) {
-      missing.push('models.default.provider');
-    }
-    if (!this.config.models.default.modelId) {
-      missing.push('models.default.modelId');
+    // 检查 models 部分
+    if (!this.config.models) {
+      missing.push('models');
+      return { valid: false, missing };
     }
 
-    // 检查 default model 对应的 provider 是否已配置
-    const defaultProvider = this.config.models.default.provider;
-    if (defaultProvider && !this.config.providers[defaultProvider]) {
-      missing.push(`providers.${defaultProvider}`);
-    }
+    const { models } = this.config;
 
-    // 检查 provider 是否有 apiKey
-    if (defaultProvider && this.config.providers[defaultProvider]) {
-      const entry = this.config.providers[defaultProvider]!;
-      if (!entry.apiKey) {
-        missing.push(`providers.${defaultProvider}.apiKey`);
+    // 检查 default 模型
+    if (!models.default) {
+      missing.push('models.default');
+    } else {
+      const ref = parseModelRef(models.default);
+      if (!ref) {
+        missing.push('models.default (格式应为 provider/modelId)');
+      } else {
+        const provider = models.providers?.[ref.provider];
+        if (!provider) {
+          missing.push(`models.providers.${ref.provider}`);
+        } else {
+          if (!provider.apiKey) missing.push(`models.providers.${ref.provider}.apiKey`);
+          if (!provider.baseUrl) missing.push(`models.providers.${ref.provider}.baseUrl`);
+          const model = provider.models.find(m => m.id === ref.modelId);
+          if (!model) missing.push(`models.providers.${ref.provider}.models[${ref.modelId}]`);
+        }
       }
-      if (!entry.baseUrl) {
-        missing.push(`providers.${defaultProvider}.baseUrl`);
-      }
     }
 
-    // embedding 是可选的，但如果配置了就要完整
-    if (this.config.models.embedding) {
-      const emb = this.config.models.embedding;
-      if (!emb.provider) missing.push('models.embedding.provider');
-      if (!emb.modelId) missing.push('models.embedding.modelId');
-      if (!emb.dimension) missing.push('models.embedding.dimension');
-      if (emb.provider && !this.config.providers[emb.provider]) {
-        missing.push(`providers.${emb.provider}`);
+    // embedding 是可选的，但配置了就要完整
+    if (models.embedding) {
+      const ref = parseModelRef(models.embedding);
+      if (!ref) {
+        missing.push('models.embedding (格式应为 provider/modelId)');
+      } else {
+        const provider = models.providers?.[ref.provider];
+        if (!provider) {
+          missing.push(`models.providers.${ref.provider}`);
+        } else {
+          if (!provider.apiKey) missing.push(`models.providers.${ref.provider}.apiKey`);
+          const model = provider.models.find(m => m.id === ref.modelId);
+          if (!model) {
+            missing.push(`models.providers.${ref.provider}.models[${ref.modelId}]`);
+          } else if (!model.dimension) {
+            missing.push(`models.providers.${ref.provider}.models[${ref.modelId}].dimension`);
+          }
+        }
       }
     }
 
@@ -129,70 +129,100 @@ export class ConfigManager {
 
   /** 获取 Provider 配置 */
   getProvider(id: string): ProviderEntry | undefined {
-    return this.config.providers[id];
+    return this.config.models?.providers?.[id];
   }
 
   /** 设置 Provider 配置 */
   setProvider(id: string, entry: ProviderEntry): void {
-    this.config.providers[id] = entry;
+    if (!this.config.models) this.config.models = {};
+    if (!this.config.models.providers) this.config.models.providers = {};
+    this.config.models.providers[id] = entry;
     this.saveToDisk();
   }
 
   /** 删除 Provider 配置 */
   removeProvider(id: string): void {
-    delete this.config.providers[id];
-    this.saveToDisk();
+    if (this.config.models?.providers) {
+      delete this.config.models.providers[id];
+      this.saveToDisk();
+    }
   }
 
   /** 获取所有 Provider ID 列表 */
   getProviderIds(): string[] {
-    return Object.keys(this.config.providers);
+    return Object.keys(this.config.models?.providers ?? {});
+  }
+
+  /** 解析默认模型引用 */
+  getDefaultModelRef(): ModelReference | null {
+    const ref = this.config.models?.default;
+    if (!ref) return null;
+    return parseModelRef(ref);
   }
 
   /** 获取默认模型的 API Key */
   getDefaultApiKey(): string {
-    const providerId = this.config.models.default.provider;
-    return this.config.providers[providerId]?.apiKey ?? '';
+    const ref = this.getDefaultModelRef();
+    if (!ref) return '';
+    return this.config.models?.providers?.[ref.provider]?.apiKey ?? '';
   }
 
   /** 获取默认模型的 Base URL */
   getDefaultBaseUrl(): string {
-    const providerId = this.config.models.default.provider;
-    return this.config.providers[providerId]?.baseUrl ?? '';
+    const ref = this.getDefaultModelRef();
+    if (!ref) return '';
+    return this.config.models?.providers?.[ref.provider]?.baseUrl ?? '';
   }
 
   /** 获取默认模型 ID */
   getDefaultModelId(): string {
-    return this.config.models.default.modelId;
+    return this.getDefaultModelRef()?.modelId ?? '';
   }
 
   /** 获取默认 Provider ID */
   getDefaultProvider(): string {
-    return this.config.models.default.provider;
+    return this.getDefaultModelRef()?.provider ?? '';
+  }
+
+  /** 获取默认模型的 API 协议 */
+  getDefaultApi(): string {
+    const ref = this.getDefaultModelRef();
+    if (!ref) return 'openai-completions';
+    return this.config.models?.providers?.[ref.provider]?.api ?? 'openai-completions';
   }
 
   /** 获取指定 Provider 的 API Key */
   getApiKey(providerId: string): string {
-    return this.config.providers[providerId]?.apiKey ?? '';
+    return this.config.models?.providers?.[providerId]?.apiKey ?? '';
   }
 
-  /** 获取 Embedding 配置 */
-  getEmbeddingConfig(): EmbeddingModelRef | undefined {
-    return this.config.models.embedding;
+  /** 解析 Embedding 模型引用 */
+  getEmbeddingModelRef(): ModelReference | null {
+    const ref = this.config.models?.embedding;
+    if (!ref) return null;
+    return parseModelRef(ref);
+  }
+
+  /** 获取 Embedding 模型条目 */
+  getEmbeddingModel(): ModelEntry | undefined {
+    const ref = this.getEmbeddingModelRef();
+    if (!ref) return undefined;
+    const provider = this.config.models?.providers?.[ref.provider];
+    return provider?.models.find(m => m.id === ref.modelId);
   }
 
   /** 获取 Embedding Provider 的 API Key */
   getEmbeddingApiKey(): string {
-    const providerId = this.config.models.embedding?.provider;
-    if (!providerId) return '';
-    return this.config.providers[providerId]?.apiKey ?? '';
+    const ref = this.getEmbeddingModelRef();
+    if (!ref) return '';
+    return this.config.models?.providers?.[ref.provider]?.apiKey ?? '';
   }
 
   /** 获取 Embedding Provider 的 Base URL */
   getEmbeddingBaseUrl(): string {
-    const providerId = this.config.models.embedding?.provider;
-    if (!providerId) return '';
-    return this.config.providers[providerId]?.baseUrl ?? '';
+    const ref = this.getEmbeddingModelRef();
+    if (!ref) return '';
+    return this.config.models?.providers?.[ref.provider]?.baseUrl ?? '';
   }
 
   /** 配置文件是否存在 */

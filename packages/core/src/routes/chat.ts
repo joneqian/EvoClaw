@@ -79,22 +79,24 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       store,
     });
 
-    // 获取 API Key：优先 Agent 指定的 Provider → 默认 Provider（从 evo_claw.json）
+    // 获取 API Key + Base URL + API 协议（从 evo_claw.json）
     let apiKey = '';
     let baseUrl = resolved.baseUrl || '';
+    let apiProtocol = 'openai-completions';
 
     if (configManager) {
       // 先尝试 Agent 指定的 Provider
-      apiKey = configManager.getApiKey(resolved.provider);
-      if (!baseUrl) {
-        baseUrl = configManager.getProvider(resolved.provider)?.baseUrl ?? '';
+      const providerEntry = configManager.getProvider(resolved.provider);
+      if (providerEntry) {
+        apiKey = providerEntry.apiKey;
+        if (!baseUrl) baseUrl = providerEntry.baseUrl;
+        apiProtocol = providerEntry.api;
       }
       // 兜底：使用默认 Provider
       if (!apiKey) {
         apiKey = configManager.getDefaultApiKey();
-      }
-      if (!baseUrl) {
-        baseUrl = configManager.getDefaultBaseUrl();
+        if (!baseUrl) baseUrl = configManager.getDefaultBaseUrl();
+        apiProtocol = configManager.getDefaultApi();
       }
     }
 
@@ -160,6 +162,7 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       provider: resolved.provider,
       apiKey,
       baseUrl,
+      apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
       tools,
       messages,
     };

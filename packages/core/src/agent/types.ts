@@ -10,6 +10,8 @@ export interface AgentRunConfig {
   provider: string;
   apiKey: string;
   baseUrl: string;
+  /** API 协议 */
+  apiProtocol?: 'openai-completions' | 'anthropic-messages';
   /** 注入的工具（阶段 3-4） */
   tools?: ToolDefinition[];
   /** 消息历史 */

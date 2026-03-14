@@ -15,31 +15,22 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     const config = configManager.getConfig();
     const validation = configManager.validate();
 
-    // 隐藏 API Key，仅返回是否已配置
-    const safeProviders: Record<string, { name: string; baseUrl: string; hasApiKey: boolean }> = {};
-    for (const [id, entry] of Object.entries(config.providers)) {
-      safeProviders[id] = {
-        name: entry.name,
-        baseUrl: entry.baseUrl,
-        hasApiKey: !!entry.apiKey,
-      };
+    // 隐藏 API Key
+    const safeConfig = structuredClone(config);
+    if (safeConfig.models?.providers) {
+      for (const entry of Object.values(safeConfig.models.providers)) {
+        if (entry.apiKey) {
+          entry.apiKey = '***';
+        }
+      }
     }
 
-    return c.json({
-      providers: safeProviders,
-      models: config.models,
-      validation,
-    });
+    return c.json({ config: safeConfig, validation });
   });
 
   /** PUT / — 更新完整配置 */
   app.put('/', async (c) => {
     const body = await c.req.json<EvoClawConfig>();
-
-    if (!body.providers || !body.models) {
-      return c.json({ error: '配置格式不完整，需要 providers 和 models 字段' }, 400);
-    }
-
     configManager.updateConfig(body);
     const validation = configManager.validate();
     return c.json({ success: true, validation });
@@ -57,28 +48,13 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     return c.json({ success: true, validation });
   });
 
-  /** GET /provider/:id — 获取单个 Provider（隐藏 apiKey） */
-  app.get('/provider/:id', (c) => {
-    const id = c.req.param('id');
-    const entry = configManager.getProvider(id);
-    if (!entry) {
-      return c.json({ error: 'Provider not found' }, 404);
-    }
-    return c.json({
-      id,
-      name: entry.name,
-      baseUrl: entry.baseUrl,
-      hasApiKey: !!entry.apiKey,
-    });
-  });
-
   /** PUT /provider/:id — 添加/更新 Provider */
   app.put('/provider/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json<ProviderEntry>();
 
-    if (!body.name || !body.baseUrl) {
-      return c.json({ error: '需要 name 和 baseUrl' }, 400);
+    if (!body.baseUrl || !body.api) {
+      return c.json({ error: '需要 baseUrl 和 api' }, 400);
     }
 
     configManager.setProvider(id, body);

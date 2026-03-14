@@ -134,17 +134,18 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
 
 /** 根据 ConfigManager 初始化 VectorStore */
 function initVectorStore(db: SqliteStore, configManager: ConfigManager): VectorStore {
-  const embeddingConfig = configManager.getEmbeddingConfig();
+  const embeddingRef = configManager.getEmbeddingModelRef();
   const embeddingApiKey = configManager.getEmbeddingApiKey();
   const embeddingBaseUrl = configManager.getEmbeddingBaseUrl();
+  const embeddingModel = configManager.getEmbeddingModel();
 
-  if (embeddingApiKey && embeddingBaseUrl && embeddingConfig) {
+  if (embeddingApiKey && embeddingBaseUrl && embeddingRef && embeddingModel) {
     const provider = createEmbeddingProvider(
       embeddingBaseUrl,
       embeddingApiKey,
-      embeddingConfig.provider,
-      embeddingConfig.modelId,
-      embeddingConfig.dimension,
+      embeddingRef.provider,
+      embeddingRef.modelId,
+      embeddingModel.dimension,
     );
     const embeddingFn = (text: string) => provider.generate(text);
     return new VectorStore(db, embeddingFn);

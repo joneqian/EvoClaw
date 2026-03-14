@@ -120,8 +120,24 @@ async function runWithPI(
   }
 }
 
-/** Fallback: 直接调用 OpenAI 兼容 API（流式） */
+/** Fallback: 直接调用 LLM API（流式），支持 OpenAI 和 Anthropic 协议 */
 async function runWithFetch(
+  config: AgentRunConfig,
+  message: string,
+  onEvent: EventCallback,
+  signal?: AbortSignal,
+): Promise<void> {
+  const protocol = config.apiProtocol ?? 'openai-completions';
+
+  if (protocol === 'anthropic-messages') {
+    await runWithAnthropicFetch(config, message, onEvent, signal);
+  } else {
+    await runWithOpenAIFetch(config, message, onEvent, signal);
+  }
+}
+
+/** OpenAI Chat Completions 协议 */
+async function runWithOpenAIFetch(
   config: AgentRunConfig,
   message: string,
   onEvent: EventCallback,
@@ -140,7 +156,6 @@ async function runWithFetch(
       model: config.modelId,
       messages: [
         { role: 'system', content: systemPrompt },
-        // 注入消息历史
         ...(config.messages ?? []).map(msg => ({ role: msg.role, content: msg.content })),
         { role: 'user', content: message },
       ],
@@ -153,6 +168,66 @@ async function runWithFetch(
     throw new Error(`LLM API 调用失败: ${response.status} ${response.statusText}`);
   }
 
+  await parseSSEStream(response, (data) => {
+    if (data === '[DONE]') return 'done';
+    const json = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+    return json.choices?.[0]?.delta?.content ?? null;
+  }, onEvent);
+}
+
+/** Anthropic Messages 协议 */
+async function runWithAnthropicFetch(
+  config: AgentRunConfig,
+  message: string,
+  onEvent: EventCallback,
+  signal?: AbortSignal,
+): Promise<void> {
+  const systemPrompt = buildSystemPrompt(config);
+  const baseUrl = config.baseUrl || 'https://api.anthropic.com/v1';
+
+  const response = await fetch(`${baseUrl}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: config.modelId,
+      system: systemPrompt,
+      messages: [
+        ...(config.messages ?? []).map(msg => ({ role: msg.role, content: msg.content })),
+        { role: 'user', content: message },
+      ],
+      max_tokens: 8192,
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`LLM API 调用失败: ${response.status} ${response.statusText}`);
+  }
+
+  await parseSSEStream(response, (data) => {
+    const event = JSON.parse(data) as {
+      type: string;
+      delta?: { type?: string; text?: string };
+    };
+    if (event.type === 'content_block_delta' && event.delta?.text) {
+      return event.delta.text;
+    }
+    if (event.type === 'message_stop') return 'done';
+    return null;
+  }, onEvent);
+}
+
+/** 通用 SSE 流解析 */
+async function parseSSEStream(
+  response: Response,
+  extractDelta: (data: string) => string | null | 'done',
+  onEvent: EventCallback,
+): Promise<void> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response body');
 
@@ -172,16 +247,15 @@ async function runWithFetch(
       const trimmed = line.trim();
       if (!trimmed || !trimmed.startsWith('data: ')) continue;
       const data = trimmed.slice(6);
-      if (data === '[DONE]') {
-        emit(onEvent, { type: 'text_done', text: fullText });
-        return;
-      }
       try {
-        const json = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
-        const delta = json.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullText += delta;
-          emit(onEvent, { type: 'text_delta', delta });
+        const result = extractDelta(data);
+        if (result === 'done') {
+          emit(onEvent, { type: 'text_done', text: fullText });
+          return;
+        }
+        if (result) {
+          fullText += result;
+          emit(onEvent, { type: 'text_delta', delta: result });
         }
       } catch {
         // 跳过格式错误的 JSON

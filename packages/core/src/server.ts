@@ -17,6 +17,11 @@ import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { VectorStore } from './infrastructure/db/vector-store.js';
 import { createEmbeddingProvider } from './rag/embedding-provider.js';
 import { createSkillRoutes } from './routes/skill.js';
+import { createEvolutionRoutes } from './routes/evolution.js';
+import { createProviderRoutes } from './routes/provider.js';
+import { createCronRoutes } from './routes/cron.js';
+import { CronRunner } from './scheduler/cron-runner.js';
+import { LaneQueue } from './agent/lane-queue.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -34,6 +39,7 @@ export interface CreateAppOptions {
   store?: SqliteStore;
   agentManager?: AgentManager;
   vectorStore?: VectorStore;
+  cronRunner?: CronRunner;
 }
 
 /** 创建 Hono 应用实例 */
@@ -41,7 +47,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   const options = typeof tokenOrOptions === 'string'
     ? { token: tokenOrOptions }
     : tokenOrOptions;
-  const { token, store, agentManager, vectorStore } = options;
+  const { token, store, agentManager, vectorStore, cronRunner } = options;
 
   const app = new Hono();
 
@@ -79,6 +85,11 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }
     app.route('/skill', createSkillRoutes());
+    app.route('/evolution', createEvolutionRoutes(store));
+    app.route('/provider', createProviderRoutes(store));
+    if (cronRunner) {
+      app.route('/cron', createCronRoutes(cronRunner));
+    }
   }
 
   // 全局错误处理
@@ -123,7 +134,20 @@ async function main() {
   }
 
   const agentManager = new AgentManager(db);
-  const app = createApp({ token, store: db, agentManager, vectorStore });
+
+  // 初始化 LaneQueue + CronRunner
+  const laneQueue = new LaneQueue();
+  const cronRunner = new CronRunner(db, laneQueue);
+  cronRunner.start();
+
+  const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner });
+
+  // 进程退出时清理
+  const cleanup = () => {
+    cronRunner.stop();
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
     // 输出连接信息供 Tauri 读取

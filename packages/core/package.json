@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "cron-parser": "^4.9.0",
     "esbuild": "^0.27.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",

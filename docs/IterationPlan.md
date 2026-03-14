@@ -2033,35 +2033,52 @@ v1.0 全功能集成测试、性能调优、跨平台发布。
 
 #### 24.3 Plugin SDK
 - [ ] 创建 `packages/plugin-sdk/` 新包：
-  - 定义 Plugin 接口规范：
-    ```typescript
-    interface EvoClawPlugin {
-      name: string
-      version: string
-      // 可扩展的钩子
-      contextPlugins?: ContextPlugin[]
-      tools?: AgentTool[]
-      channels?: ChannelAdapter[]
-      commands?: UserCommand[]
-      // 生命周期
-      activate(api: PluginAPI): Promise<void>
-      deactivate(): Promise<void>
+  - 定义插件清单规范 `evoclaw.plugin.json`：
+    ```json
+    {
+      "id": "string — 插件唯一标识",
+      "name": "string — 显示名称",
+      "version": "string — 语义化版本",
+      "channels": ["string[] — 注册的 Channel ID"],
+      "skills": ["string[] — Skill 目录路径"],
+      "configSchema": "object — JSON Schema 配置校验",
+      "uiHints": "object — UI 字段提示（label/sensitive/placeholder）"
     }
     ```
-  - Plugin API 封装：
-    - 记忆读写 API
-    - Agent 管理 API
-    - UI 扩展 API（添加设置页面/仪表盘面板）
-    - 事件订阅 API
-  - Plugin 加载器：扫描 `~/.evoclaw/plugins/` 目录
-  - Plugin 隔离：每个 Plugin 在独立的 VM 或 Worker 中运行
+  - 定义 `EvoClawPluginApi` 接口（`register(api)` 注入模式）：
+    ```typescript
+    interface EvoClawPluginApi {
+      registerChannel(adapter: ChannelAdapter): void;
+      registerTool(tool: ToolDefinition): void;
+      registerHook(name: string, handler: HookHandler): void;
+      registerProvider(provider: ProviderEntry): void;
+      registerHttpRoute(route: HttpRouteParams): void;
+      registerService(service: PluginService): void;
+      registerSkills(dir: string): void;
+      config: Record<string, unknown>;
+    }
+    ```
+  - 实现 PluginRegistry 中央注册表：
+    - tools / channels / providers / hooks / services / httpRoutes / diagnostics
+  - 实现 Plugin Loader：
+    - 扫描 `~/.evoclaw/plugins/` + 工作区 `plugins/` + 内置 `packages/plugins/`
+    - 读取 `evoclaw.plugin.json` + `package.json` 元数据
+    - 通过 jiti 动态加载 TypeScript，调用 `register(api)`
+    - 配置验证仅用 JSON Schema，不执行插件代码
+  - 实现 CLI 命令：
+    - `evoclaw plugins list` → 列出已加载插件
+    - `evoclaw plugins install <npm-spec>` → 从 npm 安装
+    - `evoclaw plugins remove <id>` → 卸载
 - [ ] 编写 Plugin SDK 文档：
   - 快速开始指南
   - API 参考文档
-  - 示例 Plugin
+  - 清单规范说明
 - [ ] 编写 2 个示例 Plugin：
-  - `plugin-pomodoro`：番茄钟 Plugin（定时提醒 + 工作统计）
-  - `plugin-clipboard-history`：剪贴板历史 Plugin（监控剪贴板 + 快速粘贴）
+  - `plugin-pomodoro`：番茄钟（定时提醒 + 工作统计，演示 registerService + registerTool）
+  - `plugin-feishu-lite`：飞书轻量版（演示 registerChannel + registerTool + registerSkills）
+- [ ] OpenClaw Skills 兼容验证：
+  - 验证 OpenClaw 生态的 SKILL.md 格式在 EvoClaw 插件中可直接使用
+  - 验证插件 `"skills": ["./skills"]` 声明可被 Skill 扫描器正确发现
 
 #### 24.4 多设备同步（基础版）
 - [ ] 实现端到端加密同步：
@@ -2087,13 +2104,15 @@ v1.0 全功能集成测试、性能调优、跨平台发布。
 #### 24.6 v2.0 发布
 - [ ] 三平台构建 + 签名 + 发布
 - [ ] 更新文档网站
-- [ ] Plugin SDK 发布到 npm
+- [ ] `@evoclaw/plugin-sdk` 发布到 npm
 - [ ] Hub 服务公开上线
 - [ ] 发布公告 + 社区宣传
 
 #### 24.7 Sprint 24 验收（v2.0 发布标准）
 - [ ] 钉钉 Channel 正常工作
-- [ ] Plugin SDK 文档完整，示例 Plugin 可运行
+- [ ] Plugin SDK 文档完整，清单规范 + API 参考 + 快速开始
+- [ ] 2 个示例 Plugin 可加载运行（pomodoro + feishu-lite）
+- [ ] OpenClaw SKILL.md 在插件中可正常使用
 - [ ] EvoClaw Hub 公开可访问
 - [ ] 移动端伴侣应用可用
 - [ ] 企业版核心功能可用

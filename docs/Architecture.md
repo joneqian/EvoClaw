@@ -1101,6 +1101,159 @@ registerProvider({
 })
 ```
 
+### 3.9 插件系统 (Plugin System)
+
+EvoClaw 采用 **清单 + 注册** 模式的插件系统，参考 OpenClaw 的架构但不追求完全兼容。
+
+#### 设计原则
+
+| 原则 | 说明 |
+|------|------|
+| **清单优先** | `evoclaw.plugin.json` 声明元数据，不执行代码即可验证配置、展示 UI |
+| **注入式注册** | 插件通过 `register(api)` 将能力注册到中央 PluginRegistry |
+| **进程内加载** | 通过 jiti 动态加载 TypeScript，与核心代码同进程 |
+| **选择性兼容** | Skills（SKILL.md）与 OpenClaw 完全兼容；Channel/Hook 自建 |
+
+#### 架构分层
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Surface Consumption                   │
+│  ContextEngine / ChannelManager / ToolInjector / Routes  │
+├─────────────────────────────────────────────────────────┤
+│                    PluginRegistry                        │
+│  tools[] / channels[] / providers[] / hooks[] /          │
+│  services[] / commands[] / skills[]                      │
+├─────────────────────────────────────────────────────────┤
+│                    Runtime Loading                        │
+│  jiti 加载 → register(api) → 注册到 Registry             │
+├─────────────────────────────────────────────────────────┤
+│                Enablement + Validation                    │
+│  JSON Schema 验证配置（不执行插件代码）                     │
+├─────────────────────────────────────────────────────────┤
+│                Manifest + Discovery                       │
+│  扫描 evoclaw.plugin.json + package.json                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 插件清单 `evoclaw.plugin.json`
+
+```json
+{
+  "id": "feishu",
+  "name": "飞书",
+  "version": "1.0.0",
+  "channels": ["feishu"],
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "appId": { "type": "string" },
+      "appSecret": { "type": "string" }
+    },
+    "required": ["appId", "appSecret"]
+  },
+  "uiHints": {
+    "appId": { "label": "App ID" },
+    "appSecret": { "label": "App Secret", "sensitive": true }
+  }
+}
+```
+
+#### `package.json` 扩展字段
+
+```json
+{
+  "name": "@evoclaw/plugin-feishu",
+  "evoclaw": {
+    "extensions": ["./index.ts"],
+    "channel": {
+      "id": "feishu",
+      "label": "飞书/Lark",
+      "blurb": "飞书企业消息 + 文档/表格/日历工具"
+    }
+  }
+}
+```
+
+#### 插件注册 API
+
+```typescript
+interface EvoClawPluginApi {
+  // 注册 Channel 适配器
+  registerChannel(adapter: ChannelAdapter): void;
+  // 注册 Agent 工具
+  registerTool(tool: ToolDefinition): void;
+  // 注册 ContextPlugin 钩子
+  registerHook(name: string, handler: HookHandler): void;
+  // 注册 LLM Provider
+  registerProvider(provider: ProviderEntry): void;
+  // 注册 HTTP 路由（webhook 等）
+  registerHttpRoute(route: HttpRouteParams): void;
+  // 注册后台服务
+  registerService(service: PluginService): void;
+  // 注册 Skill 目录
+  registerSkills(dir: string): void;
+  // 插件配置
+  config: Record<string, unknown>;
+}
+```
+
+#### 插件入口模式
+
+```typescript
+// plugins/feishu/index.ts
+import type { EvoClawPluginApi } from '@evoclaw/plugin-sdk';
+
+export default {
+  id: 'feishu',
+  name: '飞书',
+  register(api: EvoClawPluginApi) {
+    api.registerChannel(feishuAdapter);
+    api.registerTool(feishuDocTool);
+    api.registerTool(feishuCalendarTool);
+    api.registerSkills('./skills');
+  },
+};
+```
+
+#### PluginRegistry 数据结构
+
+```typescript
+interface PluginRegistry {
+  plugins: PluginRecord[];                // 插件元信息
+  tools: PluginToolRegistration[];        // 工具
+  hooks: PluginHookRegistration[];        // 钩子
+  channels: PluginChannelRegistration[];  // 渠道
+  providers: PluginProviderRegistration[];// LLM Provider
+  httpRoutes: PluginHttpRouteRegistration[]; // HTTP 路由
+  services: PluginServiceRegistration[];     // 后台服务
+  diagnostics: PluginDiagnostic[];           // 诊断信息
+}
+```
+
+#### 插件发现路径
+
+| 路径 | 来源 | 优先级 |
+|------|------|--------|
+| `~/.evoclaw/plugins/` | 全局安装 | 低 |
+| 工作区 `plugins/` | 工作区本地 | 中 |
+| `packages/plugins/` | 内置 bundled | 高（可被同名覆盖） |
+
+#### 与 OpenClaw 生态的兼容策略
+
+| 维度 | 策略 |
+|------|------|
+| **Skills (SKILL.md)** | 完全兼容，直接复用 OpenClaw 生态的 13,700+ Skills |
+| **工具业务逻辑** | 可移植，飞书文档/表格等 API 调用代码可复用 |
+| **npm 依赖** | 共享，@larksuiteoapi/node-sdk 等底层 SDK 通用 |
+| **Channel 插件** | 不兼容，EvoClaw 基于自有 ChannelAdapter 接口自建 |
+| **plugin-sdk 导入** | 不兼容，EvoClaw 提供自己的 `@evoclaw/plugin-sdk` |
+| **Hook 体系** | 不兼容，事件名和上下文结构不同 |
+| **Gateway 架构** | 不兼容，EvoClaw 是 Sidecar 模式 |
+
+> **设计决策**: 完全兼容 OpenClaw 插件需重实现其 Gateway 层，成本远高于自建。选择性复用 Skills + 工具逻辑可获取 ~60% 生态价值，仅付出 ~20% 兼容成本。
+
 ---
 
 ## 4. 记忆架构 (Memory Architecture)
@@ -2165,8 +2318,15 @@ Linux:
 - **macOS**: 引导安装 Colima（轻量级，无需 Docker Desktop 许可证）
 - **Windows**: 引导启用 WSL2 + Docker Engine
 
+### ADR-009: 插件系统 — 清单 + 注册模式
+
+- **决策**: 采用 `evoclaw.plugin.json` 清单 + `register(api)` 注入模式，不完全兼容 OpenClaw 插件
+- **理由**: OpenClaw 的 Channel 插件深度依赖其 Gateway 架构（ChannelPlugin/ChannelDock/消息路由/webhook 体系），完全兼容等于重建 Gateway，工作量大于自建；但 Skills（SKILL.md）格式一致可直接复用，工具业务逻辑可移植
+- **复用范围**: Skills 直接兼容 + 工具 API 调用逻辑移植 + 底层 npm SDK 共享
+- **自建范围**: ChannelAdapter / Hook 体系 / PluginRegistry / plugin-sdk 包
+
 ---
 
-> **文档版本**: v4.0 -- 基于 PI 框架重构 Agent 运行时层；ContextPlugin 架构替代中间件链；L0/L1/L2 三层记忆存储替代 8 层架构；三表协同（memory_units + knowledge_graph + conversation_log）替代旧 Schema；新增 Agent 文件体系（8 文件）、Binding Router、Heartbeat + Cron、Docker 可选沙箱、5 阶段工具注入流水线；PI 事件流 -> React UI 渲染路径
+> **文档版本**: v4.1 -- 新增插件系统架构（3.9 节）：evoclaw.plugin.json 清单 + register(api) 注入模式 + PluginRegistry；ADR-009 插件兼容策略 -- 基于 PI 框架重构 Agent 运行时层；ContextPlugin 架构替代中间件链；L0/L1/L2 三层记忆存储替代 8 层架构；三表协同（memory_units + knowledge_graph + conversation_log）替代旧 Schema；新增 Agent 文件体系（8 文件）、Binding Router、Heartbeat + Cron、Docker 可选沙箱、5 阶段工具注入流水线；PI 事件流 -> React UI 渲染路径
 > **文档状态**: 已更新
 > **下次评审**: 待定

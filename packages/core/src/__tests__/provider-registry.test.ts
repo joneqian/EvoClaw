@@ -9,6 +9,11 @@ import {
   registerQwen,
   registerGLM,
   registerDoubao,
+  registerDeepSeek,
+  registerMiniMax,
+  registerKimi,
+  registerOpenAI,
+  registerAnthropic,
 } from '../provider/provider-registry.js';
 
 describe('ProviderRegistry', () => {
@@ -130,5 +135,68 @@ describe('ProviderRegistry', () => {
     expect(provider).toBeDefined();
     expect(provider!.name).toBe('自定义模型');
     expect(provider!.models).toHaveLength(1);
+  });
+
+  // Sprint 7: 新增 Provider 测试
+  it('registerDeepSeek 应正确注册', () => {
+    registerDeepSeek('deepseek-key');
+    const p = getProvider('deepseek');
+    expect(p).toBeDefined();
+    expect(p!.name).toBe('DeepSeek');
+    expect(p!.models.some(m => m.id === 'deepseek-chat')).toBe(true);
+    expect(p!.models.some(m => m.id === 'deepseek-reasoner')).toBe(true);
+    // deepseek-reasoner 不支持 tool use
+    const r1 = p!.models.find(m => m.id === 'deepseek-reasoner');
+    expect(r1!.supportsToolUse).toBe(false);
+  });
+
+  it('registerMiniMax 应正确注册', () => {
+    registerMiniMax('minimax-key');
+    const p = getProvider('minimax');
+    expect(p).toBeDefined();
+    expect(p!.name).toBe('MiniMax');
+    expect(p!.models.some(m => m.id === 'abab6.5s-chat')).toBe(true);
+  });
+
+  it('registerKimi 应正确注册', () => {
+    registerKimi('kimi-key');
+    const p = getProvider('kimi');
+    expect(p).toBeDefined();
+    expect(p!.name).toBe('Kimi (Moonshot)');
+    expect(p!.models).toHaveLength(3);
+    expect(p!.models.some(m => m.id === 'moonshot-v1-128k')).toBe(true);
+    expect(p!.models.some(m => m.id === 'moonshot-v1-32k')).toBe(true);
+    expect(p!.models.some(m => m.id === 'moonshot-v1-8k')).toBe(true);
+  });
+
+  it('registerOpenAI 应显式注册模型列表', () => {
+    registerOpenAI('openai-key');
+    const p = getProvider('openai');
+    expect(p).toBeDefined();
+    expect(p!.models.some(m => m.id === 'gpt-4o')).toBe(true);
+    expect(p!.models.some(m => m.id === 'gpt-4o-mini')).toBe(true);
+    // gpt-4o 支持 vision
+    expect(p!.models.find(m => m.id === 'gpt-4o')!.supportsVision).toBe(true);
+  });
+
+  it('registerAnthropic 应显式注册模型列表', () => {
+    registerAnthropic('anthropic-key');
+    const p = getProvider('anthropic');
+    expect(p).toBeDefined();
+    expect(p!.models.some(m => m.supportsVision)).toBe(true);
+    expect(p!.models.some(m => m.supportsToolUse)).toBe(true);
+  });
+
+  it('所有 8 个 Provider 可同时注册', () => {
+    registerOpenAI('k1');
+    registerAnthropic('k2');
+    registerQwen('k3');
+    registerGLM('k4');
+    registerDoubao('k5');
+    registerDeepSeek('k6');
+    registerMiniMax('k7');
+    registerKimi('k8');
+
+    expect(getProviders()).toHaveLength(8);
   });
 });

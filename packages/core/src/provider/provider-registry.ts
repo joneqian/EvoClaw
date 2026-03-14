@@ -75,6 +75,76 @@ export function registerDoubao(apiKeyRef: string): void {
   });
 }
 
+/** 注册 DeepSeek */
+export function registerDeepSeek(apiKeyRef: string): void {
+  registerProvider({
+    id: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    apiKeyRef,
+    models: [
+      { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'deepseek', maxContextLength: 65536, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
+      { id: 'deepseek-reasoner', name: 'DeepSeek R1', provider: 'deepseek', maxContextLength: 65536, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: false, isDefault: false },
+    ],
+  });
+}
+
+/** 注册 MiniMax */
+export function registerMiniMax(apiKeyRef: string): void {
+  registerProvider({
+    id: 'minimax',
+    name: 'MiniMax',
+    baseUrl: 'https://api.minimax.chat/v1',
+    apiKeyRef,
+    models: [
+      { id: 'abab6.5s-chat', name: 'ABAB 6.5s', provider: 'minimax', maxContextLength: 245760, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
+    ],
+  });
+}
+
+/** 注册 Kimi/Moonshot */
+export function registerKimi(apiKeyRef: string): void {
+  registerProvider({
+    id: 'kimi',
+    name: 'Kimi (Moonshot)',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    apiKeyRef,
+    models: [
+      { id: 'moonshot-v1-128k', name: 'Moonshot V1 128K', provider: 'kimi', maxContextLength: 131072, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
+      { id: 'moonshot-v1-32k', name: 'Moonshot V1 32K', provider: 'kimi', maxContextLength: 32768, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: false },
+      { id: 'moonshot-v1-8k', name: 'Moonshot V1 8K', provider: 'kimi', maxContextLength: 8192, maxOutputTokens: 4096, supportsVision: false, supportsToolUse: true, isDefault: false },
+    ],
+  });
+}
+
+/** 注册 OpenAI（PI 内置，此函数用于显式配置模型列表） */
+export function registerOpenAI(apiKeyRef: string): void {
+  registerProvider({
+    id: 'openai',
+    name: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKeyRef,
+    models: [
+      { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', maxContextLength: 128000, maxOutputTokens: 16384, supportsVision: true, supportsToolUse: true, isDefault: true },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', maxContextLength: 128000, maxOutputTokens: 16384, supportsVision: true, supportsToolUse: true, isDefault: false },
+    ],
+  });
+}
+
+/** 注册 Anthropic（PI 内置，此函数用于显式配置模型列表） */
+export function registerAnthropic(apiKeyRef: string): void {
+  registerProvider({
+    id: 'anthropic',
+    name: 'Anthropic',
+    baseUrl: 'https://api.anthropic.com/v1',
+    apiKeyRef,
+    models: [
+      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'anthropic', maxContextLength: 200000, maxOutputTokens: 8192, supportsVision: true, supportsToolUse: true, isDefault: true },
+      { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'anthropic', maxContextLength: 200000, maxOutputTokens: 8192, supportsVision: true, supportsToolUse: true, isDefault: false },
+    ],
+  });
+}
+
 /** 清除所有注册（测试用） */
 export function clearProviders(): void {
   providers.clear();

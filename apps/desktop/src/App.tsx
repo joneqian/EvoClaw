@@ -4,6 +4,7 @@ import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
 import MemoryPage from './pages/MemoryPage';
 import KnowledgePage from './pages/KnowledgePage';
+import SkillPage from './pages/SkillPage';
 import SecurityPage from './pages/SecurityPage';
 import SettingsPage from './pages/SettingsPage';
 import { useAppStore } from './stores/app-store';
@@ -53,6 +54,9 @@ export default function App() {
           <NavLink to="/knowledge" className={navClassName}>
             📚 知识库
           </NavLink>
+          <NavLink to="/skills" className={navClassName}>
+            ⚡ Skill
+          </NavLink>
           <NavLink to="/security" className={navClassName}>
             🔒 安全设置
           </NavLink>
@@ -84,6 +88,7 @@ export default function App() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/skills" element={<SkillPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

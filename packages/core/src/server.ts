@@ -16,6 +16,7 @@ import { createSecurityRoutes } from './routes/security.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { VectorStore } from './infrastructure/db/vector-store.js';
 import { createEmbeddingProvider } from './rag/embedding-provider.js';
+import { createSkillRoutes } from './routes/skill.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -77,6 +78,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     if (vectorStore) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }
+    app.route('/skill', createSkillRoutes());
   }
 
   // 全局错误处理

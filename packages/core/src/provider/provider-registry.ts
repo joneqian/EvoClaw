@@ -1,4 +1,4 @@
-import type { ProviderConfig } from '@evoclaw/shared';
+import type { ProviderConfig, ModelConfig } from '@evoclaw/shared';
 
 /** 已注册的 Provider 配置 */
 const providers = new Map<string, ProviderConfig>();
@@ -29,6 +29,14 @@ export function getProvider(id: string): ProviderConfig | undefined {
 /** 检查 Provider 是否为内置 */
 export function isBuiltinProvider(id: string): boolean {
   return (BUILTIN_PROVIDERS as readonly string[]).includes(id);
+}
+
+/** 更新 Provider 的模型列表（API 动态拉取后调用） */
+export function updateProviderModels(id: string, models: ModelConfig[]): boolean {
+  const provider = providers.get(id);
+  if (!provider) return false;
+  provider.models = models;
+  return true;
 }
 
 /** 注册通义千问 */
@@ -94,10 +102,12 @@ export function registerMiniMax(apiKeyRef: string): void {
   registerProvider({
     id: 'minimax',
     name: 'MiniMax',
-    baseUrl: 'https://api.minimax.chat/v1',
+    baseUrl: 'https://api.minimaxi.com/v1',
     apiKeyRef,
     models: [
-      { id: 'abab6.5s-chat', name: 'ABAB 6.5s', provider: 'minimax', maxContextLength: 245760, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
+      { id: 'MiniMax-M2.5-highspeed', name: 'MiniMax M2.5 Highspeed', provider: 'minimax', maxContextLength: 1048576, maxOutputTokens: 16384, supportsVision: false, supportsToolUse: true, isDefault: true },
+      { id: 'MiniMax-Text-01', name: 'MiniMax Text 01', provider: 'minimax', maxContextLength: 1048576, maxOutputTokens: 16384, supportsVision: false, supportsToolUse: true, isDefault: false },
+      { id: 'abab6.5s-chat', name: 'ABAB 6.5s', provider: 'minimax', maxContextLength: 245760, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: false },
     ],
   });
 }

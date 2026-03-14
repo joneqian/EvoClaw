@@ -8,12 +8,15 @@ import {
   getProvider,
   registerProvider,
   unregisterProvider,
+  updateProviderModels,
 } from '../provider/provider-registry.js';
+import { fetchModelsFromApi } from '../provider/model-fetcher.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ProviderConfig } from '@evoclaw/shared';
 
 /** 创建 Provider 路由 */
-export function createProviderRoutes(db: SqliteStore): Hono {
+export function createProviderRoutes(db: SqliteStore, configManager?: ConfigManager): Hono {
   const app = new Hono();
 
   /** GET / — 列出所有已注册 Provider */
@@ -105,6 +108,36 @@ export function createProviderRoutes(db: SqliteStore): Hono {
     unregisterProvider(id);
     db.run('DELETE FROM model_configs WHERE provider = ?', id);
     return c.json({ success: true });
+  });
+
+  /** GET /:id/models — 从 Provider API 动态拉取模型列表 */
+  app.get('/:id/models', async (c) => {
+    const id = c.req.param('id');
+    const provider = getProvider(id);
+    if (!provider) {
+      return c.json({ error: 'Provider not found' }, 404);
+    }
+
+    // 解析 API Key：从 evo_claw.json 获取
+    const apiKey = configManager?.getApiKey(id) ?? configManager?.getDefaultApiKey() ?? '';
+    if (!apiKey) {
+      return c.json({ error: '未配置 API Key，无法拉取模型列表', models: provider.models, source: 'fallback' });
+    }
+
+    const result = await fetchModelsFromApi(provider.baseUrl, apiKey, id);
+
+    if (result.success && result.models.length > 0) {
+      // 更新内存中的模型列表
+      updateProviderModels(id, result.models);
+      return c.json({ models: result.models, source: 'api' });
+    }
+
+    // 拉取失败，返回硬编码 fallback
+    return c.json({
+      models: provider.models,
+      source: 'fallback',
+      error: result.error,
+    });
   });
 
   /** POST /:id/test — 测试 Provider 连接 */

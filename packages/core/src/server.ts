@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
@@ -8,6 +7,7 @@ import crypto from 'node:crypto';
 import { PORT_RANGE, TOKEN_BYTES } from '@evoclaw/shared';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
+import { ConfigManager } from './infrastructure/config-manager.js';
 import { AgentManager } from './agent/agent-manager.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createChatRoutes } from './routes/chat.js';
@@ -20,6 +20,7 @@ import { createEmbeddingProvider } from './rag/embedding-provider.js';
 import { createSkillRoutes } from './routes/skill.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createProviderRoutes } from './routes/provider.js';
+import { createConfigRoutes } from './routes/config.js';
 import { createCronRoutes } from './routes/cron.js';
 import { CronRunner } from './scheduler/cron-runner.js';
 import { LaneQueue } from './agent/lane-queue.js';
@@ -46,6 +47,7 @@ export interface CreateAppOptions {
   vectorStore?: VectorStore;
   cronRunner?: CronRunner;
   channelManager?: ChannelManager;
+  configManager?: ConfigManager;
 }
 
 /** 创建 Hono 应用实例 */
@@ -53,7 +55,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   const options = typeof tokenOrOptions === 'string'
     ? { token: tokenOrOptions }
     : tokenOrOptions;
-  const { token, store, agentManager, vectorStore, cronRunner, channelManager } = options;
+  const { token, store, agentManager, vectorStore, cronRunner, channelManager, configManager } = options;
 
   const app = new Hono();
 
@@ -66,8 +68,16 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     },
   }));
 
-  // 健康检查 — 无需认证
-  app.get('/health', (c) => c.json({ status: 'ok', timestamp: Date.now() }));
+  // 健康检查 — 无需认证，返回配置状态
+  app.get('/health', (c) => {
+    const validation = configManager?.validate();
+    const status = validation?.valid !== false ? 'ok' : 'needs-setup';
+    return c.json({
+      status,
+      timestamp: Date.now(),
+      ...(validation && !validation.valid ? { missing: validation.missing } : {}),
+    });
+  });
 
   // Bearer Token 认证 — 跳过 /health 路径
   app.use('/*', async (c, next) => {
@@ -75,12 +85,17 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     return bearerAuth({ token })(c, next);
   });
 
+  // 挂载配置路由
+  if (configManager) {
+    app.route('/config', createConfigRoutes(configManager));
+  }
+
   // 挂载业务路由
   if (agentManager) {
     app.route('/agents', createAgentRoutes(agentManager));
   }
   if (store && agentManager) {
-    app.route('/chat', createChatRoutes(store, agentManager, vectorStore));
+    app.route('/chat', createChatRoutes(store, agentManager, vectorStore, configManager));
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
   }
@@ -92,7 +107,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     }
     app.route('/skill', createSkillRoutes());
     app.route('/evolution', createEvolutionRoutes(store));
-    app.route('/provider', createProviderRoutes(store));
+    app.route('/provider', createProviderRoutes(store, configManager));
     if (cronRunner) {
       app.route('/cron', createCronRoutes(cronRunner));
     }
@@ -117,31 +132,42 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   return app;
 }
 
+/** 根据 ConfigManager 初始化 VectorStore */
+function initVectorStore(db: SqliteStore, configManager: ConfigManager): VectorStore {
+  const embeddingConfig = configManager.getEmbeddingConfig();
+  const embeddingApiKey = configManager.getEmbeddingApiKey();
+  const embeddingBaseUrl = configManager.getEmbeddingBaseUrl();
+
+  if (embeddingApiKey && embeddingBaseUrl && embeddingConfig) {
+    const provider = createEmbeddingProvider(
+      embeddingBaseUrl,
+      embeddingApiKey,
+      embeddingConfig.provider,
+      embeddingConfig.modelId,
+      embeddingConfig.dimension,
+    );
+    const embeddingFn = (text: string) => provider.generate(text);
+    return new VectorStore(db, embeddingFn);
+  }
+
+  return new VectorStore(db);
+}
+
 /** 主入口 — 仅在直接执行时运行 */
 async function main() {
-  const token = process.env.EVOCLAW_TOKEN || generateToken();
-  const port = Number(process.env.EVOCLAW_PORT) || getRandomPort();
+  const token = generateToken();
+  const port = getRandomPort();
+
+  // 初始化配置管理器
+  const configManager = new ConfigManager();
 
   // 初始化数据库
   const db = new SqliteStore();
   const migrationRunner = new MigrationRunner(db);
   await migrationRunner.run();
 
-  // 初始化 Embedding Provider（如有 API key）
-  let vectorStore: VectorStore | undefined;
-  const embeddingApiKey = process.env.EVOCLAW_EMBEDDING_API_KEY;
-  const embeddingBaseUrl = process.env.EVOCLAW_EMBEDDING_BASE_URL;
-  if (embeddingApiKey && embeddingBaseUrl) {
-    const provider = createEmbeddingProvider(
-      embeddingBaseUrl,
-      embeddingApiKey,
-      process.env.EVOCLAW_EMBEDDING_PROVIDER,
-    );
-    const embeddingFn = (text: string) => provider.generate(text);
-    vectorStore = new VectorStore(db, embeddingFn);
-  } else {
-    vectorStore = new VectorStore(db);
-  }
+  // 初始化 VectorStore（从 evo_claw.json 读取配置）
+  const vectorStore = initVectorStore(db, configManager);
 
   const agentManager = new AgentManager(db);
 
@@ -156,7 +182,7 @@ async function main() {
   channelManager.registerAdapter(desktopAdapter);
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
 
-  const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner, channelManager });
+  const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner, channelManager, configManager });
 
   // 进程退出时清理
   const cleanup = () => {

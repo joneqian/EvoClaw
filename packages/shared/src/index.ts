@@ -7,4 +7,5 @@ export * from './types/provider.js';
 export * from './types/knowledge.js';
 export * from './types/skill.js';
 export * from './types/evolution.js';
+export * from './types/config.js';
 export * from './constants.js';

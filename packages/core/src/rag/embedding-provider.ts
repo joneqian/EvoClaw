@@ -9,6 +9,9 @@ export const DEFAULT_EMBEDDING_MODELS: Record<string, { model: string; dimension
   openai: { model: 'text-embedding-3-small', dimension: 1536 },
   qwen: { model: 'text-embedding-v3', dimension: 1024 },
   glm: { model: 'embedding-3', dimension: 2048 },
+  minimax: { model: 'embo-01', dimension: 1536 },
+  deepseek: { model: 'text-embedding-v1', dimension: 1024 },
+  kimi: { model: 'moonshot-v1-embedding', dimension: 1024 },
 };
 
 /** Embedding Provider 配置 */
@@ -101,12 +104,13 @@ export function createEmbeddingProvider(
   apiKey: string,
   providerId?: string,
   modelOverride?: string,
+  dimensionOverride?: number,
 ): EmbeddingProvider {
-  const defaults = DEFAULT_EMBEDDING_MODELS[providerId ?? 'openai'] ?? DEFAULT_EMBEDDING_MODELS.openai;
+  const defaults = DEFAULT_EMBEDDING_MODELS[providerId ?? 'openai'] ?? DEFAULT_EMBEDDING_MODELS.openai!;
   return new EmbeddingProvider({
     baseUrl,
     apiKey,
     model: modelOverride ?? defaults.model,
-    dimension: defaults.dimension,
+    dimension: dimensionOverride ?? defaults.dimension,
   });
 }

@@ -6,6 +6,7 @@ import {
   getProviders,
   isBuiltinProvider,
   clearProviders,
+  updateProviderModels,
   registerQwen,
   registerGLM,
   registerDoubao,
@@ -155,6 +156,8 @@ describe('ProviderRegistry', () => {
     const p = getProvider('minimax');
     expect(p).toBeDefined();
     expect(p!.name).toBe('MiniMax');
+    expect(p!.baseUrl).toBe('https://api.minimaxi.com/v1');
+    expect(p!.models.some(m => m.id === 'MiniMax-M2.5-highspeed')).toBe(true);
     expect(p!.models.some(m => m.id === 'abab6.5s-chat')).toBe(true);
   });
 
@@ -185,6 +188,28 @@ describe('ProviderRegistry', () => {
     expect(p).toBeDefined();
     expect(p!.models.some(m => m.supportsVision)).toBe(true);
     expect(p!.models.some(m => m.supportsToolUse)).toBe(true);
+  });
+
+  it('updateProviderModels 应动态更新模型列表', () => {
+    registerMiniMax('minimax-key');
+    const before = getProvider('minimax')!.models.length;
+
+    const newModels = [
+      { id: 'new-model-1', name: 'New Model 1', provider: 'minimax', maxContextLength: 128000, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
+      { id: 'new-model-2', name: 'New Model 2', provider: 'minimax', maxContextLength: 64000, maxOutputTokens: 4096, supportsVision: true, supportsToolUse: true, isDefault: false },
+    ];
+    const updated = updateProviderModels('minimax', newModels);
+    expect(updated).toBe(true);
+
+    const after = getProvider('minimax')!;
+    expect(after.models).toHaveLength(2);
+    expect(after.models[0]!.id).toBe('new-model-1');
+    expect(after.models[1]!.id).toBe('new-model-2');
+  });
+
+  it('updateProviderModels 不存在的 Provider 返回 false', () => {
+    const result = updateProviderModels('nonexistent', []);
+    expect(result).toBe(false);
   });
 
   it('所有 8 个 Provider 可同时注册', () => {

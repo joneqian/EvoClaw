@@ -6,7 +6,7 @@ import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
-import { FALLBACK_MODEL } from '@evoclaw/shared';
+import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ChatMessage } from '@evoclaw/shared';
 import { ContextEngine } from '../context/context-engine.js';
 import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js';
@@ -52,7 +52,7 @@ function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role:
 }
 
 /** 创建聊天路由 */
-export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore) {
+export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore, configManager?: ConfigManager) {
   const app = new Hono();
 
   app.post('/:agentId/send', async (c) => {
@@ -79,29 +79,29 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       store,
     });
 
-    // 获取 API Key：优先 model_configs 表 → 环境变量
+    // 获取 API Key：优先 Agent 指定的 Provider → 默认 Provider（从 evo_claw.json）
     let apiKey = '';
-    const modelConfig = store.get<{ api_key_ref: string; config_json: string }>(
-      'SELECT api_key_ref, config_json FROM model_configs WHERE provider = ? AND model_id = ? LIMIT 1',
-      resolved.provider, resolved.modelId,
-    );
-    if (modelConfig?.api_key_ref) {
-      // 从环境变量解析（api_key_ref 格式如 "openai-api-key" → 环境变量 OPENAI_API_KEY）
-      const envKey = modelConfig.api_key_ref.toUpperCase().replace(/-/g, '_');
-      apiKey = process.env[envKey] ?? '';
-    }
-    if (!apiKey) {
-      apiKey = process.env.EVOCLAW_DEFAULT_API_KEY ?? '';
-    }
+    let baseUrl = resolved.baseUrl || '';
 
-    const baseUrl = resolved.baseUrl || process.env.EVOCLAW_DEFAULT_BASE_URL || '';
+    if (configManager) {
+      // 先尝试 Agent 指定的 Provider
+      apiKey = configManager.getApiKey(resolved.provider);
+      if (!baseUrl) {
+        baseUrl = configManager.getProvider(resolved.provider)?.baseUrl ?? '';
+      }
+      // 兜底：使用默认 Provider
+      if (!apiKey) {
+        apiKey = configManager.getDefaultApiKey();
+      }
+      if (!baseUrl) {
+        baseUrl = configManager.getDefaultBaseUrl();
+      }
+    }
 
     // 创建 ContextEngine 并注册插件
     const contextEngine = new ContextEngine();
     contextEngine.register(sessionRouterPlugin);
     contextEngine.register(contextAssemblerPlugin);
-    // 注意：memory-recall、rag、tool-registry、evolution 等插件
-    // 需要在有对应依赖时才注册（后续 Sprint 可按需添加）
 
     // 加载消息历史
     const history = loadMessageHistory(store, agentId, sessionKey);

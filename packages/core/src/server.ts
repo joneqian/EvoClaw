@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
@@ -79,7 +80,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/agents', createAgentRoutes(agentManager));
   }
   if (store && agentManager) {
-    app.route('/chat', createChatRoutes(store, agentManager));
+    app.route('/chat', createChatRoutes(store, agentManager, vectorStore));
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
   }

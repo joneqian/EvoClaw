@@ -93,6 +93,10 @@ export interface ToolDefinition {
 export interface ToolInjectorConfig {
   interceptor?: PermissionInterceptor;
   agentId?: string;
+  /** 阶段 3: EvoClaw 特定工具 */
+  evoClawTools?: ToolDefinition[];
+  /** 阶段 4: Channel 工具 */
+  channelTools?: ToolDefinition[];
 }
 
 /** 全局拦截器实例（由 server 启动时注入） */
@@ -105,14 +109,28 @@ export function setToolInjectorConfig(config: ToolInjectorConfig): void {
 
 /**
  * 工具注入器 — 5 阶段注入
- * 阶段 1: PI 内置工具（read/write/edit/bash）— 通过 PI 直接提供
- * 阶段 2: 权限拦截层 — 委托给 PermissionInterceptor
- * 阶段 3: EvoClaw 特定工具 — 桩实现
+ * 阶段 1: PI 内置工具（read/write/edit/bash）— PI 框架自行管理
+ * 阶段 2: 权限拦截层 — 审计包装
+ * 阶段 3: EvoClaw 特定工具 — memory_search/memory_get/knowledge_query
+ * 阶段 4: Channel 工具 — feishu_send/wecom_send/desktop_notify
+ * 阶段 5: Skill 工具目录 — 通过 tool-registry 插件注入 system prompt（非工具注册）
  */
 export function getInjectedTools(): ToolDefinition[] {
-  // Sprint 5: 返回空数组，PI 内置工具由 PI 框架自行管理
-  // 后续 Sprint 会在此添加 EvoClaw 特定工具
-  return [];
+  const tools: ToolDefinition[] = [];
+
+  // 阶段 3: EvoClaw 特定工具
+  if (globalConfig.evoClawTools) {
+    tools.push(...globalConfig.evoClawTools);
+  }
+
+  // 阶段 4: Channel 工具
+  if (globalConfig.channelTools) {
+    tools.push(...globalConfig.channelTools);
+  }
+
+  // 阶段 5: Skill 工具目录通过 system prompt 注入，不在此注册
+
+  return tools;
 }
 
 /**

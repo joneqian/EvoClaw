@@ -17,6 +17,7 @@
     "@mariozechner/pi-ai": "^0.57.1",
     "@mariozechner/pi-coding-agent": "^0.57.1",
     "better-sqlite3": "^11.9.0",
+    "dotenv": "^17.3.1",
     "hono": "^4.7.0"
   },
   "devDependencies": {

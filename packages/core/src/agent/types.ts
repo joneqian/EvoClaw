@@ -1,4 +1,5 @@
-import type { AgentConfig } from '@evoclaw/shared';
+import type { AgentConfig, ChatMessage } from '@evoclaw/shared';
+import type { ToolDefinition } from '../bridge/tool-injector.js';
 
 /** Agent 运行配置 */
 export interface AgentRunConfig {
@@ -9,6 +10,10 @@ export interface AgentRunConfig {
   provider: string;
   apiKey: string;
   baseUrl: string;
+  /** 注入的工具（阶段 3-4） */
+  tools?: ToolDefinition[];
+  /** 消息历史 */
+  messages?: ChatMessage[];
 }
 
 /** Agent 事件类型 */

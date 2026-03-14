@@ -1,18 +1,63 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import crypto from 'node:crypto';
 import { AgentManager } from '../agent/agent-manager.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import { FALLBACK_MODEL } from '@evoclaw/shared';
+import type { ChatMessage } from '@evoclaw/shared';
+import { ContextEngine } from '../context/context-engine.js';
+import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js';
+import { sessionRouterPlugin } from '../context/plugins/session-router.js';
+import { resolveModel } from '../provider/model-resolver.js';
+import { generateSessionKey } from '../routing/session-key.js';
+import { setToolInjectorConfig, getInjectedTools } from '../bridge/tool-injector.js';
+
+/** 从 conversation_log 加载最近消息历史 */
+function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
+  const rows = db.all<{
+    id: string;
+    session_key: string;
+    role: string;
+    content: string;
+    created_at: string;
+  }>(
+    `SELECT id, session_key, role, content, created_at
+     FROM conversation_log
+     WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    agentId, sessionKey, limit,
+  );
+
+  // 反转为时间正序
+  return rows.reverse().map(row => ({
+    id: row.id,
+    conversationId: row.session_key,
+    role: row.role as ChatMessage['role'],
+    content: row.content,
+    createdAt: row.created_at,
+  }));
+}
+
+/** 存储消息到 conversation_log */
+function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role: string, content: string): void {
+  db.run(
+    `INSERT INTO conversation_log (id, agent_id, session_key, role, content, compaction_status, created_at)
+     VALUES (?, ?, ?, ?, ?, 'raw', datetime('now'))`,
+    crypto.randomUUID(), agentId, sessionKey, role, content,
+  );
+}
 
 /** 创建聊天路由 */
-export function createChatRoutes(store: SqliteStore, agentManager: AgentManager) {
+export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore) {
   const app = new Hono();
 
   app.post('/:agentId/send', async (c) => {
     const agentId = c.req.param('agentId');
-    const body = await c.req.json<{ message?: string }>().catch(() => ({}));
+    const body = await c.req.json<{ message?: string; sessionKey?: string }>().catch(() => ({}));
     const message = body.message;
 
     if (!message) {
@@ -24,39 +69,136 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager)
       return c.json({ error: 'Agent 不存在' }, 404);
     }
 
-    // 解析模型 — 优先使用 Agent 配置，否则使用全局默认
-    const modelId = agent.modelId ?? FALLBACK_MODEL.modelId;
-    const provider = agent.provider ?? FALLBACK_MODEL.provider;
+    // 生成 Session Key
+    const sessionKey = body.sessionKey ?? generateSessionKey(agentId, 'local', 'direct', 'local-user');
 
-    // 查询是否有 model_configs 中的配置
+    // 解析模型（4 级优先）
+    const resolved = resolveModel({
+      agentModelId: agent.modelId,
+      agentProvider: agent.provider,
+      store,
+    });
+
+    // 获取 API Key：优先 model_configs 表 → 环境变量
+    let apiKey = '';
     const modelConfig = store.get<{ api_key_ref: string; config_json: string }>(
       'SELECT api_key_ref, config_json FROM model_configs WHERE provider = ? AND model_id = ? LIMIT 1',
-      provider, modelId,
+      resolved.provider, resolved.modelId,
     );
-    const configJson = modelConfig ? JSON.parse(modelConfig.config_json) as Record<string, string> : {};
-    const baseUrl = (configJson['baseUrl'] as string | undefined) ?? '';
+    if (modelConfig?.api_key_ref) {
+      // 从环境变量解析（api_key_ref 格式如 "openai-api-key" → 环境变量 OPENAI_API_KEY）
+      const envKey = modelConfig.api_key_ref.toUpperCase().replace(/-/g, '_');
+      apiKey = process.env[envKey] ?? '';
+    }
+    if (!apiKey) {
+      apiKey = process.env.EVOCLAW_DEFAULT_API_KEY ?? '';
+    }
 
-    // 加载工作区文件
+    const baseUrl = resolved.baseUrl || process.env.EVOCLAW_DEFAULT_BASE_URL || '';
+
+    // 创建 ContextEngine 并注册插件
+    const contextEngine = new ContextEngine();
+    contextEngine.register(sessionRouterPlugin);
+    contextEngine.register(contextAssemblerPlugin);
+    // 注意：memory-recall、rag、tool-registry、evolution 等插件
+    // 需要在有对应依赖时才注册（后续 Sprint 可按需添加）
+
+    // 加载消息历史
+    const history = loadMessageHistory(store, agentId, sessionKey);
+
+    // 添加当前用户消息
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      conversationId: sessionKey,
+      role: 'user',
+      content: message,
+      createdAt: new Date().toISOString(),
+    };
+    const messages = [...history, userMsg];
+
+    // 获取工作区路径
+    const workspacePath = agentManager.getWorkspacePath?.(agentId) ?? '';
+
+    // 执行 ContextEngine bootstrap（首次加载工作区文件）
+    await contextEngine.bootstrap({
+      agentId,
+      sessionKey: sessionKey as any,
+      workspacePath,
+    });
+
+    // 执行 beforeTurn（记忆召回 + 上下文组装）
+    const turnCtx = {
+      agentId,
+      sessionKey: sessionKey as any,
+      messages,
+      systemPrompt: '',
+      injectedContext: [] as string[],
+      estimatedTokens: 0,
+      tokenLimit: 128_000,
+    };
+    await contextEngine.beforeTurn(turnCtx);
+
+    // 组装最终 system prompt
+    const systemPrompt = turnCtx.injectedContext.join('\n\n---\n\n');
+
+    // 加载工作区文件（用于 embedded-runner 的 buildSystemPrompt）
     const workspaceFiles: Record<string, string> = {};
     for (const file of ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md']) {
       const content = agentManager.readWorkspaceFile(agentId, file);
       if (content) workspaceFiles[file] = content;
     }
 
+    // 配置工具注入
+    setToolInjectorConfig({ agentId });
+    const tools = getInjectedTools();
+
     const runConfig: AgentRunConfig = {
       agent,
-      systemPrompt: '',
+      systemPrompt,
       workspaceFiles,
-      modelId,
-      provider,
-      apiKey: '', // 生产环境从 Keychain 获取
+      modelId: resolved.modelId,
+      provider: resolved.provider,
+      apiKey,
       baseUrl,
+      tools,
+      messages,
     };
+
+    // 存储用户消息
+    saveMessage(store, agentId, sessionKey, 'user', message);
 
     // 返回 SSE 流
     return streamSSE(c, async (stream) => {
+      let fullResponse = '';
+
       await runEmbeddedAgent(runConfig, message, async (event) => {
+        if (event.type === 'text_delta' && event.delta) {
+          fullResponse += event.delta;
+        }
         await stream.writeSSE({ data: JSON.stringify(event) });
+      });
+
+      // 存储 assistant 响应
+      if (fullResponse) {
+        saveMessage(store, agentId, sessionKey, 'assistant', fullResponse);
+      }
+
+      // afterTurn — 记忆提取 + 进化更新（异步，不阻塞响应）
+      const afterTurnCtx = {
+        ...turnCtx,
+        messages: [
+          ...messages,
+          {
+            id: crypto.randomUUID(),
+            conversationId: sessionKey,
+            role: 'assistant' as const,
+            content: fullResponse,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      };
+      contextEngine.afterTurn(afterTurnCtx).catch((err) => {
+        console.error('[chat] afterTurn 失败:', err);
       });
     });
   });

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildSystemPrompt } from '../agent/embedded-runner.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import { formatSSE, createSSEStream } from '../bridge/event-forwarder.js';
-import { getInjectedTools, permissionInterceptor } from '../bridge/tool-injector.js';
+import { getInjectedTools, permissionInterceptor, setToolInjectorConfig } from '../bridge/tool-injector.js';
 import type { AgentRunConfig, RuntimeEvent } from '../agent/types.js';
 
 /** 创建测试用 AgentRunConfig */
@@ -133,7 +133,8 @@ describe('createSSEStream', () => {
 });
 
 describe('tool-injector', () => {
-  it('getInjectedTools 应返回空数组（Sprint 2 桩实现）', () => {
+  it('getInjectedTools 无配置时应返回空数组', () => {
+    setToolInjectorConfig({});
     const tools = getInjectedTools();
     expect(tools).toEqual([]);
   });

@@ -58,13 +58,27 @@ async function runWithPI(
   // 从工作区文件构建系统提示
   const systemPrompt = buildSystemPrompt(config);
 
+  // 构建 PI 工具列表（阶段 3-4 注入的工具转为 PI 格式）
+  const piTools = (config.tools ?? []).map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    execute: tool.execute,
+  }));
+
+  // 构建消息历史（ChatMessage → PI 格式）
+  const piMessages = (config.messages ?? []).map(msg => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+
   const AgentClass = piCore.Agent!;
   const agent = new AgentClass({
     initialState: {
       systemPrompt,
       model,
-      tools: [],  // PI 内置工具由框架自行管理
-      messages: [],
+      tools: piTools,
+      messages: piMessages,
     },
     streamFn: piAi.streamSimple,
   });
@@ -126,6 +140,8 @@ async function runWithFetch(
       model: config.modelId,
       messages: [
         { role: 'system', content: systemPrompt },
+        // 注入消息历史
+        ...(config.messages ?? []).map(msg => ({ role: msg.role, content: msg.content })),
         { role: 'user', content: message },
       ],
       stream: true,

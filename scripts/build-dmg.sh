@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# EvoClaw macOS DMG 打包
+# 用法: ./scripts/build-dmg.sh
+#
+# 产出: apps/desktop/src-tauri/target/release/bundle/dmg/EvoClaw_0.1.0_aarch64.dmg
+# 注意: 未签名，安装后需右键 → 打开 绕过 Gatekeeper
+
+set -e
+cd "$(dirname "$0")/.."
+
+echo "========================================="
+echo "  EvoClaw macOS DMG 打包"
+echo "========================================="
+
+# 1. 构建所有包
+echo ""
+echo "[1/3] 构建所有包 (shared + core + desktop 前端) ..."
+pnpm build
+
+# 2. 验证 core 产出
+echo ""
+echo "[2/3] 验证 Core 构建产出 ..."
+if [ ! -f "packages/core/dist/server.mjs" ]; then
+  echo "❌ packages/core/dist/server.mjs 不存在"
+  exit 1
+fi
+if [ ! -f "packages/core/dist/node_modules/better-sqlite3/build/Release/better_sqlite3.node" ]; then
+  echo "❌ better-sqlite3 native 模块未打包"
+  exit 1
+fi
+echo "✅ server.mjs + better-sqlite3 native 模块已就绪"
+
+# 3. Tauri 打包
+echo ""
+echo "[3/3] 执行 Tauri 打包 (cargo build --release + bundle DMG) ..."
+echo "  首次打包需要编译 Rust，可能需要 3-5 分钟 ..."
+echo ""
+cd apps/desktop
+pnpm tauri build
+
+echo ""
+echo "========================================="
+echo "  打包完成！"
+echo "========================================="
+echo ""
+
+# 查找生成的 DMG
+DMG=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
+if [ -n "$DMG" ]; then
+  SIZE=$(du -h "$DMG" | cut -f1)
+  echo "📦 DMG 文件: $DMG"
+  echo "📏 文件大小: $SIZE"
+  echo ""
+  echo "安装方式:"
+  echo "  1. 双击 DMG 打开"
+  echo "  2. 拖拽 EvoClaw.app 到 Applications"
+  echo "  3. 首次打开: 右键 EvoClaw.app → 打开 (绕过 Gatekeeper)"
+else
+  echo "⚠️  未找到 DMG 文件，请检查 src-tauri/target/release/bundle/"
+fi

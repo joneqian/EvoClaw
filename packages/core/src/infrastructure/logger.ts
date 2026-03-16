@@ -16,7 +16,8 @@ const LOG_FILE = path.join(LOG_DIR, 'core.log');
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB，超过后轮转
 
 let logStream: fs.WriteStream | null = null;
-let currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
+const isDev = !process.env.TAURI_ENV && process.env.NODE_ENV !== 'production';
+let currentLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) || (isDev ? 'debug' : 'info');
 
 function ensureLogDir(): void {
   fs.mkdirSync(LOG_DIR, { recursive: true });

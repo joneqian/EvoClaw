@@ -34,7 +34,11 @@
     "resources": [
       "../../../packages/core/dist/server.mjs",
       "../../../packages/core/dist/server.cjs",
-      "../../../packages/core/dist/migrations/*"
+      "../../../packages/core/dist/migrations/*",
+      "../../../packages/core/dist/node_modules/better-sqlite3/lib/*",
+      "../../../packages/core/dist/node_modules/better-sqlite3/lib/methods/*",
+      "../../../packages/core/dist/node_modules/better-sqlite3/package.json",
+      "../../../packages/core/dist/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
     ]
   },
   "plugins": {

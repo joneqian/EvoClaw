@@ -97,10 +97,18 @@ function bundleBetterSqlite3() {
     }
   }
 
-  // 复制 binding.js（如果存在，用于 native addon 加载）
-  const bindingJs = path.join(srcRoot, 'binding.js');
-  if (fs.existsSync(bindingJs)) {
-    fs.copyFileSync(bindingJs, path.join(destRoot, 'binding.js'));
+  // Patch database.js: 替换 require('bindings') 为直接 require native 路径
+  // 原始: DEFAULT_ADDON || (DEFAULT_ADDON = require('bindings')('better_sqlite3.node'))
+  // 替换: DEFAULT_ADDON || (DEFAULT_ADDON = require('../build/Release/better_sqlite3.node'))
+  const dbJs = path.join(destRoot, 'lib', 'database.js');
+  if (fs.existsSync(dbJs)) {
+    let content = fs.readFileSync(dbJs, 'utf-8');
+    content = content.replace(
+      "require('bindings')('better_sqlite3.node')",
+      "require('../build/Release/better_sqlite3.node')",
+    );
+    fs.writeFileSync(dbJs, content, 'utf-8');
+    console.log('Patched database.js: removed bindings dependency');
   }
 }
 

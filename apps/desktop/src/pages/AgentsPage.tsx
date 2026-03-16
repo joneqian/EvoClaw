@@ -1,82 +1,119 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAgentStore } from '../stores/agent-store';
+import { useAgentStore, type BuilderStage } from '../stores/agent-store';
 import { useChatStore } from '../stores/chat-store';
 
-/** 可选的 emoji 列表 */
-const EMOJI_OPTIONS = ['🤖', '🧠', '🎯', '🦊', '🐱', '🌟', '💡', '🔮', '🎭', '📚', '🛡️', '⚡'];
+/** 每个阶段的快捷建议 */
+const STAGE_SUGGESTIONS: Partial<Record<BuilderStage, string[]>> = {
+  role: ['资深程序员', '英语老师', '数据分析师', '创意写手', '产品经理', '日语学习伙伴'],
+  expertise: ['编程与软件开发', '英语口语与写作', '数据可视化与统计', '文案创作与营销', '项目管理', '日语 N1 考试辅导'],
+  style: ['专业严谨', '轻松幽默', '简洁高效', '耐心教学', '苏格拉底式引导', '温暖鼓励'],
+  constraints: ['不要使用英文术语', '回答控制在 200 字以内', '必须附带参考来源', '无'],
+};
 
-/** 创建向导步骤 */
-type WizardStep = 'name' | 'emoji' | 'confirm';
+/** 阶段进度指示器配置 */
+const STAGE_STEPS: { key: BuilderStage; label: string }[] = [
+  { key: 'role', label: '角色' },
+  { key: 'expertise', label: '专长' },
+  { key: 'style', label: '风格' },
+  { key: 'constraints', label: '约束' },
+  { key: 'preview', label: '预览' },
+];
+
+/** 工作区文件图标和标签 */
+const FILE_LABELS: Record<string, { icon: string; label: string; desc: string }> = {
+  'SOUL.md': { icon: '💎', label: '行为哲学', desc: '定义 Agent 的核心价值观和思维方式' },
+  'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、头像等外在表现' },
+  'AGENTS.md': { icon: '📋', label: '操作规程', desc: '对话规范和工作流程' },
+  'TOOLS.md': { icon: '🔧', label: '工具配置', desc: '可用工具列表（启动时注入）' },
+  'HEARTBEAT.md': { icon: '💓', label: '定时任务', desc: '周期性自动执行的任务' },
+  'USER.md': { icon: '👤', label: '用户画像', desc: '用户偏好和习惯（运行时动态渲染）' },
+  'MEMORY.md': { icon: '🧠', label: '长期记忆', desc: '对话记忆快照（运行时动态渲染）' },
+  'BOOTSTRAP.md': { icon: '🚀', label: '启动流程', desc: 'Agent 启动时的初始化步骤' },
+};
 
 export default function AgentsPage() {
-  const { agents, loading, fetchAgents, createAgent, deleteAgent } = useAgentStore();
+  const {
+    agents, loading, fetchAgents, deleteAgent,
+    builderMessages, builderStage, builderPreview, builderLoading, builderCreatedAgentId,
+    startGuidedCreation, sendBuilderMessage, resetBuilder,
+  } = useAgentStore();
   const { setCurrentAgent } = useChatStore();
   const navigate = useNavigate();
 
-  const [showWizard, setShowWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState<WizardStep>('name');
-  const [newName, setNewName] = useState('');
-  const [newEmoji, setNewEmoji] = useState('🤖');
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [inputValue, setInputValue] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  /** 加载 Agent 列表 */
+  useEffect(() => { fetchAgents(); }, [fetchAgents]);
+
+  // 自动滚动到最新消息
   useEffect(() => {
-    fetchAgents();
-  }, [fetchAgents]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [builderMessages]);
 
-  /** 重置向导 */
-  const resetWizard = useCallback(() => {
-    setShowWizard(false);
-    setWizardStep('name');
-    setNewName('');
-    setNewEmoji('🤖');
-  }, []);
+  /** 开始创建 */
+  const handleStartCreate = useCallback(() => {
+    setShowBuilder(true);
+    startGuidedCreation();
+  }, [startGuidedCreation]);
 
-  /** 完成创建（通过服务端） */
-  const finishCreate = useCallback(async () => {
-    if (creating) return;
-    setCreating(true);
-    try {
-      await createAgent(newName.trim(), newEmoji);
-      resetWizard();
-    } catch (err) {
-      console.error('创建 Agent 失败:', err);
-    } finally {
-      setCreating(false);
-    }
-  }, [newName, newEmoji, createAgent, resetWizard, creating]);
+  /** 关闭创建面板 */
+  const handleCloseBuilder = useCallback(() => {
+    setShowBuilder(false);
+    resetBuilder();
+    setInputValue('');
+    setExpandedFile(null);
+  }, [resetBuilder]);
+
+  /** 发送消息 */
+  const handleSend = useCallback(() => {
+    const msg = inputValue.trim();
+    if (!msg || builderLoading) return;
+    setInputValue('');
+    sendBuilderMessage(msg);
+  }, [inputValue, builderLoading, sendBuilderMessage]);
+
+  /** 点击建议标签 */
+  const handleSuggestion = useCallback((text: string) => {
+    if (builderLoading) return;
+    setInputValue('');
+    sendBuilderMessage(text);
+  }, [builderLoading, sendBuilderMessage]);
 
   /** 开始对话 */
-  const startChat = useCallback(
-    (agentId: string) => {
-      setCurrentAgent(agentId);
-      navigate('/chat');
-    },
-    [setCurrentAgent, navigate],
-  );
+  const startChat = useCallback((agentId: string) => {
+    setCurrentAgent(agentId);
+    navigate('/chat');
+  }, [setCurrentAgent, navigate]);
 
   /** 删除 Agent */
-  const handleDelete = useCallback(
-    async (id: string) => {
-      try {
-        await deleteAgent(id);
-      } catch (err) {
-        console.error('删除 Agent 失败:', err);
-      }
-      setDeleteConfirmId(null);
-    },
-    [deleteAgent],
-  );
+  const handleDelete = useCallback(async (id: string) => {
+    try { await deleteAgent(id); } catch (err) { console.error('删除 Agent 失败:', err); }
+    setDeleteConfirmId(null);
+  }, [deleteAgent]);
+
+  /** 创建完成，跳转对话 */
+  const handleGoChat = useCallback(() => {
+    if (builderCreatedAgentId) {
+      setCurrentAgent(builderCreatedAgentId);
+      handleCloseBuilder();
+      navigate('/chat');
+    }
+  }, [builderCreatedAgentId, setCurrentAgent, handleCloseBuilder, navigate]);
+
+  // 当前阶段的建议
+  const suggestions = builderStage ? STAGE_SUGGESTIONS[builderStage] : undefined;
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6 max-w-5xl">
       {/* 页头 */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Agent 管理</h2>
         <button
-          onClick={() => setShowWizard(true)}
+          onClick={handleStartCreate}
           className="px-4 py-2 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
             hover:bg-[#00b894] transition-colors"
         >
@@ -84,100 +121,227 @@ export default function AgentsPage() {
         </button>
       </div>
 
-      {/* 创建向导 */}
-      {showWizard && (
-        <div className="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-4">创建新 Agent</h3>
-
-          <div className="space-y-4">
-            {/* 步骤 1: 名称 */}
-            <div className="flex gap-3">
-              <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xs shrink-0">
-                🤖
-              </div>
-              <div className="flex-1">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">给你的 Agent 取一个名字吧：</p>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="例如：小助手、代码专家..."
-                  className="w-full max-w-xs px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
-                    bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                    focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newName.trim()) setWizardStep('emoji');
-                  }}
-                  autoFocus
-                />
-                {wizardStep === 'name' && newName.trim() && (
-                  <button
-                    onClick={() => setWizardStep('emoji')}
-                    className="mt-2 text-sm text-[#00d4aa] hover:text-[#00b894]"
-                  >
-                    下一步 →
-                  </button>
-                )}
-              </div>
+      {/* 引导式创建面板 */}
+      {showBuilder && (
+        <div className="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          {/* 头部 + 进度条 */}
+          <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">创建新 Agent</h3>
+              <button
+                onClick={handleCloseBuilder}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none"
+              >
+                ×
+              </button>
             </div>
+            {/* 进度步骤 */}
+            <div className="flex items-center gap-1">
+              {STAGE_STEPS.map((step, i) => {
+                const stageIdx = STAGE_STEPS.findIndex(s => s.key === builderStage);
+                const isActive = step.key === builderStage;
+                const isDone = stageIdx > i || builderStage === 'done';
+                return (
+                  <div key={step.key} className="flex items-center gap-1 flex-1">
+                    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                      isActive
+                        ? 'bg-[#00d4aa]/10 text-[#00d4aa]'
+                        : isDone
+                          ? 'text-green-500 dark:text-green-400'
+                          : 'text-gray-400 dark:text-gray-500'
+                    }`}>
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                        isDone
+                          ? 'bg-green-500 text-white'
+                          : isActive
+                            ? 'bg-[#00d4aa] text-white'
+                            : 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400'
+                      }`}>
+                        {isDone ? '✓' : i + 1}
+                      </span>
+                      <span className="hidden sm:inline">{step.label}</span>
+                    </div>
+                    {i < STAGE_STEPS.length - 1 && (
+                      <div className={`flex-1 h-px ${isDone ? 'bg-green-300 dark:bg-green-600' : 'bg-gray-200 dark:bg-gray-600'}`} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-            {/* 步骤 2: Emoji */}
-            {(wizardStep === 'emoji' || wizardStep === 'confirm') && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xs shrink-0">
-                  🤖
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">选择一个代表图标：</p>
-                  <div className="flex flex-wrap gap-2">
-                    {EMOJI_OPTIONS.map((e) => (
+          {/* 对话区域 */}
+          <div className="flex">
+            {/* 左侧：对话 */}
+            <div className={`flex-1 flex flex-col ${builderPreview ? 'border-r border-gray-100 dark:border-gray-700' : ''}`}>
+              <div className="p-4 space-y-3 max-h-80 overflow-y-auto min-h-[200px]">
+                {builderMessages.map((msg, i) => (
+                  <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                    {msg.role === 'system' && (
+                      <div className="w-6 h-6 rounded-full bg-[#00d4aa]/10 flex items-center justify-center text-xs shrink-0 mt-0.5">
+                        🤖
+                      </div>
+                    )}
+                    <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-[#00d4aa] text-white rounded-br-sm'
+                        : 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 rounded-bl-sm'
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {builderLoading && (
+                  <div className="flex gap-2">
+                    <div className="w-6 h-6 rounded-full bg-[#00d4aa]/10 flex items-center justify-center text-xs shrink-0">
+                      🤖
+                    </div>
+                    <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg rounded-bl-sm">
+                      <span className="inline-flex gap-1">
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* 建议标签 */}
+              {suggestions && !builderCreatedAgentId && (
+                <div className="px-4 pb-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map((s) => (
                       <button
-                        key={e}
-                        onClick={() => {
-                          setNewEmoji(e);
-                          setWizardStep('confirm');
-                        }}
-                        className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center transition-colors ${
-                          newEmoji === e
-                            ? 'bg-[#00d4aa]/10 ring-2 ring-[#00d4aa]'
-                            : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600'
-                        }`}
+                        key={s}
+                        onClick={() => handleSuggestion(s)}
+                        disabled={builderLoading}
+                        className="px-2.5 py-1 text-xs bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400
+                          border border-gray-200 dark:border-gray-600 rounded-full
+                          hover:bg-[#00d4aa]/5 hover:border-[#00d4aa]/30 hover:text-[#00d4aa]
+                          disabled:opacity-50 transition-colors"
                       >
-                        {e}
+                        {s}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 步骤 3: 确认 */}
-            {wizardStep === 'confirm' && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-xs shrink-0">
-                  🤖
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                    确认创建 Agent「{newEmoji} {newName}」？
-                  </p>
+              {/* 输入区域 / 完成操作 */}
+              <div className="p-3 border-t border-gray-100 dark:border-gray-700">
+                {builderCreatedAgentId ? (
                   <div className="flex gap-2">
                     <button
-                      onClick={finishCreate}
-                      disabled={creating}
-                      className="px-4 py-1.5 text-sm font-medium text-white bg-[#00d4aa]
+                      onClick={handleGoChat}
+                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
+                        rounded-lg hover:bg-[#00b894] transition-colors"
+                    >
+                      开始对话
+                    </button>
+                    <button
+                      onClick={handleCloseBuilder}
+                      className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700
+                        dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg"
+                    >
+                      返回列表
+                    </button>
+                  </div>
+                ) : builderStage === 'preview' ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleSuggestion('确认')}
+                      disabled={builderLoading}
+                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
                         rounded-lg hover:bg-[#00b894] transition-colors
                         disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {creating ? '创建中...' : '确认创建'}
+                      {builderLoading ? '创建中...' : '确认创建'}
                     </button>
                     <button
-                      onClick={resetWizard}
-                      className="px-4 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                      onClick={() => handleSuggestion('重来')}
+                      disabled={builderLoading}
+                      className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400
+                        hover:text-gray-700 dark:hover:text-gray-200
+                        border border-gray-200 dark:border-gray-600 rounded-lg
+                        disabled:opacity-50"
                     >
-                      取消
+                      重新开始
                     </button>
                   </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+                      placeholder="输入你的回答..."
+                      disabled={builderLoading}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                        focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
+                        disabled:opacity-50"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSend}
+                      disabled={!inputValue.trim() || builderLoading}
+                      className="px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
+                        rounded-lg hover:bg-[#00b894] transition-colors
+                        disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      发送
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 右侧：工作区文件预览 */}
+            {builderPreview && (
+              <div className="w-80 p-4 overflow-y-auto max-h-[420px]">
+                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                  工作区文件预览
+                </h4>
+                <div className="space-y-2">
+                  {Object.entries(builderPreview).map(([filename, content]) => {
+                    const meta = FILE_LABELS[filename] || { icon: '📄', label: filename, desc: '' };
+                    const isExpanded = expandedFile === filename;
+                    const hasContent = content.trim().length > 0;
+                    return (
+                      <div key={filename} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => setExpandedFile(isExpanded ? null : filename)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50
+                            dark:hover:bg-gray-700/50 transition-colors"
+                        >
+                          <span className="text-sm">{meta.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium text-gray-700 dark:text-gray-300">{meta.label}</div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{meta.desc}</div>
+                          </div>
+                          {hasContent && (
+                            <span className={`text-gray-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                              ▶
+                            </span>
+                          )}
+                          {!hasContent && (
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">运行时生成</span>
+                          )}
+                        </button>
+                        {isExpanded && hasContent && (
+                          <div className="px-3 pb-2">
+                            <pre className="text-[11px] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50
+                              rounded p-2 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                              {content}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -190,21 +354,21 @@ export default function AgentsPage() {
         <div className="text-center py-16 text-gray-400 dark:text-gray-500">
           <p className="text-sm">加载中...</p>
         </div>
-      ) : agents.length === 0 && !showWizard ? (
+      ) : agents.length === 0 && !showBuilder ? (
         <div className="text-center py-16">
           <p className="text-5xl mb-4">🐾</p>
           <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
             创建你的第一个 Agent
           </h3>
           <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
-            Agent 是你的 AI 伴侣，拥有独立的人格、记忆和能力
+            通过对话引导，定制拥有独立人格、专长和记忆的 AI 伴侣
           </p>
           <button
-            onClick={() => setShowWizard(true)}
-            className="px-4 py-2 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
+            onClick={handleStartCreate}
+            className="px-5 py-2.5 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
               hover:bg-[#00b894] transition-colors"
           >
-            + 创建 Agent
+            + 开始创建
           </button>
         </div>
       ) : (
@@ -229,10 +393,12 @@ export default function AgentsPage() {
                   className={`text-xs px-2 py-0.5 rounded-full ${
                     agent.status === 'active'
                       ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                      : agent.status === 'draft'
+                        ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                   }`}
                 >
-                  {agent.status === 'active' ? '活跃' : agent.status}
+                  {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
                 </span>
               </div>
 

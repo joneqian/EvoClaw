@@ -947,9 +947,12 @@ class EvolutionPlugin implements ContextPlugin {
     const usedCapabilities = detectCapabilities(ctx, response)
     await this.updateCapabilityGraph(ctx.agentId, usedCapabilities)
 
-    // 2. 用户满意度信号检测
-    const satisfaction = detectSatisfaction(ctx, response)
-    await this.recordFeedback(ctx.agentId, satisfaction)
+    // 2. 响应质量评估（借鉴 MetaClaw 评估机制）
+    const quality = evaluateResponseQuality(ctx, response)
+    //   - 自动指标：工具调用成功率、重试次数、对话轮次
+    //   - 用户反馈：点赞/点踩（异步收集）
+    //   - 评估结果写入 capability_graph，驱动进化方向
+    await this.recordQualitySignal(ctx.agentId, quality)
 
     // 3. 成长向量计算
     const growth = await this.computeGrowthVector(ctx.agentId)
@@ -1008,6 +1011,20 @@ metadata:
 - 根目录 `.md` 文件直接作为 Skill，子目录中只识别 `SKILL.md`
 
 **门控**: PI 框架本身 **不实现** `requires.bins/env/os` 的程序化检查（AgentSkills 规范也未定义）。EvoClaw 作为自定义扩展实现门控检查（Sprint 7.1 skill-gate.ts），这是超出 PI 规范的增强功能。
+
+#### Skill 自进化循环（借鉴 MetaClaw MAML 思想）
+
+当 GapDetectionPlugin 检测到 Agent 在同一领域多次失败（3+ 次同类缺口），且现有 Skill 市场无匹配项时，触发 Skill 自生成：
+
+```
+多次同类失败 → SkillGapAnalyzer 聚类失败模式
+  → LLM 生成 SKILL.md（结构化指令 + 参考案例）
+  → 沙箱验证（模拟场景测试通过率 > 60%）
+  → 标记 auto-generated，安装到 Agent 工作区
+  → 首次实际使用后用户确认（保留 / 删除 / 编辑）
+```
+
+自生成的 Skill 在 SKILL.md frontmatter 中标注 `origin: auto-generated`，进化仪表盘单独展示。
 
 ### 3.7 Channel 系统
 
@@ -1331,6 +1348,8 @@ type Category =
 │   L1/L2，L0 不变（保持向量索引稳定）   │
 │ · independent 型：直接 INSERT          │
 │ · 关系三元组写入 knowledge_graph       │
+│ · 标注 generation 元数据（MAML 风格）   │
+│   conversation_id + model_id + 时间戳  │
 │ · 标记已处理的 conversation_log 行     │
 │ · 异步生成 L0 embedding 写入向量表     │
 └─────────────────────────────────────┘
@@ -2325,8 +2344,21 @@ Linux:
 - **复用范围**: Skills 直接兼容 + 工具 API 调用逻辑移植 + 底层 npm SDK 共享
 - **自建范围**: ChannelAdapter / Hook 体系 / PluginRegistry / plugin-sdk 包
 
+### ADR-010: MetaClaw 借鉴 — 渐进式自进化增强
+
+- **决策**: 从 MetaClaw（MAML 式 Agent 生成框架）借鉴 5 个核心机制，分阶段集成到 EvoClaw 进化引擎
+- **借鉴项**:
+  1. **记忆 generation 溯源**: 每条提取的记忆标注 conversation_id + model_id，支持质量溯源和批量校正
+  2. **Skill 自进化循环**: 多次同类失败 → 自动生成 SKILL.md → 沙箱验证 → 安装（需用户确认）
+  3. **响应质量评估**: 自动指标（工具成功率/重试次数/对话轮次）+ 用户反馈 → 能力图谱权重调整
+  4. **用户空闲感知调度**: 检测用户空闲期（无交互 > 5min），在空闲时执行后台任务（记忆整理、衰减计算、Skill 验证）
+  5. **System Prompt 压缩/缓存**: 高频相似 prompt 结构缓存 hash，减少重复 token 消耗
+- **实现策略**: generation 溯源（Sprint 11）→ 质量评估（Sprint 12）→ Skill 自进化（Sprint 13）→ 空闲调度 + prompt 压缩（Sprint 15）
+- **风险**: Skill 自生成质量不可控
+- **缓解**: 沙箱验证 + 用户确认双重门控；auto-generated Skill 在仪表盘单独展示
+
 ---
 
-> **文档版本**: v4.1 -- 新增插件系统架构（3.9 节）：evoclaw.plugin.json 清单 + register(api) 注入模式 + PluginRegistry；ADR-009 插件兼容策略 -- 基于 PI 框架重构 Agent 运行时层；ContextPlugin 架构替代中间件链；L0/L1/L2 三层记忆存储替代 8 层架构；三表协同（memory_units + knowledge_graph + conversation_log）替代旧 Schema；新增 Agent 文件体系（8 文件）、Binding Router、Heartbeat + Cron、Docker 可选沙箱、5 阶段工具注入流水线；PI 事件流 -> React UI 渲染路径
+> **文档版本**: v4.2 -- 新增 MetaClaw 借鉴机制：ADR-010（generation 溯源 + Skill 自进化循环 + 响应质量评估 + 空闲调度 + prompt 压缩）；记忆提取 Stage 3 增加 generation 元数据标注；EvolutionPlugin 增加 evaluateResponseQuality；Skill 自进化循环架构（SkillGapAnalyzer → SKILL.md 生成 → 沙箱验证）。v4.1: 插件系统架构（3.9 节）。v4.0: PI 框架重构 Agent 运行时层
 > **文档状态**: 已更新
 > **下次评审**: 待定

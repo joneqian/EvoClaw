@@ -58,6 +58,129 @@ function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role:
 export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore, configManager?: ConfigManager) {
   const app = new Hono();
 
+  /** GET /recents — 最近会话列表（跨 Agent） */
+  app.get('/recents', (c) => {
+    const limit = Number(c.req.query('limit') ?? '20');
+    const rows = store.all<{
+      session_key: string;
+      agent_id: string;
+      last_content: string;
+      last_role: string;
+      last_at: string;
+      msg_count: number;
+    }>(
+      `SELECT
+         session_key,
+         agent_id,
+         content AS last_content,
+         role AS last_role,
+         created_at AS last_at,
+         cnt AS msg_count
+       FROM (
+         SELECT cl.*,
+           COUNT(*) OVER (PARTITION BY cl.session_key) AS cnt,
+           ROW_NUMBER() OVER (PARTITION BY cl.session_key ORDER BY cl.created_at DESC) AS rn
+         FROM conversation_log cl
+         WHERE cl.role IN ('user', 'assistant')
+       ) sub
+       WHERE rn = 1
+       ORDER BY last_at DESC
+       LIMIT ?`,
+      limit,
+    );
+
+    // 补充 Agent 信息
+    const conversations = rows.map((r) => {
+      const agent = store.get<{ name: string; emoji: string }>(
+        'SELECT name, emoji FROM agents WHERE id = ?',
+        r.agent_id,
+      );
+      // 标题：取第一条用户消息的前 30 字
+      const firstUserMsg = store.get<{ content: string }>(
+        `SELECT content FROM conversation_log
+         WHERE session_key = ? AND role = 'user'
+         ORDER BY created_at ASC LIMIT 1`,
+        r.session_key,
+      );
+      const title = firstUserMsg
+        ? firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '')
+        : '新对话';
+      return {
+        sessionKey: r.session_key,
+        agentId: r.agent_id,
+        agentName: agent?.name ?? '未知',
+        agentEmoji: agent?.emoji ?? '🤖',
+        title,
+        lastAt: r.last_at,
+        messageCount: r.msg_count,
+      };
+    });
+
+    return c.json({ conversations });
+  });
+
+  /** GET /:agentId/conversations — 某个 Agent 的所有会话 */
+  app.get('/:agentId/conversations', (c) => {
+    const agentId = c.req.param('agentId');
+    const rows = store.all<{
+      session_key: string;
+      last_content: string;
+      last_at: string;
+      msg_count: number;
+    }>(
+      `SELECT
+         session_key,
+         content AS last_content,
+         created_at AS last_at,
+         cnt AS msg_count
+       FROM (
+         SELECT cl.*,
+           COUNT(*) OVER (PARTITION BY cl.session_key) AS cnt,
+           ROW_NUMBER() OVER (PARTITION BY cl.session_key ORDER BY cl.created_at DESC) AS rn
+         FROM conversation_log cl
+         WHERE cl.agent_id = ? AND cl.role IN ('user', 'assistant')
+       ) sub
+       WHERE rn = 1
+       ORDER BY last_at DESC`,
+      agentId,
+    );
+
+    const conversations = rows.map((r) => {
+      const firstUserMsg = store.get<{ content: string }>(
+        `SELECT content FROM conversation_log
+         WHERE session_key = ? AND role = 'user'
+         ORDER BY created_at ASC LIMIT 1`,
+        r.session_key,
+      );
+      const title = firstUserMsg
+        ? firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '')
+        : '新对话';
+      return {
+        sessionKey: r.session_key,
+        agentId,
+        title,
+        lastAt: r.last_at,
+        messageCount: r.msg_count,
+      };
+    });
+
+    return c.json({ conversations });
+  });
+
+  /** GET /:agentId/messages — 加载某个会话的消息历史 */
+  app.get('/:agentId/messages', (c) => {
+    const agentId = c.req.param('agentId');
+    const sessionKey = c.req.query('sessionKey');
+    const limit = Number(c.req.query('limit') ?? '50');
+
+    if (!sessionKey) {
+      return c.json({ error: '缺少 sessionKey 参数' }, 400);
+    }
+
+    const messages = loadMessageHistory(store, agentId, sessionKey, limit);
+    return c.json({ messages });
+  });
+
   app.post('/:agentId/send', async (c) => {
     const agentId = c.req.param('agentId');
     const body = await c.req.json<{ message?: string; sessionKey?: string }>().catch(() => ({}));

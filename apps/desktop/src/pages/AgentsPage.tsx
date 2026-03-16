@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAgentStore, type BuilderStage } from '../stores/agent-store';
-import { useChatStore } from '../stores/chat-store';
 
 /** 每个阶段的快捷建议 */
 const STAGE_SUGGESTIONS: Partial<Record<BuilderStage, string[]>> = {
@@ -38,7 +37,6 @@ export default function AgentsPage() {
     builderMessages, builderStage, builderPreview, builderLoading, builderCreatedAgentId,
     startGuidedCreation, sendBuilderMessage, resetBuilder, updatePreviewFile,
   } = useAgentStore();
-  const { setCurrentAgent } = useChatStore();
   const navigate = useNavigate();
 
   const [showBuilder, setShowBuilder] = useState(false);
@@ -86,11 +84,10 @@ export default function AgentsPage() {
     sendBuilderMessage(text);
   }, [builderLoading, sendBuilderMessage]);
 
-  /** 开始对话 */
-  const startChat = useCallback((agentId: string) => {
-    setCurrentAgent(agentId);
-    navigate('/chat');
-  }, [setCurrentAgent, navigate]);
+  /** 进入 Agent 主页 */
+  const openAgent = useCallback((agentId: string) => {
+    navigate(`/agents/${agentId}`);
+  }, [navigate]);
 
   /** 删除 Agent */
   const handleDelete = useCallback(async (id: string) => {
@@ -98,14 +95,13 @@ export default function AgentsPage() {
     setDeleteConfirmId(null);
   }, [deleteAgent]);
 
-  /** 创建完成，跳转对话 */
+  /** 创建完成，跳转 Agent 主页 */
   const handleGoChat = useCallback(() => {
     if (builderCreatedAgentId) {
-      setCurrentAgent(builderCreatedAgentId);
       handleCloseBuilder();
-      navigate('/chat');
+      navigate(`/agents/${builderCreatedAgentId}`);
     }
-  }, [builderCreatedAgentId, setCurrentAgent, handleCloseBuilder, navigate]);
+  }, [builderCreatedAgentId, handleCloseBuilder, navigate]);
 
   /** 切换文件展开/编辑 */
   const toggleFile = useCallback((filename: string) => {
@@ -476,10 +472,10 @@ export default function AgentsPage() {
                 {/* 卡片操作 */}
                 <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
                   <button
-                    onClick={() => startChat(agent.id)}
+                    onClick={() => openAgent(agent.id)}
                     className="flex-1 text-xs py-1.5 text-[#00d4aa] hover:bg-[#00d4aa]/5 rounded-md transition-colors"
                   >
-                    对话
+                    打开
                   </button>
                   <button
                     onClick={() => navigate(`/agents/${agent.id}/edit`)}

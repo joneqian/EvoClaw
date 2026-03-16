@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { get } from '../lib/api';
 
 /** 工具调用信息 */
 export interface ToolCall {
@@ -16,15 +17,38 @@ export interface Message {
   createdAt: string;
 }
 
+/** 会话信息 */
+export interface Conversation {
+  sessionKey: string;
+  agentId: string;
+  title: string;
+  lastAt: string;
+  messageCount: number;
+}
+
 interface ChatState {
-  /** 消息列表 */
+  /** 消息列表（当前会话） */
   messages: Message[];
   /** 是否正在流式输出 */
   isStreaming: boolean;
   /** 当前对话的 Agent ID */
   currentAgentId: string | null;
+  /** 当前会话的 Session Key */
+  currentSessionKey: string | null;
+  /** 当前 Agent 的会话列表 */
+  conversations: Conversation[];
+  /** 是否正在加载消息 */
+  loadingMessages: boolean;
 
+  /** 选择 Agent（清空当前会话，进入该 Agent 的会话列表） */
   setCurrentAgent: (agentId: string | null) => void;
+  /** 进入已有会话（加载历史消息） */
+  enterConversation: (agentId: string, sessionKey: string) => Promise<void>;
+  /** 新建会话（生成新 sessionKey，清空消息） */
+  newConversation: (agentId: string) => void;
+  /** 加载 Agent 的会话列表 */
+  fetchConversations: (agentId: string) => Promise<void>;
+
   addMessage: (msg: Message) => void;
   appendToLastMessage: (delta: string) => void;
   updateLastMessageToolCalls: (toolCalls: ToolCall[]) => void;
@@ -32,12 +56,67 @@ interface ChatState {
   clearMessages: () => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+/** 生成前端会话 ID（发送时传给后端） */
+function generateLocalSessionKey(agentId: string): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `agent:${agentId}:local:dm:local-user:${ts}${rand}`;
+}
+
+export const useChatStore = create<ChatState>((set, getState) => ({
   messages: [],
   isStreaming: false,
   currentAgentId: null,
+  currentSessionKey: null,
+  conversations: [],
+  loadingMessages: false,
 
-  setCurrentAgent: (agentId) => set({ currentAgentId: agentId, messages: [] }),
+  setCurrentAgent: (agentId) => {
+    set({
+      currentAgentId: agentId,
+      currentSessionKey: null,
+      messages: [],
+      conversations: [],
+    });
+    // 自动加载该 Agent 的会话列表
+    if (agentId) {
+      getState().fetchConversations(agentId);
+    }
+  },
+
+  fetchConversations: async (agentId) => {
+    try {
+      const res = await get<{ conversations: Conversation[] }>(`/chat/${agentId}/conversations`);
+      set({ conversations: res.conversations });
+    } catch { /* Sidecar 可能未就绪 */ }
+  },
+
+  enterConversation: async (agentId, sessionKey) => {
+    set({ currentAgentId: agentId, currentSessionKey: sessionKey, messages: [], loadingMessages: true });
+    try {
+      const res = await get<{ messages: { id: string; role: string; content: string; createdAt: string }[] }>(
+        `/chat/${agentId}/messages?sessionKey=${encodeURIComponent(sessionKey)}&limit=50`,
+      );
+      const messages: Message[] = res.messages.map((m) => ({
+        id: m.id,
+        role: m.role as Message['role'],
+        content: m.content,
+        createdAt: m.createdAt,
+      }));
+      set({ messages, loadingMessages: false });
+    } catch {
+      set({ loadingMessages: false });
+    }
+  },
+
+  newConversation: (agentId) => {
+    const sessionKey = generateLocalSessionKey(agentId);
+    set({
+      currentAgentId: agentId,
+      currentSessionKey: sessionKey,
+      messages: [],
+    });
+  },
 
   addMessage: (msg) =>
     set((state) => ({ messages: [...state.messages, msg] })),

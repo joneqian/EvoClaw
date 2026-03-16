@@ -28,6 +28,7 @@ import { ChannelManager } from './channel/channel-manager.js';
 import { DesktopAdapter } from './channel/adapters/desktop.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
+import { createLogger, closeLogger, LOG_PATH } from './infrastructure/logger.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -122,7 +123,8 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     if (err instanceof HTTPException) {
       return err.getResponse();
     }
-    console.error('Unhandled error:', err);
+    const serverLog = createLogger('server');
+    serverLog.error('Unhandled error:', err);
     return c.json({ error: err.message }, 500);
   });
 
@@ -156,8 +158,11 @@ function initVectorStore(db: SqliteStore, configManager: ConfigManager): VectorS
 
 /** 主入口 — 仅在直接执行时运行 */
 async function main() {
+  const log = createLogger('server');
   const token = generateToken();
   const port = getRandomPort();
+
+  log.info(`日志文件: ${LOG_PATH}`);
 
   // 初始化配置管理器
   const configManager = new ConfigManager();
@@ -166,6 +171,7 @@ async function main() {
   const db = new SqliteStore();
   const migrationRunner = new MigrationRunner(db);
   await migrationRunner.run();
+  log.info('数据库迁移完成');
 
   // 初始化 VectorStore（从 evo_claw.json 读取配置）
   const vectorStore = initVectorStore(db, configManager);
@@ -176,26 +182,31 @@ async function main() {
   const laneQueue = new LaneQueue();
   const cronRunner = new CronRunner(db, laneQueue);
   cronRunner.start();
+  log.info('CronRunner 已启动');
 
   // 初始化 ChannelManager + Desktop 适配器
   const channelManager = new ChannelManager();
   const desktopAdapter = new DesktopAdapter();
   channelManager.registerAdapter(desktopAdapter);
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
+  log.info('ChannelManager 已初始化');
 
   const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner, channelManager, configManager });
 
   // 进程退出时清理
   const cleanup = () => {
+    log.info('正在关闭服务...');
     cronRunner.stop();
     channelManager.disconnectAll();
+    closeLogger();
   };
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
 
   serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
-    // 输出连接信息供 Tauri 读取
+    // 首行 JSON — Tauri sidecar.rs 解析此行获取连接信息，必须保持 console.log
     console.log(JSON.stringify({ port: info.port, token }));
+    log.info(`服务已启动 port=${info.port}`);
   });
 }
 
@@ -207,5 +218,9 @@ const isMainModule =
   process.argv[1]?.endsWith('server.mjs');
 
 if (isMainModule) {
-  main().catch(console.error);
+  main().catch((err) => {
+    const log = createLogger('server');
+    log.error('启动失败', err);
+    process.exit(1);
+  });
 }

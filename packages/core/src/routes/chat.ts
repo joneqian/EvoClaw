@@ -14,6 +14,9 @@ import { sessionRouterPlugin } from '../context/plugins/session-router.js';
 import { resolveModel } from '../provider/model-resolver.js';
 import { generateSessionKey } from '../routing/session-key.js';
 import { setToolInjectorConfig, getInjectedTools } from '../bridge/tool-injector.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('chat');
 
 /** 从 conversation_log 加载最近消息历史 */
 function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
@@ -201,7 +204,7 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
         ],
       };
       contextEngine.afterTurn(afterTurnCtx).catch((err) => {
-        console.error('[chat] afterTurn 失败:', err);
+        log.error('afterTurn 失败:', err);
       });
     });
   });

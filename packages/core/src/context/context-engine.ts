@@ -1,5 +1,8 @@
 import type { ContextPlugin, BootstrapContext, TurnContext, CompactContext, ShutdownContext } from './plugin.interface.js';
 import type { ChatMessage } from '@evoclaw/shared';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('ContextEngine');
 
 /** Token 使用超限阈值 (85%) */
 const TOKEN_THRESHOLD = 0.85;
@@ -74,7 +77,7 @@ export class ContextEngine {
     const promises = this.plugins
       .filter(p => p.afterTurn)
       .map(p => p.afterTurn!(ctx).catch(err => {
-        console.error(`[ContextEngine] afterTurn 插件 ${p.name} 执行失败:`, err);
+        log.error(`afterTurn 插件 ${p.name} 执行失败:`, err);
       }));
     await Promise.allSettled(promises);
   }

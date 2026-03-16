@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { MemoryExtractor, type LLMCallFn } from '../memory/memory-extractor.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('feedback');
 
 /** 创建反馈收集路由 */
 export function createFeedbackRoutes(db: SqliteStore, llmCall?: LLMCallFn): Hono {
@@ -38,7 +41,7 @@ export function createFeedbackRoutes(db: SqliteStore, llmCall?: LLMCallFn): Hono
           agentId,
         );
       } catch (err) {
-        console.error('[feedback] 纠正记忆提取失败:', err);
+        log.error('纠正记忆提取失败:', err);
       }
     }
 

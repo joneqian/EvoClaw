@@ -8,6 +8,9 @@ import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import { FileIngester } from '../rag/file-ingester.js';
 import { RagIndexer } from '../rag/rag-indexer.js';
 import type { BatchEmbeddingFn } from '../infrastructure/db/vector-store.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('knowledge');
 
 /** 创建知识库路由 */
 export function createKnowledgeRoutes(
@@ -30,7 +33,7 @@ export function createKnowledgeRoutes(
       // 如果有 embedding 函数，异步索引（不阻塞响应）
       if (batchEmbedFn) {
         indexer.indexFile(fileId).catch(err => {
-          console.error(`索引文件 ${fileId} 失败:`, err);
+          log.error(`索引文件 ${fileId} 失败:`, err);
         });
       }
 

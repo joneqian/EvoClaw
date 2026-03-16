@@ -3,6 +3,9 @@ import type { LaneQueue } from '../agent/lane-queue.js';
 import type { HeartbeatConfig } from '@evoclaw/shared';
 import { isInActiveHours, DEFAULT_ACTIVE_HOURS } from './active-hours.js';
 import crypto from 'node:crypto';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('heartbeat');
 
 /**
  * Heartbeat 运行器 — Agent 定时心跳调度
@@ -92,7 +95,7 @@ export class HeartbeatRunner {
 
       return 'active';
     } catch (err) {
-      console.error('[heartbeat]', this.agentId, err);
+      log.error(`agent ${this.agentId} 心跳失败`, err);
       return 'skipped';
     }
   }

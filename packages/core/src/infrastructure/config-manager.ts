@@ -15,6 +15,9 @@ import type {
   ModelReference,
 } from '@evoclaw/shared';
 import { parseModelRef } from '@evoclaw/shared';
+import { createLogger } from './logger.js';
+
+const log = createLogger('config');
 
 /** 默认配置目录 */
 const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.evoclaw');
@@ -39,7 +42,7 @@ export class ConfigManager {
         return JSON.parse(raw) as EvoClawConfig;
       }
     } catch (err) {
-      console.error('[config] 加载配置失败:', err);
+      log.error('加载配置失败:', err);
     }
     return {};
   }

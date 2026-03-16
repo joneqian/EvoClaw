@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SqliteStore } from './sqlite-store.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('migration');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -57,7 +60,7 @@ export class MigrationRunner {
       });
 
       applied.push(file);
-      console.log(`迁移已应用: ${file}`);
+      log.info(`迁移已应用: ${file}`);
     }
 
     return applied;

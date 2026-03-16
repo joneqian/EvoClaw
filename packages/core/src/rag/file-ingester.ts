@@ -8,6 +8,9 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { splitDocument, detectDocumentType, type DocumentType } from './chunk-splitter.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('file-ingester');
 
 export class FileIngester {
   constructor(private db: SqliteStore) {}
@@ -102,7 +105,7 @@ export class FileIngester {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("Cannot find module") || message.includes("Cannot find package")) {
-        console.warn('unpdf 未安装，跳过 PDF 解析。请运行: pnpm add unpdf');
+        log.warn('unpdf 未安装，跳过 PDF 解析。请运行: pnpm add unpdf');
         throw new Error('PDF 解析需要安装 unpdf: pnpm add unpdf');
       }
       throw err;

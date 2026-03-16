@@ -3,6 +3,9 @@ import type { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { CapabilityGraph } from '../../evolution/capability-graph.js';
 import { detectSatisfaction } from '../../evolution/feedback-detector.js';
 import { GrowthTracker } from '../../evolution/growth-tracker.js';
+import { createLogger } from '../../infrastructure/logger.js';
+
+const log = createLogger('evolution');
 
 /** 创建进化插件（afterTurn 阶段） */
 export function createEvolutionPlugin(db: SqliteStore): ContextPlugin {
@@ -49,7 +52,7 @@ export function createEvolutionPlugin(db: SqliteStore): ContextPlugin {
         }
       } catch (err) {
         // 进化追踪失败不影响对话流程
-        console.error('[evolution] 进化追踪失败:', err);
+        log.error('进化追踪失败:', err);
       }
     },
   };

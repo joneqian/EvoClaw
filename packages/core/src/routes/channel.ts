@@ -8,6 +8,9 @@ import type { ChannelConfig } from '../channel/channel-adapter.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { FeishuAdapter } from '../channel/adapters/feishu.js';
 import type { WecomAdapter } from '../channel/adapters/wecom.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('channel-webhook');
 
 /** 创建 Channel 路由 */
 export function createChannelRoutes(channelManager: ChannelManager): Hono {
@@ -71,7 +74,7 @@ export function createChannelRoutes(channelManager: ChannelManager): Hono {
         if (challenge) return c.json({ challenge });
       }
     } catch (err) {
-      console.error('[channel/webhook/feishu]', err);
+      log.error('feishu webhook 处理失败', err);
     }
 
     return c.json({ success: true });
@@ -93,7 +96,7 @@ export function createChannelRoutes(channelManager: ChannelManager): Hono {
         await wecomAdapter.handleCallbackMessage(body, isGroup);
       }
     } catch (err) {
-      console.error('[channel/webhook/wecom]', err);
+      log.error('wecom webhook 处理失败', err);
     }
 
     return c.json({ success: true });

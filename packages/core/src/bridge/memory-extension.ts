@@ -16,6 +16,9 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ChatMessage } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('MemoryExtension');
 
 export class MemoryExtension {
   private extractor: MemoryExtractor;
@@ -79,7 +82,7 @@ export class MemoryExtension {
     try {
       await this.extractor.extractAndPersist(messages, agentId, sessionKey);
     } catch (err) {
-      console.error('[MemoryExtension] 记忆提取失败:', err);
+      log.error('记忆提取失败:', err);
     }
   }
 

@@ -3,6 +3,9 @@ import crypto from 'node:crypto';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { CronJobConfig } from '@evoclaw/shared';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('cron');
 
 /** 数据库行类型 */
 interface CronJobRow {
@@ -111,12 +114,12 @@ export class CronRunner {
             job.id,
           );
         }).catch((err) => {
-          console.error(`[cron] 任务 ${job.name} (${job.id}) 执行失败:`, err);
+          log.error(`任务 ${job.name} (${job.id}) 执行失败:`, err);
         });
 
         executed++;
       } catch (err) {
-        console.error(`[cron] 调度任务 ${job.id} 失败:`, err);
+        log.error(`调度任务 ${job.id} 失败:`, err);
       }
     }
 

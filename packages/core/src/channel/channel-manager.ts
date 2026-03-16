@@ -5,6 +5,9 @@ import type {
   ChannelStatusInfo,
   MessageHandler,
 } from './channel-adapter.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('channel-manager');
 
 /** 重连配置 */
 const RECONNECT_DELAY_MS = 5_000;
@@ -63,7 +66,7 @@ export class ChannelManager {
     try {
       await adapter.connect(config);
     } catch (err) {
-      console.error(`[channel-manager] ${config.type} 连接失败:`, err);
+      log.error(`${config.type} 连接失败:`, err);
       this.scheduleReconnect(config.type);
       throw err;
     }
@@ -122,7 +125,7 @@ export class ChannelManager {
   private scheduleReconnect(type: ChannelType): void {
     const attempts = this.reconnectAttempts.get(type) ?? 0;
     if (attempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.error(`[channel-manager] ${type} 重连次数已达上限 (${MAX_RECONNECT_ATTEMPTS})`);
+      log.error(`${type} 重连次数已达上限 (${MAX_RECONNECT_ATTEMPTS})`);
       return;
     }
 
@@ -134,13 +137,13 @@ export class ChannelManager {
       const config = this.configs.get(type);
       if (!config) return;
 
-      console.log(`[channel-manager] ${type} 尝试重连 (${attempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+      log.info(`${type} 尝试重连 (${attempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
       try {
         const adapter = this.adapters.get(type);
         if (adapter) {
           await adapter.connect(config);
           this.reconnectAttempts.set(type, 0);
-          console.log(`[channel-manager] ${type} 重连成功`);
+          log.info(`${type} 重连成功`);
         }
       } catch {
         this.scheduleReconnect(type);

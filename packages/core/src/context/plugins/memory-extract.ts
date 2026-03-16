@@ -1,5 +1,8 @@
 import type { ContextPlugin, TurnContext } from '../plugin.interface.js';
 import type { MemoryExtractor } from '../../memory/memory-extractor.js';
+import { createLogger } from '../../infrastructure/logger.js';
+
+const log = createLogger('memory-extract');
 
 /** 创建记忆提取插件（afterTurn 阶段） */
 export function createMemoryExtractPlugin(extractor: MemoryExtractor): ContextPlugin {
@@ -12,7 +15,7 @@ export function createMemoryExtractPlugin(extractor: MemoryExtractor): ContextPl
         await extractor.extractAndPersist(ctx.messages, ctx.agentId, ctx.sessionKey);
       } catch (err) {
         // 提取失败不影响对话流程
-        console.error('[memory-extract] 记忆提取失败:', err);
+        log.error('记忆提取失败:', err);
       }
     },
   };

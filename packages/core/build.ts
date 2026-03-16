@@ -16,10 +16,8 @@ await build({
   },
 });
 
-// 复制迁移 SQL 文件到 dist（MigrationRunner 通过 import.meta.url 查找）
+// 复制迁移 SQL 文件到 dist
 const srcMigrations = 'src/infrastructure/db/migrations';
-// esbuild 将所有代码打包到 dist/server.mjs，import.meta.url 指向 dist/
-// MigrationRunner 的 __dirname 在 bundle 后为 dist/，所以迁移目录是 dist/migrations/
 const destMigrations = 'dist/migrations';
 if (fs.existsSync(srcMigrations)) {
   fs.mkdirSync(destMigrations, { recursive: true });
@@ -27,6 +25,97 @@ if (fs.existsSync(srcMigrations)) {
     fs.copyFileSync(path.join(srcMigrations, file), path.join(destMigrations, file));
   }
   console.log(`Copied ${fs.readdirSync(destMigrations).length} migration files`);
+}
+
+// --- 复制 better-sqlite3 native 模块到 dist/node_modules/ ---
+// 打包后 server.mjs 的 createRequire(import.meta.url) 会从 dist/ 开始查找
+// require('better-sqlite3') → dist/node_modules/better-sqlite3/lib/index.js
+bundleBetterSqlite3();
+
+function bundleBetterSqlite3() {
+  // 在 pnpm store 中查找 better-sqlite3
+  const candidates = [
+    // pnpm hoisted / store
+    path.resolve('../../node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3'),
+    path.resolve('../../node_modules/better-sqlite3'),
+    path.resolve('node_modules/better-sqlite3'),
+  ];
+
+  let srcRoot: string | undefined;
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, 'lib', 'index.js'))) {
+      srcRoot = c;
+      break;
+    }
+  }
+
+  if (!srcRoot) {
+    // 动态查找：用 glob 搜索
+    const pnpmStore = path.resolve('../../node_modules/.pnpm');
+    if (fs.existsSync(pnpmStore)) {
+      for (const dir of fs.readdirSync(pnpmStore)) {
+        if (dir.startsWith('better-sqlite3@')) {
+          const candidate = path.join(pnpmStore, dir, 'node_modules', 'better-sqlite3');
+          if (fs.existsSync(path.join(candidate, 'lib', 'index.js'))) {
+            srcRoot = candidate;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!srcRoot) {
+    console.warn('⚠️  better-sqlite3 未找到，跳过 native 模块打包（生产环境将无法运行）');
+    return;
+  }
+
+  const destRoot = 'dist/node_modules/better-sqlite3';
+
+  // 复制 lib/ (JS 文件)
+  copyDirRecursive(path.join(srcRoot, 'lib'), path.join(destRoot, 'lib'));
+
+  // 复制 package.json
+  fs.copyFileSync(path.join(srcRoot, 'package.json'), path.join(destRoot, 'package.json'));
+
+  // 复制 build/Release/better_sqlite3.node (native binding)
+  const nativeSrc = path.join(srcRoot, 'build', 'Release', 'better_sqlite3.node');
+  const nativeDest = path.join(destRoot, 'build', 'Release', 'better_sqlite3.node');
+  if (fs.existsSync(nativeSrc)) {
+    fs.mkdirSync(path.dirname(nativeDest), { recursive: true });
+    fs.copyFileSync(nativeSrc, nativeDest);
+    const sizeMB = (fs.statSync(nativeDest).size / 1024 / 1024).toFixed(1);
+    console.log(`Bundled better-sqlite3 native module (${sizeMB}MB)`);
+  } else {
+    // prebuilds 格式（部分版本用这个）
+    const prebuildsDir = path.join(srcRoot, 'prebuilds');
+    if (fs.existsSync(prebuildsDir)) {
+      copyDirRecursive(prebuildsDir, path.join(destRoot, 'prebuilds'));
+      console.log('Bundled better-sqlite3 prebuilds');
+    } else {
+      console.warn('⚠️  better-sqlite3 native binding 未找到');
+    }
+  }
+
+  // 复制 binding.js（如果存在，用于 native addon 加载）
+  const bindingJs = path.join(srcRoot, 'binding.js');
+  if (fs.existsSync(bindingJs)) {
+    fs.copyFileSync(bindingJs, path.join(destRoot, 'binding.js'));
+  }
+}
+
+/** 递归复制目录 */
+function copyDirRecursive(src: string, dest: string) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 console.log('Build complete: dist/server.mjs');

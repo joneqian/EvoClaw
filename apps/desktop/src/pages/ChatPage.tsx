@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import { useAppStore } from '../stores/app-store';
@@ -27,12 +28,18 @@ export default function ChatPage() {
     setStreaming,
   } = useChatStore();
 
-  const { agents } = useAgentStore();
+  const { agents, fetchAgents } = useAgentStore();
   const { sidecarConnected } = useAppStore();
+  const navigate = useNavigate();
 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /** 挂载时加载 Agent 列表 */
+  useEffect(() => {
+    fetchAgents();
+  }, [fetchAgents]);
 
   /** 自动滚动到底部 */
   const scrollToBottom = useCallback(() => {
@@ -65,7 +72,6 @@ export default function ChatPage() {
     addMessage(userMsg);
     setInput('');
 
-    // 创建空的 assistant 消息用于流式追加
     const assistantMsg: Message = {
       id: uid(),
       role: 'assistant',
@@ -76,7 +82,6 @@ export default function ChatPage() {
     setStreaming(true);
 
     try {
-      // 获取 Sidecar 配置（从 localStorage 或 app-store）
       const configStr = localStorage.getItem('sidecar-config');
       if (!configStr) {
         appendToLastMessage('Sidecar 未连接，无法发送消息。');
@@ -121,7 +126,6 @@ export default function ChatPage() {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        // 保留最后一个不完整的行
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
@@ -169,7 +173,6 @@ export default function ChatPage() {
                   break;
               }
             } catch {
-              // 非 JSON 数据，作为纯文本追加
               appendToLastMessage(parsed.data);
             }
           }
@@ -190,7 +193,7 @@ export default function ChatPage() {
     setStreaming,
   ]);
 
-  /** 键盘事件：Enter 发送，Shift+Enter 换行 */
+  /** 键盘事件 */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -198,23 +201,31 @@ export default function ChatPage() {
     }
   };
 
-  /** 当前选中的 Agent */
   const currentAgent = agents.find((a) => a.id === currentAgentId);
 
   return (
     <div className="flex h-full">
       {/* 左侧 Agent 选择栏 */}
-      <div className="w-52 border-r border-gray-200 bg-white flex flex-col">
-        <div className="p-3 border-b border-gray-100">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+      <div className="w-52 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
+        <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+          <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             选择 Agent
           </h3>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {agents.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center mt-4 px-2">
-              暂无 Agent，请先在"Agent 管理"中创建
-            </p>
+            <div className="text-center mt-8 px-2">
+              <p className="text-3xl mb-2">🐾</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                还没有 Agent
+              </p>
+              <button
+                onClick={() => navigate('/agents')}
+                className="text-xs text-[#00d4aa] hover:text-[#00b894]"
+              >
+                去创建 →
+              </button>
+            </div>
           ) : (
             agents.map((agent) => (
               <button
@@ -223,7 +234,7 @@ export default function ChatPage() {
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
                   currentAgentId === agent.id
                     ? 'bg-[#00d4aa]/10 text-[#00a88a] font-medium'
-                    : 'text-gray-600 hover:bg-gray-50'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
                 <span className="mr-2">{agent.emoji}</span>
@@ -235,12 +246,12 @@ export default function ChatPage() {
       </div>
 
       {/* 主聊天区域 */}
-      <div className="flex-1 flex flex-col bg-gray-50">
+      <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900">
         {/* 头部 */}
         {currentAgent && (
-          <div className="h-12 border-b border-gray-200 bg-white flex items-center px-4">
+          <div className="h-12 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center px-4">
             <span className="mr-2 text-lg">{currentAgent.emoji}</span>
-            <span className="font-medium text-sm">{currentAgent.name}</span>
+            <span className="font-medium text-sm dark:text-white">{currentAgent.name}</span>
             {!sidecarConnected && (
               <span className="ml-3 text-xs text-red-400">Sidecar 未连接</span>
             )}
@@ -251,14 +262,22 @@ export default function ChatPage() {
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {!currentAgentId ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-400">
+              <div className="text-center text-gray-400 dark:text-gray-500">
                 <p className="text-4xl mb-3">💬</p>
                 <p className="text-sm">选择一个 Agent 开始对话</p>
+                {agents.length === 0 && (
+                  <button
+                    onClick={() => navigate('/agents')}
+                    className="mt-3 text-sm text-[#00d4aa] hover:text-[#00b894]"
+                  >
+                    或者先创建一个 Agent →
+                  </button>
+                )}
               </div>
             </div>
           ) : messages.length === 0 ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-400">
+              <div className="text-center text-gray-400 dark:text-gray-500">
                 <p className="text-3xl mb-3">{currentAgent?.emoji}</p>
                 <p className="text-sm">
                   与 <span className="font-medium">{currentAgent?.name}</span> 开始对话
@@ -270,9 +289,8 @@ export default function ChatPage() {
               {messages.map((msg) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
-              {/* 流式输出指示器 */}
               {isStreaming && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs pl-2">
+                <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 text-xs pl-2">
                   <span className="flex gap-0.5">
                     <span className="w-1.5 h-1.5 bg-[#00d4aa] rounded-full animate-pulse" />
                     <span className="w-1.5 h-1.5 bg-[#00d4aa] rounded-full animate-pulse [animation-delay:150ms]" />
@@ -288,7 +306,7 @@ export default function ChatPage() {
 
         {/* 输入区域 */}
         {currentAgentId && (
-          <div className="border-t border-gray-200 bg-white p-3">
+          <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <div className="max-w-2xl mx-auto flex gap-2 items-end">
               <textarea
                 ref={textareaRef}
@@ -297,9 +315,10 @@ export default function ChatPage() {
                 onKeyDown={handleKeyDown}
                 placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
                 rows={1}
-                className="flex-1 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm
+                className="flex-1 resize-none rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm
+                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                   focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
-                  placeholder:text-gray-400"
+                  placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
               <button
                 onClick={sendMessage}
@@ -328,7 +347,7 @@ function MessageBubble({ message }: { message: Message }) {
         className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
             ? 'bg-[#00d4aa] text-white rounded-br-sm'
-            : 'bg-white text-gray-800 border border-gray-100 rounded-bl-sm shadow-sm'
+            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-bl-sm shadow-sm'
         }`}
       >
         {/* 工具调用展示 */}
@@ -339,10 +358,10 @@ function MessageBubble({ message }: { message: Message }) {
                 key={i}
                 className={`text-xs px-2 py-1 rounded ${
                   tc.status === 'running'
-                    ? 'bg-yellow-50 text-yellow-700'
+                    ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
                     : tc.status === 'error'
-                      ? 'bg-red-50 text-red-600'
-                      : 'bg-green-50 text-green-700'
+                      ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                      : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
                 }`}
               >
                 {tc.status === 'running' ? '🔧 正在执行' : tc.status === 'error' ? '❌' : '✅'}{' '}
@@ -352,7 +371,6 @@ function MessageBubble({ message }: { message: Message }) {
             ))}
           </div>
         )}
-        {/* 消息内容：按段落渲染 */}
         <div className="whitespace-pre-wrap break-words">{message.content}</div>
       </div>
     </div>

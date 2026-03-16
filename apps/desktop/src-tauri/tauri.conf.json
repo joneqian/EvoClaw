@@ -43,14 +43,7 @@
   },
   "plugins": {
     "shell": {
-      "open": true,
-      "scope": [
-        {
-          "name": "node",
-          "cmd": "node",
-          "args": true
-        }
-      ]
+      "open": true
     }
   }
 }

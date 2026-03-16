@@ -68,12 +68,9 @@ function write(level: LogLevel, tag: string, message: string, extra?: unknown): 
     // 文件写入失败不阻塞主逻辑
   }
 
-  // 同时输出到 stdout/stderr（Tauri 的 sidecar.rs 会捕获）
-  if (level === 'error' || level === 'warn') {
-    process.stderr.write(line + '\n');
-  } else {
-    process.stdout.write(line + '\n');
-  }
+  // 控制台输出统一走 stderr，避免污染 stdout
+  // （Tauri sidecar.rs 通过 stdout 首行 JSON 获取 port/token，stdout 不能有其他输出）
+  process.stderr.write(line + '\n');
 }
 
 /** 创建带 tag 的 logger 实例 */

@@ -143,46 +143,59 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
   /** POST /:id/test — 测试 Provider 连接 */
   app.post('/:id/test', async (c) => {
     const id = c.req.param('id');
-    const body = await c.req.json<{ apiKey?: string }>().catch(() => ({}));
+    const body = await c.req.json<{ apiKey?: string; baseUrl?: string; model?: string; api?: string }>().catch(() => ({}));
 
+    // 优先用请求体传入的参数（SetupPage 首次配置时 Provider 尚未注册）
     const provider = getProvider(id);
-    if (!provider) {
-      return c.json({ error: 'Provider not found' }, 404);
-    }
-
-    // 用最简请求测试连接
-    const apiKey = (body as any).apiKey || provider.apiKeyRef;
+    const apiKey = body.apiKey || provider?.apiKeyRef;
     if (!apiKey) {
       return c.json({ success: false, error: '未配置 API Key' });
     }
 
-    try {
-      const defaultModel = provider.models.find((m) => m.isDefault) ?? provider.models[0];
-      if (!defaultModel) {
-        return c.json({ success: false, error: '未配置模型' });
-      }
+    // 从已注册 Provider 或 PROVIDER_PRESETS 推断 baseUrl 和 model
+    const baseUrl = body.baseUrl || provider?.baseUrl;
+    if (!baseUrl) {
+      return c.json({ success: false, error: '未配置 Base URL' });
+    }
 
+    const modelId = body.model
+      || provider?.models?.find((m) => m.isDefault)?.id
+      || provider?.models?.[0]?.id
+      || 'gpt-4o-mini';
+
+    const apiType = body.api || 'openai-completions';
+
+    try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10_000);
 
-      const res = await fetch(`${provider.baseUrl}/chat/completions`, {
+      // Anthropic 使用不同的 API 格式
+      const isAnthropic = apiType === 'anthropic';
+      const url = isAnthropic
+        ? `${baseUrl}/messages`
+        : `${baseUrl}/chat/completions`;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (isAnthropic) {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      } else {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+      const reqBody = isAnthropic
+        ? { model: modelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 }
+        : { model: modelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 };
+
+      const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: defaultModel.id,
-          messages: [{ role: 'user', content: 'Hi' }],
-          max_tokens: 1,
-        }),
+        headers,
+        body: JSON.stringify(reqBody),
         signal: controller.signal,
       });
 
       clearTimeout(timeout);
 
       if (res.ok) {
-        return c.json({ success: true, model: defaultModel.id });
+        return c.json({ success: true, model: modelId });
       }
 
       const errBody = await res.text().catch(() => '');

@@ -69,6 +69,59 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     },
   }));
 
+  // 请求/响应日志
+  const httpLog = createLogger('http');
+  app.use('*', async (c, next) => {
+    const start = Date.now();
+    const { method, path } = c.req;
+    const isHealth = path === '/health';
+
+    // 请求参数
+    if (!isHealth) {
+      const query = c.req.query();
+      const queryStr = Object.keys(query).length ? ` query=${JSON.stringify(query)}` : '';
+      // 记录请求体（仅 POST/PUT/PATCH，且排除流式请求）
+      let bodyStr = '';
+      if (['POST', 'PUT', 'PATCH'].includes(method)) {
+        try {
+          const cloned = c.req.raw.clone();
+          const text = await cloned.text();
+          if (text) {
+            // 脱敏：隐藏 apiKey/token 等敏感字段
+            const sanitized = text.replace(/"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
+              (_, key) => `"${key}":"***"`);
+            bodyStr = ` body=${sanitized.length > 1000 ? sanitized.slice(0, 1000) + '...' : sanitized}`;
+          }
+        } catch { /* 读取失败忽略 */ }
+      }
+      httpLog.info(`--> ${method} ${path}${queryStr}${bodyStr}`);
+    } else {
+      httpLog.debug(`--> ${method} ${path}`);
+    }
+
+    await next();
+
+    const ms = Date.now() - start;
+    const status = c.res.status;
+
+    // 响应体
+    if (!isHealth) {
+      let resBody = '';
+      try {
+        const cloned = c.res.clone();
+        const text = await cloned.text();
+        if (text) {
+          const sanitized = text.replace(/"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
+            (_, key) => `"${key}":"***"`);
+          resBody = ` body=${sanitized.length > 1000 ? sanitized.slice(0, 1000) + '...' : sanitized}`;
+        }
+      } catch { /* 流式响应等无法读取，忽略 */ }
+      httpLog.info(`<-- ${method} ${path} ${status} ${ms}ms${resBody}`);
+    } else {
+      httpLog.debug(`<-- ${method} ${path} ${status} ${ms}ms`);
+    }
+  });
+
   // 健康检查 — 无需认证，返回配置状态
   app.get('/health', (c) => {
     const validation = configManager?.validate();

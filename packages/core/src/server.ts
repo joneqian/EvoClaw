@@ -31,6 +31,18 @@ import { createBindingRoutes } from './routes/binding.js';
 import { createLogger, closeLogger, LOG_PATH } from './infrastructure/logger.js';
 import { callLLM } from './agent/llm-client.js';
 
+const log = createLogger('server');
+
+// 全局 unhandled rejection 保护 — 防止 PI 框架等第三方库的异常直接 crash 进程
+process.on('unhandledRejection', (reason) => {
+  log.error('Unhandled rejection (已捕获，进程继续运行):', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  log.error('Uncaught exception (已捕获，进程继续运行):', err);
+  // 注意：仅捕获日志，不退出。对于真正致命的错误，Node.js 仍会退出
+});
+
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
   return PORT_RANGE.min + Math.floor(Math.random() * (PORT_RANGE.max - PORT_RANGE.min + 1));

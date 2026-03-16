@@ -60,6 +60,38 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
     return c.json({ agent: updated });
   });
 
+  /** GET /:id/workspace — 列出工作区所有文件 */
+  app.get('/:id/workspace', (c) => {
+    const id = c.req.param('id');
+    const agent = agentManager.getAgent(id);
+    if (!agent) return c.json({ error: 'Agent 不存在' }, 404);
+
+    const files: Record<string, string> = {};
+    const fileNames = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md', 'MEMORY.md', 'BOOTSTRAP.md'];
+    for (const name of fileNames) {
+      const content = agentManager.readWorkspaceFile(id, name);
+      if (content !== undefined) files[name] = content;
+    }
+    return c.json({ files });
+  });
+
+  /** PUT /:id/workspace/:file — 更新工作区文件 */
+  app.put('/:id/workspace/:file', async (c) => {
+    const id = c.req.param('id');
+    const file = c.req.param('file');
+    const agent = agentManager.getAgent(id);
+    if (!agent) return c.json({ error: 'Agent 不存在' }, 404);
+
+    const allowedFiles = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+    if (!allowedFiles.includes(file)) {
+      return c.json({ error: '该文件不允许手动编辑' }, 400);
+    }
+
+    const body = await c.req.json<{ content: string }>().catch(() => ({ content: '' }));
+    agentManager.writeWorkspaceFile(id, file, body.content);
+    return c.json({ success: true });
+  });
+
   /** DELETE /:id — 删除 Agent */
   app.delete('/:id', (c) => {
     const id = c.req.param('id');
@@ -78,7 +110,11 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
 
   /** POST /create-guided — 启动或推进引导式创建 */
   app.post('/create-guided', async (c) => {
-    const { sessionId, message } = await c.req.json<{ sessionId?: string; message?: string }>();
+    const { sessionId, message, editedPreview } = await c.req.json<{
+      sessionId?: string;
+      message?: string;
+      editedPreview?: Record<string, string>;
+    }>();
 
     let state: BuilderState;
     let sid: string;
@@ -102,6 +138,11 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
           done: false,
         },
       });
+    }
+
+    // 合并前端编辑的预览文件到 state（preview 阶段确认时）
+    if (editedPreview && state.stage === 'preview') {
+      Object.assign(state.preview, editedPreview);
     }
 
     const response = await builder.advance(state, message || '');

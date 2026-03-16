@@ -21,22 +21,22 @@ const STAGE_STEPS: { key: BuilderStage; label: string }[] = [
 ];
 
 /** 工作区文件图标和标签 */
-const FILE_LABELS: Record<string, { icon: string; label: string; desc: string }> = {
-  'SOUL.md': { icon: '💎', label: '行为哲学', desc: '定义 Agent 的核心价值观和思维方式' },
-  'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、头像等外在表现' },
-  'AGENTS.md': { icon: '📋', label: '操作规程', desc: '对话规范和工作流程' },
-  'TOOLS.md': { icon: '🔧', label: '工具配置', desc: '可用工具列表（启动时注入）' },
-  'HEARTBEAT.md': { icon: '💓', label: '定时任务', desc: '周期性自动执行的任务' },
-  'USER.md': { icon: '👤', label: '用户画像', desc: '用户偏好和习惯（运行时动态渲染）' },
-  'MEMORY.md': { icon: '🧠', label: '长期记忆', desc: '对话记忆快照（运行时动态渲染）' },
-  'BOOTSTRAP.md': { icon: '🚀', label: '启动流程', desc: 'Agent 启动时的初始化步骤' },
+const FILE_LABELS: Record<string, { icon: string; label: string; desc: string; editable: boolean }> = {
+  'SOUL.md': { icon: '💎', label: '行为哲学', desc: '核心真理 + 角色人格 — Agent 的灵魂', editable: true },
+  'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、气质、标志 — 外在表现', editable: true },
+  'AGENTS.md': { icon: '📋', label: '操作规程', desc: '通用准则 + 角色工作规范', editable: true },
+  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: 'Agent 醒来后的"出生仪式"', editable: true },
+  'TOOLS.md': { icon: '🔧', label: '环境笔记', desc: '你的环境特有的备忘信息', editable: true },
+  'HEARTBEAT.md': { icon: '💓', label: '定时检查', desc: '周期性自动执行的检查清单', editable: true },
+  'USER.md': { icon: '👤', label: '用户画像', desc: '运行时从记忆中动态渲染', editable: false },
+  'MEMORY.md': { icon: '🧠', label: '长期记忆', desc: '运行时从记忆中动态渲染', editable: false },
 };
 
 export default function AgentsPage() {
   const {
     agents, loading, fetchAgents, deleteAgent,
     builderMessages, builderStage, builderPreview, builderLoading, builderCreatedAgentId,
-    startGuidedCreation, sendBuilderMessage, resetBuilder,
+    startGuidedCreation, sendBuilderMessage, resetBuilder, updatePreviewFile,
   } = useAgentStore();
   const { setCurrentAgent } = useChatStore();
   const navigate = useNavigate();
@@ -45,7 +45,9 @@ export default function AgentsPage() {
   const [inputValue, setInputValue] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [editingFile, setEditingFile] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
@@ -66,6 +68,7 @@ export default function AgentsPage() {
     resetBuilder();
     setInputValue('');
     setExpandedFile(null);
+    setEditingFile(null);
   }, [resetBuilder]);
 
   /** 发送消息 */
@@ -104,13 +107,24 @@ export default function AgentsPage() {
     }
   }, [builderCreatedAgentId, setCurrentAgent, handleCloseBuilder, navigate]);
 
+  /** 切换文件展开/编辑 */
+  const toggleFile = useCallback((filename: string) => {
+    if (expandedFile === filename) {
+      setExpandedFile(null);
+      setEditingFile(null);
+    } else {
+      setExpandedFile(filename);
+      setEditingFile(null);
+    }
+  }, [expandedFile]);
+
   // 当前阶段的建议
   const suggestions = builderStage ? STAGE_SUGGESTIONS[builderStage] : undefined;
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="h-full flex flex-col p-6">
       {/* 页头 */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 shrink-0">
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Agent 管理</h2>
         <button
           onClick={handleStartCreate}
@@ -123,9 +137,12 @@ export default function AgentsPage() {
 
       {/* 引导式创建面板 */}
       {showBuilder && (
-        <div className="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700
+          shadow-sm overflow-hidden flex flex-col min-h-0"
+          style={{ maxHeight: 'calc(100vh - 180px)' }}
+        >
           {/* 头部 + 进度条 */}
-          <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-700">
+          <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">创建新 Agent</h3>
               <button
@@ -170,11 +187,11 @@ export default function AgentsPage() {
             </div>
           </div>
 
-          {/* 对话区域 */}
-          <div className="flex">
+          {/* 对话区域 — flex 填充剩余高度 */}
+          <div className="flex min-h-0 flex-1">
             {/* 左侧：对话 */}
-            <div className={`flex-1 flex flex-col ${builderPreview ? 'border-r border-gray-100 dark:border-gray-700' : ''}`}>
-              <div className="p-4 space-y-3 max-h-80 overflow-y-auto min-h-[200px]">
+            <div className={`flex-1 flex flex-col min-h-0 ${builderPreview ? 'border-r border-gray-100 dark:border-gray-700' : ''}`}>
+              <div className="p-4 space-y-3 overflow-y-auto flex-1">
                 {builderMessages.map((msg, i) => (
                   <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                     {msg.role === 'system' && (
@@ -220,7 +237,7 @@ export default function AgentsPage() {
 
               {/* 建议标签 */}
               {suggestions && !builderCreatedAgentId && (
-                <div className="px-4 pb-2">
+                <div className="px-4 pb-2 shrink-0">
                   <div className="flex flex-wrap gap-1.5">
                     {suggestions.map((s) => (
                       <button
@@ -240,7 +257,7 @@ export default function AgentsPage() {
               )}
 
               {/* 输入区域 / 完成操作 */}
-              <div className="p-3 border-t border-gray-100 dark:border-gray-700">
+              <div className="p-3 border-t border-gray-100 dark:border-gray-700 shrink-0">
                 {builderCreatedAgentId ? (
                   <div className="flex gap-2">
                     <button
@@ -309,44 +326,87 @@ export default function AgentsPage() {
               </div>
             </div>
 
-            {/* 右侧：工作区文件预览 */}
+            {/* 右侧：工作区文件预览 + 编辑 */}
             {builderPreview && (
-              <div className="w-80 p-4 overflow-y-auto max-h-[420px]">
-                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                  工作区文件预览
-                </h4>
-                <div className="space-y-2">
+              <div className="w-80 lg:w-96 flex flex-col min-h-0 shrink-0">
+                <div className="px-4 pt-4 pb-2 shrink-0">
+                  <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    工作区文件预览
+                  </h4>
+                </div>
+                <div className="px-4 pb-4 overflow-y-auto flex-1 space-y-2">
                   {Object.entries(builderPreview).map(([filename, content]) => {
-                    const meta = FILE_LABELS[filename] || { icon: '📄', label: filename, desc: '' };
+                    const meta = FILE_LABELS[filename] || { icon: '📄', label: filename, desc: '', editable: false };
                     const isExpanded = expandedFile === filename;
+                    const isEditing = editingFile === filename;
                     const hasContent = content.trim().length > 0;
+                    const isRuntime = !meta.editable;
                     return (
-                      <div key={filename} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
+                      <div key={filename} className={`border rounded-lg overflow-hidden transition-colors ${
+                        isEditing
+                          ? 'border-[#00d4aa]/50 ring-1 ring-[#00d4aa]/20'
+                          : 'border-gray-100 dark:border-gray-600'
+                      }`}>
                         <button
-                          onClick={() => setExpandedFile(isExpanded ? null : filename)}
+                          onClick={() => toggleFile(filename)}
                           className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50
                             dark:hover:bg-gray-700/50 transition-colors"
                         >
                           <span className="text-sm">{meta.icon}</span>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium text-gray-700 dark:text-gray-300">{meta.label}</div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{meta.desc}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{meta.label}</span>
+                              <code className="text-[10px] px-1 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded font-mono">{filename}</code>
+                            </div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{meta.desc}</div>
                           </div>
-                          {hasContent && (
-                            <span className={`text-gray-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                          {isRuntime ? (
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 italic shrink-0">运行时生成</span>
+                          ) : hasContent ? (
+                            <span className={`text-gray-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                               ▶
                             </span>
-                          )}
-                          {!hasContent && (
-                            <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">运行时生成</span>
-                          )}
+                          ) : null}
                         </button>
-                        {isExpanded && hasContent && (
+                        {isExpanded && hasContent && !isRuntime && (
                           <div className="px-3 pb-2">
-                            <pre className="text-[11px] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50
-                              rounded p-2 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
-                              {content}
-                            </pre>
+                            {isEditing ? (
+                              <div>
+                                <textarea
+                                  value={content}
+                                  onChange={(e) => updatePreviewFile(filename, e.target.value)}
+                                  className="w-full text-[11px] text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900/70
+                                    border border-gray-200 dark:border-gray-600 rounded p-2 font-mono leading-relaxed
+                                    focus:outline-none focus:ring-1 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
+                                    resize-y"
+                                  style={{ minHeight: '120px', maxHeight: '300px' }}
+                                />
+                                <div className="flex justify-end mt-1">
+                                  <button
+                                    onClick={() => setEditingFile(null)}
+                                    className="text-[10px] text-[#00d4aa] hover:text-[#00b894]"
+                                  >
+                                    完成编辑
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="group relative">
+                                <pre className="text-[11px] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50
+                                  rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
+                                  {content}
+                                </pre>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setEditingFile(filename); }}
+                                  className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[10px] text-gray-400
+                                    bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded
+                                    opacity-0 group-hover:opacity-100 hover:text-[#00d4aa] hover:border-[#00d4aa]/30
+                                    transition-all"
+                                >
+                                  编辑
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -359,95 +419,103 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Agent 卡片网格 */}
-      {loading ? (
-        <div className="text-center py-16 text-gray-400 dark:text-gray-500">
-          <p className="text-sm">加载中...</p>
-        </div>
-      ) : agents.length === 0 && !showBuilder ? (
-        <div className="text-center py-16">
-          <p className="text-5xl mb-4">🐾</p>
-          <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
-            创建你的第一个 Agent
-          </h3>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
-            通过对话引导，定制拥有独立人格、专长和记忆的 AI 伴侣
-          </p>
-          <button
-            onClick={handleStartCreate}
-            className="px-5 py-2.5 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
-              hover:bg-[#00b894] transition-colors"
-          >
-            + 开始创建
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {agents.map((agent) => (
-            <div
-              key={agent.id}
-              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
+      {/* Agent 卡片网格 — 滚动区域 */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {loading ? (
+          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+            <p className="text-sm">加载中...</p>
+          </div>
+        ) : agents.length === 0 && !showBuilder ? (
+          <div className="text-center py-16">
+            <p className="text-5xl mb-4">🐾</p>
+            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              创建你的第一个 Agent
+            </h3>
+            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+              通过对话引导，定制拥有独立人格、专长和记忆的 AI 伴侣
+            </p>
+            <button
+              onClick={handleStartCreate}
+              className="px-5 py-2.5 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
+                hover:bg-[#00b894] transition-colors"
             >
-              {/* 卡片头部 */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{agent.emoji}</span>
-                  <div>
-                    <h4 className="font-medium text-sm text-gray-800 dark:text-gray-200">{agent.name}</h4>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {new Date(agent.createdAt).toLocaleDateString('zh-CN')}
-                    </p>
+              + 开始创建
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {agents.map((agent) => (
+              <div
+                key={agent.id}
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
+              >
+                {/* 卡片头部 */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{agent.emoji}</span>
+                    <div>
+                      <h4 className="font-medium text-sm text-gray-800 dark:text-gray-200">{agent.name}</h4>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {new Date(agent.createdAt).toLocaleDateString('zh-CN')}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${
-                    agent.status === 'active'
-                      ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                      : agent.status === 'draft'
-                        ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                  }`}
-                >
-                  {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
-                </span>
-              </div>
-
-              {/* 卡片操作 */}
-              <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-                <button
-                  onClick={() => startChat(agent.id)}
-                  className="flex-1 text-xs py-1.5 text-[#00d4aa] hover:bg-[#00d4aa]/5 rounded-md transition-colors"
-                >
-                  开始对话
-                </button>
-                {deleteConfirmId === agent.id ? (
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => handleDelete(agent.id)}
-                      className="text-xs py-1.5 px-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                    >
-                      确认
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirmId(null)}
-                      className="text-xs py-1.5 px-2 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
-                    >
-                      取消
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setDeleteConfirmId(agent.id)}
-                    className="text-xs py-1.5 px-3 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      agent.status === 'active'
+                        ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                        : agent.status === 'draft'
+                          ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    }`}
                   >
-                    删除
+                    {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
+                  </span>
+                </div>
+
+                {/* 卡片操作 */}
+                <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <button
+                    onClick={() => startChat(agent.id)}
+                    className="flex-1 text-xs py-1.5 text-[#00d4aa] hover:bg-[#00d4aa]/5 rounded-md transition-colors"
+                  >
+                    对话
                   </button>
-                )}
+                  <button
+                    onClick={() => navigate(`/agents/${agent.id}/edit`)}
+                    className="text-xs py-1.5 px-3 text-gray-500 dark:text-gray-400 hover:text-[#00d4aa] hover:bg-[#00d4aa]/5 rounded-md transition-colors"
+                  >
+                    编辑
+                  </button>
+                  {deleteConfirmId === agent.id ? (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleDelete(agent.id)}
+                        className="text-xs py-1.5 px-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                      >
+                        确认
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="text-xs py-1.5 px-2 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteConfirmId(agent.id)}
+                      className="text-xs py-1.5 px-3 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

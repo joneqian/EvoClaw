@@ -24,6 +24,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             sidecar::get_sidecar_info,
+            sidecar::restart_sidecar,
             credential::credential_set,
             credential::credential_get,
             credential::credential_delete,

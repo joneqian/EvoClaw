@@ -103,7 +103,9 @@ export default function ChatPage() {
       );
 
       if (!response.ok) {
-        appendToLastMessage(`请求失败: HTTP ${response.status}`);
+        const errBody = await response.json().catch(() => null) as { error?: string } | null;
+        const errMsg = errBody?.error || `HTTP ${response.status}`;
+        appendToLastMessage(`请求失败: ${errMsg}`);
         setStreaming(false);
         return;
       }

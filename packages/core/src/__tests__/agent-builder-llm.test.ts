@@ -36,13 +36,12 @@ describe('AgentBuilder LLM 生成', () => {
 
   it('有 LLM 时调用 LLM 生成 SOUL.md 和 AGENTS.md', async () => {
     const mockLLM = vi.fn()
-      .mockResolvedValueOnce('# 行为哲学\n\n## 角色定位\n我是一位资深 TypeScript 工程师...')
-      .mockResolvedValueOnce('# 操作规程\n\n## 对话规范\n- 代码优先，简洁回答...');
+      .mockResolvedValueOnce('## 我的角色\n\n我是一位资深 TypeScript 工程师...')
+      .mockResolvedValueOnce('## 角色对话规范\n\n- 代码优先，简洁回答...');
 
     const builder = new AgentBuilder(agentManager, mockLLM);
     const session = builder.createSession();
 
-    // 推进到 preview
     await builder.advance(session, '资深程序员');
     await builder.advance(session, 'TypeScript');
     await builder.advance(session, '简洁高效');
@@ -51,23 +50,28 @@ describe('AgentBuilder LLM 生成', () => {
     expect(result.stage).toBe('preview');
     expect(result.preview).toBeTruthy();
 
-    // 验证 LLM 被调用了 2 次（SOUL.md + AGENTS.md）
+    // 验证 LLM 被调用了 2 次（SOUL.md 个性化 + AGENTS.md 个性化）
     expect(mockLLM).toHaveBeenCalledTimes(2);
 
-    // 验证 SOUL.md 内容来自 LLM
-    expect(result.preview!['SOUL.md']).toContain('TypeScript 工程师');
+    // SOUL.md = 通用底层 + LLM 个性化
+    expect(result.preview!['SOUL.md']).toContain('核心真理');          // 通用底层
+    expect(result.preview!['SOUL.md']).toContain('TypeScript 工程师'); // LLM 生成
 
-    // 验证 AGENTS.md 内容来自 LLM
-    expect(result.preview!['AGENTS.md']).toContain('代码优先');
+    // AGENTS.md = 通用操作规程 + LLM 个性化
+    expect(result.preview!['AGENTS.md']).toContain('每次会话');        // 通用底层
+    expect(result.preview!['AGENTS.md']).toContain('代码优先');        // LLM 生成
 
-    // IDENTITY.md 仍由模板生成（包含 YAML frontmatter）
+    // IDENTITY.md 仍由模板生成
     expect(result.preview!['IDENTITY.md']).toContain('name:');
     expect(result.preview!['IDENTITY.md']).toContain('emoji:');
 
-    // 静态文件不受影响
-    expect(result.preview!['TOOLS.md']).toContain('工具列表将在启动时动态注入');
+    // 静态文件
+    expect(result.preview!['TOOLS.md']).toContain('环境笔记');
     expect(result.preview!['USER.md']).toBe('');
     expect(result.preview!['MEMORY.md']).toBe('');
+
+    // BOOTSTRAP.md 包含角色信息
+    expect(result.preview!['BOOTSTRAP.md']).toContain('你好，世界');
   });
 
   it('LLM 调用失败时 fallback 到模板', async () => {
@@ -84,10 +88,10 @@ describe('AgentBuilder LLM 生成', () => {
     expect(result.stage).toBe('preview');
     expect(result.preview).toBeTruthy();
 
-    // Fallback 模板内容
-    expect(result.preview!['SOUL.md']).toContain('英语老师');
-    expect(result.preview!['SOUL.md']).toContain('核心价值观');
-    expect(result.preview!['AGENTS.md']).toContain('耐心教学');
+    // SOUL.md = 通用底层 + fallback 模板
+    expect(result.preview!['SOUL.md']).toContain('核心真理');   // 通用底层
+    expect(result.preview!['SOUL.md']).toContain('英语老师');    // fallback 角色内容
+    expect(result.preview!['AGENTS.md']).toContain('耐心教学');  // fallback 风格
   });
 
   it('无 LLM 时使用模板生成', async () => {

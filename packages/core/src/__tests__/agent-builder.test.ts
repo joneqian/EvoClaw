@@ -206,10 +206,10 @@ describe('AgentBuilder', () => {
     const r = await builder.advance(state, '确认');
     expect(r.agentId).toBeDefined();
 
-    // 验证工作区文件内容是生成的（而非默认模板）
+    // 验证工作区文件内容包含通用底层 + 角色内容
     const soulContent = manager.readWorkspaceFile(r.agentId!, 'SOUL.md');
     expect(soulContent).toContain('写作助手');
-    expect(soulContent).toContain('角色定位');
+    expect(soulContent).toContain('核心真理');  // 通用底层
 
     const agentsContent = manager.readWorkspaceFile(r.agentId!, 'AGENTS.md');
     expect(agentsContent).toContain('幽默风趣');

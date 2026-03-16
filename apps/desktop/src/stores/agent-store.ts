@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { get, post, del } from '../lib/api';
+import { get, post, put, del, patch } from '../lib/api';
 
 /** Agent 信息 */
 export interface Agent {
@@ -54,11 +54,19 @@ interface AgentState {
   createAgent: (name: string, emoji?: string) => Promise<Agent>;
   /** 通过服务端删除 Agent */
   deleteAgent: (id: string) => Promise<void>;
+  /** 更新 Agent 基本信息 */
+  updateAgent: (id: string, updates: { name?: string; emoji?: string }) => Promise<void>;
+  /** 获取工作区文件 */
+  fetchWorkspaceFiles: (id: string) => Promise<Record<string, string>>;
+  /** 更新工作区文件 */
+  updateWorkspaceFile: (id: string, file: string, content: string) => Promise<void>;
 
   /** 启动引导式创建会话 */
   startGuidedCreation: () => Promise<void>;
   /** 发送引导式创建消息 */
   sendBuilderMessage: (message: string) => Promise<void>;
+  /** 本地编辑预览文件 */
+  updatePreviewFile: (filename: string, content: string) => void;
   /** 重置引导式创建状态 */
   resetBuilder: () => void;
 }
@@ -113,6 +121,24 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
     set((state) => ({ agents: state.agents.filter((a) => a.id !== id) }));
   },
 
+  updateAgent: async (id: string, updates: { name?: string; emoji?: string }) => {
+    const data = await patch<{ agent: Agent }>(`/agents/${id}`, updates);
+    set((state) => ({
+      agents: state.agents.map((a) =>
+        a.id === id ? { ...a, name: data.agent.name, emoji: data.agent.emoji ?? a.emoji } : a
+      ),
+    }));
+  },
+
+  fetchWorkspaceFiles: async (id: string) => {
+    const data = await get<{ files: Record<string, string> }>(`/agents/${id}/workspace`);
+    return data.files;
+  },
+
+  updateWorkspaceFile: async (id: string, file: string, content: string) => {
+    await put(`/agents/${id}/workspace/${file}`, { content });
+  },
+
   startGuidedCreation: async () => {
     set({
       builderSessionId: null,
@@ -156,10 +182,16 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
     }));
 
     try {
-      const data = await post<{ sessionId: string; response: BuilderResponse }>('/agents/create-guided', {
+      // preview 阶段确认时，将本地编辑的文件一起发送
+      const payload: Record<string, unknown> = {
         sessionId: state.builderSessionId,
         message,
-      });
+      };
+      if (state.builderStage === 'preview' && state.builderPreview) {
+        payload.editedPreview = state.builderPreview;
+      }
+
+      const data = await post<{ sessionId: string; response: BuilderResponse }>('/agents/create-guided', payload);
 
       const systemMsg: BuilderMessage = {
         role: 'system',
@@ -190,6 +222,10 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
       }));
     }
   },
+
+  updatePreviewFile: (filename: string, content: string) => set((s) => ({
+    builderPreview: s.builderPreview ? { ...s.builderPreview, [filename]: content } : null,
+  })),
 
   resetBuilder: () => set({
     builderSessionId: null,

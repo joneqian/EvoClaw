@@ -112,3 +112,4 @@ apps/desktop/src-tauri/gen/
 
 # EvoClaw
 .evoclaw/
+prompt/

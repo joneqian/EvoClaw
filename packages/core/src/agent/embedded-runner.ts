@@ -53,6 +53,21 @@ async function runWithPI(
     throw new Error('PI 运行需要 API key');
   }
 
+  // PI 框架通过环境变量读取 API Key，需要在调用前注入
+  const envKeyMap: Record<string, string> = {
+    openai: 'OPENAI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    google: 'GOOGLE_API_KEY',
+  };
+  const envKey = envKeyMap[config.provider] ?? `${config.provider.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+  const prevEnvVal = process.env[envKey];
+  process.env[envKey] = config.apiKey;
+  // 同时设置 base URL（自定义端点）
+  if (config.baseUrl) {
+    const baseUrlKey = `${config.provider.toUpperCase().replace(/-/g, '_')}_BASE_URL`;
+    process.env[baseUrlKey] = config.baseUrl;
+  }
+
   const model = piAi.getModel!(config.provider, config.modelId);
 
   // 从工作区文件构建系统提示
@@ -117,6 +132,12 @@ async function runWithPI(
     await (agent.prompt!(message) as Promise<void>);
   } finally {
     unsubscribe();
+    // 恢复环境变量
+    if (prevEnvVal === undefined) {
+      delete process.env[envKey];
+    } else {
+      process.env[envKey] = prevEnvVal;
+    }
   }
 }
 
@@ -127,6 +148,10 @@ async function runWithFetch(
   onEvent: EventCallback,
   signal?: AbortSignal,
 ): Promise<void> {
+  if (!config.apiKey) {
+    throw new Error('未配置 API Key，请先在设置中配置 LLM Provider');
+  }
+
   const protocol = config.apiProtocol ?? 'openai-completions';
 
   if (protocol === 'anthropic-messages') {

@@ -57,12 +57,15 @@ describe('E2E: 聊天流程', () => {
       body: JSON.stringify({ message: '你好' }),
     });
 
-    // 应返回 200（SSE 流）或者在无 LLM 配置时可能是错误
-    // 至少不应该是 500
-    expect([200, 500]).toContain(res.status);
+    // 无 LLM 配置时应返回 400（未配置 API Key）
+    // 有配置时返回 200 SSE 流，不应返回 500
+    expect([200, 400]).toContain(res.status);
     if (res.status === 200) {
       const contentType = res.headers.get('content-type') ?? '';
       expect(contentType).toContain('text/event-stream');
+    } else if (res.status === 400) {
+      const body = await res.json() as { error: string };
+      expect(body.error).toContain('API Key');
     }
   });
 });

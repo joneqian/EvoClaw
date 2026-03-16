@@ -103,6 +103,10 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       }
     }
 
+    if (!apiKey) {
+      return c.json({ error: '未配置 API Key，请先在设置中配置 LLM Provider' }, 400);
+    }
+
     // 创建 ContextEngine 并注册插件
     const contextEngine = new ContextEngine();
     contextEngine.register(sessionRouterPlugin);

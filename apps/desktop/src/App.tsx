@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
@@ -10,6 +10,8 @@ import SettingsPage from './pages/SettingsPage';
 import EvolutionPage from './pages/EvolutionPage';
 import ChannelPage from './pages/ChannelPage';
 import SetupPage from './pages/SetupPage';
+import AgentEditPage from './pages/AgentEditPage';
+import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from './stores/app-store';
 import { initSidecar, healthCheck } from './lib/api';
 
@@ -70,6 +72,22 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  /** 手动重启 Sidecar */
+  const handleRestartSidecar = useCallback(async () => {
+    try {
+      await invoke('restart_sidecar');
+      // 等待 Sidecar 启动后重新初始化连接
+      setTimeout(async () => {
+        const health = await initSidecar();
+        if (health) {
+          setSidecarConnected(true);
+        }
+      }, 3000);
+    } catch (err) {
+      console.error('重启 Sidecar 失败:', err);
+    }
+  }, [setSidecarConnected]);
+
   /** 初始化 Sidecar 连接 */
   const initialize = useCallback(async () => {
     setInitState('loading');
@@ -92,13 +110,28 @@ export default function App() {
     initialize();
   }, [initialize]);
 
-  /** 定期健康检查 */
+  /** 定期健康检查 — 断连时自动重连（Sidecar 可能已自动重启到新端口） */
+  const reconnectAttempts = useRef(0);
   useEffect(() => {
     if (initState !== 'connected') return;
     const timer = setInterval(async () => {
       const health = await healthCheck();
-      setSidecarConnected(!!health);
-    }, 15_000);
+      if (health) {
+        setSidecarConnected(true);
+        reconnectAttempts.current = 0;
+      } else {
+        setSidecarConnected(false);
+        // 尝试重新初始化连接（Sidecar 自动重启后 port/token 会变）
+        if (reconnectAttempts.current < 5) {
+          reconnectAttempts.current++;
+          const newHealth = await initSidecar();
+          if (newHealth) {
+            setSidecarConnected(true);
+            reconnectAttempts.current = 0;
+          }
+        }
+      }
+    }, 5_000); // 缩短到 5 秒以更快检测重启
     return () => clearInterval(timer);
   }, [initState, setSidecarConnected]);
 
@@ -175,12 +208,20 @@ export default function App() {
           <div className="flex items-center gap-2 px-3">
             <span
               className={`w-2 h-2 rounded-full ${
-                sidecarConnected ? 'bg-green-400' : 'bg-red-400'
+                sidecarConnected ? 'bg-green-400' : 'bg-red-400 animate-pulse'
               }`}
             />
             <span className="text-xs text-gray-400 dark:text-gray-500">
               {sidecarConnected ? 'Sidecar 已连接' : 'Sidecar 未连接'}
             </span>
+            {!sidecarConnected && (
+              <button
+                onClick={handleRestartSidecar}
+                className="text-[10px] text-[#00d4aa] hover:text-[#00b894] ml-auto"
+              >
+                重启
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -191,6 +232,7 @@ export default function App() {
           <Route path="/" element={<ChatPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/agents" element={<AgentsPage />} />
+          <Route path="/agents/:id/edit" element={<AgentEditPage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/skills" element={<SkillPage />} />

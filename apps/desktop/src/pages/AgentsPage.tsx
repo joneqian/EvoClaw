@@ -197,11 +197,21 @@ export default function AgentsPage() {
                       🤖
                     </div>
                     <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg rounded-bl-sm">
-                      <span className="inline-flex gap-1">
-                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </span>
+                      {builderStage === 'constraints' ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                          <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                          </svg>
+                          <span>AI 正在为你的 Agent 生成个性化工作区文件...</span>
+                        </div>
+                      ) : (
+                        <span className="inline-flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}

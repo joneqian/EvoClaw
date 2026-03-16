@@ -29,6 +29,7 @@ import { DesktopAdapter } from './channel/adapters/desktop.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { createLogger, closeLogger, LOG_PATH } from './infrastructure/logger.js';
+import { callLLM } from './agent/llm-client.js';
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -146,7 +147,11 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
 
   // 挂载业务路由
   if (agentManager) {
-    app.route('/agents', createAgentRoutes(agentManager));
+    // 构建 LLM 生成函数：引导式创建 Agent 时用于生成工作区文件
+    const llmGenerateFn = configManager
+      ? (systemPrompt: string, userMessage: string) => callLLM(configManager, { systemPrompt, userMessage })
+      : undefined;
+    app.route('/agents', createAgentRoutes(agentManager, llmGenerateFn));
   }
   if (store && agentManager) {
     app.route('/chat', createChatRoutes(store, agentManager, vectorStore, configManager));

@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import crypto from 'node:crypto';
 import { AgentManager } from '../agent/agent-manager.js';
-import { AgentBuilder, type BuilderState } from '../agent/agent-builder.js';
+import { AgentBuilder, type BuilderState, type LLMGenerateFn } from '../agent/agent-builder.js';
 
 /** 创建 Agent CRUD 路由 */
-export function createAgentRoutes(agentManager: AgentManager) {
+export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMGenerateFn) {
   const app = new Hono();
 
   /** GET / — 列出所有 Agent */
@@ -73,7 +73,7 @@ export function createAgentRoutes(agentManager: AgentManager) {
   });
 
   // --- 引导式创建 ---
-  const builder = new AgentBuilder(agentManager);
+  const builder = new AgentBuilder(agentManager, llmGenerate);
   const builderSessions = new Map<string, BuilderState>();
 
   /** POST /create-guided — 启动或推进引导式创建 */

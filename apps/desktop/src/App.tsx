@@ -18,7 +18,40 @@ import { useAppStore } from './stores/app-store';
 import { initSidecar, healthCheck, get } from './lib/api';
 import { useChatStore } from './stores/chat-store';
 
-/** 最近会话条目 */
+// ─── SVG Icon 组件 ───
+
+function Icon({ d, className = 'w-4 h-4', strokeWidth = 1.5 }: { d: string | readonly string[]; className?: string; strokeWidth?: number }) {
+  const paths = Array.isArray(d) ? d : [d];
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={strokeWidth}>
+      {paths.map((p, i) => (
+        <path key={i} strokeLinecap="round" strokeLinejoin="round" d={p} />
+      ))}
+    </svg>
+  );
+}
+
+// HeroIcons outline paths (24x24)
+const ICON_PATHS = {
+  plus: 'M12 4.5v15m7.5-7.5h-15',
+  chat: 'M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z',
+  agents: 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z',
+  memory: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z',
+  models: 'M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5M4.5 15.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z',
+  channel: 'M9.348 14.652a3.75 3.75 0 010-5.304m5.304 0a3.75 3.75 0 010 5.304m-7.425 2.121a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z',
+  skills: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z',
+  evolution: ['M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75z', 'M9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625z', 'M16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z'],
+  security: ['M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'],
+  knowledge: 'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25',
+  settings: ['M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z', 'M15 12a3 3 0 11-6 0 3 3 0 016 0z'],
+  sun: ['M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z'],
+  moon: 'M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z',
+  chevronUp: 'M4.5 15.75l7.5-7.5 7.5 7.5',
+  back: 'M15.75 19.5L8.25 12l7.5-7.5',
+} as const;
+
+// ─── 类型 ───
+
 interface RecentConversation {
   sessionKey: string;
   agentId: string;
@@ -29,61 +62,70 @@ interface RecentConversation {
   messageCount: number;
 }
 
-/** 侧栏主导航项样式 */
-function navClassName({ isActive }: { isActive: boolean }): string {
-  return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-    isActive
-      ? 'bg-[#00d4aa]/10 text-[#00a88a] font-medium'
-      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-  }`;
-}
+// ─── 工具函数 ───
 
-/** 相对时间格式化 */
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
   const date = new Date(dateStr).getTime();
   const diff = now - date;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
+  if (mins < 60) return `${mins}分钟前`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return `${hours}小时前`;
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
+  if (days < 7) return `${days}天前`;
   return new Date(dateStr).toLocaleDateString('zh-CN');
 }
 
-/** 加载状态组件 */
+/** 侧栏主导航项样式 */
+function navClassName({ isActive }: { isActive: boolean }): string {
+  return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+    isActive
+      ? 'bg-brand/10 text-brand-active'
+      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+  }`;
+}
+
+// ─── 加载 / 错误状态 ───
+
 function LoadingScreen() {
   return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-[#0c1222]">
       <div className="text-center">
-        <div className="text-5xl mb-4">🐾</div>
-        <p className="text-sm text-gray-400 dark:text-gray-500">正在启动 EvoClaw...</p>
+        <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-brand/20 to-brand/5
+          flex items-center justify-center">
+          <Icon d={ICON_PATHS.memory} className="w-6 h-6 text-brand" />
+        </div>
+        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">正在启动 EvoClaw...</p>
         <div className="mt-4 flex justify-center gap-1">
-          <span className="w-2 h-2 bg-[#00d4aa] rounded-full animate-pulse" />
-          <span className="w-2 h-2 bg-[#00d4aa] rounded-full animate-pulse [animation-delay:150ms]" />
-          <span className="w-2 h-2 bg-[#00d4aa] rounded-full animate-pulse [animation-delay:300ms]" />
+          <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
+          <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
+          <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:300ms]" />
         </div>
       </div>
     </div>
   );
 }
 
-/** 连接失败组件 */
 function ErrorScreen({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="text-center">
-        <div className="text-5xl mb-4">⚠️</div>
-        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2">Sidecar 连接失败</h2>
-        <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+    <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-[#0c1222]">
+      <div className="text-center max-w-sm">
+        <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-red-50 dark:bg-red-900/20
+          flex items-center justify-center">
+          <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+        </div>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-1.5">连接失败</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
           无法连接到后端服务，请确保 Node.js 已安装。
         </p>
         <button
           onClick={onRetry}
-          className="px-4 py-2 text-sm font-medium text-white bg-[#00d4aa] rounded-lg
-            hover:bg-[#00b894] transition-colors"
+          className="px-5 py-2 text-sm font-medium text-white bg-brand rounded-lg
+            hover:bg-brand-hover active:bg-brand-active transition-colors"
         >
           重试连接
         </button>
@@ -92,29 +134,34 @@ function ErrorScreen({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-// ─── 底部菜单项 ───
+// ─── 底部弹出菜单 ───
 
-interface MenuItem {
-  icon: string;
-  label: string;
-  path: string;
+interface MenuSection {
+  items: { icon: string | readonly string[]; label: string; path: string }[];
 }
 
-const MENU_ITEMS: MenuItem[][] = [
-  [
-    { icon: '🧩', label: '模型管理', path: '/models' },
-    { icon: '📡', label: 'Channel', path: '/channel' },
-    { icon: '⚡', label: 'Skill 管理', path: '/skills' },
-    { icon: '📊', label: '进化统计', path: '/evolution' },
-    { icon: '🔒', label: '安全设置', path: '/security' },
-    { icon: '📚', label: '知识库', path: '/knowledge' },
-  ],
-  [
-    { icon: '⚙️', label: '设置', path: '/settings' },
-  ],
+const MENU_SECTIONS: MenuSection[] = [
+  {
+    items: [
+      { icon: ICON_PATHS.models, label: '模型管理', path: '/models' },
+      { icon: ICON_PATHS.channel, label: 'Channel', path: '/channel' },
+      { icon: ICON_PATHS.skills, label: 'Skill 管理', path: '/skills' },
+    ],
+  },
+  {
+    items: [
+      { icon: ICON_PATHS.evolution, label: '进化统计', path: '/evolution' },
+      { icon: ICON_PATHS.knowledge, label: '知识库', path: '/knowledge' },
+      { icon: ICON_PATHS.security, label: '安全设置', path: '/security' },
+    ],
+  },
+  {
+    items: [
+      { icon: ICON_PATHS.settings, label: '设置', path: '/settings' },
+    ],
+  },
 ];
 
-/** 底部弹出菜单 */
 function BottomMenu({
   open,
   onClose,
@@ -150,21 +197,22 @@ function BottomMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute bottom-full left-0 right-0 mb-1 mx-2 bg-white dark:bg-gray-800
-        border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50"
+      className="absolute bottom-full left-0 right-0 mb-1.5 mx-2 bg-white dark:bg-slate-800
+        border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg shadow-slate-200/50 dark:shadow-black/30
+        overflow-hidden z-50"
     >
-      {MENU_ITEMS.map((group, gi) => (
-        <div key={gi}>
-          {gi > 0 && <div className="border-t border-gray-100 dark:border-gray-700" />}
+      {MENU_SECTIONS.map((section, si) => (
+        <div key={si}>
+          {si > 0 && <div className="border-t border-slate-100 dark:border-slate-700/70" />}
           <div className="py-1">
-            {group.map((item) => (
+            {section.items.map((item) => (
               <button
                 key={item.path}
                 onClick={() => { onNavigate(item.path); onClose(); }}
-                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-gray-300
-                  hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-slate-600 dark:text-slate-300
+                  hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
               >
-                <span className="text-base w-5 text-center">{item.icon}</span>
+                <Icon d={item.icon} className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                 {item.label}
               </button>
             ))}
@@ -172,28 +220,28 @@ function BottomMenu({
         </div>
       ))}
       {/* 主题切换 */}
-      <div className="border-t border-gray-100 dark:border-gray-700 py-1">
+      <div className="border-t border-slate-100 dark:border-slate-700/70 py-1">
         <button
           onClick={() => { onToggleTheme(); onClose(); }}
-          className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-gray-300
-            hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-slate-600 dark:text-slate-300
+            hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
         >
-          <span className="text-base w-5 text-center">{theme === 'dark' ? '☀️' : '🌙'}</span>
+          <Icon d={theme === 'dark' ? ICON_PATHS.sun : ICON_PATHS.moon} className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           {theme === 'dark' ? '浅色模式' : '深色模式'}
         </button>
       </div>
       {/* Sidecar 状态 */}
-      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-2.5 flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full shrink-0 ${
-          sidecarConnected ? 'bg-green-400' : 'bg-red-400 animate-pulse'
+      <div className="border-t border-slate-100 dark:border-slate-700/70 px-3.5 py-2.5 flex items-center gap-2">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+          sidecarConnected ? 'bg-emerald-400' : 'bg-red-400 animate-pulse'
         }`} />
-        <span className="text-xs text-gray-400 dark:text-gray-500 flex-1">
-          {sidecarConnected ? 'Sidecar 已连接' : 'Sidecar 未连接'}
+        <span className="text-xs text-slate-400 dark:text-slate-500 flex-1">
+          Sidecar {sidecarConnected ? '已连接' : '未连接'}
         </span>
         {!sidecarConnected && (
           <button
             onClick={() => { onRestartSidecar(); onClose(); }}
-            className="text-xs text-[#00d4aa] hover:text-[#00b894]"
+            className="text-xs text-brand hover:text-brand-hover font-medium"
           >
             重启
           </button>
@@ -258,14 +306,13 @@ export default function App() {
     try {
       const res = await get<{ conversations: RecentConversation[] }>('/chat/recents?limit=15');
       setRecents(res.conversations);
-    } catch { /* 可能 Sidecar 未就绪 */ }
+    } catch { /* Sidecar 可能未就绪 */ }
   }, []);
 
   useEffect(() => {
     if (initState === 'connected') fetchRecents();
   }, [initState, fetchRecents]);
 
-  // 从对话页返回时刷新 Recents
   useEffect(() => {
     if (initState === 'connected' && location.pathname !== '/chat') {
       fetchRecents();
@@ -301,35 +348,37 @@ export default function App() {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  /** 点击最近会话 → 进入该会话并加载历史消息 */
+  /** 点击最近会话 */
   const handleRecentClick = useCallback((conv: RecentConversation) => {
     enterConversation(conv.agentId, conv.sessionKey);
     navigate('/chat');
   }, [enterConversation, navigate]);
 
-  // 加载中
+  // 加载中 / 错误
   if (initState === 'loading') return <LoadingScreen />;
-  // 连接失败
   if (initState === 'error') return <ErrorScreen onRetry={initialize} />;
-  // Setup 页面
   if (location.pathname === '/setup') {
     return <Routes><Route path="/setup" element={<SetupPage />} /></Routes>;
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-[#0c1222] text-slate-900 dark:text-slate-100">
+      <div className="flex flex-1 min-h-0">
       {/* ─── Sidebar ─── */}
-      <nav className="w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0">
-        {/* 顶部：新建对话 + 搜索 */}
-        <div className="p-3 space-y-1">
+      <nav className="w-[220px] bg-slate-100/70 dark:bg-slate-900/80 border-r border-slate-200/80 dark:border-slate-800
+        flex flex-col shrink-0 select-none">
+
+        {/* macOS 交通灯占位 + 拖拽区域 */}
+        <div className="h-[38px] shrink-0" data-tauri-drag-region />
+
+        {/* 新建对话按钮 */}
+        <div className="px-3 mb-1">
           <button
             onClick={() => navigate('/chat')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200
-              hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 dark:text-slate-300
+              hover:bg-white/60 dark:hover:bg-slate-800/60 rounded-lg transition-all duration-150"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
+            <Icon d={ICON_PATHS.plus} className="w-4 h-4" strokeWidth={2} />
             新建对话
           </button>
         </div>
@@ -337,51 +386,47 @@ export default function App() {
         {/* 主导航 */}
         <div className="px-3 space-y-0.5">
           <NavLink to="/chat" className={navClassName}>
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 20.105V4.5A2.25 2.25 0 016 2.25h12A2.25 2.25 0 0120.25 4.5v11.25a2.25 2.25 0 01-2.25 2.25H6.401l-2.651 1.855z" />
-            </svg>
+            <Icon d={ICON_PATHS.chat} className="w-4 h-4 shrink-0" />
             对话
           </NavLink>
           <NavLink to="/agents" className={navClassName}>
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-            </svg>
+            <Icon d={ICON_PATHS.agents} className="w-4 h-4 shrink-0" />
             Agents
           </NavLink>
           <NavLink to="/memory" className={navClassName}>
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-            </svg>
+            <Icon d={ICON_PATHS.memory} className="w-4 h-4 shrink-0" />
             记忆
           </NavLink>
         </div>
 
         {/* Recents 区域 */}
         <div className="mt-4 flex-1 overflow-hidden flex flex-col min-h-0">
-          <div className="px-4 mb-1">
-            <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-              Recents
+          <div className="px-4 mb-1.5">
+            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-wider">
+              最近对话
             </span>
           </div>
           <div className="flex-1 overflow-y-auto px-2">
             {recents.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-gray-400 dark:text-gray-500">暂无最近对话</p>
+              <p className="px-2 py-3 text-xs text-slate-400 dark:text-slate-600">暂无最近对话</p>
             ) : (
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 {recents.map((conv) => (
                   <button
                     key={conv.sessionKey}
                     onClick={() => handleRecentClick(conv)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-400
-                      hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group truncate"
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
+                      hover:bg-white/60 dark:hover:bg-slate-800/60 transition-all duration-150 group"
                     title={`${conv.agentEmoji} ${conv.agentName} — ${conv.title}`}
                   >
-                    <div className="truncate">
-                      <span className="mr-1.5">{conv.agentEmoji}</span>
-                      <span className="text-gray-700 dark:text-gray-300">{conv.title}</span>
+                    <div className="truncate leading-snug">
+                      <span className="mr-1.5 text-xs">{conv.agentEmoji}</span>
+                      <span className="text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-slate-100 transition-colors">
+                        {conv.title}
+                      </span>
                     </div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 pl-6 truncate">
-                      {conv.agentName} · {formatRelativeTime(conv.lastAt)}
+                    <div className="text-[10px] text-slate-400 dark:text-slate-600 mt-0.5 pl-5 truncate">
+                      {formatRelativeTime(conv.lastAt)}
                     </div>
                   </button>
                 ))}
@@ -391,7 +436,7 @@ export default function App() {
         </div>
 
         {/* 底部：品牌 + 菜单 */}
-        <div className="relative border-t border-gray-100 dark:border-gray-700">
+        <div className="relative border-t border-slate-200/60 dark:border-slate-800">
           <BottomMenu
             open={menuOpen}
             onClose={() => setMenuOpen(false)}
@@ -403,32 +448,37 @@ export default function App() {
           />
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+            className="w-full flex items-center gap-2.5 px-3.5 py-3 hover:bg-white/40 dark:hover:bg-slate-800/40 transition-all duration-150"
           >
-            <div className="w-8 h-8 rounded-full bg-[#00d4aa]/10 flex items-center justify-center text-base shrink-0">
-              🐾
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-brand-active
+              flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm">
+              EC
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">EvoClaw</p>
-              <div className="flex items-center gap-1.5">
+              <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 leading-tight">EvoClaw</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${
-                  sidecarConnected ? 'bg-green-400' : 'bg-red-400'
+                  sidecarConnected ? 'bg-emerald-400' : 'bg-red-400'
                 }`} />
-                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">
                   {sidecarConnected ? '已连接' : '未连接'}
                 </span>
               </div>
             </div>
-            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${menuOpen ? 'rotate-180' : ''}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-            </svg>
+            <Icon
+              d={ICON_PATHS.chevronUp}
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`}
+              strokeWidth={2}
+            />
           </button>
         </div>
       </nav>
 
       {/* ─── Main content ─── */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden flex flex-col">
+        {/* 主内容区顶部拖拽区域 */}
+        <div className="h-[38px] shrink-0" data-tauri-drag-region />
+        <div className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<ChatPage />} />
           <Route path="/chat" element={<ChatPage />} />
@@ -445,7 +495,9 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/setup" element={<SetupPage />} />
         </Routes>
+        </div>
       </main>
+      </div>
     </div>
   );
 }

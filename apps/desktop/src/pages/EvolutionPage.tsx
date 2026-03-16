@@ -33,7 +33,7 @@ const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
 function TrendIcon({ trend }: { trend: string }) {
   if (trend === 'up') return <span className="text-green-500">↑</span>;
   if (trend === 'down') return <span className="text-red-500">↓</span>;
-  return <span className="text-gray-400">→</span>;
+  return <span className="text-slate-400">→</span>;
 }
 
 /** SVG 雷达图 */
@@ -111,7 +111,7 @@ function RadarChart({ capabilities }: { capabilities: CapabilityNode[] }) {
           y={p.labelY}
           textAnchor="middle"
           dominantBaseline="central"
-          className="text-[9px] fill-gray-500"
+          className="text-[9px] fill-slate-500"
         >
           {DIMENSION_LABELS[p.name] ?? p.name}
         </text>
@@ -217,13 +217,13 @@ export default function EvolutionPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white">
+      <div className="px-6 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">进化仪表盘</h2>
+          <h2 className="text-lg font-bold text-slate-900">进化仪表盘</h2>
           <select
             value={selectedAgentId}
             onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/30 focus:border-[#00d4aa]"
+            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           >
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
@@ -238,50 +238,50 @@ export default function EvolutionPage() {
       {/* 内容 */}
       <div className="flex-1 overflow-y-auto p-6">
         {!selectedAgentId ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-lg">请先创建一个 Agent</p>
           </div>
         ) : loading ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-sm">加载中...</p>
           </div>
         ) : (
           <div className="max-w-4xl mx-auto space-y-6">
             {/* 统计卡片 */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">能力维度</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <p className="text-xs text-slate-400 mb-1">能力维度</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">平均等级</p>
-                <p className="text-2xl font-bold text-[#00d4aa]">{stats.avgLevel}</p>
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <p className="text-xs text-slate-400 mb-1">平均等级</p>
+                <p className="text-2xl font-bold text-brand">{stats.avgLevel}</p>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 mb-1">总使用次数</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalUses}</p>
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <p className="text-xs text-slate-400 mb-1">总使用次数</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.totalUses}</p>
               </div>
             </div>
 
             {/* 雷达图 + 成长向量 */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">能力雷达</h3>
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-medium text-slate-700 mb-3">能力雷达</h3>
                 <RadarChart capabilities={capabilities} />
               </div>
 
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">7 日成长向量</h3>
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-medium text-slate-700 mb-3">7 日成长向量</h3>
                 {vector.length === 0 ? (
-                  <p className="text-sm text-gray-400 mt-8 text-center">暂无数据</p>
+                  <p className="text-sm text-slate-400 mt-8 text-center">暂无数据</p>
                 ) : (
                   <div className="space-y-2">
                     {vector.map((v) => (
-                      <div key={v.dimension} className="flex items-center justify-between px-2 py-1.5 rounded bg-gray-50">
-                        <span className="text-sm text-gray-700">{DIMENSION_LABELS[v.dimension] ?? v.dimension}</span>
+                      <div key={v.dimension} className="flex items-center justify-between px-2 py-1.5 rounded bg-slate-50">
+                        <span className="text-sm text-slate-700">{DIMENSION_LABELS[v.dimension] ?? v.dimension}</span>
                         <div className="flex items-center gap-2">
                           <TrendIcon trend={v.trend} />
-                          <span className={`text-sm font-mono ${v.delta > 0 ? 'text-green-600' : v.delta < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                          <span className={`text-sm font-mono ${v.delta > 0 ? 'text-green-600' : v.delta < 0 ? 'text-red-500' : 'text-slate-400'}`}>
                             {v.delta > 0 ? '+' : ''}{v.delta.toFixed(2)}
                           </span>
                         </div>
@@ -293,25 +293,25 @@ export default function EvolutionPage() {
             </div>
 
             {/* 最近进化事件 */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">最近进化事件</h3>
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <h3 className="text-sm font-medium text-slate-700 mb-3">最近进化事件</h3>
               {events.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">暂无事件</p>
+                <p className="text-sm text-slate-400 text-center py-4">暂无事件</p>
               ) : (
                 <div className="space-y-1.5 max-h-60 overflow-y-auto">
                   {events.map((e, i) => {
-                    const typeInfo = EVENT_TYPE_LABELS[e.type] ?? { label: e.type, color: 'text-gray-600' };
+                    const typeInfo = EVENT_TYPE_LABELS[e.type] ?? { label: e.type, color: 'text-slate-600' };
                     return (
-                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded bg-gray-50 text-sm">
+                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded bg-slate-50 text-sm">
                         <div className="flex items-center gap-3">
                           <span className={`font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
-                          <span className="text-gray-700">{DIMENSION_LABELS[e.capability] ?? e.capability}</span>
+                          <span className="text-slate-700">{DIMENSION_LABELS[e.capability] ?? e.capability}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`font-mono ${e.delta > 0 ? 'text-green-600' : e.delta < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                          <span className={`font-mono ${e.delta > 0 ? 'text-green-600' : e.delta < 0 ? 'text-red-500' : 'text-slate-400'}`}>
                             {e.delta > 0 ? '+' : ''}{e.delta.toFixed(2)}
                           </span>
-                          <span className="text-xs text-gray-400">{new Date(e.timestamp).toLocaleString()}</span>
+                          <span className="text-xs text-slate-400">{new Date(e.timestamp).toLocaleString()}</span>
                         </div>
                       </div>
                     );
@@ -321,21 +321,21 @@ export default function EvolutionPage() {
             </div>
 
             {/* Heartbeat 配置 */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Heartbeat 心跳</h3>
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
+              <h3 className="text-sm font-medium text-slate-700 mb-3">Heartbeat 心跳</h3>
               <div className="space-y-3">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={heartbeat.enabled}
                     onChange={(e) => saveHeartbeat({ ...heartbeat, enabled: e.target.checked })}
-                    className="rounded border-gray-300 text-[#00d4aa] focus:ring-[#00d4aa]"
+                    className="rounded border-slate-300 text-brand focus:ring-brand"
                   />
-                  <span className="text-sm text-gray-700">启用心跳</span>
+                  <span className="text-sm text-slate-700">启用心跳</span>
                 </label>
 
                 <div className="flex items-center gap-4">
-                  <label className="text-sm text-gray-600">
+                  <label className="text-sm text-slate-600">
                     间隔
                     <input
                       type="number"
@@ -343,18 +343,18 @@ export default function EvolutionPage() {
                       max={1440}
                       value={heartbeat.intervalMinutes}
                       onChange={(e) => saveHeartbeat({ ...heartbeat, intervalMinutes: Number(e.target.value) })}
-                      className="ml-2 w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-[#00d4aa]"
+                      className="ml-2 w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-brand"
                     />
-                    <span className="ml-1 text-gray-400">分钟</span>
+                    <span className="ml-1 text-slate-400">分钟</span>
                   </label>
 
-                  <label className="text-sm text-gray-600">
+                  <label className="text-sm text-slate-600">
                     活跃时段
                     <input
                       type="text"
                       value={heartbeat.activeHours.start}
                       onChange={(e) => saveHeartbeat({ ...heartbeat, activeHours: { ...heartbeat.activeHours, start: e.target.value } })}
-                      className="ml-2 w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-[#00d4aa]"
+                      className="ml-2 w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-brand"
                       placeholder="08:00"
                     />
                     <span className="mx-1">-</span>
@@ -362,7 +362,7 @@ export default function EvolutionPage() {
                       type="text"
                       value={heartbeat.activeHours.end}
                       onChange={(e) => saveHeartbeat({ ...heartbeat, activeHours: { ...heartbeat.activeHours, end: e.target.value } })}
-                      className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-[#00d4aa]"
+                      className="w-16 px-2 py-1 text-sm border border-slate-300 rounded text-center focus:outline-none focus:ring-1 focus:ring-brand"
                       placeholder="22:00"
                     />
                   </label>
@@ -371,12 +371,12 @@ export default function EvolutionPage() {
             </div>
 
             {/* Cron 定时任务 */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="bg-white rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-700">定时任务</h3>
+                <h3 className="text-sm font-medium text-slate-700">定时任务</h3>
                 <button
                   onClick={() => setShowCronForm(!showCronForm)}
-                  className="px-3 py-1 text-xs font-medium text-white bg-[#00d4aa] rounded-lg hover:bg-[#00a88a] transition-colors"
+                  className="px-3 py-1 text-xs font-medium text-white bg-brand rounded-lg hover:bg-brand-active transition-colors"
                 >
                   {showCronForm ? '取消' : '新建'}
                 </button>
@@ -384,32 +384,32 @@ export default function EvolutionPage() {
 
               {/* 创建表单 */}
               {showCronForm && (
-                <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-2">
+                <div className="mb-4 p-3 bg-slate-50 rounded-lg space-y-2">
                   <input
                     type="text"
                     value={cronForm.name}
                     onChange={(e) => setCronForm({ ...cronForm, name: e.target.value })}
                     placeholder="任务名称"
-                    className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00d4aa]"
+                    className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
                   />
                   <input
                     type="text"
                     value={cronForm.cronExpression}
                     onChange={(e) => setCronForm({ ...cronForm, cronExpression: e.target.value })}
                     placeholder="Cron 表达式 (如 0 * * * *)"
-                    className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00d4aa]"
+                    className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
                   />
                   <textarea
                     value={cronForm.prompt}
                     onChange={(e) => setCronForm({ ...cronForm, prompt: e.target.value })}
                     placeholder="执行 prompt"
                     rows={2}
-                    className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#00d4aa] resize-none"
+                    className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand resize-none"
                   />
                   <button
                     onClick={createCronJob}
                     disabled={!cronForm.name || !cronForm.cronExpression}
-                    className="px-4 py-1.5 text-sm font-medium text-white bg-[#00d4aa] rounded-lg hover:bg-[#00a88a] disabled:opacity-50 transition-colors"
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-active disabled:opacity-50 transition-colors"
                   >
                     创建
                   </button>
@@ -418,21 +418,21 @@ export default function EvolutionPage() {
 
               {/* 任务列表 */}
               {cronJobs.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">暂无定时任务</p>
+                <p className="text-sm text-slate-400 text-center py-4">暂无定时任务</p>
               ) : (
                 <div className="space-y-2">
                   {cronJobs.map((job) => (
-                    <div key={job.id} className="flex items-center justify-between px-3 py-2 rounded bg-gray-50">
+                    <div key={job.id} className="flex items-center justify-between px-3 py-2 rounded bg-slate-50">
                       <div>
-                        <p className="text-sm font-medium text-gray-700">{job.name}</p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm font-medium text-slate-700">{job.name}</p>
+                        <p className="text-xs text-slate-400">
                           {job.cronExpression} · {job.enabled ? '启用' : '禁用'}
                           {job.nextRunAt && ` · 下次: ${new Date(job.nextRunAt).toLocaleString()}`}
                         </p>
                       </div>
                       <button
                         onClick={() => deleteCronJob(job.id)}
-                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

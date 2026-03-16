@@ -121,11 +121,11 @@ export default function AgentsPage() {
     <div className="h-full flex flex-col p-6">
       {/* 页头 */}
       <div className="flex items-center justify-between mb-6 shrink-0">
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">Agent 管理</h2>
+        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Agent 管理</h2>
         <button
           onClick={handleStartCreate}
-          className="px-4 py-2 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
-            hover:bg-[#00b894] transition-colors"
+          className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg
+            hover:bg-brand-hover transition-colors"
         >
           + 创建 Agent
         </button>
@@ -133,17 +133,17 @@ export default function AgentsPage() {
 
       {/* 引导式创建面板 */}
       {showBuilder && (
-        <div className="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700
+        <div className="mb-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700
           shadow-sm overflow-hidden flex flex-col min-h-0"
           style={{ maxHeight: 'calc(100vh - 180px)' }}
         >
           {/* 头部 + 进度条 */}
-          <div className="px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-700 shrink-0">
+          <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700 shrink-0">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">创建新 Agent</h3>
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">创建新 Agent</h3>
               <button
                 onClick={handleCloseBuilder}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none"
               >
                 ×
               </button>
@@ -158,24 +158,24 @@ export default function AgentsPage() {
                   <div key={step.key} className="flex items-center gap-1 flex-1">
                     <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                       isActive
-                        ? 'bg-[#00d4aa]/10 text-[#00d4aa]'
+                        ? 'bg-brand/10 text-brand'
                         : isDone
                           ? 'text-green-500 dark:text-green-400'
-                          : 'text-gray-400 dark:text-gray-500'
+                          : 'text-slate-400 dark:text-slate-500'
                     }`}>
                       <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
                         isDone
                           ? 'bg-green-500 text-white'
                           : isActive
-                            ? 'bg-[#00d4aa] text-white'
-                            : 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400'
+                            ? 'bg-brand text-white'
+                            : 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
                       }`}>
                         {isDone ? '✓' : i + 1}
                       </span>
                       <span className="hidden sm:inline">{step.label}</span>
                     </div>
                     {i < STAGE_STEPS.length - 1 && (
-                      <div className={`flex-1 h-px ${isDone ? 'bg-green-300 dark:bg-green-600' : 'bg-gray-200 dark:bg-gray-600'}`} />
+                      <div className={`flex-1 h-px ${isDone ? 'bg-green-300 dark:bg-green-600' : 'bg-slate-200 dark:bg-slate-600'}`} />
                     )}
                   </div>
                 );
@@ -186,19 +186,19 @@ export default function AgentsPage() {
           {/* 对话区域 — flex 填充剩余高度 */}
           <div className="flex min-h-0 flex-1">
             {/* 左侧：对话 */}
-            <div className={`flex-1 flex flex-col min-h-0 ${builderPreview ? 'border-r border-gray-100 dark:border-gray-700' : ''}`}>
+            <div className={`flex-1 flex flex-col min-h-0 ${builderPreview ? 'border-r border-slate-100 dark:border-slate-700' : ''}`}>
               <div className="p-4 space-y-3 overflow-y-auto flex-1">
                 {builderMessages.map((msg, i) => (
                   <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                     {msg.role === 'system' && (
-                      <div className="w-6 h-6 rounded-full bg-[#00d4aa]/10 flex items-center justify-center text-xs shrink-0 mt-0.5">
+                      <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs shrink-0 mt-0.5">
                         🤖
                       </div>
                     )}
                     <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
                       msg.role === 'user'
-                        ? 'bg-[#00d4aa] text-white rounded-br-sm'
-                        : 'bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 rounded-bl-sm'
+                        ? 'bg-brand text-white rounded-br-sm'
+                        : 'bg-slate-50 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 rounded-bl-sm'
                     }`}>
                       {msg.content}
                     </div>
@@ -206,12 +206,12 @@ export default function AgentsPage() {
                 ))}
                 {builderLoading && (
                   <div className="flex gap-2">
-                    <div className="w-6 h-6 rounded-full bg-[#00d4aa]/10 flex items-center justify-center text-xs shrink-0">
+                    <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs shrink-0">
                       🤖
                     </div>
-                    <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg rounded-bl-sm">
+                    <div className="px-3 py-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg rounded-bl-sm">
                       {builderStage === 'constraints' ? (
-                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                           <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -220,9 +220,9 @@ export default function AgentsPage() {
                         </div>
                       ) : (
                         <span className="inline-flex gap-1">
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                         </span>
                       )}
                     </div>
@@ -240,9 +240,9 @@ export default function AgentsPage() {
                         key={s}
                         onClick={() => handleSuggestion(s)}
                         disabled={builderLoading}
-                        className="px-2.5 py-1 text-xs bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400
-                          border border-gray-200 dark:border-gray-600 rounded-full
-                          hover:bg-[#00d4aa]/5 hover:border-[#00d4aa]/30 hover:text-[#00d4aa]
+                        className="px-2.5 py-1 text-xs bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-400
+                          border border-slate-200 dark:border-slate-600 rounded-full
+                          hover:bg-brand/5 hover:border-brand/30 hover:text-brand
                           disabled:opacity-50 transition-colors"
                       >
                         {s}
@@ -253,20 +253,20 @@ export default function AgentsPage() {
               )}
 
               {/* 输入区域 / 完成操作 */}
-              <div className="p-3 border-t border-gray-100 dark:border-gray-700 shrink-0">
+              <div className="p-3 border-t border-slate-100 dark:border-slate-700 shrink-0">
                 {builderCreatedAgentId ? (
                   <div className="flex gap-2">
                     <button
                       onClick={handleGoChat}
-                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
-                        rounded-lg hover:bg-[#00b894] transition-colors"
+                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-brand
+                        rounded-lg hover:bg-brand-hover transition-colors"
                     >
                       开始对话
                     </button>
                     <button
                       onClick={handleCloseBuilder}
-                      className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700
-                        dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg"
+                      className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700
+                        dark:hover:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-lg"
                     >
                       返回列表
                     </button>
@@ -276,8 +276,8 @@ export default function AgentsPage() {
                     <button
                       onClick={() => handleSuggestion('确认')}
                       disabled={builderLoading}
-                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
-                        rounded-lg hover:bg-[#00b894] transition-colors
+                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-brand
+                        rounded-lg hover:bg-brand-hover transition-colors
                         disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {builderLoading ? '创建中...' : '确认创建'}
@@ -285,9 +285,9 @@ export default function AgentsPage() {
                     <button
                       onClick={() => handleSuggestion('重来')}
                       disabled={builderLoading}
-                      className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400
-                        hover:text-gray-700 dark:hover:text-gray-200
-                        border border-gray-200 dark:border-gray-600 rounded-lg
+                      className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400
+                        hover:text-slate-700 dark:hover:text-slate-200
+                        border border-slate-200 dark:border-slate-600 rounded-lg
                         disabled:opacity-50"
                     >
                       重新开始
@@ -302,17 +302,17 @@ export default function AgentsPage() {
                       onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
                       placeholder="输入你的回答..."
                       disabled={builderLoading}
-                      className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
-                        bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                        focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
+                      className="flex-1 px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg
+                        bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                        focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
                         disabled:opacity-50"
                       autoFocus
                     />
                     <button
                       onClick={handleSend}
                       disabled={!inputValue.trim() || builderLoading}
-                      className="px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
-                        rounded-lg hover:bg-[#00b894] transition-colors
+                      className="px-4 py-2 text-sm font-medium text-white bg-brand
+                        rounded-lg hover:bg-brand-hover transition-colors
                         disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       发送
@@ -326,7 +326,7 @@ export default function AgentsPage() {
             {builderPreview && (
               <div className="w-80 lg:w-96 flex flex-col min-h-0 shrink-0">
                 <div className="px-4 pt-4 pb-2 shrink-0">
-                  <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     工作区文件预览
                   </h4>
                 </div>
@@ -340,26 +340,26 @@ export default function AgentsPage() {
                     return (
                       <div key={filename} className={`border rounded-lg overflow-hidden transition-colors ${
                         isEditing
-                          ? 'border-[#00d4aa]/50 ring-1 ring-[#00d4aa]/20'
-                          : 'border-gray-100 dark:border-gray-600'
+                          ? 'border-brand/50 ring-1 ring-brand/20'
+                          : 'border-slate-100 dark:border-slate-600'
                       }`}>
                         <button
                           onClick={() => toggleFile(filename)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50
-                            dark:hover:bg-gray-700/50 transition-colors"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50
+                            dark:hover:bg-slate-700/50 transition-colors"
                         >
                           <span className="text-sm">{meta.icon}</span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{meta.label}</span>
-                              <code className="text-[10px] px-1 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded font-mono">{filename}</code>
+                              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{meta.label}</span>
+                              <code className="text-[10px] px-1 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded font-mono">{filename}</code>
                             </div>
-                            <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">{meta.desc}</div>
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{meta.desc}</div>
                           </div>
                           {isRuntime ? (
-                            <span className="text-[10px] text-gray-400 dark:text-gray-500 italic shrink-0">运行时生成</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 italic shrink-0">运行时生成</span>
                           ) : hasContent ? (
-                            <span className={`text-gray-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                            <span className={`text-slate-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                               ▶
                             </span>
                           ) : null}
@@ -371,16 +371,16 @@ export default function AgentsPage() {
                                 <textarea
                                   value={content}
                                   onChange={(e) => updatePreviewFile(filename, e.target.value)}
-                                  className="w-full text-[11px] text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900/70
-                                    border border-gray-200 dark:border-gray-600 rounded p-2 font-mono leading-relaxed
-                                    focus:outline-none focus:ring-1 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
+                                  className="w-full text-[11px] text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900/70
+                                    border border-slate-200 dark:border-slate-600 rounded p-2 font-mono leading-relaxed
+                                    focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
                                     resize-y"
                                   style={{ minHeight: '120px', maxHeight: '300px' }}
                                 />
                                 <div className="flex justify-end mt-1">
                                   <button
                                     onClick={() => setEditingFile(null)}
-                                    className="text-[10px] text-[#00d4aa] hover:text-[#00b894]"
+                                    className="text-[10px] text-brand hover:text-brand-hover"
                                   >
                                     完成编辑
                                   </button>
@@ -388,15 +388,15 @@ export default function AgentsPage() {
                               </div>
                             ) : (
                               <div className="group relative">
-                                <pre className="text-[11px] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50
+                                <pre className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50
                                   rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
                                   {content}
                                 </pre>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setEditingFile(filename); }}
-                                  className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[10px] text-gray-400
-                                    bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded
-                                    opacity-0 group-hover:opacity-100 hover:text-[#00d4aa] hover:border-[#00d4aa]/30
+                                  className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[10px] text-slate-400
+                                    bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded
+                                    opacity-0 group-hover:opacity-100 hover:text-brand hover:border-brand/30
                                     transition-all"
                                 >
                                   编辑
@@ -418,22 +418,22 @@ export default function AgentsPage() {
       {/* Agent 卡片网格 — 滚动区域 */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
-          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+          <div className="text-center py-16 text-slate-400 dark:text-slate-500">
             <p className="text-sm">加载中...</p>
           </div>
         ) : agents.length === 0 && !showBuilder ? (
           <div className="text-center py-16">
             <p className="text-5xl mb-4">🐾</p>
-            <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+            <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-2">
               创建你的第一个 Agent
             </h3>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">
+            <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">
               通过对话引导，定制拥有独立人格、专长和记忆的 AI 伴侣
             </p>
             <button
               onClick={handleStartCreate}
-              className="px-5 py-2.5 bg-[#00d4aa] text-white text-sm font-medium rounded-lg
-                hover:bg-[#00b894] transition-colors"
+              className="px-5 py-2.5 bg-brand text-white text-sm font-medium rounded-lg
+                hover:bg-brand-hover transition-colors"
             >
               + 开始创建
             </button>
@@ -443,15 +443,15 @@ export default function AgentsPage() {
             {agents.map((agent) => (
               <div
                 key={agent.id}
-                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 hover:shadow-md transition-shadow"
+                className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md transition-shadow"
               >
                 {/* 卡片头部 */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{agent.emoji}</span>
                     <div>
-                      <h4 className="font-medium text-sm text-gray-800 dark:text-gray-200">{agent.name}</h4>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                      <h4 className="font-medium text-sm text-slate-800 dark:text-slate-200">{agent.name}</h4>
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
                         {new Date(agent.createdAt).toLocaleDateString('zh-CN')}
                       </p>
                     </div>
@@ -462,7 +462,7 @@ export default function AgentsPage() {
                         ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
                         : agent.status === 'draft'
                           ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                          : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
                     }`}
                   >
                     {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
@@ -470,16 +470,16 @@ export default function AgentsPage() {
                 </div>
 
                 {/* 卡片操作 */}
-                <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                   <button
                     onClick={() => openAgent(agent.id)}
-                    className="flex-1 text-xs py-1.5 text-[#00d4aa] hover:bg-[#00d4aa]/5 rounded-md transition-colors"
+                    className="flex-1 text-xs py-1.5 text-brand hover:bg-brand/5 rounded-md transition-colors"
                   >
                     打开
                   </button>
                   <button
                     onClick={() => navigate(`/agents/${agent.id}/edit`)}
-                    className="text-xs py-1.5 px-3 text-gray-500 dark:text-gray-400 hover:text-[#00d4aa] hover:bg-[#00d4aa]/5 rounded-md transition-colors"
+                    className="text-xs py-1.5 px-3 text-slate-500 dark:text-slate-400 hover:text-brand hover:bg-brand/5 rounded-md transition-colors"
                   >
                     编辑
                   </button>
@@ -493,7 +493,7 @@ export default function AgentsPage() {
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(null)}
-                        className="text-xs py-1.5 px-2 text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+                        className="text-xs py-1.5 px-2 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-md transition-colors"
                       >
                         取消
                       </button>
@@ -501,7 +501,7 @@ export default function AgentsPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirmId(agent.id)}
-                      className="text-xs py-1.5 px-3 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                      className="text-xs py-1.5 px-3 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
                     >
                       删除
                     </button>

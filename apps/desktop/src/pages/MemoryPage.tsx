@@ -21,7 +21,7 @@ const ALL_CATEGORIES = Object.keys(CATEGORIES);
 /** 分类标签组件 */
 function CategoryBadge({ category }: { category: string }) {
   const cat = CATEGORIES[category];
-  if (!cat) return <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{category}</span>;
+  if (!cat) return <span className="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-600">{category}</span>;
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${cat.color}`}>{cat.name}</span>;
 }
 
@@ -30,13 +30,13 @@ function ActivationBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
         <div
-          className="h-full bg-[#00d4aa] rounded-full transition-all"
+          className="h-full bg-brand rounded-full transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
+      <span className="text-xs text-slate-400 w-8 text-right">{pct}%</span>
     </div>
   );
 }
@@ -97,16 +97,16 @@ function MemoryCard({
 
   return (
     <div
-      className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:border-[#00d4aa]/40 transition-colors"
+      className="bg-white rounded-lg border border-slate-200 p-4 cursor-pointer hover:border-brand/40 transition-colors"
       onClick={handleClick}
     >
       {/* 头部: L0 摘要 + 分类 + 操作 */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{unit.l0Index}</p>
+          <p className="text-sm font-medium text-slate-900 truncate">{unit.l0Index}</p>
           <div className="flex items-center gap-2 mt-1.5">
             <CategoryBadge category={unit.category} />
-            <span className="text-xs text-gray-400">访问 {unit.accessCount} 次</span>
+            <span className="text-xs text-slate-400">访问 {unit.accessCount} 次</span>
           </div>
         </div>
 
@@ -116,8 +116,8 @@ function MemoryCard({
             onClick={handlePin}
             className={`p-1.5 rounded-md transition-colors ${
               isPinned
-                ? 'text-[#00d4aa] hover:bg-[#00d4aa]/10'
-                : 'text-gray-400 hover:bg-gray-100'
+                ? 'text-brand hover:bg-brand/10'
+                : 'text-slate-400 hover:bg-slate-100'
             }`}
             title={isPinned ? '取消置顶' : '置顶'}
           >
@@ -137,7 +137,7 @@ function MemoryCard({
               </button>
               <button
                 onClick={handleCancelDelete}
-                className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                className="px-2 py-1 text-xs rounded bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
               >
                 取消
               </button>
@@ -145,7 +145,7 @@ function MemoryCard({
           ) : (
             <button
               onClick={handleDelete}
-              className="p-1.5 rounded-md text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+              className="p-1.5 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
               title="删除"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -163,18 +163,18 @@ function MemoryCard({
 
       {/* L1 概述 (展开时显示) */}
       {(expand === 'l1' || expand === 'l2') && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <p className="text-xs font-medium text-gray-500 mb-1">概述</p>
-          <p className="text-sm text-gray-700 whitespace-pre-wrap">{unit.l1Overview}</p>
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <p className="text-xs font-medium text-slate-500 mb-1">概述</p>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{unit.l1Overview}</p>
         </div>
       )}
 
       {/* L2 详细内容 (完全展开时显示) */}
       {expand === 'l2' && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <p className="text-xs font-medium text-gray-500 mb-1">详细内容</p>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap">{unit.l2Content}</p>
-          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <p className="text-xs font-medium text-slate-500 mb-1">详细内容</p>
+          <p className="text-sm text-slate-600 whitespace-pre-wrap">{unit.l2Content}</p>
+          <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
             <span>置信度: {Math.round(unit.confidence * 100)}%</span>
             <span>创建: {new Date(unit.createdAt).toLocaleDateString('zh-CN')}</span>
             <span>更新: {new Date(unit.updatedAt).toLocaleDateString('zh-CN')}</span>
@@ -184,7 +184,7 @@ function MemoryCard({
 
       {/* 展开提示 */}
       <div className="mt-2 text-center">
-        <span className="text-xs text-gray-300">
+        <span className="text-xs text-slate-300">
           {expand === 'closed' && '点击展开概述'}
           {expand === 'l1' && '点击查看详情'}
           {expand === 'l2' && '点击收起'}
@@ -200,15 +200,15 @@ function SearchResultCard({ result }: { result: SearchResult }) {
 
   return (
     <div
-      className="bg-white rounded-lg border border-gray-200 p-4 cursor-pointer hover:border-[#00d4aa]/40 transition-colors"
+      className="bg-white rounded-lg border border-slate-200 p-4 cursor-pointer hover:border-brand/40 transition-colors"
       onClick={() => setShowDetail((v) => !v)}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{result.l0Index}</p>
+          <p className="text-sm font-medium text-slate-900 truncate">{result.l0Index}</p>
           <div className="flex items-center gap-2 mt-1.5">
             <CategoryBadge category={result.category} />
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-slate-400">
               匹配度: {Math.round(result.finalScore * 100)}%
             </span>
           </div>
@@ -221,15 +221,15 @@ function SearchResultCard({ result }: { result: SearchResult }) {
       </div>
 
       {/* L1 概述 */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <p className="text-sm text-gray-700 whitespace-pre-wrap">{result.l1Overview}</p>
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        <p className="text-sm text-slate-700 whitespace-pre-wrap">{result.l1Overview}</p>
       </div>
 
       {/* L2 详细内容 */}
       {showDetail && result.l2Content && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <p className="text-xs font-medium text-gray-500 mb-1">详细内容</p>
-          <p className="text-sm text-gray-600 whitespace-pre-wrap">{result.l2Content}</p>
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <p className="text-xs font-medium text-slate-500 mb-1">详细内容</p>
+          <p className="text-sm text-slate-600 whitespace-pre-wrap">{result.l2Content}</p>
         </div>
       )}
     </div>
@@ -292,15 +292,15 @@ export default function MemoryPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white">
+      <div className="px-6 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-gray-900">记忆管理</h2>
+          <h2 className="text-lg font-bold text-slate-900">记忆管理</h2>
 
           {/* Agent 选择器 */}
           <select
             value={selectedAgentId}
             onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/30 focus:border-[#00d4aa]"
+            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           >
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
@@ -318,12 +318,12 @@ export default function MemoryPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索记忆内容..."
-            className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/30 focus:border-[#00d4aa]"
+            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
           <button
             type="submit"
             disabled={!selectedAgentId || !searchQuery.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-[#00d4aa] rounded-lg hover:bg-[#00a88a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-active disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             搜索
           </button>
@@ -331,7 +331,7 @@ export default function MemoryPage() {
             <button
               type="button"
               onClick={handleClearSearch}
-              className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
             >
               清除
             </button>
@@ -345,8 +345,8 @@ export default function MemoryPage() {
               onClick={() => setActiveCategory('all')}
               className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
                 activeCategory === 'all'
-                  ? 'bg-[#00d4aa] text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-brand text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               全部
@@ -357,8 +357,8 @@ export default function MemoryPage() {
                 onClick={() => setActiveCategory(key)}
                 className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
                   activeCategory === key
-                    ? 'bg-[#00d4aa] text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-brand text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
                 {CATEGORIES[key].name}
@@ -371,23 +371,23 @@ export default function MemoryPage() {
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-6">
         {!selectedAgentId ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-lg">请先创建一个 Agent</p>
             <p className="text-sm mt-1">在 Agent 管理页面创建后即可查看记忆</p>
           </div>
         ) : loading ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-sm">加载中...</p>
           </div>
         ) : isSearchMode ? (
           /* 搜索结果模式 */
           searchResults.length === 0 ? (
-            <div className="text-center text-gray-400 mt-20">
+            <div className="text-center text-slate-400 mt-20">
               <p className="text-sm">未找到匹配的记忆</p>
             </div>
           ) : (
             <div className="space-y-3 max-w-3xl mx-auto">
-              <p className="text-xs text-gray-400 mb-2">
+              <p className="text-xs text-slate-400 mb-2">
                 找到 {searchResults.length} 条相关记忆
               </p>
               {searchResults.map((result) => (
@@ -397,13 +397,13 @@ export default function MemoryPage() {
           )
         ) : /* 列表模式 */
         units.length === 0 ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-lg">暂无记忆</p>
             <p className="text-sm mt-1">与 Agent 对话后将自动积累记忆</p>
           </div>
         ) : (
           <div className="space-y-3 max-w-3xl mx-auto">
-            <p className="text-xs text-gray-400 mb-2">
+            <p className="text-xs text-slate-400 mb-2">
               共 {units.length} 条记忆
             </p>
             {units.map((unit) => (

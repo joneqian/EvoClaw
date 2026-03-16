@@ -61,19 +61,19 @@ interface AuditLogEntry {
 /** 分类标签组件 */
 function CategoryBadge({ category }: { category: string }) {
   const label = CATEGORY_LABELS[category] ?? category;
-  const color = CATEGORY_COLORS[category] ?? 'bg-gray-100 text-gray-600';
+  const color = CATEGORY_COLORS[category] ?? 'bg-slate-100 text-slate-600';
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${color}`}>{label}</span>;
 }
 
 /** 作用域标签组件 */
 function ScopeBadge({ scope }: { scope: string }) {
-  const style = SCOPE_STYLES[scope] ?? { label: scope, color: 'bg-gray-100 text-gray-600' };
+  const style = SCOPE_STYLES[scope] ?? { label: scope, color: 'bg-slate-100 text-slate-600' };
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${style.color}`}>{style.label}</span>;
 }
 
 /** 状态标签组件 */
 function StatusBadge({ status }: { status: string }) {
-  const style = STATUS_STYLES[status] ?? { label: status, color: 'bg-gray-100 text-gray-600' };
+  const style = STATUS_STYLES[status] ?? { label: status, color: 'bg-slate-100 text-slate-600' };
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${style.color}`}>{style.label}</span>;
 }
 
@@ -214,18 +214,18 @@ export default function SecurityPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white">
+      <div className="px-6 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">安全设置</h2>
-            <p className="text-sm text-gray-400">管理 Agent 权限与审计日志</p>
+            <h2 className="text-lg font-bold text-slate-900">安全设置</h2>
+            <p className="text-sm text-slate-400">管理 Agent 权限与审计日志</p>
           </div>
 
           {/* Agent 选择器 */}
           <select
             value={selectedAgentId}
             onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/30 focus:border-[#00d4aa]"
+            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           >
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
@@ -242,8 +242,8 @@ export default function SecurityPage() {
             onClick={() => setActiveTab('permissions')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
               activeTab === 'permissions'
-                ? 'bg-[#00d4aa]/10 text-[#00a88a]'
-                : 'text-gray-500 hover:bg-gray-100'
+                ? 'bg-brand/10 text-brand-active'
+                : 'text-slate-500 hover:bg-slate-100'
             }`}
           >
             已授权权限
@@ -252,8 +252,8 @@ export default function SecurityPage() {
             onClick={() => setActiveTab('audit')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
               activeTab === 'audit'
-                ? 'bg-[#00d4aa]/10 text-[#00a88a]'
-                : 'text-gray-500 hover:bg-gray-100'
+                ? 'bg-brand/10 text-brand-active'
+                : 'text-slate-500 hover:bg-slate-100'
             }`}
           >
             审计日志
@@ -264,38 +264,38 @@ export default function SecurityPage() {
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-6">
         {!selectedAgentId ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-lg">请先创建一个 Agent</p>
             <p className="text-sm mt-1">在 Agent 管理页面创建后即可查看安全设置</p>
           </div>
         ) : loading && (activeTab === 'permissions' ? permissions.length === 0 : auditLogs.length === 0) ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-sm">加载中...</p>
           </div>
         ) : activeTab === 'permissions' ? (
           /* 已授权权限列表 */
           permissions.length === 0 ? (
-            <div className="text-center text-gray-400 mt-20">
+            <div className="text-center text-slate-400 mt-20">
               <p className="text-lg">暂无已授权权限</p>
               <p className="text-sm mt-1">Agent 请求权限后将在此处显示</p>
             </div>
           ) : (
             <div className="space-y-3 max-w-3xl mx-auto">
-              <p className="text-xs text-gray-400 mb-2">
+              <p className="text-xs text-slate-400 mb-2">
                 共 {permissions.length} 条权限记录
               </p>
               {permissions.map((perm) => (
                 <div
                   key={perm.id}
-                  className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-4"
+                  className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
                       <CategoryBadge category={perm.category} />
                       <ScopeBadge scope={perm.scope} />
                     </div>
-                    <p className="text-sm text-gray-800 truncate font-mono">{perm.resource}</p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-sm text-slate-800 truncate font-mono">{perm.resource}</p>
+                    <p className="text-xs text-slate-400 mt-1">
                       授权于 {formatTime(perm.grantedAt)}
                     </p>
                   </div>
@@ -311,7 +311,7 @@ export default function SecurityPage() {
                         </button>
                         <button
                           onClick={cancelRevoke}
-                          className="px-2.5 py-1.5 text-xs rounded-lg bg-gray-200 text-gray-600 hover:bg-gray-300 transition-colors"
+                          className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
                         >
                           取消
                         </button>
@@ -332,24 +332,24 @@ export default function SecurityPage() {
           )
         ) : /* 审计日志列表 */
         auditLogs.length === 0 ? (
-          <div className="text-center text-gray-400 mt-20">
+          <div className="text-center text-slate-400 mt-20">
             <p className="text-lg">暂无审计日志</p>
             <p className="text-sm mt-1">Agent 执行工具调用后将在此处记录</p>
           </div>
         ) : (
           <div className="space-y-3 max-w-3xl mx-auto">
-            <p className="text-xs text-gray-400 mb-2">审计日志记录</p>
+            <p className="text-xs text-slate-400 mb-2">审计日志记录</p>
             {auditLogs.map((log) => (
               <div
                 key={log.id}
-                className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-4"
+                className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-gray-900">{log.toolName}</p>
+                    <p className="text-sm font-medium text-slate-900">{log.toolName}</p>
                     <StatusBadge status={log.status} />
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
                     <span>耗时 {formatDuration(log.durationMs)}</span>
                     <span>{formatTime(log.createdAt)}</span>
                   </div>
@@ -363,7 +363,7 @@ export default function SecurityPage() {
                 <button
                   onClick={handleLoadMore}
                   disabled={loading}
-                  className="px-6 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                  className="px-6 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors"
                 >
                   {loading ? '加载中...' : '加载更多'}
                 </button>
@@ -378,7 +378,7 @@ export default function SecurityPage() {
         <div
           className={`fixed bottom-6 right-6 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-all ${
             toast.type === 'success'
-              ? 'bg-[#00d4aa] text-white'
+              ? 'bg-brand text-white'
               : 'bg-red-500 text-white'
           }`}
         >

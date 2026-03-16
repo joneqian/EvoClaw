@@ -90,7 +90,7 @@ export default function AgentEditPage() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+      <div className="h-full flex items-center justify-center text-slate-400 dark:text-slate-500">
         <p className="text-sm">加载中...</p>
       </div>
     );
@@ -101,8 +101,8 @@ export default function AgentEditPage() {
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <p className="text-4xl mb-3">404</p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">Agent 不存在</p>
-          <button onClick={() => navigate('/agents')} className="text-sm text-[#00d4aa]">
+          <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">Agent 不存在</p>
+          <button onClick={() => navigate('/agents')} className="text-sm text-brand">
             返回 Agent 管理
           </button>
         </div>
@@ -113,17 +113,17 @@ export default function AgentEditPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/agents')}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm"
           >
             ← 返回
           </button>
-          <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+          <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
           <span className="text-xl">{agent.emoji}</span>
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">{agent.name}</h2>
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">{agent.name}</h2>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             agent.status === 'active'
               ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
@@ -140,47 +140,47 @@ export default function AgentEditPage() {
       {/* 主体 */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* 左侧：基本信息 */}
-        <div className="w-72 shrink-0 border-r border-gray-200 dark:border-gray-700 p-5 space-y-5 overflow-y-auto">
-          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <div className="w-72 shrink-0 border-r border-slate-200 dark:border-slate-700 p-5 space-y-5 overflow-y-auto">
+          <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             基本信息
           </h3>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Emoji</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Emoji</label>
             <input
               value={editEmoji}
               onChange={(e) => setEditEmoji(e.target.value)}
-              className="w-full px-3 py-2.5 text-2xl text-center border border-gray-200 dark:border-gray-600 rounded-lg
-                bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]"
+              className="w-full px-3 py-2.5 text-2xl text-center border border-slate-200 dark:border-slate-600 rounded-lg
+                bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
               maxLength={4}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">名称</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">名称</label>
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
-                bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]"
+              className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg
+                bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
             />
           </div>
 
           <button
             onClick={handleSaveBasic}
             disabled={saving === 'basic'}
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-[#00d4aa]
-              rounded-lg hover:bg-[#00b894] transition-colors disabled:opacity-50"
+            className="w-full px-4 py-2 text-sm font-medium text-white bg-brand
+              rounded-lg hover:bg-brand-hover transition-colors disabled:opacity-50"
           >
             {saving === 'basic' ? '保存中...' : '保存'}
           </button>
 
-          <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
-            <p className="text-[10px] text-gray-400 dark:text-gray-500">
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">
               创建于 {new Date(agent.createdAt).toLocaleString('zh-CN')}
             </p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
               ID: <code className="font-mono">{agent.id.slice(0, 8)}...</code>
             </p>
           </div>
@@ -189,10 +189,10 @@ export default function AgentEditPage() {
         {/* 右侧：工作区文件 */}
         <div className="flex-1 flex flex-col min-h-0">
           <div className="px-5 pt-5 pb-3 shrink-0">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               工作区文件
             </h3>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
               这些文件定义了 Agent 的人格、行为和能力。运行时 Agent 会自动进化部分文件。
             </p>
           </div>
@@ -208,31 +208,31 @@ export default function AgentEditPage() {
               return (
                 <div key={filename} className={`border rounded-lg overflow-hidden transition-colors ${
                   isExpanded && !isRuntime
-                    ? 'border-[#00d4aa]/40 ring-1 ring-[#00d4aa]/15'
-                    : 'border-gray-200 dark:border-gray-600'
+                    ? 'border-brand/40 ring-1 ring-brand/15'
+                    : 'border-slate-200 dark:border-slate-600'
                 }`}>
                   {/* 文件头 */}
                   <button
                     onClick={() => setExpandedFile(isExpanded ? null : filename)}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left
-                      hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                   >
                     <span className="text-base">{meta.icon}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{meta.label}</span>
-                        <code className="text-[10px] px-1 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded font-mono">
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{meta.label}</span>
+                        <code className="text-[10px] px-1 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded font-mono">
                           {filename}
                         </code>
                       </div>
-                      <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{meta.desc}</div>
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{meta.desc}</div>
                     </div>
                     {isRuntime ? (
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full shrink-0">
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full shrink-0">
                         运行时生成
                       </span>
                     ) : (
-                      <span className={`text-gray-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                      <span className={`text-slate-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                         ▶
                       </span>
                     )}
@@ -240,9 +240,9 @@ export default function AgentEditPage() {
 
                   {/* 展开内容 */}
                   {isExpanded && (
-                    <div className="px-4 pb-3 border-t border-gray-100 dark:border-gray-700">
+                    <div className="px-4 pb-3 border-t border-slate-100 dark:border-slate-700">
                       {isRuntime ? (
-                        <pre className="mt-2 text-[11px] text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/50
+                        <pre className="mt-2 text-[11px] text-slate-500 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/50
                           rounded p-3 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed italic">
                           {content || '(空 — 运行时从记忆数据动态渲染)'}
                         </pre>
@@ -251,9 +251,9 @@ export default function AgentEditPage() {
                           <textarea
                             value={content}
                             onChange={(e) => setFiles((prev) => ({ ...prev, [filename]: e.target.value }))}
-                            className="mt-2 w-full text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900/70
-                              border border-gray-200 dark:border-gray-600 rounded-lg p-3 font-mono leading-relaxed
-                              focus:outline-none focus:ring-1 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
+                            className="mt-2 w-full text-xs text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900/70
+                              border border-slate-200 dark:border-slate-600 rounded-lg p-3 font-mono leading-relaxed
+                              focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
                               resize-y"
                             style={{ minHeight: '160px', maxHeight: '400px' }}
                           />
@@ -261,7 +261,7 @@ export default function AgentEditPage() {
                             <button
                               onClick={() => handleSaveFile(filename)}
                               disabled={saving === filename}
-                              className="text-xs px-3 py-1.5 text-white bg-[#00d4aa] rounded-lg hover:bg-[#00b894]
+                              className="text-xs px-3 py-1.5 text-white bg-brand rounded-lg hover:bg-brand-hover
                                 disabled:opacity-50 transition-colors"
                             >
                               {saving === filename ? '保存中...' : '保存'}

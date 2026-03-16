@@ -1,17 +1,69 @@
 @import "tailwindcss";
 
+/* ─── EvoClaw Design System ─── */
+
+@theme {
+  /* Brand palette */
+  --color-brand: #00d4aa;
+  --color-brand-hover: #00c49d;
+  --color-brand-active: #00a88a;
+  --color-brand-muted: oklch(0.93 0.05 170);
+
+  /* Semantic */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
 :root {
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  letter-spacing: -0.011em;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  background-color: #f8fafc; /* slate-50 */
+  color: #0f172a; /* slate-900 */
 }
 
 /* 暗色模式基础背景 */
 .dark body {
-  background-color: #111827;
-  color: #f3f4f6;
+  background-color: #0c1222;
+  color: #e2e8f0; /* slate-200 */
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155; /* slate-700 */
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569; /* slate-600 */
+}
+
+/* macOS 交通灯区域占位 */
+.titlebar-pad {
+  padding-top: 38px;
 }

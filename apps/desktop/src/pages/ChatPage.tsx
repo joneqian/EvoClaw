@@ -74,11 +74,11 @@ function ConversationListView({
       <div className="max-w-2xl mx-auto px-6 py-6">
         {/* 标题 + 新建按钮 */}
         <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">对话</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">对话</h1>
           <button
             onClick={onNewChat}
-            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600
-              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600
+              text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
             title="新建对话"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -90,58 +90,58 @@ function ConversationListView({
         {/* 搜索 */}
         <div className="mb-4">
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
             </svg>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索对话..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl
-                bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white
-                focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
-                placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-xl
+                bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white
+                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
           </div>
         </div>
 
         {/* 子标题 */}
         <div className="flex items-center gap-2 mb-2 px-1">
-          <span className="text-sm text-gray-500 dark:text-gray-400">你的对话</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">你的对话</span>
         </div>
 
         {/* 对话列表 */}
         {loading ? (
-          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+          <div className="text-center py-16 text-slate-400 dark:text-slate-500">
             <p className="text-sm">加载中...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-4xl mb-3">💬</p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm">
+            <p className="text-slate-400 dark:text-slate-500 text-sm">
               {search.trim() ? '没有匹配的对话' : '暂无对话记录'}
             </p>
             {!search.trim() && (
               <button
                 onClick={onNewChat}
-                className="mt-4 text-sm text-[#00d4aa] hover:text-[#00b894]"
+                className="mt-4 text-sm text-brand hover:text-brand-hover"
               >
                 开始第一次对话
               </button>
             )}
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+          <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
             {filtered.map((conv) => (
               <button
                 key={conv.sessionKey}
                 onClick={() => onSelectConversation(conv.agentId, conv.sessionKey)}
-                className="w-full text-left py-3.5 px-1 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors group"
+                className="w-full text-left py-3.5 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
               >
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
                   {conv.title || '新对话'}
                 </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                   Last message {formatRelativeTime(conv.lastAt)}
                 </p>
               </button>
@@ -170,16 +170,16 @@ function AgentPicker({
   return (
     <div className="h-full flex flex-col items-center justify-center">
       <div className="w-full max-w-md">
-        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 text-center">
+        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 text-center">
           选择 Agent 开始对话
         </h3>
         {agents.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-3xl mb-3">🐾</p>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mb-4">还没有 Agent</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">还没有 Agent</p>
             <button
               onClick={() => navigate('/agents')}
-              className="text-sm text-[#00d4aa] hover:text-[#00b894]"
+              className="text-sm text-brand hover:text-brand-hover"
             >
               去创建 Agent →
             </button>
@@ -190,17 +190,17 @@ function AgentPicker({
               <button
                 key={agent.id}
                 onClick={() => onSelect(agent.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
-                  bg-white dark:bg-gray-800 hover:border-[#00d4aa]/40 hover:shadow-sm transition-all text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700
+                  bg-white dark:bg-slate-800 hover:border-brand/40 hover:shadow-sm transition-all text-left"
               >
                 <span className="text-2xl">{agent.emoji}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{agent.name}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{agent.name}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
                     {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
                   </p>
                 </div>
-                <svg className="w-4 h-4 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
               </button>
@@ -209,7 +209,7 @@ function AgentPicker({
         )}
         <button
           onClick={onCancel}
-          className="mt-4 w-full text-center text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          className="mt-4 w-full text-center text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
         >
           返回对话列表
         </button>
@@ -407,12 +407,12 @@ function ChatView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 h-full">
+    <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-900 h-full">
       {/* 头部 */}
-      <div className="h-12 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center px-4 gap-3 shrink-0">
+      <div className="h-12 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center px-4 gap-3 shrink-0">
         <button
           onClick={() => setCurrentAgent(null)}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           title="返回对话列表"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -434,13 +434,13 @@ function ChatView() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loadingMessages ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-400 dark:text-gray-500">
+            <div className="text-center text-slate-400 dark:text-slate-500">
               <p className="text-sm">加载历史消息...</p>
             </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-400 dark:text-gray-500">
+            <div className="text-center text-slate-400 dark:text-slate-500">
               <p className="text-3xl mb-3">{currentAgent?.emoji ?? '💬'}</p>
               <p className="text-sm">
                 与 <span className="font-medium">{currentAgent?.name ?? 'Agent'}</span> 开始对话
@@ -453,11 +453,11 @@ function ChatView() {
               <MessageBubble key={msg.id} message={msg} />
             ))}
             {isStreaming && (
-              <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 text-xs pl-2">
+              <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 text-xs pl-2">
                 <span className="flex gap-0.5">
-                  <span className="w-1.5 h-1.5 bg-[#00d4aa] rounded-full animate-pulse" />
-                  <span className="w-1.5 h-1.5 bg-[#00d4aa] rounded-full animate-pulse [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 bg-[#00d4aa] rounded-full animate-pulse [animation-delay:300ms]" />
+                  <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
+                  <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:300ms]" />
                 </span>
                 正在思考...
               </div>
@@ -468,7 +468,7 @@ function ChatView() {
       </div>
 
       {/* 输入区域 */}
-      <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 shrink-0">
+      <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shrink-0">
         <div className="max-w-2xl mx-auto flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -477,16 +477,16 @@ function ChatView() {
             onKeyDown={handleKeyDown}
             placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2 text-sm
-              bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-              focus:outline-none focus:ring-2 focus:ring-[#00d4aa]/40 focus:border-[#00d4aa]
-              placeholder:text-gray-400 dark:placeholder:text-gray-500"
+            className="flex-1 resize-none rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm
+              bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+              focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+              placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
           <button
             onClick={() => sendMessage()}
             disabled={isStreaming || !input.trim()}
             className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium text-white
-              bg-[#00d4aa] hover:bg-[#00b894] transition-colors
+              bg-brand hover:bg-brand-hover transition-colors
               disabled:opacity-40 disabled:cursor-not-allowed"
           >
             发送
@@ -559,8 +559,8 @@ function MessageBubble({ message }: { message: Message }) {
       <div
         className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? 'bg-[#00d4aa] text-white rounded-br-sm'
-            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-bl-sm shadow-sm'
+            ? 'bg-brand text-white rounded-br-sm'
+            : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 rounded-bl-sm shadow-sm'
         }`}
       >
         {message.toolCalls && message.toolCalls.length > 0 && (

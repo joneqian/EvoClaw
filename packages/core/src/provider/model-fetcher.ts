@@ -5,6 +5,7 @@
  * 拉取后转换为 ModelConfig 格式，与硬编码 fallback 合并。
  */
 
+import { createHmac } from 'node:crypto';
 import type { ModelConfig } from '@evoclaw/shared';
 
 /** Provider API 返回的原始模型数据 */
@@ -57,15 +58,14 @@ export async function fetchModelsFromApi(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const url = `${baseUrl}/models`;
-    const isAnthropic = providerId === 'anthropic' || baseUrl.includes('anthropic.com');
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (isAnthropic) {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = '2023-06-01';
-    } else {
-      headers['Authorization'] = `Bearer ${apiKey}`;
+    // 智谱 GLM: 用户可能配了兼容端点（/api/anthropic 或 /api/paas/v4），
+    // 但模型列表只在 /api/paas/v4/models 上可用
+    let modelsBaseUrl = baseUrl;
+    if (baseUrl.includes('bigmodel.cn') && !baseUrl.includes('/api/paas/')) {
+      modelsBaseUrl = baseUrl.replace(/\/api\/[^/]+$/, '/api/paas/v4');
     }
+    const url = `${modelsBaseUrl}/models`;
+    const headers = buildAuthHeaders(apiKey, providerId, modelsBaseUrl);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -85,19 +85,35 @@ export async function fetchModelsFromApi(
       };
     }
 
-    const json = await response.json() as ModelsResponse;
+    const json = await response.json() as Record<string, unknown>;
 
-    if (!json.data || !Array.isArray(json.data)) {
+    // 兼容多种返回格式：
+    // - OpenAI 标准: { data: [...] }
+    // - 部分 Provider: { models: [...] }
+    // - 部分 Provider: { result: { data: [...] } }
+    // - 部分 Provider: 直接返回数组 [...]
+    let rawModels: ApiModel[] | undefined;
+    if (Array.isArray(json.data)) {
+      rawModels = json.data as ApiModel[];
+    } else if (Array.isArray((json as ModelsResponse & { models?: unknown }).models)) {
+      rawModels = (json as unknown as { models: ApiModel[] }).models;
+    } else if (json.result && typeof json.result === 'object' && Array.isArray((json.result as Record<string, unknown>).data)) {
+      rawModels = (json.result as { data: ApiModel[] }).data;
+    } else if (Array.isArray(json)) {
+      rawModels = json as unknown as ApiModel[];
+    }
+
+    if (!rawModels || rawModels.length === 0) {
       return {
         success: false,
         models: [],
-        error: 'API 返回格式异常：缺少 data 数组',
+        error: `API 返回格式异常：无法识别模型列表。响应 keys: ${Object.keys(json).join(', ')}`,
         source: 'fallback',
       };
     }
 
     // 过滤出聊天模型（排除 embedding、whisper、tts 等非对话模型）
-    const chatModels = json.data.filter((m) => filterChatModel(m));
+    const chatModels = rawModels.filter((m) => filterChatModel(m));
 
     const models: ModelConfig[] = chatModels.map((m, index) => ({
       id: m.id,
@@ -121,6 +137,58 @@ export async function fetchModelsFromApi(
       source: 'fallback',
     };
   }
+}
+
+/** 判断是否为智谱 GLM API Key（格式: {id}.{secret}） */
+function isGlmApiKey(apiKey: string): boolean {
+  const parts = apiKey.split('.');
+  return parts.length === 2 && parts[0]!.length > 0 && parts[1]!.length > 0 && !apiKey.startsWith('sk-');
+}
+
+/** 为智谱 GLM 生成 JWT Token */
+function generateGlmToken(apiKey: string, expireSeconds = 300): string {
+  const [id, secret] = apiKey.split('.');
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = { alg: 'HS256', sign_type: 'SIGN' };
+  const payload = { api_key: id, exp: now + expireSeconds, timestamp: now };
+
+  const b64url = (obj: object) =>
+    Buffer.from(JSON.stringify(obj)).toString('base64url');
+
+  const headerB64 = b64url(header);
+  const payloadB64 = b64url(payload);
+  const signature = createHmac('sha256', secret!)
+    .update(`${headerB64}.${payloadB64}`)
+    .digest('base64url');
+
+  return `${headerB64}.${payloadB64}.${signature}`;
+}
+
+/**
+ * 构建认证 headers
+ * - Anthropic: x-api-key + anthropic-version
+ * - 智谱 GLM: Bearer JWT (从 {id}.{secret} 格式 API Key 生成)
+ * - 其他: Bearer apiKey
+ */
+export function buildAuthHeaders(
+  apiKey: string,
+  providerId: string,
+  baseUrl: string,
+): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const isAnthropic = providerId === 'anthropic' || baseUrl.includes('anthropic.com');
+  const isGlm = providerId === 'glm' || baseUrl.includes('bigmodel.cn');
+
+  if (isAnthropic) {
+    headers['x-api-key'] = apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  } else if (isGlm && isGlmApiKey(apiKey)) {
+    headers['Authorization'] = `Bearer ${generateGlmToken(apiKey)}`;
+  } else {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+  return headers;
 }
 
 /** 过滤出聊天/对话类模型 */

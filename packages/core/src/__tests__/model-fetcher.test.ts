@@ -105,10 +105,10 @@ describe('fetchModelsFromApi', () => {
     const result = await fetchModelsFromApi('https://api.example.com/v1', 'sk-test', 'test');
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain('data');
+    expect(result.error).toContain('无法识别模型列表');
   });
 
-  it('空模型列表应返回成功但 models 为空', async () => {
+  it('空模型列表应返回 success=false', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: [] }),
@@ -116,14 +116,14 @@ describe('fetchModelsFromApi', () => {
 
     const result = await fetchModelsFromApi('https://api.example.com/v1', 'sk-test', 'test');
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
     expect(result.models).toHaveLength(0);
   });
 
   it('应使用正确的请求头', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [] }),
+      json: async () => ({ data: [{ id: 'test-model' }] }),
     });
     globalThis.fetch = mockFetch;
 

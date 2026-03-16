@@ -60,17 +60,19 @@ const API_LABELS: Record<string, string> = {
 
 function ProviderCard({
   provider,
-  isDefaultProvider,
-  defaultModelId,
-  onSetDefault,
+  defaultLLM,
+  defaultEMB,
+  onSetDefaultLLM,
+  onSetDefaultEMB,
   onRefresh,
   showToast,
   onDelete,
 }: {
   provider: ProviderInfo;
-  isDefaultProvider: boolean;
-  defaultModelId: string;
-  onSetDefault: (provider: string, modelId: string) => void;
+  defaultLLM: { provider: string; modelId: string };
+  defaultEMB: { provider: string; modelId: string };
+  onSetDefaultLLM: (provider: string, modelId: string) => void;
+  onSetDefaultEMB: (provider: string, modelId: string) => void;
   onRefresh: () => void;
   showToast: (msg: string, type?: 'success' | 'error') => void;
   onDelete: (id: string) => void;
@@ -91,12 +93,17 @@ function ProviderCard({
     setTesting(true);
     setTestResult(null);
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { api: provider.api };
       if (editApiKey.trim()) params.apiKey = editApiKey.trim();
       if (editBaseUrl.trim() && editBaseUrl !== provider.baseUrl) params.baseUrl = editBaseUrl.trim();
+      // 传入该 Provider 的第一个 LLM 模型用于测试
+      const firstLLM = provider.models.find((m) =>
+        !m.dimension && !m.id.toLowerCase().includes('embedding') && !m.id.toLowerCase().includes('embo-')
+      );
+      if (firstLLM) params.model = firstLLM.id;
       const result = await post<{ success: boolean; error?: string; model?: string }>(
         `/provider/${provider.id}/test`,
-        Object.keys(params).length ? params : {},
+        params,
       );
       setTestResult(result);
       if (result.success) showToast(`连接成功${result.model ? ` (${result.model})` : ''}`);
@@ -202,8 +209,11 @@ function ProviderCard({
                 未配置
               </span>
             )}
-            {isDefaultProvider && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[#00d4aa]/10 text-[#00a88a]">默认</span>
+            {provider.id === defaultLLM.provider && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#00d4aa]/10 text-[#00a88a]">默认 LLM</span>
+            )}
+            {provider.id === defaultEMB.provider && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">默认 EMB</span>
             )}
           </div>
           <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500">
@@ -380,17 +390,21 @@ function ProviderCard({
                       return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
                     })
                     .map((model) => {
-                      const isThisDefault = isDefaultProvider && model.id === defaultModelId;
                       const isEmbedding = !!model.dimension ||
                         model.id.toLowerCase().includes('embedding') ||
                         model.id.toLowerCase().includes('embo-');
+                      const isDefaultLLMModel = !isEmbedding && provider.id === defaultLLM.provider && model.id === defaultLLM.modelId;
+                      const isDefaultEMBModel = isEmbedding && provider.id === defaultEMB.provider && model.id === defaultEMB.modelId;
+                      const hasDefaultBadge = isDefaultLLMModel || isDefaultEMBModel;
                       return (
                         <div
                           key={model.id}
                           className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
-                            isThisDefault
+                            isDefaultLLMModel
                               ? 'bg-[#00d4aa]/5 border border-[#00d4aa]/20'
-                              : 'bg-gray-50 dark:bg-gray-700/50'
+                              : isDefaultEMBModel
+                                ? 'bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200/30 dark:border-amber-800/30'
+                                : 'bg-gray-50 dark:bg-gray-700/50'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
@@ -408,17 +422,24 @@ function ProviderCard({
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {isThisDefault ? (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-[#00d4aa]/10 text-[#00a88a] font-medium">
-                                默认
+                            {hasDefaultBadge ? (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                isDefaultLLMModel
+                                  ? 'bg-[#00d4aa]/10 text-[#00a88a]'
+                                  : 'bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+                              }`}>
+                                {isDefaultLLMModel ? '默认 LLM' : '默认 EMB'}
                               </span>
                             ) : (
                               <button
-                                onClick={() => onSetDefault(provider.id, model.id)}
+                                onClick={() => isEmbedding
+                                  ? onSetDefaultEMB(provider.id, model.id)
+                                  : onSetDefaultLLM(provider.id, model.id)
+                                }
                                 className="text-xs px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-600
                                   text-gray-400 dark:text-gray-500 hover:border-[#00d4aa] hover:text-[#00a88a] transition-colors"
                               >
-                                设为默认
+                                {isEmbedding ? '设为默认 EMB' : '设为默认 LLM'}
                               </button>
                             )}
                           </div>
@@ -737,8 +758,8 @@ function AddProviderForm({
 export default function ModelsPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [defaultProvider, setDefaultProvider] = useState('');
-  const [defaultModelId, setDefaultModelId] = useState('');
+  const [defaultLLM, setDefaultLLM] = useState({ provider: '', modelId: '' });
+  const [defaultEMB, setDefaultEMB] = useState({ provider: '', modelId: '' });
   const [toast, setToast] = useState<Toast | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -750,13 +771,14 @@ export default function ModelsPage() {
 
   const fetchProviders = useCallback(async () => {
     try {
-      const [providerRes, defaultRes] = await Promise.all([
+      const [providerRes, llmRes, embRes] = await Promise.all([
         get<{ providers: ProviderInfo[] }>('/provider'),
         get<{ provider: string; modelId: string }>('/provider/default/model'),
+        get<{ provider: string; modelId: string }>('/provider/default/embedding'),
       ]);
       setProviders(providerRes.providers);
-      setDefaultProvider(defaultRes.provider);
-      setDefaultModelId(defaultRes.modelId);
+      setDefaultLLM(llmRes);
+      setDefaultEMB(embRes);
     } catch {
       // Provider API 可能尚未注册
     } finally {
@@ -768,12 +790,21 @@ export default function ModelsPage() {
     fetchProviders();
   }, [fetchProviders]);
 
-  const handleSetDefault = useCallback(async (provider: string, modelId: string) => {
+  const handleSetDefaultLLM = useCallback(async (provider: string, modelId: string) => {
     try {
       await put('/provider/default/model', { provider, modelId });
-      setDefaultProvider(provider);
-      setDefaultModelId(modelId);
-      showToast(`默认模型已设为 ${provider}/${modelId}`);
+      setDefaultLLM({ provider, modelId });
+      showToast(`默认 LLM 已设为 ${provider}/${modelId}`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '设置失败', 'error');
+    }
+  }, [showToast]);
+
+  const handleSetDefaultEMB = useCallback(async (provider: string, modelId: string) => {
+    try {
+      await put('/provider/default/embedding', { provider, modelId });
+      setDefaultEMB({ provider, modelId });
+      showToast(`默认 Embedding 已设为 ${provider}/${modelId}`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : '设置失败', 'error');
     }
@@ -813,12 +844,24 @@ export default function ModelsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="space-y-4">
           {/* 默认模型信息 */}
-          {defaultProvider && (
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-4 py-3">
-              <p className="text-xs text-gray-400 dark:text-gray-500">当前默认模型</p>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5 font-mono">
-                {defaultProvider}/{defaultModelId}
-              </p>
+          {(defaultLLM.provider || defaultEMB.provider) && (
+            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-4 py-3 flex gap-6">
+              {defaultLLM.provider && (
+                <div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">默认 LLM</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5 font-mono">
+                    {defaultLLM.provider}/{defaultLLM.modelId}
+                  </p>
+                </div>
+              )}
+              {defaultEMB.provider && (
+                <div>
+                  <p className="text-xs text-amber-500 dark:text-amber-400">默认 Embedding</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5 font-mono">
+                    {defaultEMB.provider}/{defaultEMB.modelId}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -847,9 +890,10 @@ export default function ModelsPage() {
               <div key={provider.id}>
                 <ProviderCard
                   provider={provider}
-                  isDefaultProvider={provider.id === defaultProvider}
-                  defaultModelId={defaultModelId}
-                  onSetDefault={handleSetDefault}
+                  defaultLLM={defaultLLM}
+                  defaultEMB={defaultEMB}
+                  onSetDefaultLLM={handleSetDefaultLLM}
+                  onSetDefaultEMB={handleSetDefaultEMB}
                   onRefresh={fetchProviders}
                   showToast={showToast}
                   onDelete={(id) => setConfirmDelete(id)}

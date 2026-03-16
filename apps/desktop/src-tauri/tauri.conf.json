@@ -15,8 +15,8 @@
         "title": "EvoClaw",
         "width": 1200,
         "height": 800,
-        "minWidth": 960,
-        "minHeight": 640,
+        "minWidth": 1200,
+        "minHeight": 800,
         "center": true
       }
     ],

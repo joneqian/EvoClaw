@@ -163,6 +163,20 @@ export class ConfigManager {
     return parseModelRef(ref);
   }
 
+  /** 设置默认 LLM 模型 */
+  setDefaultModelRef(provider: string, modelId: string): void {
+    if (!this.config.models) this.config.models = {};
+    this.config.models.default = `${provider}/${modelId}`;
+    this.saveToDisk();
+  }
+
+  /** 设置默认 Embedding 模型 */
+  setEmbeddingModelRef(provider: string, modelId: string): void {
+    if (!this.config.models) this.config.models = {};
+    this.config.models.embedding = `${provider}/${modelId}`;
+    this.saveToDisk();
+  }
+
   /** 获取默认模型的 API Key */
   getDefaultApiKey(): string {
     const ref = this.getDefaultModelRef();

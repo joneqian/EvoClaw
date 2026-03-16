@@ -10,7 +10,7 @@ import {
   unregisterProvider,
   updateProviderModels,
 } from '../provider/provider-registry.js';
-import { fetchModelsFromApi } from '../provider/model-fetcher.js';
+import { fetchModelsFromApi, buildAuthHeaders } from '../provider/model-fetcher.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ProviderConfig } from '@evoclaw/shared';
@@ -263,9 +263,12 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
       return c.json({ success: false, error: '未配置 Base URL' });
     }
 
+    // 从 evo_claw.json 获取该 Provider 的模型列表作为备选
+    const configEntry = configManager?.getProvider(id);
     const modelId = body.model
       || provider?.models?.find((m) => m.isDefault)?.id
       || provider?.models?.[0]?.id
+      || configEntry?.models?.[0]?.id
       || 'gpt-4o-mini';
 
     const apiType = body.api || 'openai-completions';
@@ -274,21 +277,13 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10_000);
 
-      // Anthropic 使用不同的 API 格式
+      // 使用统一的认证 headers 构建（支持 Anthropic、智谱 GLM JWT 等）
       const isAnthropic = apiType === 'anthropic';
       const url = isAnthropic
         ? `${baseUrl}/messages`
         : `${baseUrl}/chat/completions`;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (isAnthropic) {
-        headers['x-api-key'] = apiKey;
-        headers['anthropic-version'] = '2023-06-01';
-      } else {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-      const reqBody = isAnthropic
-        ? { model: modelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 }
-        : { model: modelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 };
+      const headers = buildAuthHeaders(apiKey, id, baseUrl);
+      const reqBody = { model: modelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 };
 
       const res = await fetch(url, {
         method: 'POST',
@@ -333,7 +328,7 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
     return c.json({ provider: 'openai', modelId: 'gpt-4o-mini' });
   });
 
-  /** PUT /default/model — 设置默认模型 */
+  /** PUT /default/model — 设置默认 LLM 模型 */
   app.put('/default/model', async (c) => {
     const body = await c.req.json<{ provider: string; modelId: string }>();
 
@@ -359,6 +354,33 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
         );
       }
     });
+
+    // 同步到 evo_claw.json
+    if (configManager) {
+      configManager.setDefaultModelRef(body.provider, body.modelId);
+    }
+
+    return c.json({ success: true });
+  });
+
+  /** GET /default/embedding — 获取默认 Embedding 模型 */
+  app.get('/default/embedding', (c) => {
+    if (configManager) {
+      const ref = configManager.getEmbeddingModelRef();
+      if (ref) {
+        return c.json({ provider: ref.provider, modelId: ref.modelId });
+      }
+    }
+    return c.json({ provider: '', modelId: '' });
+  });
+
+  /** PUT /default/embedding — 设置默认 Embedding 模型 */
+  app.put('/default/embedding', async (c) => {
+    const body = await c.req.json<{ provider: string; modelId: string }>();
+
+    if (configManager) {
+      configManager.setEmbeddingModelRef(body.provider, body.modelId);
+    }
 
     return c.json({ success: true });
   });

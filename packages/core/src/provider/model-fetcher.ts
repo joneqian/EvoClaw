@@ -58,12 +58,18 @@ export async function fetchModelsFromApi(
 
   try {
     const url = `${baseUrl}/models`;
+    const isAnthropic = providerId === 'anthropic' || baseUrl.includes('anthropic.com');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (isAnthropic) {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       signal: controller.signal,
     });
 

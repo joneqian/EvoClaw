@@ -30,6 +30,7 @@ import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { createLogger, closeLogger, LOG_PATH } from './infrastructure/logger.js';
 import { callLLM } from './agent/llm-client.js';
+import { registerProvider } from './provider/provider-registry.js';
 
 const log = createLogger('server');
 
@@ -204,6 +205,47 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   return app;
 }
 
+/** 已知 Provider 的友好名称 */
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  deepseek: 'DeepSeek',
+  qwen: '通义千问',
+  glm: '智谱 GLM',
+  doubao: '字节豆包',
+  minimax: 'MiniMax',
+  kimi: 'Kimi (Moonshot)',
+};
+
+/** 从 evo_claw.json 同步 Provider 到内存注册表 */
+function syncProvidersFromConfig(configManager: ConfigManager): void {
+  const config = configManager.getConfig();
+  const providers = config.models?.providers;
+  if (!providers) return;
+
+  const log = createLogger('server');
+
+  for (const [id, entry] of Object.entries(providers)) {
+    registerProvider({
+      id,
+      name: PROVIDER_DISPLAY_NAMES[id] ?? id,
+      baseUrl: entry.baseUrl,
+      apiKeyRef: entry.apiKey,
+      models: entry.models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        provider: id,
+        maxContextLength: m.contextWindow ?? 128000,
+        maxOutputTokens: m.maxTokens ?? 4096,
+        supportsVision: m.input?.includes('image') ?? false,
+        supportsToolUse: true,
+        isDefault: false,
+      })),
+    });
+    log.info(`Provider 已注册: ${id}`);
+  }
+}
+
 /** 根据 ConfigManager 初始化 VectorStore */
 function initVectorStore(db: SqliteStore, configManager: ConfigManager): VectorStore {
   const embeddingRef = configManager.getEmbeddingModelRef();
@@ -236,6 +278,9 @@ async function main() {
 
   // 初始化配置管理器
   const configManager = new ConfigManager();
+
+  // 从 evo_claw.json 同步 Provider 到内存注册表
+  syncProvidersFromConfig(configManager);
 
   // 初始化数据库
   const db = new SqliteStore();

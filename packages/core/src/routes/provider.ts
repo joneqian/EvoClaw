@@ -22,15 +22,57 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
   /** GET / — 列出所有已注册 Provider */
   app.get('/', (c) => {
     const providers = getProviders();
-    // 隐藏 apiKeyRef 细节，仅返回是否已配置
-    const result = providers.map((p) => ({
-      id: p.id,
-      name: p.name,
-      baseUrl: p.baseUrl,
-      hasApiKey: !!p.apiKeyRef,
-      models: p.models,
-    }));
+    const result = providers.map((p) => {
+      // 从 evo_claw.json 获取额外信息（api 协议、脱敏 apiKey、模型维度）
+      const configEntry = configManager?.getProvider(p.id);
+      const maskedKey = configEntry?.apiKey
+        ? configEntry.apiKey.slice(0, 6) + '***' + configEntry.apiKey.slice(-4)
+        : undefined;
+      // 从 config 中读取 dimension 信息，补充到 models 上
+      const configModelsMap = new Map(
+        (configEntry?.models ?? []).map((m) => [m.id, m]),
+      );
+      const models = p.models.map((m) => {
+        const cm = configModelsMap.get(m.id);
+        return { ...m, dimension: cm?.dimension };
+      });
+      // 补充 config 中有但 registry 中没有的模型（如 embedding 模型）
+      for (const cm of configEntry?.models ?? []) {
+        if (!models.find((m) => m.id === cm.id)) {
+          models.push({
+            id: cm.id,
+            name: cm.name,
+            provider: p.id,
+            maxContextLength: cm.contextWindow ?? 0,
+            maxOutputTokens: cm.maxTokens ?? 0,
+            supportsVision: false,
+            supportsToolUse: false,
+            isDefault: false,
+            dimension: cm.dimension,
+          });
+        }
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        baseUrl: p.baseUrl,
+        hasApiKey: !!p.apiKeyRef,
+        maskedApiKey: maskedKey,
+        api: configEntry?.api ?? 'openai-completions',
+        models,
+      };
+    });
     return c.json({ providers: result });
+  });
+
+  /** GET /:id/apikey — 获取完整 API Key（前端眼睛按钮点击时调用） */
+  app.get('/:id/apikey', (c) => {
+    const id = c.req.param('id');
+    const apiKey = configManager?.getApiKey(id) ?? '';
+    if (!apiKey) {
+      return c.json({ error: '未配置 API Key' }, 404);
+    }
+    return c.json({ apiKey });
   });
 
   /** GET /:id — 获取单个 Provider */
@@ -140,6 +182,69 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
     });
   });
 
+  /** POST /:id/sync-models — 从 Provider API 拉取模型并持久化到 evo_claw.json */
+  app.post('/:id/sync-models', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json<{ apiKey?: string; baseUrl?: string }>().catch(() => ({}));
+
+    // 支持传入临时 apiKey/baseUrl（SetupPage 首次配置时 Provider 可能尚未注册）
+    const provider = getProvider(id);
+    const apiKey = body.apiKey || configManager?.getApiKey(id) || provider?.apiKeyRef || '';
+    const baseUrl = body.baseUrl || provider?.baseUrl || '';
+
+    if (!apiKey) {
+      return c.json({ success: false, error: '未配置 API Key' });
+    }
+    if (!baseUrl) {
+      return c.json({ success: false, error: '未配置 Base URL' });
+    }
+
+    const result = await fetchModelsFromApi(baseUrl, apiKey, id);
+
+    if (!result.success || result.models.length === 0) {
+      return c.json({
+        success: false,
+        error: result.error || '未获取到模型',
+        models: provider?.models ?? [],
+        source: 'fallback',
+      });
+    }
+
+    // 更新内存注册表
+    if (provider) {
+      updateProviderModels(id, result.models);
+    }
+
+    // 持久化到 evo_claw.json（保留原有的 embedding 等非对话模型）
+    if (configManager) {
+      const configEntry = configManager.getProvider(id);
+      if (configEntry) {
+        // 收集新拉取的模型 ID 集合
+        const newIds = new Set(result.models.map((m) => m.id));
+        // 保留原列表中不在新列表里的模型（如 embedding 模型）
+        const preserved = configEntry.models.filter((m) => !newIds.has(m.id));
+        configEntry.models = [
+          ...result.models.map((m) => ({
+            id: m.id,
+            name: m.name,
+            contextWindow: m.maxContextLength,
+            maxTokens: m.maxOutputTokens,
+            input: m.supportsVision ? ['text', 'image'] : ['text'],
+          })),
+          ...preserved,
+        ];
+        configManager.setProvider(id, configEntry);
+      }
+    }
+
+    return c.json({
+      success: true,
+      models: result.models,
+      count: result.models.length,
+      source: 'api',
+    });
+  });
+
   /** POST /:id/test — 测试 Provider 连接 */
   app.post('/:id/test', async (c) => {
     const id = c.req.param('id');
@@ -211,13 +316,21 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
 
   /** GET /default — 获取默认模型配置 */
   app.get('/default/model', (c) => {
-    const row = db.get<{ provider: string; model_id: string; config_json: string }>(
-      'SELECT provider, model_id, config_json FROM model_configs WHERE is_default = 1 LIMIT 1',
+    // 优先从数据库读
+    const row = db.get<{ provider: string; model_id: string }>(
+      'SELECT provider, model_id FROM model_configs WHERE is_default = 1 LIMIT 1',
     );
-    if (!row) {
-      return c.json({ provider: 'openai', modelId: 'gpt-4o-mini' });
+    if (row) {
+      return c.json({ provider: row.provider, modelId: row.model_id });
     }
-    return c.json({ provider: row.provider, modelId: row.model_id });
+    // fallback: 从 evo_claw.json 读
+    if (configManager) {
+      const ref = configManager.getDefaultModelRef();
+      if (ref) {
+        return c.json({ provider: ref.provider, modelId: ref.modelId });
+      }
+    }
+    return c.json({ provider: 'openai', modelId: 'gpt-4o-mini' });
   });
 
   /** PUT /default/model — 设置默认模型 */

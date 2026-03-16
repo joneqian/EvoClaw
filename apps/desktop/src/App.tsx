@@ -7,6 +7,7 @@ import KnowledgePage from './pages/KnowledgePage';
 import SkillPage from './pages/SkillPage';
 import SecurityPage from './pages/SecurityPage';
 import SettingsPage from './pages/SettingsPage';
+import ModelsPage from './pages/ModelsPage';
 import EvolutionPage from './pages/EvolutionPage';
 import ChannelPage from './pages/ChannelPage';
 import SetupPage from './pages/SetupPage';
@@ -188,6 +189,9 @@ export default function App() {
           <NavLink to="/channel" className={navClassName}>
             📡 Channel
           </NavLink>
+          <NavLink to="/models" className={navClassName}>
+            🧩 模型管理
+          </NavLink>
           <NavLink to="/security" className={navClassName}>
             🔒 安全设置
           </NavLink>
@@ -236,6 +240,7 @@ export default function App() {
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/skills" element={<SkillPage />} />
+          <Route path="/models" element={<ModelsPage />} />
           <Route path="/evolution" element={<EvolutionPage />} />
           <Route path="/channel" element={<ChannelPage />} />
           <Route path="/security" element={<SecurityPage />} />

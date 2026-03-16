@@ -217,6 +217,16 @@ export default function SetupPage() {
 
       await put('/config', config);
 
+      // 同步该 Provider 下所有可用模型到 evo_claw.json
+      try {
+        await post(`/provider/${providerId}/sync-models`, {
+          apiKey: apiKey.trim(),
+          baseUrl,
+        });
+      } catch {
+        // 同步模型失败不阻塞流程（部分 Provider 不支持 /models 接口）
+      }
+
       // 验证配置生效
       const health = await healthCheck();
       if (health?.status === 'ok' || health?.status === 'needs-setup') {

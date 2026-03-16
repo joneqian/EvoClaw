@@ -17,6 +17,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from './stores/app-store';
 import { initSidecar, healthCheck, get } from './lib/api';
 import { useChatStore } from './stores/chat-store';
+import AgentAvatar from './components/AgentAvatar';
 
 // ─── SVG Icon 组件 ───
 
@@ -417,11 +418,11 @@ export default function App() {
                     onClick={() => handleRecentClick(conv)}
                     className="w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
                       hover:bg-white/60 dark:hover:bg-slate-800/60 transition-all duration-150 group"
-                    title={`${conv.agentEmoji} ${conv.agentName} — ${conv.title}`}
+                    title={`${conv.agentName} — ${conv.title}`}
                   >
-                    <div className="truncate leading-snug">
-                      <span className="mr-1.5 text-xs">{conv.agentEmoji}</span>
-                      <span className="text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-slate-100 transition-colors">
+                    <div className="truncate leading-snug flex items-center">
+                      <AgentAvatar name={conv.agentName} size="xs" className="mr-1 shrink-0" />
+                      <span className="text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-slate-100 transition-colors truncate">
                         {conv.title}
                       </span>
                     </div>

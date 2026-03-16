@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 import { get, post, del } from '../lib/api';
 
 /** 知识库文件 */
@@ -198,7 +199,7 @@ export default function KnowledgePage() {
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.emoji} {agent.name}
+                {agent.name}
               </option>
             ))}
           </select>

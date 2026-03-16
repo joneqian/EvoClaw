@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 import { useChatStore, type Conversation } from '../stores/chat-store';
 import { get } from '../lib/api';
 
@@ -138,7 +139,7 @@ export default function AgentDetailPage() {
           <div className="flex-1 min-w-0">
             {/* Agent 名称 + 操作 */}
             <div className="flex items-center gap-3 mb-6">
-              <span className="text-3xl">{agent.emoji}</span>
+              <AgentAvatar name={agent.name} size="lg" />
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex-1">{agent.name}</h1>
               {/* ⋯ 菜单 */}
               <div className="relative" ref={menuRef}>

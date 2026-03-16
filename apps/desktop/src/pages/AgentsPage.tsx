@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAgentStore, type BuilderStage } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 
 /** 每个阶段的快捷建议 */
 const STAGE_SUGGESTIONS: Partial<Record<BuilderStage, string[]>> = {
@@ -448,7 +449,7 @@ export default function AgentsPage() {
                 {/* 卡片头部 */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-2xl">{agent.emoji}</span>
+                    <AgentAvatar name={agent.name} size="md" />
                     <div>
                       <h4 className="font-medium text-sm text-slate-800 dark:text-slate-200">{agent.name}</h4>
                       <p className="text-xs text-slate-400 dark:text-slate-500">

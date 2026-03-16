@@ -9,7 +9,12 @@ await build({
   target: 'node22',
   format: 'esm',
   outfile: 'dist/server.mjs',
-  external: ['better-sqlite3'],
+  external: [
+    'better-sqlite3',
+    '@mariozechner/pi-ai',
+    '@mariozechner/pi-agent-core',
+    '@mariozechner/pi-coding-agent',
+  ],
   sourcemap: true,
   banner: {
     js: 'import { createRequire } from "module"; const require = createRequire(import.meta.url);',

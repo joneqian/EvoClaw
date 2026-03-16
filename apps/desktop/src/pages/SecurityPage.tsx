@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 import { get, del } from '../lib/api';
 
 /** 权限类别显示名称 */
@@ -230,7 +231,7 @@ export default function SecurityPage() {
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.emoji} {agent.name}
+                {agent.name}
               </option>
             ))}
           </select>

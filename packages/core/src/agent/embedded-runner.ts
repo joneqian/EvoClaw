@@ -19,13 +19,22 @@ export async function runEmbeddedAgent(
   emit(onEvent, { type: 'agent_start' });
 
   try {
-    // 尝试 PI 框架路径
-    await runWithPI(config, message, onEvent, abortSignal);
-  } catch (_piError) {
-    // 回退: 直接调用 OpenAI 兼容 API
+    // 尝试 PI 框架路径（带 30s 超时防止挂起）
+    console.log(`[embedded-runner] 尝试 PI 框架 (provider=${config.provider}, model=${config.modelId})`);
+    await Promise.race([
+      runWithPI(config, message, onEvent, abortSignal),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('PI 超时 (30s)')), 30_000)),
+    ]);
+    console.log('[embedded-runner] PI 调用完成');
+  } catch (piError) {
+    // 回退: 直接调用 LLM API
+    console.log(`[embedded-runner] PI 失败: ${piError instanceof Error ? piError.message : String(piError)}`);
+    console.log(`[embedded-runner] 使用 fetch fallback (provider=${config.provider}, model=${config.modelId}, protocol=${config.apiProtocol}, baseUrl=${config.baseUrl})`);
     try {
       await runWithFetch(config, message, onEvent, abortSignal);
+      console.log('[embedded-runner] fetch fallback 完成');
     } catch (fetchError) {
+      console.error('[embedded-runner] fetch fallback 失败:', fetchError);
       emit(onEvent, { type: 'error', error: String(fetchError) });
     }
   }
@@ -41,12 +50,8 @@ async function runWithPI(
   signal?: AbortSignal,
 ): Promise<void> {
   // 动态 import PI 包 — 未安装时会抛出错误，触发 fallback
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const piAi: Record<string, (...args: unknown[]) => unknown> =
-    await import('@mariozechner/pi-ai' as string);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const piCore: Record<string, new (...args: unknown[]) => Record<string, (...a: unknown[]) => unknown>> =
-    await import('@mariozechner/pi-agent-core' as string);
+  const piAi = await import('@mariozechner/pi-ai');
+  const piCore = await import('@mariozechner/pi-agent-core');
 
   // 验证 API key 存在（PI 框架缺少 key 时会产生 unhandled rejection）
   if (!config.apiKey) {
@@ -63,17 +68,25 @@ async function runWithPI(
   const prevEnvVal = process.env[envKey];
   process.env[envKey] = config.apiKey;
   // 同时设置 base URL（自定义端点）
+  const prevBaseUrl = config.baseUrl ? process.env[`${config.provider.toUpperCase().replace(/-/g, '_')}_BASE_URL`] : undefined;
   if (config.baseUrl) {
     const baseUrlKey = `${config.provider.toUpperCase().replace(/-/g, '_')}_BASE_URL`;
     process.env[baseUrlKey] = config.baseUrl;
   }
 
-  const model = piAi.getModel!(config.provider, config.modelId);
+  // 注册内置 API providers（确保 PI 知道 anthropic/openai/google 等）
+  piAi.registerBuiltInApiProviders();
+
+  const model = piAi.getModel(config.provider, config.modelId);
+  if (!model) {
+    throw new Error(`PI getModel 失败: provider=${config.provider}, model=${config.modelId}`);
+  }
+  console.log(`[embedded-runner] PI model 解析成功: ${model.provider}/${model.id}`);
 
   // 从工作区文件构建系统提示
   const systemPrompt = buildSystemPrompt(config);
 
-  // 构建 PI 工具列表（阶段 3-4 注入的工具转为 PI 格式）
+  // 构建 PI 工具列表
   const piTools = (config.tools ?? []).map(tool => ({
     name: tool.name,
     description: tool.description,
@@ -81,25 +94,25 @@ async function runWithPI(
     execute: tool.execute,
   }));
 
-  // 构建消息历史（ChatMessage → PI 格式）
-  const piMessages = (config.messages ?? []).map(msg => ({
-    role: msg.role,
-    content: msg.content,
-  }));
+  // 创建 Agent 并通过 setter 配置
+  const agent = new piCore.Agent();
+  agent.setSystemPrompt(systemPrompt);
+  agent.setModel(model);
+  if (piTools.length > 0) {
+    agent.setTools(piTools as Parameters<typeof agent.setTools>[0]);
+  }
 
-  const AgentClass = piCore.Agent!;
-  const agent = new AgentClass({
-    initialState: {
-      systemPrompt,
-      model,
-      tools: piTools,
-      messages: piMessages,
-    },
-    streamFn: piAi.streamSimple,
-  });
+  // 加载消息历史（排除最后一条用户消息，因为 prompt() 会发送它）
+  const historyMessages = (config.messages ?? []).slice(0, -1);
+  if (historyMessages.length > 0) {
+    agent.replaceMessages(historyMessages.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: [{ type: 'text' as const, text: msg.content }],
+    })) as Parameters<typeof agent.replaceMessages>[0]);
+  }
 
   // 订阅事件
-  const unsubscribe = agent.subscribe!((event: Record<string, unknown>) => {
+  const unsubscribe = agent.subscribe((event: Record<string, unknown>) => {
     switch (event.type) {
       case 'message_update': {
         const msgEvent = event.assistantMessageEvent as Record<string, unknown> | undefined;
@@ -126,10 +139,22 @@ async function runWithPI(
         });
         break;
     }
-  }) as () => void;
+  });
+
+  // 处理 abort signal
+  if (signal) {
+    signal.addEventListener('abort', () => agent.abort(), { once: true });
+  }
 
   try {
-    await (agent.prompt!(message) as Promise<void>);
+    await agent.prompt(message);
+    // 等待 agent 处理完成
+    await agent.waitForIdle();
+    // PI 静默吞错误，需要主动检查
+    const stateError = (agent as unknown as { state: { error?: string } }).state.error;
+    if (stateError) {
+      throw new Error(`PI Agent 错误: ${stateError}`);
+    }
   } finally {
     unsubscribe();
     // 恢复环境变量
@@ -137,6 +162,14 @@ async function runWithPI(
       delete process.env[envKey];
     } else {
       process.env[envKey] = prevEnvVal;
+    }
+    if (config.baseUrl) {
+      const baseUrlKey = `${config.provider.toUpperCase().replace(/-/g, '_')}_BASE_URL`;
+      if (prevBaseUrl === undefined) {
+        delete process.env[baseUrlKey];
+      } else {
+        process.env[baseUrlKey] = prevBaseUrl;
+      }
     }
   }
 }
@@ -154,7 +187,7 @@ async function runWithFetch(
 
   const protocol = config.apiProtocol ?? 'openai-completions';
 
-  if (protocol === 'anthropic-messages') {
+  if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     await runWithAnthropicFetch(config, message, onEvent, signal);
   } else {
     await runWithOpenAIFetch(config, message, onEvent, signal);
@@ -171,6 +204,7 @@ async function runWithOpenAIFetch(
   const systemPrompt = buildSystemPrompt(config);
   const baseUrl = config.baseUrl || 'https://api.openai.com/v1';
 
+  // config.messages 已包含用户消息，无需重复添加
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -182,7 +216,6 @@ async function runWithOpenAIFetch(
       messages: [
         { role: 'system', content: systemPrompt },
         ...(config.messages ?? []).map(msg => ({ role: msg.role, content: msg.content })),
-        { role: 'user', content: message },
       ],
       stream: true,
     }),
@@ -210,28 +243,34 @@ async function runWithAnthropicFetch(
   const systemPrompt = buildSystemPrompt(config);
   const baseUrl = config.baseUrl || 'https://api.anthropic.com/v1';
 
-  const response = await fetch(`${baseUrl}/messages`, {
+  const url = `${baseUrl}/messages`;
+  const msgCount = (config.messages ?? []).length;
+  console.log(`[embedded-runner] Anthropic 请求: ${url}, model=${config.modelId}, messages=${msgCount}`);
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': config.apiKey,
       'anthropic-version': '2023-06-01',
     },
+    // config.messages 已包含用户消息，无需重复添加
     body: JSON.stringify({
       model: config.modelId,
       system: systemPrompt,
-      messages: [
-        ...(config.messages ?? []).map(msg => ({ role: msg.role, content: msg.content })),
-        { role: 'user', content: message },
-      ],
+      messages: (config.messages ?? []).map(msg => ({ role: msg.role, content: msg.content })),
       max_tokens: 8192,
       stream: true,
     }),
     signal,
   });
 
+  console.log(`[embedded-runner] Anthropic 响应: ${response.status} ${response.statusText}`);
+
   if (!response.ok) {
-    throw new Error(`LLM API 调用失败: ${response.status} ${response.statusText}`);
+    const errorBody = await response.text().catch(() => '');
+    console.error(`[embedded-runner] Anthropic 错误响应体:`, errorBody);
+    throw new Error(`LLM API 调用失败: ${response.status} ${response.statusText} - ${errorBody}`);
   }
 
   await parseSSEStream(response, (data) => {
@@ -259,11 +298,16 @@ async function parseSSEStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullText = '';
+  let chunkCount = 0;
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      console.log(`[embedded-runner] SSE 流结束, chunks=${chunkCount}, textLen=${fullText.length}`);
+      break;
+    }
 
+    chunkCount++;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 import { get, put, post, del } from '../lib/api';
 import type {
   CapabilityNode,
@@ -228,7 +229,7 @@ export default function EvolutionPage() {
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.emoji} {agent.name}
+                {agent.name}
               </option>
             ))}
           </select>

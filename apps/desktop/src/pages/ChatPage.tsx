@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 import { useAppStore } from '../stores/app-store';
 import { get } from '../lib/api';
 
@@ -193,7 +194,7 @@ function AgentPicker({
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700
                   bg-white dark:bg-slate-800 hover:border-brand/40 hover:shadow-sm transition-all text-left"
               >
-                <span className="text-2xl">{agent.emoji}</span>
+                <AgentAvatar name={agent.name} size="md" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{agent.name}</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -421,7 +422,7 @@ function ChatView() {
         </button>
         {currentAgent && (
           <>
-            <span className="text-lg">{currentAgent.emoji}</span>
+            <AgentAvatar name={currentAgent.name} size="sm" />
             <span className="font-medium text-sm dark:text-white">{currentAgent.name}</span>
           </>
         )}
@@ -441,7 +442,7 @@ function ChatView() {
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-slate-400 dark:text-slate-500">
-              <p className="text-3xl mb-3">{currentAgent?.emoji ?? '💬'}</p>
+              {currentAgent ? <AgentAvatar name={currentAgent.name} size="xl" className="mx-auto mb-3" /> : <p className="text-3xl mb-3">💬</p>}
               <p className="text-sm">
                 与 <span className="font-medium">{currentAgent?.name ?? 'Agent'}</span> 开始对话
               </p>

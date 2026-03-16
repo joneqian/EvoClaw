@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 import { get, post, del } from '../lib/api';
 
 /** Channel 状态信息 */
@@ -326,7 +327,7 @@ export default function ChannelPage() {
                       className="flex-1 px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
                     >
                       {agents.map((a) => (
-                        <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
+                        <option key={a.id} value={a.id}>{a.name}</option>
                       ))}
                     </select>
                     <select
@@ -378,8 +379,8 @@ export default function ChannelPage() {
                       <div key={b.id} className="flex items-center justify-between px-3 py-2 rounded bg-slate-50">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-slate-700">
-                              {agent ? `${agent.emoji} ${agent.name}` : b.agentId.slice(0, 8)}
+                            <span className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                              {agent ? <><AgentAvatar name={agent.name} size="xs" />{agent.name}</> : b.agentId.slice(0, 8)}
                             </span>
                             <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
                               {CHANNEL_LABELS[b.channel] ?? b.channel}

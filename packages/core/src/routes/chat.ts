@@ -198,32 +198,44 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
     // 生成 Session Key
     const sessionKey = body.sessionKey ?? generateSessionKey(agentId, 'local', 'direct', 'local-user');
 
-    // 解析模型（4 级优先）
-    const resolved = resolveModel({
-      agentModelId: agent.modelId,
-      agentProvider: agent.provider,
-      store,
-    });
-
-    // 获取 API Key + Base URL + API 协议（从 evo_claw.json）
+    // 解析模型 + API 配置
+    let modelId = '';
+    let provider = '';
     let apiKey = '';
-    let baseUrl = resolved.baseUrl || '';
+    let baseUrl = '';
     let apiProtocol = 'openai-completions';
 
-    if (configManager) {
-      // 先尝试 Agent 指定的 Provider
-      const providerEntry = configManager.getProvider(resolved.provider);
+    if (agent.modelId && agent.provider && configManager) {
+      // Agent 指定了模型
+      modelId = agent.modelId;
+      provider = agent.provider;
+      const providerEntry = configManager.getProvider(provider);
       if (providerEntry) {
         apiKey = providerEntry.apiKey;
-        if (!baseUrl) baseUrl = providerEntry.baseUrl;
+        baseUrl = providerEntry.baseUrl;
         apiProtocol = providerEntry.api;
       }
-      // 兜底：使用默认 Provider
-      if (!apiKey) {
-        apiKey = configManager.getDefaultApiKey();
-        if (!baseUrl) baseUrl = configManager.getDefaultBaseUrl();
-        apiProtocol = configManager.getDefaultApi();
-      }
+    }
+
+    // 未解析成功时，从 configManager 读默认模型
+    if (!apiKey && configManager) {
+      provider = configManager.getDefaultProvider();
+      modelId = configManager.getDefaultModelId();
+      apiKey = configManager.getDefaultApiKey();
+      baseUrl = configManager.getDefaultBaseUrl();
+      apiProtocol = configManager.getDefaultApi();
+    }
+
+    // 最终兜底：从 model resolver（DB + Registry + Fallback）
+    if (!apiKey) {
+      const resolved = resolveModel({
+        agentModelId: agent.modelId,
+        agentProvider: agent.provider,
+        store,
+      });
+      modelId = resolved.modelId;
+      provider = resolved.provider;
+      baseUrl = resolved.baseUrl || '';
     }
 
     if (!apiKey) {
@@ -288,8 +300,8 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       agent,
       systemPrompt,
       workspaceFiles,
-      modelId: resolved.modelId,
-      provider: resolved.provider,
+      modelId,
+      provider,
       apiKey,
       baseUrl,
       apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMemoryStore, type MemoryUnit, type SearchResult } from '../stores/memory-store';
 import { useAgentStore } from '../stores/agent-store';
+import AgentAvatar from '../components/AgentAvatar';
 
 /** 分类显示名称和颜色 */
 const CATEGORIES: Record<string, { name: string; color: string }> = {
@@ -305,7 +306,7 @@ export default function MemoryPage() {
             {agents.length === 0 && <option value="">暂无 Agent</option>}
             {agents.map((agent) => (
               <option key={agent.id} value={agent.id}>
-                {agent.emoji} {agent.name}
+                {agent.name}
               </option>
             ))}
           </select>

@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import AgentAvatar from './AgentAvatar';
 
 /** 权限类别显示名称 */
 const CATEGORY_LABELS: Record<string, string> = {
@@ -80,7 +81,7 @@ export default function PermissionDialog({
         {/* 头部 */}
         <div className="px-6 pt-6 pb-4">
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-3xl">{agentEmoji}</span>
+            <AgentAvatar name={agentName} size="xl" />
             <div>
               <h3 className="text-base font-bold text-gray-900">
                 {agentName}

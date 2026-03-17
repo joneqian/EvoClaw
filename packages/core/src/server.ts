@@ -71,6 +71,7 @@ export interface CreateAppOptions {
   cronRunner?: CronRunner;
   channelManager?: ChannelManager;
   configManager?: ConfigManager;
+  laneQueue?: LaneQueue;
 }
 
 /** 创建 Hono 应用实例 */
@@ -87,6 +88,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     cronRunner,
     channelManager,
     configManager,
+    laneQueue,
   } = options;
 
   const app = new Hono();
@@ -204,7 +206,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -355,6 +357,7 @@ async function main() {
     cronRunner,
     channelManager,
     configManager,
+    laneQueue,
   });
 
   // 进程退出时清理

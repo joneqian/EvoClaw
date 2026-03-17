@@ -408,15 +408,15 @@ Skill 注入方式（遵循 PI 渐进式注入模式）
 
 | 工具 | 功能 | 实现方式 |
 |------|------|---------|
-| `web_search` | 互联网搜索 | Brave Search API，返回标题+摘要+链接，最大 10 条结果 |
-| `web_fetch` | URL 内容抓取 | HTTP fetch + readability 提取，HTML→Markdown，最大 50K 字符 |
+| `web_search` | 互联网搜索 | Brave Search API，返回标题+摘要+链接，最大 20 条结果 ✅ |
+| `web_fetch` | URL 内容抓取 | HTTP fetch + 纯 regex htmlToMarkdown，最大 50K 字符 ✅ |
 
 ##### 多媒体工具
 
 | 工具 | 功能 | 实现方式 |
 |------|------|---------|
-| `image` | 图片分析 | 将图片 base64 发送给 vision 模型（通过 ModelRouter 解析） |
-| `pdf` | PDF 文本提取 | pdf-parse 库提取文本，分页返回，支持 100 页以内 |
+| `image` | 图片分析 | 将图片 base64 发送给 vision 模型（通过 ModelRouter 解析），绕过 PI 直接调用 provider API |
+| `pdf` | PDF 文本提取 | 双模式：Anthropic/Google 原生 PDF 输入（绕过 PI 直接 fetch）；其他 provider 用 unpdf 提取文本。分页返回，最大 20 页 |
 
 ##### 高级编辑工具
 
@@ -461,7 +461,13 @@ packages/core/src/
 │       └── minimax.ts             # MiniMax 配置（PI 原生，补充配置）
 │
 ├── tools/
-│   ├── evoclaw-tools.ts           # 阶段 3: EvoClaw 专有工具
+│   ├── evoclaw-tools.ts           # 阶段 3: EvoClaw 专有工具（聚合入口）
+│   ├── web-search.ts              # web_search 工具（Brave Search API）✅
+│   ├── web-fetch.ts               # web_fetch 工具（URL→Markdown）✅
+│   ├── image-tool.ts              # image 工具（vision 模型，绕过 PI）
+│   ├── pdf-tool.ts                # pdf 工具（双模式：原生 + unpdf 提取）
+│   ├── apply-patch.ts             # apply_patch 工具（多文件统一 diff）
+│   ├── sub-agent-tools.ts         # 子 Agent 工具（spawn/list/kill）
 │   ├── sandbox-tools.ts           # 阶段 2: 沙箱感知的 bash/文件工具
 │   ├── channel-tools.ts           # 阶段 4: Channel 操作工具
 │   └── permission-interceptor.ts  # 工具权限拦截器
@@ -798,6 +804,39 @@ const lanes: LaneConfig[] = [
 **关键约束**：同一 Session Key 下的请求 **串行执行**，防止工具/会话竞态条件。
 
 **Steer 模式**：当队列模式为 `steer` 时，用户新消息可以在工具调用间隙注入当前运行，实现中途打断和方向调整。
+
+#### 子 Agent 生命周期
+
+主 Agent 通过 `spawn_agent` 工具创建子 Agent，子 Agent 在 subagent 车道运行（8 并发），完成后通知主 Agent。
+
+```
+主 Agent 会话
+  ├→ spawn_agent(task="分析API设计") → 子 Agent A (subagent 车道)
+  ├→ spawn_agent(task="编写测试")    → 子 Agent B (subagent 车道)
+  └→ 等待 / 继续对话
+       ↑
+  子 Agent A 完成 → 注入完成通知到主 Agent 消息流
+  子 Agent B 完成 → 注入完成通知到主 Agent 消息流
+```
+
+**关键约束**：
+- **深度限制**：最大嵌套深度 2 层（主→子→不可再 spawn），防止无限递归
+- **Session Key 路由**：子 Agent 使用 `agent:<parentId>:local:subagent:<taskId>` 格式
+- **资源隔离**：子 Agent 使用 minimal 系统提示模式（身份 + 工具 + 安全），不加载完整人格
+- **生命周期工具**：spawn_agent（创建）、list_agents（查询状态）、kill_agent（终止）
+
+##### 多媒体工具绕过 PI 模式
+
+PI 框架（pi-ai）不支持 `document` 和 `image` content type。对于需要发送二进制内容给 LLM 的工具（image、pdf 原生模式），采用 **工具内直接 fetch() 调用 provider API** 的方式，绕过 PI 消息管道：
+
+```
+工具执行
+  ├→ 检查当前 provider
+  ├→ 支持原生输入？ → 直接 fetch() 调 provider API（Anthropic/Google）
+  │    · Anthropic: type:"document" + beta header "pdfs-2024-09-25"
+  │    · Google: inline_data + mime_type
+  └→ 不支持？ → 提取内容为 text，作为工具返回值让 Agent 分析
+```
 
 #### Agent 生命周期
 
@@ -2449,6 +2488,6 @@ Linux:
 
 ---
 
-> **文档版本**: v5.0 -- 新增 Agent 增强工具集（Web/多媒体/高级编辑/进程管理）；新增 Agent 可靠性保障（多级错误恢复链 + 工具安全机制）；新增模块化系统提示架构（11 段式 + 3 模式）；新增 PI Provider ID 映射。v4.2: MetaClaw 借鉴机制。v4.1: 插件系统架构（3.9 节）。v4.0: PI 框架重构 Agent 运行时层
+> **文档版本**: v5.1 -- 更新 Web 工具实现状态（Day 1 完成）；更新 PDF 工具为双模式架构（原生 + unpdf）；新增子 Agent 生命周期设计；新增多媒体工具绕过 PI 模式说明；更新文件树。v5.0: 新增 Agent 增强工具集（Web/多媒体/高级编辑/进程管理）；新增 Agent 可靠性保障（多级错误恢复链 + 工具安全机制）；新增模块化系统提示架构（11 段式 + 3 模式）；新增 PI Provider ID 映射。v4.2: MetaClaw 借鉴机制。v4.1: 插件系统架构（3.9 节）。v4.0: PI 框架重构 Agent 运行时层
 > **文档状态**: 已更新
 > **下次评审**: 待定

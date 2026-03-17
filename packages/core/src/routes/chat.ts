@@ -17,6 +17,12 @@ import { setToolInjectorConfig, getInjectedTools } from '../bridge/tool-injector
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
+import { createImageTool } from '../tools/image-tool.js';
+import { createPdfTool } from '../tools/pdf-tool.js';
+import { createApplyPatchTool } from '../tools/apply-patch.js';
+import { createSubAgentTools } from '../tools/sub-agent-tools.js';
+import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
+import type { LaneQueue } from '../agent/lane-queue.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('chat');
@@ -58,7 +64,7 @@ function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role:
 }
 
 /** 创建聊天路由 */
-export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore, configManager?: ConfigManager) {
+export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore, configManager?: ConfigManager, laneQueue?: LaneQueue) {
   const app = new Hono();
 
   /** GET /recents — 最近会话列表（跨 Agent） */
@@ -295,14 +301,44 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       if (content) workspaceFiles[file] = content;
     }
 
-    // 构建增强工具集（Web 工具）
+    // 构建增强工具集
     const braveApiKey = configManager?.getBraveApiKey() ?? '';
-    const webTools: ToolDefinition[] = [];
-    if (braveApiKey) webTools.push(createWebSearchTool({ braveApiKey }));
-    webTools.push(createWebFetchTool());
+    const providerConfig = { apiKey, provider, modelId, baseUrl, apiProtocol };
+    const enhancedTools: ToolDefinition[] = [];
 
-    // 配置工具注入（合并 web 工具到 evoClawTools）
-    setToolInjectorConfig({ agentId, evoClawTools: webTools });
+    // Web 工具
+    if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
+    enhancedTools.push(createWebFetchTool());
+
+    // 多媒体工具（绕过 PI 直接调用 provider API）
+    enhancedTools.push(createImageTool(providerConfig));
+    enhancedTools.push(createPdfTool(providerConfig));
+
+    // 高级编辑工具
+    enhancedTools.push(createApplyPatchTool());
+
+    // 子 Agent 工具（需 laneQueue）
+    let spawner: SubAgentSpawner | undefined;
+    if (laneQueue) {
+      const runConfigForSpawner: AgentRunConfig = {
+        agent,
+        systemPrompt: '',
+        workspaceFiles: {},
+        modelId,
+        provider,
+        apiKey,
+        baseUrl,
+        apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
+        tools: enhancedTools,  // 子 Agent 继承增强工具（不含子 Agent 工具本身）
+      };
+      spawner = new SubAgentSpawner(runConfigForSpawner, laneQueue, 0, (taskId, task, result, success) => {
+        log.info(`子 Agent ${taskId} ${success ? '完成' : '失败'}: ${task.slice(0, 50)}`);
+      });
+      enhancedTools.push(...createSubAgentTools(spawner));
+    }
+
+    // 配置工具注入
+    setToolInjectorConfig({ agentId, evoClawTools: enhancedTools });
     const tools = getInjectedTools();
 
     const runConfig: AgentRunConfig = {

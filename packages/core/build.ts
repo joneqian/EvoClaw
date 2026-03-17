@@ -9,15 +9,23 @@ await build({
   target: 'node22',
   format: 'esm',
   outfile: 'dist/server.mjs',
-  external: [
-    'better-sqlite3',
-    '@mariozechner/pi-ai',
-    '@mariozechner/pi-agent-core',
-    '@mariozechner/pi-coding-agent',
-  ],
+  external: ['better-sqlite3'],
   sourcemap: true,
   banner: {
-    js: 'import { createRequire } from "module"; const require = createRequire(import.meta.url);',
+    js: [
+      'import { createRequire as __createRequire } from "module";',
+      'import { fileURLToPath as __fileURLToPath } from "url";',
+      'import { dirname as __dirname_, resolve as __resolve } from "path";',
+      'import { realpathSync as __realpathSync } from "fs";',
+      // 用 realpathSync 解析真实路径（绕过 Tauri 的 _up_ 符号链接）
+      'const __realFile = __realpathSync(__fileURLToPath(import.meta.url));',
+      'const __realDir = __dirname_(__realFile);',
+      'const require = __createRequire(__realFile);',
+      // 为 ESM import() 设置 NODE_PATH
+      'const __nodePaths = [__resolve(__realDir, "../node_modules"), __resolve(__realDir, "../../node_modules"), __resolve(__realDir, "../../../node_modules")];',
+      'process.env.NODE_PATH = [...__nodePaths, process.env.NODE_PATH].filter(Boolean).join(":");',
+      'import __Module from "module"; __Module._initPaths();',
+    ].join('\n'),
   },
 });
 

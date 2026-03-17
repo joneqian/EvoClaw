@@ -9,9 +9,14 @@ import { registerProvider } from '../provider/provider-registry.js';
 
 /** 已知 Provider 的友好名称 */
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  openai: 'OpenAI', anthropic: 'Anthropic', deepseek: 'DeepSeek',
-  qwen: '通义千问', glm: '智谱 GLM', doubao: '字节豆包',
-  minimax: 'MiniMax', kimi: 'Kimi (Moonshot)',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  deepseek: 'DeepSeek',
+  qwen: '通义千问',
+  glm: '智谱 GLM',
+  doubao: '字节豆包',
+  minimax: 'MiniMax',
+  kimi: 'Kimi (Moonshot)',
 };
 
 /** 将 evo_claw.json 中的 Provider 同步到内存注册表 */

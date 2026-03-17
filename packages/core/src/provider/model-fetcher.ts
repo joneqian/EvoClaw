@@ -67,6 +67,17 @@ export async function fetchModelsFromApi(
     const url = `${modelsBaseUrl}/models`;
     const headers = buildAuthHeaders(apiKey, providerId, modelsBaseUrl);
 
+    // 打印最终请求信息（避免泄露完整密钥，仅打印 header key 和 Authorization 前缀）
+    console.log('[model-fetcher] 请求模型列表详情:', {
+      provider: providerId,
+      url,
+      timeoutMs,
+      headerKeys: Object.keys(headers),
+      authorizationPreview: headers.Authorization
+        ? `${headers.Authorization.slice(0, 16)}***`
+        : undefined,
+    });
+
     const response = await fetch(url, {
       method: 'GET',
       headers,
@@ -74,6 +85,13 @@ export async function fetchModelsFromApi(
     });
 
     clearTimeout(timer);
+
+    // 打印 fetch 实际使用的最终地址（考虑到可能的重定向）
+    console.log('[model-fetcher] 最终请求地址:', {
+      requestedUrl: url,
+      finalUrl: response.url,
+      status: response.status,
+    });
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
@@ -85,7 +103,7 @@ export async function fetchModelsFromApi(
       };
     }
 
-    const json = await response.json() as Record<string, unknown>;
+    const json = (await response.json()) as Record<string, unknown>;
 
     // 兼容多种返回格式：
     // - OpenAI 标准: { data: [...] }
@@ -95,9 +113,15 @@ export async function fetchModelsFromApi(
     let rawModels: ApiModel[] | undefined;
     if (Array.isArray(json.data)) {
       rawModels = json.data as ApiModel[];
-    } else if (Array.isArray((json as ModelsResponse & { models?: unknown }).models)) {
+    } else if (
+      Array.isArray((json as ModelsResponse & { models?: unknown }).models)
+    ) {
       rawModels = (json as unknown as { models: ApiModel[] }).models;
-    } else if (json.result && typeof json.result === 'object' && Array.isArray((json.result as Record<string, unknown>).data)) {
+    } else if (
+      json.result &&
+      typeof json.result === 'object' &&
+      Array.isArray((json.result as Record<string, unknown>).data)
+    ) {
       rawModels = (json.result as { data: ApiModel[] }).data;
     } else if (Array.isArray(json)) {
       rawModels = json as unknown as ApiModel[];
@@ -122,7 +146,10 @@ export async function fetchModelsFromApi(
       maxContextLength: m.max_context_length ?? m.context_window ?? 128_000,
       maxOutputTokens: m.max_tokens ?? 8192,
       supportsVision: m.capabilities?.vision ?? guessVision(m.id),
-      supportsToolUse: m.capabilities?.tool_use ?? m.capabilities?.function_calling ?? guessToolUse(m.id),
+      supportsToolUse:
+        m.capabilities?.tool_use ??
+        m.capabilities?.function_calling ??
+        guessToolUse(m.id),
       isDefault: index === 0,
     }));
 
@@ -142,7 +169,12 @@ export async function fetchModelsFromApi(
 /** 判断是否为智谱 GLM API Key（格式: {id}.{secret}） */
 function isGlmApiKey(apiKey: string): boolean {
   const parts = apiKey.split('.');
-  return parts.length === 2 && parts[0]!.length > 0 && parts[1]!.length > 0 && !apiKey.startsWith('sk-');
+  return (
+    parts.length === 2 &&
+    parts[0]!.length > 0 &&
+    parts[1]!.length > 0 &&
+    !apiKey.startsWith('sk-')
+  );
 }
 
 /** 为智谱 GLM 生成 JWT Token */
@@ -176,8 +208,11 @@ export function buildAuthHeaders(
   providerId: string,
   baseUrl: string,
 ): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const isAnthropic = providerId === 'anthropic' || baseUrl.includes('anthropic.com');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const isAnthropic =
+    providerId === 'anthropic' || baseUrl.includes('anthropic.com');
   const isGlm = providerId === 'glm' || baseUrl.includes('bigmodel.cn');
 
   if (isAnthropic) {
@@ -197,7 +232,8 @@ function filterChatModel(model: ApiModel): boolean {
   // 排除 embedding 模型
   if (id.includes('embedding') || id.includes('embo-')) return false;
   // 排除语音模型
-  if (id.includes('whisper') || id.includes('tts') || id.includes('speech')) return false;
+  if (id.includes('whisper') || id.includes('tts') || id.includes('speech'))
+    return false;
   // 排除图片生成模型
   if (id.includes('dall-e') || id.includes('dalle')) return false;
   // 排除审核模型
@@ -208,25 +244,30 @@ function filterChatModel(model: ApiModel): boolean {
 /** 模型 ID → 友好名称 */
 function formatModelName(id: string): string {
   // 常见模式：将连字符/下划线替换为空格并首字母大写
-  return id
-    .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return id.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** 根据模型 ID 猜测是否支持 vision */
 function guessVision(id: string): boolean {
   const lower = id.toLowerCase();
-  return lower.includes('vision') ||
+  return (
+    lower.includes('vision') ||
     lower.includes('-vl') ||
     lower.includes('4o') ||
     lower.includes('claude') ||
-    lower.includes('gemini');
+    lower.includes('gemini')
+  );
 }
 
 /** 根据模型 ID 猜测是否支持 tool use */
 function guessToolUse(id: string): boolean {
   const lower = id.toLowerCase();
   // 大部分现代对话模型支持 tool use，仅排除已知不支持的
-  if (lower.includes('reasoner') || lower.includes('o1-preview') || lower.includes('o1-mini')) return false;
+  if (
+    lower.includes('reasoner') ||
+    lower.includes('o1-preview') ||
+    lower.includes('o1-mini')
+  )
+    return false;
   return true;
 }

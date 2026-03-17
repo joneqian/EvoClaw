@@ -5,7 +5,10 @@
  */
 
 /** 默认模型维度配置 */
-export const DEFAULT_EMBEDDING_MODELS: Record<string, { model: string; dimension: number }> = {
+export const DEFAULT_EMBEDDING_MODELS: Record<
+  string,
+  { model: string; dimension: number }
+> = {
   openai: { model: 'text-embedding-3-small', dimension: 1536 },
   qwen: { model: 'text-embedding-v3', dimension: 1024 },
   glm: { model: 'embedding-3', dimension: 2048 },
@@ -31,7 +34,7 @@ export class EmbeddingProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify({
         model: this.config.model,
@@ -44,7 +47,7 @@ export class EmbeddingProvider {
       throw new Error(`Embedding API 错误 (${response.status}): ${errorText}`);
     }
 
-    const json = await response.json() as {
+    const json = (await response.json()) as {
       data: Array<{ embedding: number[] }>;
     };
 
@@ -56,7 +59,10 @@ export class EmbeddingProvider {
   }
 
   /** 批量生成 embedding */
-  async generateBatch(texts: string[], batchSize = 20): Promise<Float32Array[]> {
+  async generateBatch(
+    texts: string[],
+    batchSize = 20,
+  ): Promise<Float32Array[]> {
     const results: Float32Array[] = [];
 
     for (let i = 0; i < texts.length; i += batchSize) {
@@ -65,7 +71,7 @@ export class EmbeddingProvider {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
           model: this.config.model,
@@ -75,10 +81,12 @@ export class EmbeddingProvider {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        throw new Error(`Embedding API 批量错误 (${response.status}): ${errorText}`);
+        throw new Error(
+          `Embedding API 批量错误 (${response.status}): ${errorText}`,
+        );
       }
 
-      const json = await response.json() as {
+      const json = (await response.json()) as {
         data: Array<{ embedding: number[]; index: number }>;
       };
 
@@ -106,7 +114,9 @@ export function createEmbeddingProvider(
   modelOverride?: string,
   dimensionOverride?: number,
 ): EmbeddingProvider {
-  const defaults = DEFAULT_EMBEDDING_MODELS[providerId ?? 'openai'] ?? DEFAULT_EMBEDDING_MODELS.openai!;
+  const defaults =
+    DEFAULT_EMBEDDING_MODELS[providerId ?? 'openai'] ??
+    DEFAULT_EMBEDDING_MODELS.openai!;
   return new EmbeddingProvider({
     baseUrl,
     apiKey,

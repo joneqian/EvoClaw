@@ -10,13 +10,125 @@ import {
   unregisterProvider,
   updateProviderModels,
 } from '../provider/provider-registry.js';
-import { fetchModelsFromApi, buildAuthHeaders } from '../provider/model-fetcher.js';
+import { fetchModelsFromApi } from '../provider/model-fetcher.js';
+import { toPIProvider, toEvoClawProvider } from '../provider/pi-provider-map.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ProviderConfig } from '@evoclaw/shared';
 
+/** PI ModelRegistry 模型信息 */
+interface PIModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  api: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  input?: string[];
+}
+
+/** 通过 PI ModelRegistry 获取指定 provider 的模型列表 */
+async function syncModelsFromPI(
+  providerId: string,
+  apiKey: string,
+  caller: string,
+): Promise<PIModelInfo[]> {
+  const piProviderId = toPIProvider(providerId);
+  console.log(
+    `[provider:${caller}] 尝试通过 PI ModelRegistry 获取模型 (evoclaw=${providerId}, pi=${piProviderId})`,
+  );
+
+  const piAi = await import('@mariozechner/pi-ai');
+  const piCoding = await import('@mariozechner/pi-coding-agent');
+
+  piAi.registerBuiltInApiProviders();
+
+  // 使用 PI 的 provider ID 注册 API Key
+  const authStorage = piCoding.AuthStorage.inMemory({
+    [piProviderId]: { type: 'api_key' as const, key: apiKey },
+  });
+  const modelRegistry = new piCoding.ModelRegistry(authStorage);
+
+  const allModels = modelRegistry.getAll() as PIModelInfo[];
+  // 用 PI provider ID 过滤
+  const providerModels = allModels.filter((m) => m.provider === piProviderId);
+
+  console.log(
+    `[provider:${caller}] PI ModelRegistry.getAll() 返回 ${allModels.length} 个模型（全部 provider）`,
+  );
+
+  if (providerModels.length > 0) {
+    console.log(
+      `[provider:${caller}] 匹配 pi_provider=${piProviderId} 的模型 ${providerModels.length} 个:`,
+    );
+    for (const m of providerModels) {
+      console.log(
+        `  - ${m.id} (api=${m.api}, ctx=${m.contextWindow ?? '?'}, maxTok=${m.maxTokens ?? '?'}, input=${JSON.stringify(m.input ?? [])})`,
+      );
+    }
+  } else {
+    console.log(
+      `[provider:${caller}] PI 未收录 provider (evoclaw=${providerId}, pi=${piProviderId})，将回退到 API 拉取`,
+    );
+    const knownProviders = [...new Set(allModels.map((m) => m.provider))];
+    console.log(
+      `[provider:${caller}] PI 已知 providers: ${knownProviders.join(', ')}`,
+    );
+  }
+
+  return providerModels;
+}
+
+/** 将 PI 模型列表持久化到内存注册表 + evo_claw.json */
+function persistSyncedModels(
+  providerId: string,
+  piModels: PIModelInfo[],
+  provider: ReturnType<typeof getProvider>,
+  configManager?: ConfigManager,
+): void {
+  // 更新内存注册表
+  if (provider) {
+    updateProviderModels(
+      providerId,
+      piModels.map((m, i) => ({
+        id: m.id,
+        name: m.name || m.id,
+        provider: providerId,
+        maxContextLength: m.contextWindow ?? 128_000,
+        maxOutputTokens: m.maxTokens ?? 8192,
+        supportsVision: m.input?.includes('image') ?? false,
+        supportsToolUse: true,
+        isDefault: i === 0,
+      })),
+    );
+  }
+
+  // 持久化到 evo_claw.json（保留原有的 embedding 等非对话模型）
+  if (configManager) {
+    const configEntry = configManager.getProvider(providerId);
+    if (configEntry) {
+      const newIds = new Set(piModels.map((m) => m.id));
+      const preserved = configEntry.models.filter((m) => !newIds.has(m.id));
+      configEntry.models = [
+        ...piModels.map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          contextWindow: m.contextWindow ?? 128_000,
+          maxTokens: m.maxTokens ?? 8192,
+          input: m.input ?? ['text'],
+        })),
+        ...preserved,
+      ];
+      configManager.setProvider(providerId, configEntry);
+    }
+  }
+}
+
 /** 创建 Provider 路由 */
-export function createProviderRoutes(db: SqliteStore, configManager?: ConfigManager): Hono {
+export function createProviderRoutes(
+  db: SqliteStore,
+  configManager?: ConfigManager,
+): Hono {
   const app = new Hono();
 
   /** GET / — 列出所有已注册 Provider */
@@ -104,12 +216,14 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
     }>();
 
     const existing = getProvider(id);
+    // apiKeyRef 未传时保留已有值
+    const apiKeyRef = body.apiKeyRef ?? existing?.apiKeyRef ?? '';
 
     registerProvider({
       id,
       name: body.name,
       baseUrl: body.baseUrl,
-      apiKeyRef: body.apiKeyRef,
+      apiKeyRef,
       models: body.models ?? existing?.models ?? [],
     });
 
@@ -123,8 +237,12 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
     if (existingRow) {
       db.run(
         `UPDATE model_configs SET api_key_ref = ?, config_json = ? WHERE provider = ?`,
-        body.apiKeyRef,
-        JSON.stringify({ name: body.name, baseUrl: body.baseUrl, models: body.models ?? [] }),
+        apiKeyRef,
+        JSON.stringify({
+          name: body.name,
+          baseUrl: body.baseUrl,
+          models: body.models ?? [],
+        }),
         id,
       );
     } else {
@@ -135,8 +253,12 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
         randomUUID(),
         id,
         body.models?.[0]?.id ?? 'default',
-        body.apiKeyRef,
-        JSON.stringify({ name: body.name, baseUrl: body.baseUrl, models: body.models ?? [] }),
+        apiKeyRef,
+        JSON.stringify({
+          name: body.name,
+          baseUrl: body.baseUrl,
+          models: body.models ?? [],
+        }),
         now,
       );
     }
@@ -161,9 +283,14 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
     }
 
     // 解析 API Key：从 evo_claw.json 获取
-    const apiKey = configManager?.getApiKey(id) ?? configManager?.getDefaultApiKey() ?? '';
+    const apiKey =
+      configManager?.getApiKey(id) ?? configManager?.getDefaultApiKey() ?? '';
     if (!apiKey) {
-      return c.json({ error: '未配置 API Key，无法拉取模型列表', models: provider.models, source: 'fallback' });
+      return c.json({
+        error: '未配置 API Key，无法拉取模型列表',
+        models: provider.models,
+        source: 'fallback',
+      });
     }
 
     const result = await fetchModelsFromApi(provider.baseUrl, apiKey, id);
@@ -182,132 +309,98 @@ export function createProviderRoutes(db: SqliteStore, configManager?: ConfigMana
     });
   });
 
-  /** POST /:id/sync-models — 从 Provider API 拉取模型并持久化到 evo_claw.json */
-  app.post('/:id/sync-models', async (c) => {
+  /** 通过 PI ModelRegistry 拉取模型并持久化，回退到 API 拉取（sync-models 和 test 共用） */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleSyncOrTest = async (c: any) => {
     const id = c.req.param('id');
-    const body = await c.req.json<{ apiKey?: string; baseUrl?: string }>().catch(() => ({}));
+    const body = (await c.req.json().catch(() => ({}))) as {
+      apiKey?: string;
+      baseUrl?: string;
+    };
 
-    // 支持传入临时 apiKey/baseUrl（SetupPage 首次配置时 Provider 可能尚未注册）
     const provider = getProvider(id);
-    const apiKey = body.apiKey || configManager?.getApiKey(id) || provider?.apiKeyRef || '';
+    const apiKey =
+      body.apiKey || configManager?.getApiKey(id) || provider?.apiKeyRef || '';
     const baseUrl = body.baseUrl || provider?.baseUrl || '';
 
     if (!apiKey) {
       return c.json({ success: false, error: '未配置 API Key' });
     }
-    if (!baseUrl) {
-      return c.json({ success: false, error: '未配置 Base URL' });
-    }
-
-    const result = await fetchModelsFromApi(baseUrl, apiKey, id);
-
-    if (!result.success || result.models.length === 0) {
-      return c.json({
-        success: false,
-        error: result.error || '未获取到模型',
-        models: provider?.models ?? [],
-        source: 'fallback',
-      });
-    }
-
-    // 更新内存注册表
-    if (provider) {
-      updateProviderModels(id, result.models);
-    }
-
-    // 持久化到 evo_claw.json（保留原有的 embedding 等非对话模型）
-    if (configManager) {
-      const configEntry = configManager.getProvider(id);
-      if (configEntry) {
-        // 收集新拉取的模型 ID 集合
-        const newIds = new Set(result.models.map((m) => m.id));
-        // 保留原列表中不在新列表里的模型（如 embedding 模型）
-        const preserved = configEntry.models.filter((m) => !newIds.has(m.id));
-        configEntry.models = [
-          ...result.models.map((m) => ({
-            id: m.id,
-            name: m.name,
-            contextWindow: m.maxContextLength,
-            maxTokens: m.maxOutputTokens,
-            input: m.supportsVision ? ['text', 'image'] : ['text'],
-          })),
-          ...preserved,
-        ];
-        configManager.setProvider(id, configEntry);
-      }
-    }
-
-    return c.json({
-      success: true,
-      models: result.models,
-      count: result.models.length,
-      source: 'api',
-    });
-  });
-
-  /** POST /:id/test — 测试 Provider 连接 */
-  app.post('/:id/test', async (c) => {
-    const id = c.req.param('id');
-    const body = await c.req.json<{ apiKey?: string; baseUrl?: string; model?: string; api?: string }>().catch(() => ({}));
-
-    // 优先用请求体传入的参数（SetupPage 首次配置时 Provider 尚未注册）
-    const provider = getProvider(id);
-    const apiKey = body.apiKey || provider?.apiKeyRef;
-    if (!apiKey) {
-      return c.json({ success: false, error: '未配置 API Key' });
-    }
-
-    // 从已注册 Provider 或 PROVIDER_PRESETS 推断 baseUrl 和 model
-    const baseUrl = body.baseUrl || provider?.baseUrl;
-    if (!baseUrl) {
-      return c.json({ success: false, error: '未配置 Base URL' });
-    }
-
-    // 从 evo_claw.json 获取该 Provider 的模型列表作为备选
-    const configEntry = configManager?.getProvider(id);
-    const modelId = body.model
-      || provider?.models?.find((m) => m.isDefault)?.id
-      || provider?.models?.[0]?.id
-      || configEntry?.models?.[0]?.id
-      || 'gpt-4o-mini';
-
-    const apiType = body.api || 'openai-completions';
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
+      // 优先通过 PI ModelRegistry 获取模型列表
+      const piModels = await syncModelsFromPI(id, apiKey, 'sync');
 
-      // 使用统一的认证 headers 构建（支持 Anthropic、智谱 GLM JWT 等）
-      const isAnthropic = apiType === 'anthropic';
-      const url = isAnthropic
-        ? `${baseUrl}/messages`
-        : `${baseUrl}/chat/completions`;
-      const headers = buildAuthHeaders(apiKey, id, baseUrl);
-      const reqBody = { model: modelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 1 };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(reqBody),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (res.ok) {
-        return c.json({ success: true, model: modelId });
+      if (piModels.length > 0) {
+        persistSyncedModels(id, piModels, provider, configManager);
+        return c.json({
+          success: true,
+          model: piModels[0].id,
+          count: piModels.length,
+          source: 'pi',
+        });
       }
 
-      const errBody = await res.text().catch(() => '');
+      // PI 未收录该 provider，回退到 API 拉取（国产模型等）
+      console.log(
+        `[provider:sync] 回退到 fetchModelsFromApi (baseUrl=${baseUrl})`,
+      );
+      if (!baseUrl) {
+        return c.json({
+          success: false,
+          error: '未配置 Base URL，且 PI 未收录该 Provider 的模型',
+        });
+      }
+
+      const result = await fetchModelsFromApi(baseUrl, apiKey, id);
+      if (!result.success || result.models.length === 0) {
+        return c.json({
+          success: false,
+          error: result.error || '未获取到模型',
+          models: provider?.models ?? [],
+          source: 'fallback',
+        });
+      }
+
+      // 更新内存注册表
+      if (provider) {
+        updateProviderModels(id, result.models);
+      }
+
+      // 持久化到 evo_claw.json
+      if (configManager) {
+        const configEntry = configManager.getProvider(id);
+        if (configEntry) {
+          const newIds = new Set(result.models.map((m) => m.id));
+          const preserved = configEntry.models.filter((m) => !newIds.has(m.id));
+          configEntry.models = [
+            ...result.models.map((m) => ({
+              id: m.id,
+              name: m.name,
+              contextWindow: m.maxContextLength,
+              maxTokens: m.maxOutputTokens,
+              input: m.supportsVision ? ['text', 'image'] : ['text'],
+            })),
+            ...preserved,
+          ];
+          configManager.setProvider(id, configEntry);
+        }
+      }
+
       return c.json({
-        success: false,
-        error: `HTTP ${res.status}: ${errBody.slice(0, 200)}`,
+        success: true,
+        model: result.models[0].id,
+        count: result.models.length,
+        source: 'api',
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ success: false, error: message });
     }
-  });
+  };
+
+  app.post('/:id/sync-models', handleSyncOrTest);
+  app.post('/:id/test', handleSyncOrTest);
 
   /** GET /default — 获取默认模型配置 */
   app.get('/default/model', (c) => {

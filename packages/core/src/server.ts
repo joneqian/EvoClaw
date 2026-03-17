@@ -28,7 +28,11 @@ import { ChannelManager } from './channel/channel-manager.js';
 import { DesktopAdapter } from './channel/adapters/desktop.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
-import { createLogger, closeLogger, LOG_PATH } from './infrastructure/logger.js';
+import {
+  createLogger,
+  closeLogger,
+  LOG_PATH,
+} from './infrastructure/logger.js';
 import { callLLM } from './agent/llm-client.js';
 import { registerProvider } from './provider/provider-registry.js';
 
@@ -36,17 +40,21 @@ const log = createLogger('server');
 
 // 全局 unhandled rejection 保护 — 防止 PI 框架等第三方库的异常直接 crash 进程
 process.on('unhandledRejection', (reason) => {
-  log.error('Unhandled rejection (已捕获，进程继续运行):', reason);
+  const detail = reason instanceof Error ? reason.message : String(reason);
+  log.error(`Unhandled rejection (已捕获，进程继续运行): ${detail}`, reason);
 });
 
 process.on('uncaughtException', (err) => {
-  log.error('Uncaught exception (已捕获，进程继续运行):', err);
+  log.error(`Uncaught exception (已捕获，进程继续运行): ${err.message}`, err);
   // 注意：仅捕获日志，不退出。对于真正致命的错误，Node.js 仍会退出
 });
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
-  return PORT_RANGE.min + Math.floor(Math.random() * (PORT_RANGE.max - PORT_RANGE.min + 1));
+  return (
+    PORT_RANGE.min +
+    Math.floor(Math.random() * (PORT_RANGE.max - PORT_RANGE.min + 1))
+  );
 }
 
 /** 生成 256-bit Bearer Token */
@@ -67,21 +75,35 @@ export interface CreateAppOptions {
 
 /** 创建 Hono 应用实例 */
 export function createApp(tokenOrOptions: string | CreateAppOptions) {
-  const options = typeof tokenOrOptions === 'string'
-    ? { token: tokenOrOptions }
-    : tokenOrOptions;
-  const { token, store, agentManager, vectorStore, cronRunner, channelManager, configManager } = options;
+  const options =
+    typeof tokenOrOptions === 'string'
+      ? { token: tokenOrOptions }
+      : tokenOrOptions;
+  const {
+    token,
+    store,
+    agentManager,
+    vectorStore,
+    cronRunner,
+    channelManager,
+    configManager,
+  } = options;
 
   const app = new Hono();
 
   // CORS — 仅允许 localhost
-  app.use('*', cors({
-    origin: (origin) => {
-      if (!origin) return '*';
-      const url = new URL(origin);
-      return url.hostname === 'localhost' || url.hostname === '127.0.0.1' ? origin : '';
-    },
-  }));
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => {
+        if (!origin) return '*';
+        const url = new URL(origin);
+        return url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+          ? origin
+          : '';
+      },
+    }),
+  );
 
   // 请求/响应日志
   const httpLog = createLogger('http');
@@ -93,7 +115,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     // 请求参数
     if (!isHealth) {
       const query = c.req.query();
-      const queryStr = Object.keys(query).length ? ` query=${JSON.stringify(query)}` : '';
+      const queryStr = Object.keys(query).length
+        ? ` query=${JSON.stringify(query)}`
+        : '';
       // 记录请求体（仅 POST/PUT/PATCH，且排除流式请求）
       let bodyStr = '';
       if (['POST', 'PUT', 'PATCH'].includes(method)) {
@@ -102,11 +126,15 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
           const text = await cloned.text();
           if (text) {
             // 脱敏：隐藏 apiKey/token 等敏感字段
-            const sanitized = text.replace(/"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
-              (_, key) => `"${key}":"***"`);
+            const sanitized = text.replace(
+              /"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
+              (_, key) => `"${key}":"***"`,
+            );
             bodyStr = ` body=${sanitized.length > 1000 ? sanitized.slice(0, 1000) + '...' : sanitized}`;
           }
-        } catch { /* 读取失败忽略 */ }
+        } catch {
+          /* 读取失败忽略 */
+        }
       }
       httpLog.info(`--> ${method} ${path}${queryStr}${bodyStr}`);
     } else {
@@ -125,11 +153,15 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
         const cloned = c.res.clone();
         const text = await cloned.text();
         if (text) {
-          const sanitized = text.replace(/"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
-            (_, key) => `"${key}":"***"`);
+          const sanitized = text.replace(
+            /"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
+            (_, key) => `"${key}":"***"`,
+          );
           resBody = ` body=${sanitized.length > 1000 ? sanitized.slice(0, 1000) + '...' : sanitized}`;
         }
-      } catch { /* 流式响应等无法读取，忽略 */ }
+      } catch {
+        /* 流式响应等无法读取，忽略 */
+      }
       httpLog.info(`<-- ${method} ${path} ${status} ${ms}ms${resBody}`);
     } else {
       httpLog.debug(`<-- ${method} ${path} ${status} ${ms}ms`);
@@ -143,7 +175,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     return c.json({
       status,
       timestamp: Date.now(),
-      ...(validation && !validation.valid ? { missing: validation.missing } : {}),
+      ...(validation && !validation.valid
+        ? { missing: validation.missing }
+        : {}),
     });
   });
 
@@ -162,12 +196,16 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (agentManager) {
     // 构建 LLM 生成函数：引导式创建 Agent 时用于生成工作区文件
     const llmGenerateFn = configManager
-      ? (systemPrompt: string, userMessage: string) => callLLM(configManager, { systemPrompt, userMessage })
+      ? (systemPrompt: string, userMessage: string) =>
+          callLLM(configManager, { systemPrompt, userMessage })
       : undefined;
     app.route('/agents', createAgentRoutes(agentManager, llmGenerateFn));
   }
   if (store && agentManager) {
-    app.route('/chat', createChatRoutes(store, agentManager, vectorStore, configManager));
+    app.route(
+      '/chat',
+      createChatRoutes(store, agentManager, vectorStore, configManager),
+    );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
   }
@@ -247,7 +285,10 @@ function syncProvidersFromConfig(configManager: ConfigManager): void {
 }
 
 /** 根据 ConfigManager 初始化 VectorStore */
-function initVectorStore(db: SqliteStore, configManager: ConfigManager): VectorStore {
+function initVectorStore(
+  db: SqliteStore,
+  configManager: ConfigManager,
+): VectorStore {
   const embeddingRef = configManager.getEmbeddingModelRef();
   const embeddingApiKey = configManager.getEmbeddingApiKey();
   const embeddingBaseUrl = configManager.getEmbeddingBaseUrl();
@@ -306,7 +347,15 @@ async function main() {
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
   log.info('ChannelManager 已初始化');
 
-  const app = createApp({ token, store: db, agentManager, vectorStore, cronRunner, channelManager, configManager });
+  const app = createApp({
+    token,
+    store: db,
+    agentManager,
+    vectorStore,
+    cronRunner,
+    channelManager,
+    configManager,
+  });
 
   // 进程退出时清理
   const cleanup = () => {

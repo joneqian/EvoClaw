@@ -52,13 +52,21 @@ function formatTimestamp(): string {
   return new Date().toISOString();
 }
 
+function serializeExtra(extra: unknown): string {
+  if (typeof extra === 'string') return extra;
+  if (extra instanceof Error) {
+    return JSON.stringify({ message: extra.message, stack: extra.stack, name: extra.name });
+  }
+  return JSON.stringify(extra);
+}
+
 function write(level: LogLevel, tag: string, message: string, extra?: unknown): void {
   if (LEVEL_PRIORITY[level] < LEVEL_PRIORITY[currentLevel]) return;
 
   const ts = formatTimestamp();
   const prefix = `${ts} [${level.toUpperCase().padEnd(5)}] [${tag}]`;
   const line = extra !== undefined
-    ? `${prefix} ${message} ${typeof extra === 'string' ? extra : JSON.stringify(extra)}`
+    ? `${prefix} ${message} ${serializeExtra(extra)}`
     : `${prefix} ${message}`;
 
   // 写到文件

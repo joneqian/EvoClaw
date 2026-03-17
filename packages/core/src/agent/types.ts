@@ -11,7 +11,7 @@ export interface AgentRunConfig {
   apiKey: string;
   baseUrl: string;
   /** API 协议 */
-  apiProtocol?: 'openai-completions' | 'anthropic-messages';
+  apiProtocol?: 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'anthropic' | 'google';
   /** 注入的工具（阶段 3-4） */
   tools?: ToolDefinition[];
   /** 消息历史 */

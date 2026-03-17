@@ -88,6 +88,11 @@ function ProviderCard({
   const [fullApiKey, setFullApiKey] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [modelSearch, setModelSearch] = useState('');
+  const [addingModel, setAddingModel] = useState(false);
+  const [newModelId, setNewModelId] = useState('');
+  const [newModelName, setNewModelName] = useState('');
+  const [newModelType, setNewModelType] = useState<'llm' | 'emb'>('llm');
+  const [newModelDimension, setNewModelDimension] = useState('');
 
   const handleTest = useCallback(async () => {
     setTesting(true);
@@ -101,12 +106,15 @@ function ProviderCard({
         !m.dimension && !m.id.toLowerCase().includes('embedding') && !m.id.toLowerCase().includes('embo-')
       );
       if (firstLLM) params.model = firstLLM.id;
-      const result = await post<{ success: boolean; error?: string; model?: string }>(
+      const result = await post<{ success: boolean; error?: string; model?: string; count?: number }>(
         `/provider/${provider.id}/test`,
         params,
       );
       setTestResult(result);
-      if (result.success) showToast(`连接成功${result.model ? ` (${result.model})` : ''}`);
+      if (result.success) {
+        const info = result.count ? `发现 ${result.count} 个模型` : result.model || '';
+        showToast(`连接成功${info ? ` (${info})` : ''}`);
+      }
     } catch (err) {
       setTestResult({ success: false, error: err instanceof Error ? err.message : '测试失败' });
     } finally {
@@ -160,6 +168,53 @@ function ProviderCard({
       setSyncing(false);
     }
   }, [provider.id, showToast, onRefresh]);
+
+  const handleAddModel = useCallback(async () => {
+    const id = newModelId.trim();
+    if (!id) return;
+    // 检查重复
+    if (provider.models.some((m) => m.id === id)) {
+      showToast('模型 ID 已存在', 'error');
+      return;
+    }
+    const name = newModelName.trim() || id;
+    const isEmb = newModelType === 'emb';
+    const dim = isEmb && newModelDimension.trim() ? Number(newModelDimension.trim()) : undefined;
+    const updatedModels = [
+      ...provider.models,
+      {
+        id, name, provider: provider.id,
+        maxContextLength: isEmb ? 8192 : 128000,
+        maxOutputTokens: isEmb ? 0 : 8192,
+        supportsVision: false,
+        supportsToolUse: !isEmb,
+        isDefault: false,
+        ...(dim ? { dimension: dim } : {}),
+      },
+    ];
+    try {
+      await put(`/provider/${provider.id}`, {
+        name: provider.name,
+        baseUrl: provider.baseUrl,
+        models: updatedModels,
+      });
+      await put(`/config/provider/${provider.id}`, {
+        baseUrl: provider.baseUrl,
+        apiKey: '___KEEP___',
+        api: provider.api,
+        models: updatedModels.map((m) => ({ id: m.id, name: m.name })),
+      });
+      setNewModelId('');
+      setNewModelName('');
+      setNewModelType('llm');
+      setNewModelDimension('');
+      setAddingModel(false);
+      showToast(`已添加模型 ${id}`);
+      onRefresh();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '添加失败', 'error');
+    }
+  }, [newModelId, newModelName, provider, showToast, onRefresh]);
 
   /** 切换 API Key 明文显示 */
   const handleToggleApiKey = useCallback(async () => {
@@ -362,10 +417,81 @@ function ProviderCard({
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400">模型列表</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">{provider.models.length} 个</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">{provider.models.length} 个</p>
+                <button
+                  onClick={() => setAddingModel(!addingModel)}
+                  className="text-[10px] px-2 py-0.5 rounded border border-dashed border-slate-300 dark:border-slate-600
+                    text-slate-500 dark:text-slate-400 hover:border-brand hover:text-brand-active transition-colors"
+                >
+                  {addingModel ? '取消' : '+ 添加'}
+                </button>
+              </div>
             </div>
-            {provider.models.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500 italic">暂无模型</p>
+
+            {/* 手动添加模型表单 */}
+            {addingModel && (
+              <div className="mb-3 p-3 rounded-lg border border-dashed border-brand/30 bg-brand/5 space-y-2">
+                {/* 类型切换 */}
+                <div className="flex gap-1">
+                  {(['llm', 'emb'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setNewModelType(t)}
+                      className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors ${
+                        newModelType === t
+                          ? t === 'llm'
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                          : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                      }`}
+                    >
+                      {t === 'llm' ? 'LLM 对话模型' : 'Embedding 向量模型'}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={newModelId}
+                  onChange={(e) => setNewModelId(e.target.value)}
+                  placeholder="模型 ID（必填，如 qwen-plus-latest）"
+                  className="w-full px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg
+                    bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                    focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                    placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                />
+                <input
+                  value={newModelName}
+                  onChange={(e) => setNewModelName(e.target.value)}
+                  placeholder="显示名称（可选，默认同 ID）"
+                  className="w-full px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg
+                    bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                    focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                    placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                />
+                {newModelType === 'emb' && (
+                  <input
+                    value={newModelDimension}
+                    onChange={(e) => setNewModelDimension(e.target.value.replace(/\D/g, ''))}
+                    placeholder="向量维度（可选，如 1536）"
+                    className="w-full px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg
+                      bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                      focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                      placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                  />
+                )}
+                <button
+                  onClick={handleAddModel}
+                  disabled={!newModelId.trim()}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand text-white
+                    hover:bg-brand-active disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  确认添加
+                </button>
+              </div>
+            )}
+
+            {provider.models.length === 0 && !addingModel ? (
+              <p className="text-xs text-slate-400 dark:text-slate-500 italic">暂无模型，点击上方「+ 添加」手动录入</p>
             ) : (
               <>
                 {/* 搜索框 */}

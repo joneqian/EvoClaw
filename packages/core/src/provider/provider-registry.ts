@@ -32,7 +32,10 @@ export function isBuiltinProvider(id: string): boolean {
 }
 
 /** 更新 Provider 的模型列表（API 动态拉取后调用） */
-export function updateProviderModels(id: string, models: ModelConfig[]): boolean {
+export function updateProviderModels(
+  id: string,
+  models: ModelConfig[],
+): boolean {
   const provider = providers.get(id);
   if (!provider) return false;
   provider.models = models;
@@ -47,10 +50,46 @@ export function registerQwen(apiKeyRef: string): void {
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     apiKeyRef,
     models: [
-      { id: 'qwen-max', name: 'Qwen Max', provider: 'qwen', maxContextLength: 32768, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
-      { id: 'qwen-plus', name: 'Qwen Plus', provider: 'qwen', maxContextLength: 131072, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: false },
-      { id: 'qwen-turbo', name: 'Qwen Turbo', provider: 'qwen', maxContextLength: 131072, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: false },
-      { id: 'qwen-vl-max', name: 'Qwen VL Max', provider: 'qwen', maxContextLength: 32768, maxOutputTokens: 4096, supportsVision: true, supportsToolUse: false, isDefault: false },
+      {
+        id: 'qwen-max',
+        name: 'Qwen Max',
+        provider: 'qwen',
+        maxContextLength: 32768,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'qwen-plus',
+        name: 'Qwen Plus',
+        provider: 'qwen',
+        maxContextLength: 131072,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
+      {
+        id: 'qwen-turbo',
+        name: 'Qwen Turbo',
+        provider: 'qwen',
+        maxContextLength: 131072,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
+      {
+        id: 'qwen-vl-max',
+        name: 'Qwen VL Max',
+        provider: 'qwen',
+        maxContextLength: 32768,
+        maxOutputTokens: 4096,
+        supportsVision: true,
+        supportsToolUse: false,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -63,8 +102,26 @@ export function registerGLM(apiKeyRef: string): void {
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     apiKeyRef,
     models: [
-      { id: 'glm-4-plus', name: 'GLM-4 Plus', provider: 'glm', maxContextLength: 128000, maxOutputTokens: 4096, supportsVision: false, supportsToolUse: true, isDefault: true },
-      { id: 'glm-4v-plus', name: 'GLM-4V Plus', provider: 'glm', maxContextLength: 8192, maxOutputTokens: 4096, supportsVision: true, supportsToolUse: false, isDefault: false },
+      {
+        id: 'glm-4-plus',
+        name: 'GLM-4 Plus',
+        provider: 'glm',
+        maxContextLength: 128000,
+        maxOutputTokens: 4096,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'glm-4v-plus',
+        name: 'GLM-4V Plus',
+        provider: 'glm',
+        maxContextLength: 8192,
+        maxOutputTokens: 4096,
+        supportsVision: true,
+        supportsToolUse: false,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -77,8 +134,26 @@ export function registerDoubao(apiKeyRef: string): void {
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     apiKeyRef,
     models: [
-      { id: 'doubao-pro-32k', name: 'Doubao Pro 32K', provider: 'doubao', maxContextLength: 32768, maxOutputTokens: 4096, supportsVision: false, supportsToolUse: true, isDefault: true },
-      { id: 'doubao-lite-32k', name: 'Doubao Lite 32K', provider: 'doubao', maxContextLength: 32768, maxOutputTokens: 4096, supportsVision: false, supportsToolUse: true, isDefault: false },
+      {
+        id: 'doubao-pro-32k',
+        name: 'Doubao Pro 32K',
+        provider: 'doubao',
+        maxContextLength: 32768,
+        maxOutputTokens: 4096,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'doubao-lite-32k',
+        name: 'Doubao Lite 32K',
+        provider: 'doubao',
+        maxContextLength: 32768,
+        maxOutputTokens: 4096,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -91,8 +166,26 @@ export function registerDeepSeek(apiKeyRef: string): void {
     baseUrl: 'https://api.deepseek.com/v1',
     apiKeyRef,
     models: [
-      { id: 'deepseek-chat', name: 'DeepSeek V3', provider: 'deepseek', maxContextLength: 65536, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
-      { id: 'deepseek-reasoner', name: 'DeepSeek R1', provider: 'deepseek', maxContextLength: 65536, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: false, isDefault: false },
+      {
+        id: 'deepseek-chat',
+        name: 'DeepSeek V3',
+        provider: 'deepseek',
+        maxContextLength: 65536,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'deepseek-reasoner',
+        name: 'DeepSeek R1',
+        provider: 'deepseek',
+        maxContextLength: 65536,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: false,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -105,9 +198,36 @@ export function registerMiniMax(apiKeyRef: string): void {
     baseUrl: 'https://api.minimaxi.com/v1',
     apiKeyRef,
     models: [
-      { id: 'MiniMax-M2.5-highspeed', name: 'MiniMax M2.5 Highspeed', provider: 'minimax', maxContextLength: 1048576, maxOutputTokens: 16384, supportsVision: false, supportsToolUse: true, isDefault: true },
-      { id: 'MiniMax-Text-01', name: 'MiniMax Text 01', provider: 'minimax', maxContextLength: 1048576, maxOutputTokens: 16384, supportsVision: false, supportsToolUse: true, isDefault: false },
-      { id: 'abab6.5s-chat', name: 'ABAB 6.5s', provider: 'minimax', maxContextLength: 245760, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: false },
+      {
+        id: 'MiniMax-M2.5-highspeed',
+        name: 'MiniMax M2.5 Highspeed',
+        provider: 'minimax',
+        maxContextLength: 1048576,
+        maxOutputTokens: 16384,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'MiniMax-Text-01',
+        name: 'MiniMax Text 01',
+        provider: 'minimax',
+        maxContextLength: 1048576,
+        maxOutputTokens: 16384,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
+      {
+        id: 'abab6.5s-chat',
+        name: 'ABAB 6.5s',
+        provider: 'minimax',
+        maxContextLength: 245760,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -120,9 +240,36 @@ export function registerKimi(apiKeyRef: string): void {
     baseUrl: 'https://api.moonshot.cn/v1',
     apiKeyRef,
     models: [
-      { id: 'moonshot-v1-128k', name: 'Moonshot V1 128K', provider: 'kimi', maxContextLength: 131072, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },
-      { id: 'moonshot-v1-32k', name: 'Moonshot V1 32K', provider: 'kimi', maxContextLength: 32768, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: false },
-      { id: 'moonshot-v1-8k', name: 'Moonshot V1 8K', provider: 'kimi', maxContextLength: 8192, maxOutputTokens: 4096, supportsVision: false, supportsToolUse: true, isDefault: false },
+      {
+        id: 'moonshot-v1-128k',
+        name: 'Moonshot V1 128K',
+        provider: 'kimi',
+        maxContextLength: 131072,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'moonshot-v1-32k',
+        name: 'Moonshot V1 32K',
+        provider: 'kimi',
+        maxContextLength: 32768,
+        maxOutputTokens: 8192,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
+      {
+        id: 'moonshot-v1-8k',
+        name: 'Moonshot V1 8K',
+        provider: 'kimi',
+        maxContextLength: 8192,
+        maxOutputTokens: 4096,
+        supportsVision: false,
+        supportsToolUse: true,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -135,8 +282,26 @@ export function registerOpenAI(apiKeyRef: string): void {
     baseUrl: 'https://api.openai.com/v1',
     apiKeyRef,
     models: [
-      { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', maxContextLength: 128000, maxOutputTokens: 16384, supportsVision: true, supportsToolUse: true, isDefault: true },
-      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', maxContextLength: 128000, maxOutputTokens: 16384, supportsVision: true, supportsToolUse: true, isDefault: false },
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        provider: 'openai',
+        maxContextLength: 128000,
+        maxOutputTokens: 16384,
+        supportsVision: true,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o Mini',
+        provider: 'openai',
+        maxContextLength: 128000,
+        maxOutputTokens: 16384,
+        supportsVision: true,
+        supportsToolUse: true,
+        isDefault: false,
+      },
     ],
   });
 }
@@ -149,8 +314,26 @@ export function registerAnthropic(apiKeyRef: string): void {
     baseUrl: 'https://api.anthropic.com/v1',
     apiKeyRef,
     models: [
-      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: 'anthropic', maxContextLength: 200000, maxOutputTokens: 8192, supportsVision: true, supportsToolUse: true, isDefault: true },
-      { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'anthropic', maxContextLength: 200000, maxOutputTokens: 8192, supportsVision: true, supportsToolUse: true, isDefault: false },
+      {
+        id: 'claude-sonnet-4-20250514',
+        name: 'Claude Sonnet 4',
+        provider: 'anthropic',
+        maxContextLength: 200000,
+        maxOutputTokens: 8192,
+        supportsVision: true,
+        supportsToolUse: true,
+        isDefault: true,
+      },
+      {
+        id: 'claude-opus-4-20250514',
+        name: 'Claude Opus 4',
+        provider: 'anthropic',
+        maxContextLength: 200000,
+        maxOutputTokens: 8192,
+        supportsVision: true,
+        supportsToolUse: true,
+        isDefault: false,
+      },
     ],
   });
 }

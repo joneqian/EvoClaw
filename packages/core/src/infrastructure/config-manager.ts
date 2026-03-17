@@ -242,6 +242,11 @@ export class ConfigManager {
     return this.config.models?.providers?.[ref.provider]?.baseUrl ?? '';
   }
 
+  /** 获取 Brave Search API Key */
+  getBraveApiKey(): string {
+    return this.config.services?.brave?.apiKey ?? '';
+  }
+
   /** 配置文件是否存在 */
   exists(): boolean {
     return fs.existsSync(this.configPath);

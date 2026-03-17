@@ -1,6 +1,11 @@
 /** evo_claw.json 配置文件结构 */
 export interface EvoClawConfig {
   models?: ModelsConfig;
+  /** 外部服务配置 */
+  services?: {
+    /** Brave Search API */
+    brave?: { apiKey: string };
+  };
 }
 
 /** 模型配置 */

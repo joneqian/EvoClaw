@@ -1,8 +1,8 @@
 # EvoClaw 技术架构设计文档
 
-> **文档版本**: v4.0
+> **文档版本**: v5.0
 > **创建日期**: 2026-03-11
-> **更新日期**: 2026-03-13
+> **更新日期**: 2026-03-17
 > **文档状态**: 已更新
 
 ---
@@ -400,6 +400,37 @@ Skill 注入方式（遵循 PI 渐进式注入模式）
     · Schema 标准化
 ```
 
+#### Agent 增强工具集
+
+基于 OpenClaw 研究，EvoClaw 在 PI 基础工具之上扩展以下增强工具：
+
+##### Web 工具
+
+| 工具 | 功能 | 实现方式 |
+|------|------|---------|
+| `web_search` | 互联网搜索 | Brave Search API，返回标题+摘要+链接，最大 10 条结果 |
+| `web_fetch` | URL 内容抓取 | HTTP fetch + readability 提取，HTML→Markdown，最大 50K 字符 |
+
+##### 多媒体工具
+
+| 工具 | 功能 | 实现方式 |
+|------|------|---------|
+| `image` | 图片分析 | 将图片 base64 发送给 vision 模型（通过 ModelRouter 解析） |
+| `pdf` | PDF 文本提取 | pdf-parse 库提取文本，分页返回，支持 100 页以内 |
+
+##### 高级编辑工具
+
+| 工具 | 功能 | 实现方式 |
+|------|------|---------|
+| `apply_patch` | 多文件统一 diff | `*** Begin Patch` / `*** End Patch` 格式，支持 add/delete/update hunk |
+
+##### 进程管理工具
+
+| 工具 | 功能 | 实现方式 |
+|------|------|---------|
+| `exec` (增强) | 后台执行 | PTY 支持 + 后台模式 + 审批流程 |
+| `process` | 进程管理 | 管理后台 exec 会话（轮询输出、发送按键、终止） |
+
 ### 2.3 领域层 (Domain Layer)
 
 **职责**：核心业务逻辑、领域模型、业务规则
@@ -726,6 +757,27 @@ async function runEmbeddedAgent(
               └──────────────────────┘
 ```
 
+#### Agent 可靠性保障
+
+##### 多级错误恢复链
+
+```
+API 调用失败
+  ├→ Auth Profile 轮转（同 provider 多 key）
+  ├→ Overload 指数退避（250ms 起，1.5s 上限，2x 因子，20% 抖动）
+  ├→ Thinking 级别降级（high → medium → low → off）
+  ├→ Context overflow → 自动 compaction
+  └→ 模型降级（主模型 → 配置的 fallback → 系统默认）
+```
+
+##### 工具安全机制
+
+| 机制 | 说明 |
+|------|------|
+| **循环检测** | 重复模式检测 + 乒乓模式检测 + 全局熔断器（阈值 30） |
+| **结果截断** | 工具输出超过 context budget 50% 时自动截断 |
+| **usage 防御** | assistant message 的 usage 字段防御性补零（参考 OpenClaw） |
+
 #### Lane 队列并发模型
 
 借鉴 OpenClaw 的 Lane 设计，**默认串行，显式并行**：
@@ -824,6 +876,29 @@ EvoClaw 兼容 OpenClaw 的 8 文件格式：
 | memory/*.md | 加载(今天+昨天) | 不加载 | 不加载 | 不加载 | 不加载 | 不加载 |
 
 **总字符上限**: 20,000 字符（与 OpenClaw 一致），超出时按优先级截断（SOUL.md 不截断，memory/*.md 最先被截断）。
+
+#### 模块化系统提示架构
+
+参考 OpenClaw 的 22 段式系统提示，EvoClaw 构建模块化系统提示：
+
+| 段落 | 内容 | 加载条件 |
+|------|------|---------|
+| 安全宪法 | 反操纵、人类监督优先、不自我保护 | 始终加载 |
+| 身份定义 | Agent 名称、角色描述 | 始终加载 |
+| 工具列表 | 可用工具及一行描述 | 始终加载 |
+| 工具使用指导 | 何时静默调用 vs 解释性调用 | 始终加载 |
+| 记忆召回指令 | "回答前先搜索记忆" | memory 工具可用时 |
+| 技能扫描指令 | "回复前先扫描可用技能" | 有已安装技能时 |
+| 运行时信息 | agent ID、OS、Node 版本、模型、时区 | 始终加载 |
+| 时间注入 | 当前日期时间 + 时区 | 始终加载 |
+| 工作区路径 | 当前工作目录 | 始终加载 |
+| 工作区文件 | SOUL.md / IDENTITY.md / AGENTS.md 等内容 | 文件存在时 |
+| 沉默回复 | `<silent_reply_token>` 无话可说时 | 始终加载 |
+
+系统提示按 Agent 类型分 3 个模式：
+- **full**: 主 Agent，加载全部段落
+- **minimal**: 子 Agent，仅加载身份 + 工具 + 安全
+- **none**: 基础身份，无工具/技能注入
 
 ### 3.3 Binding Router
 
@@ -1117,6 +1192,21 @@ registerProvider({
   compat: { supportsDeveloperRole: false, supportsUsageInStreaming: false }
 })
 ```
+
+#### PI Provider ID 映射
+
+EvoClaw 的 provider ID 与 PI 框架的 KnownProvider 存在差异，通过 `pi-provider-map.ts` 统一映射：
+
+| EvoClaw ID | PI ID | 说明 |
+|------------|-------|------|
+| glm | zai | 智谱 GLM |
+| openai | openai | 一致 |
+| anthropic | anthropic | 一致 |
+| google | google | 一致 |
+
+国产模型（Qwen/Doubao/DeepSeek/Moonshot 等）不在 PI KnownProvider 列表中，统一使用 `api: "openai-completions"` + 自定义 `baseUrl` 方式接入，PI 的 openai-completions 流式处理器原生支持。
+
+baseUrl 处理：EvoClaw 配置的 baseUrl 含 `/v1` 后缀（给 fetch fallback 用），传给 PI Model 时自动去掉尾部 `/v1`（因 SDK 内部会自己拼接）。
 
 ### 3.9 插件系统 (Plugin System)
 
@@ -2359,6 +2449,6 @@ Linux:
 
 ---
 
-> **文档版本**: v4.2 -- 新增 MetaClaw 借鉴机制：ADR-010（generation 溯源 + Skill 自进化循环 + 响应质量评估 + 空闲调度 + prompt 压缩）；记忆提取 Stage 3 增加 generation 元数据标注；EvolutionPlugin 增加 evaluateResponseQuality；Skill 自进化循环架构（SkillGapAnalyzer → SKILL.md 生成 → 沙箱验证）。v4.1: 插件系统架构（3.9 节）。v4.0: PI 框架重构 Agent 运行时层
+> **文档版本**: v5.0 -- 新增 Agent 增强工具集（Web/多媒体/高级编辑/进程管理）；新增 Agent 可靠性保障（多级错误恢复链 + 工具安全机制）；新增模块化系统提示架构（11 段式 + 3 模式）；新增 PI Provider ID 映射。v4.2: MetaClaw 借鉴机制。v4.1: 插件系统架构（3.9 节）。v4.0: PI 框架重构 Agent 运行时层
 > **文档状态**: 已更新
 > **下次评审**: 待定

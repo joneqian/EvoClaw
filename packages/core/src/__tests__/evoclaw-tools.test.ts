@@ -19,14 +19,24 @@ function makeDeps() {
 }
 
 describe('createEvoClawTools', () => {
-  it('应返回 3 个工具', () => {
+  it('无 braveApiKey 时应返回 4 个工具（含 web_fetch）', () => {
     const deps = makeDeps();
     const tools = createEvoClawTools(deps as any);
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(4);
     const names = tools.map(t => t.name);
+    expect(names).toContain('web_fetch');
     expect(names).toContain('memory_search');
     expect(names).toContain('memory_get');
     expect(names).toContain('knowledge_query');
+  });
+
+  it('有 braveApiKey 时应返回 5 个工具（含 web_search + web_fetch）', () => {
+    const deps = { ...makeDeps(), braveApiKey: 'test-key' };
+    const tools = createEvoClawTools(deps as any);
+    expect(tools).toHaveLength(5);
+    const names = tools.map(t => t.name);
+    expect(names).toContain('web_search');
+    expect(names).toContain('web_fetch');
   });
 
   it('每个工具应有 name, description, parameters, execute', () => {

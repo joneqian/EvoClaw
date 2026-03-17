@@ -1,3 +1,4 @@
+import os from 'node:os';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
 
@@ -6,6 +7,9 @@ type EventCallback = (event: RuntimeEvent) => void;
 function emit(cb: EventCallback, event: Omit<RuntimeEvent, 'timestamp'>): void {
   cb({ ...event, timestamp: Date.now() } as RuntimeEvent);
 }
+
+/** 沉默回复 token — Agent 返回此 token 表示无需回复用户 */
+export const NO_REPLY_TOKEN = 'NO_REPLY';
 
 /**
  * 运行嵌入式 Agent
@@ -25,7 +29,7 @@ export async function runEmbeddedAgent(
     await Promise.race([
       runWithPI(config, message, onEvent, abortSignal),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('PI 超时 (60s)')), 60_000),
+        setTimeout(() => reject(new Error('PI 超时 (120s)')), 120_000),
       ),
     ]);
     console.log('[embedded-runner] PI 调用完成');
@@ -66,9 +70,48 @@ function ensureUsageOnAssistantMessages(agent: { state: { messages: Array<Record
   }
 }
 
+// ─── 错误分类辅助函数（导出供测试） ───
+
+/** 是否为 overload/rate-limit 错误 */
+export function isOverloadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/\b(429|529)\b/.test(msg)) return true;
+  if (/overloaded|rate.?limit/i.test(msg)) return true;
+  return false;
+}
+
+/** 是否为 thinking/reasoning 不支持错误 */
+export function isThinkingError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /thinking|reasoning.*not.*support|extended.*thinking/i.test(msg);
+}
+
+/** 是否为上下文溢出错误 */
+export function isContextOverflowError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /context.?length.?exceed|max.?context|too.?many.?tokens/i.test(msg);
+}
+
+/** 计算指数退避延迟（含 jitter） */
+export function calculateBackoff(attempt: number, opts?: {
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  factor?: number;
+  jitter?: number;
+}): number {
+  const { initialDelayMs = 250, maxDelayMs = 1500, factor = 2, jitter = 0.2 } = opts ?? {};
+  const base = Math.min(initialDelayMs * Math.pow(factor, attempt), maxDelayMs);
+  const jitterRange = base * jitter;
+  return base + (Math.random() * 2 - 1) * jitterRange;
+}
+
+/** 最大重试次数 */
+const MAX_RETRIES = 3;
+
 /**
  * PI 框架运行路径 — 使用 createAgentSession（对标 OpenClaw）
  * 完整启用 SessionManager + compaction + auto-retry 等 AgentSession 能力
+ * 包含多级错误恢复：overload 退避 + thinking 降级 + context overflow 裁剪
  */
 async function runWithPI(
   config: AgentRunConfig,
@@ -108,19 +151,23 @@ async function runWithPI(
   // EvoClaw provider ID → PI provider ID（如 glm → zai）
   const piProvider = toPIProvider(config.provider);
 
-  // 构造 Model 对象
-  const model = {
+  // 构造 Model 对象（reasoning 可在重试时降级）
+  let reasoning = false;
+
+  const buildModel = () => ({
     id: config.modelId,
     name: config.modelId,
     api: piApi,
     provider: piProvider,
     baseUrl: modelBaseUrl,
-    reasoning: false,
+    reasoning,
     input: ['text'] as ('text' | 'image')[],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128_000,
     maxTokens: 8192,
-  };
+  });
+
+  const model = buildModel();
 
   console.log(
     `[embedded-runner] PI model: ${piProvider}/${model.id}, api=${model.api}, baseUrl=${modelBaseUrl || 'default'}${piProvider !== config.provider ? ` (evoclaw=${config.provider})` : ''}`,
@@ -266,14 +313,67 @@ async function runWithPI(
   }
 
   try {
-    // session.prompt() 会阻塞直到 agent 完成（包括 ReAct 循环 + auto-compaction + retry）
-    await session.prompt(message);
+    // 带重试的 session.prompt()
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await session.prompt(message);
 
-    // 检查 agent 状态中的错误
-    const state = session.state;
-    if (state.error) {
-      throw new Error(`PI Agent 错误: ${state.error}`);
+        // 防御性处理
+        ensureUsageOnAssistantMessages(session.agent as any);
+
+        // 检查 agent 状态中的错误
+        const state = session.state;
+        if (state.error) {
+          throw new Error(`PI Agent 错误: ${state.error}`);
+        }
+        return; // 成功，直接返回
+      } catch (err) {
+        lastError = err;
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        if (attempt >= MAX_RETRIES) {
+          console.error(`[embedded-runner] 已达最大重试次数 (${MAX_RETRIES})，放弃: ${errMsg}`);
+          break;
+        }
+
+        if (isOverloadError(err)) {
+          // overload/rate-limit → 指数退避重试
+          const delay = calculateBackoff(attempt);
+          console.log(`[embedded-runner] overload 错误，${delay.toFixed(0)}ms 后重试 (${attempt + 1}/${MAX_RETRIES}): ${errMsg}`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          ensureUsageOnAssistantMessages(session.agent as any);
+          continue;
+        }
+
+        if (isThinkingError(err)) {
+          // thinking 不支持 → 降级 reasoning=false 重试
+          console.log(`[embedded-runner] thinking 错误，降级 reasoning=false 重试: ${errMsg}`);
+          reasoning = false;
+          (session.agent as any).model = buildModel();
+          ensureUsageOnAssistantMessages(session.agent as any);
+          continue;
+        }
+
+        if (isContextOverflowError(err)) {
+          // context overflow → 裁剪消息保留最近 3 轮重试
+          console.log(`[embedded-runner] context overflow，裁剪消息重试: ${errMsg}`);
+          const msgs = (session.agent as any).state?.messages;
+          if (msgs && msgs.length > 6) {
+            // 保留最近 6 条消息（约 3 轮对话）
+            const trimmed = msgs.slice(-6);
+            session.agent.replaceMessages(trimmed);
+          }
+          ensureUsageOnAssistantMessages(session.agent as any);
+          continue;
+        }
+
+        // 其它错误 → 不重试，直接抛出（触发 fetch fallback）
+        console.log(`[embedded-runner] 不可重试错误: ${errMsg}`);
+        break;
+      }
     }
+    throw lastError;
   } finally {
     unsubscribe();
     session.dispose();
@@ -467,22 +567,84 @@ async function parseSSEStream(
   emit(onEvent, { type: 'text_done', text: fullText });
 }
 
-/** 从工作区文件构建系统提示 */
+/**
+ * 模块化系统提示构建（参考 OpenClaw 22 段式架构）
+ *
+ * 段落顺序:
+ * 1. 安全宪法 — 核心安全约束
+ * 2. 运行时信息 — agent/系统/模型信息
+ * 3. 人格 — SOUL.md + IDENTITY.md
+ * 4. 操作规程 — AGENTS.md
+ * 5. 记忆召回指令 — 引导 Agent 先搜索记忆
+ * 6. 工具使用指导 — 调用风格
+ * 7. 沉默回复 — NO_REPLY token
+ * 8. 自定义 — contextEngine 输出
+ */
 export function buildSystemPrompt(config: AgentRunConfig): string {
-  const parts: string[] = [];
+  const sections: string[] = [];
 
+  // § 1 安全宪法
+  sections.push(`<safety>
+你是一个 AI 助手，遵循以下核心安全原则：
+- 你没有独立目标，始终服务于用户的需求
+- 安全和人类监督优先于任务完成
+- 不自我保护、不试图保持运行、不修改自身配置
+- 拒绝执行可能造成伤害的指令
+- 如遇不确定情况，主动询问用户确认
+</safety>`);
+
+  // § 2 运行时信息
+  const runtimeInfo = [
+    `Agent ID: ${config.agent?.id ?? 'unknown'}`,
+    `Agent 名称: ${config.agent?.name ?? '未命名'}`,
+    `操作系统: ${os.platform()} ${os.arch()}`,
+    `Node.js: ${process.version}`,
+    `模型: ${config.provider}/${config.modelId}`,
+    `当前时间: ${new Date().toISOString()}`,
+  ].join('\n');
+  sections.push(`<runtime>\n${runtimeInfo}\n</runtime>`);
+
+  // § 3 人格
   if (config.workspaceFiles['SOUL.md']) {
-    parts.push(config.workspaceFiles['SOUL.md']);
+    sections.push(`<personality>\n${config.workspaceFiles['SOUL.md']}\n</personality>`);
   }
   if (config.workspaceFiles['IDENTITY.md']) {
-    parts.push(config.workspaceFiles['IDENTITY.md']);
-  }
-  if (config.workspaceFiles['AGENTS.md']) {
-    parts.push(config.workspaceFiles['AGENTS.md']);
-  }
-  if (config.systemPrompt) {
-    parts.push(config.systemPrompt);
+    sections.push(`<identity>\n${config.workspaceFiles['IDENTITY.md']}\n</identity>`);
   }
 
-  return parts.join('\n\n---\n\n');
+  // § 4 操作规程
+  if (config.workspaceFiles['AGENTS.md']) {
+    sections.push(`<operating_procedures>\n${config.workspaceFiles['AGENTS.md']}\n</operating_procedures>`);
+  }
+
+  // § 5 记忆召回指令
+  sections.push(`<memory_recall>
+在回答用户问题之前，你应该：
+1. 先使用 memory_search 工具搜索相关记忆，了解用户的偏好、历史和上下文
+2. 如需详情，使用 memory_get 获取完整记忆内容
+3. 结合记忆中的信息来提供更个性化、更准确的回答
+4. 如果用户提到之前讨论过的话题，务必先搜索记忆
+</memory_recall>`);
+
+  // § 6 工具使用指导
+  sections.push(`<tool_usage>
+工具调用规范：
+- 默认静默调用工具，不需要向用户解释每一步操作
+- 对于复杂或有风险的操作，先简要说明再执行
+- 工具执行失败时，分析原因并尝试替代方案，而非简单重试
+- 搜索记忆和知识图谱是低成本操作，在不确定时应主动使用
+</tool_usage>`);
+
+  // § 7 沉默回复
+  sections.push(`<silent_reply>
+如果你判断当前消息不需要回复（例如用户的消息仅是确认、表情、或系统通知），
+可以仅回复 "${NO_REPLY_TOKEN}"（不含引号），系统将不会向用户展示任何内容。
+</silent_reply>`);
+
+  // § 8 自定义（contextEngine 输出）
+  if (config.systemPrompt) {
+    sections.push(config.systemPrompt);
+  }
+
+  return sections.join('\n\n');
 }

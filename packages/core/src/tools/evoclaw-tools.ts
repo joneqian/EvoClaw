@@ -1,12 +1,14 @@
 /**
  * EvoClaw 特定工具 — 阶段 3 注入
- * 提供记忆搜索、记忆详情、知识图谱查询等 Agent 可用工具
+ * 提供记忆搜索、记忆详情、知识图谱查询、Web 搜索/抓取等 Agent 可用工具
  */
 
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryStore } from '../memory/memory-store.js';
 import type { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
+import { createWebSearchTool } from './web-search.js';
+import { createWebFetchTool } from './web-fetch.js';
 
 /** 创建 EvoClaw 工具集 */
 export function createEvoClawTools(deps: {
@@ -14,10 +16,21 @@ export function createEvoClawTools(deps: {
   memoryStore: MemoryStore;
   knowledgeGraph: KnowledgeGraphStore;
   agentId: string;
+  /** Brave Search API Key（可选，有值时注入 web_search 工具） */
+  braveApiKey?: string;
 }): ToolDefinition[] {
-  const { searcher, memoryStore, knowledgeGraph, agentId } = deps;
+  const { searcher, memoryStore, knowledgeGraph, agentId, braveApiKey } = deps;
 
-  return [
+  const tools: ToolDefinition[] = [];
+
+  // Web 工具（无条件注入 web_fetch，条件注入 web_search）
+  if (braveApiKey) {
+    tools.push(createWebSearchTool({ braveApiKey }));
+  }
+  tools.push(createWebFetchTool());
+
+  // 记忆和知识图谱工具
+  tools.push(
     {
       name: 'memory_search',
       description: '搜索 Agent 的记忆库，返回与查询相关的记忆片段。用于回忆用户偏好、历史事件、之前的对话要点等。',
@@ -94,5 +107,7 @@ export function createEvoClawTools(deps: {
         return `找到 ${relations.length} 条关系：\n${formatted}`;
       },
     },
-  ];
+  );
+
+  return tools;
 }

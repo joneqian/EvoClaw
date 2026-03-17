@@ -14,6 +14,9 @@ import { sessionRouterPlugin } from '../context/plugins/session-router.js';
 import { resolveModel } from '../provider/model-resolver.js';
 import { generateSessionKey } from '../routing/session-key.js';
 import { setToolInjectorConfig, getInjectedTools } from '../bridge/tool-injector.js';
+import type { ToolDefinition } from '../bridge/tool-injector.js';
+import { createWebSearchTool } from '../tools/web-search.js';
+import { createWebFetchTool } from '../tools/web-fetch.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('chat');
@@ -292,8 +295,14 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
       if (content) workspaceFiles[file] = content;
     }
 
-    // 配置工具注入
-    setToolInjectorConfig({ agentId });
+    // 构建增强工具集（Web 工具）
+    const braveApiKey = configManager?.getBraveApiKey() ?? '';
+    const webTools: ToolDefinition[] = [];
+    if (braveApiKey) webTools.push(createWebSearchTool({ braveApiKey }));
+    webTools.push(createWebFetchTool());
+
+    // 配置工具注入（合并 web 工具到 evoClawTools）
+    setToolInjectorConfig({ agentId, evoClawTools: webTools });
     const tools = getInjectedTools();
 
     const runConfig: AgentRunConfig = {

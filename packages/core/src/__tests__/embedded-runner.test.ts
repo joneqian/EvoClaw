@@ -27,16 +27,22 @@ function makeConfig(overrides: Partial<AgentRunConfig> = {}): AgentRunConfig {
 }
 
 describe('buildSystemPrompt', () => {
-  it('空工作区和空 systemPrompt 应返回空字符串', () => {
+  it('空工作区和空 systemPrompt 应包含安全宪法等核心段落', () => {
     const config = makeConfig();
     const result = buildSystemPrompt(config);
-    expect(result).toBe('');
+    // 模块化提示始终包含核心段落
+    expect(result).toContain('<safety>');
+    expect(result).toContain('<runtime>');
+    expect(result).toContain('<memory_recall>');
+    expect(result).toContain('<tool_usage>');
+    expect(result).toContain('<silent_reply>');
   });
 
-  it('仅有 systemPrompt 时应返回 systemPrompt', () => {
+  it('systemPrompt 应作为自定义段落附加', () => {
     const config = makeConfig({ systemPrompt: '你是一个助手' });
     const result = buildSystemPrompt(config);
-    expect(result).toBe('你是一个助手');
+    expect(result).toContain('你是一个助手');
+    expect(result).toContain('<safety>');
   });
 
   it('工作区文件应按 SOUL → IDENTITY → AGENTS → systemPrompt 顺序拼接', () => {
@@ -50,26 +56,25 @@ describe('buildSystemPrompt', () => {
     });
     const result = buildSystemPrompt(config);
 
-    // 验证顺序
+    // 验证顺序：安全 < 运行时 < 人格 < 身份 < 规程 < 自定义
+    const safetyIdx = result.indexOf('<safety>');
     const soulIdx = result.indexOf('# 灵魂');
     const identityIdx = result.indexOf('# 身份');
     const agentsIdx = result.indexOf('# 规程');
     const extraIdx = result.indexOf('额外指令');
 
+    expect(safetyIdx).toBeLessThan(soulIdx);
     expect(soulIdx).toBeLessThan(identityIdx);
     expect(identityIdx).toBeLessThan(agentsIdx);
     expect(agentsIdx).toBeLessThan(extraIdx);
   });
 
-  it('工作区文件之间应使用分隔符', () => {
-    const config = makeConfig({
-      workspaceFiles: {
-        'SOUL.md': '灵魂内容',
-        'IDENTITY.md': '身份内容',
-      },
-    });
+  it('包含运行时信息', () => {
+    const config = makeConfig();
     const result = buildSystemPrompt(config);
-    expect(result).toContain('---');
+    expect(result).toContain('test-agent');
+    expect(result).toContain('测试助手');
+    expect(result).toContain('openai/gpt-4o-mini');
   });
 
   it('只包含存在的工作区文件', () => {
@@ -80,8 +85,10 @@ describe('buildSystemPrompt', () => {
       },
     });
     const result = buildSystemPrompt(config);
-    expect(result).toBe('灵魂内容');
-    expect(result).not.toContain('---');
+    expect(result).toContain('灵魂内容');
+    expect(result).toContain('<personality>');
+    expect(result).not.toContain('<identity>');
+    expect(result).not.toContain('<operating_procedures>');
   });
 });
 

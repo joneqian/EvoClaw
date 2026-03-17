@@ -67,6 +67,8 @@ export interface ModelReference {
 export interface ConfigValidation {
   valid: boolean;
   missing: string[];
+  /** 非致命警告（如 embedding 配置不完整），不影响 valid */
+  warnings?: string[];
 }
 
 /** 解析 "providerId/modelId" 格式的模型引用 */

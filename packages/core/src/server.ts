@@ -181,6 +181,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       ...(validation && !validation.valid
         ? { missing: validation.missing }
         : {}),
+      ...(validation?.warnings?.length
+        ? { warnings: validation.warnings }
+        : {}),
     });
   });
 

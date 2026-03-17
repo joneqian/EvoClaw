@@ -121,7 +121,7 @@ describe('ConfigManager', () => {
     expect(result.missing.some(m => m.includes('apiKey'))).toBe(true);
   });
 
-  it('validate embedding 缺少 dimension 应报错', () => {
+  it('validate embedding 缺少 dimension 应产生 warning 但不影响 valid', () => {
     const [cm] = createManager();
     cm.updateConfig({
       models: {
@@ -139,8 +139,9 @@ describe('ConfigManager', () => {
       },
     });
     const result = cm.validate();
-    expect(result.valid).toBe(false);
-    expect(result.missing.some(m => m.includes('dimension'))).toBe(true);
+    // embedding 缺 dimension 是 warning，不应阻止启动
+    expect(result.valid).toBe(true);
+    expect(result.warnings?.some(w => w.includes('dimension'))).toBe(true);
   });
 
   it('getDefaultModelRef 应解析 provider/modelId', () => {

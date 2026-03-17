@@ -104,28 +104,30 @@ export class ConfigManager {
       }
     }
 
-    // embedding 是可选的，但配置了就要完整
+    // embedding 是可选的 — 配置不完整只记录 warning，不影响 valid 判断
+    // （缺 dimension 不应阻止应用启动，只影响向量搜索功能）
+    const warnings: string[] = [];
     if (models.embedding) {
       const ref = parseModelRef(models.embedding);
       if (!ref) {
-        missing.push('models.embedding (格式应为 provider/modelId)');
+        warnings.push('models.embedding (格式应为 provider/modelId)');
       } else {
         const provider = models.providers?.[ref.provider];
         if (!provider) {
-          missing.push(`models.providers.${ref.provider}`);
+          warnings.push(`models.providers.${ref.provider} (embedding provider 未配置)`);
         } else {
-          if (!provider.apiKey) missing.push(`models.providers.${ref.provider}.apiKey`);
+          if (!provider.apiKey) warnings.push(`models.providers.${ref.provider}.apiKey (embedding)`);
           const model = provider.models.find(m => m.id === ref.modelId);
           if (!model) {
-            missing.push(`models.providers.${ref.provider}.models[${ref.modelId}]`);
+            warnings.push(`models.providers.${ref.provider}.models[${ref.modelId}] (embedding 模型未找到)`);
           } else if (!model.dimension) {
-            missing.push(`models.providers.${ref.provider}.models[${ref.modelId}].dimension`);
+            warnings.push(`models.providers.${ref.provider}.models[${ref.modelId}].dimension (embedding 维度未配置)`);
           }
         }
       }
     }
 
-    return { valid: missing.length === 0, missing };
+    return { valid: missing.length === 0, missing, warnings };
   }
 
   // ─── 便捷方法 ───

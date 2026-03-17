@@ -16,6 +16,42 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ProviderConfig } from '@evoclaw/shared';
 
+/** 已知 Embedding 模型维度速查表 — 用于自动补全 dimension */
+const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
+  // OpenAI
+  'text-embedding-3-small': 1536,
+  'text-embedding-3-large': 3072,
+  'text-embedding-ada-002': 1536,
+  // Qwen (通义千问)
+  'text-embedding-v1': 1536,
+  'text-embedding-v2': 1536,
+  'text-embedding-v3': 1024,
+  'text-embedding-v4': 1024,
+  // GLM (智谱)
+  'embedding-2': 1024,
+  'embedding-3': 2048,
+  // Doubao (豆包)
+  'doubao-embedding': 1024,
+  'doubao-embedding-large': 1024,
+  // Cohere
+  'embed-english-v3.0': 1024,
+  'embed-multilingual-v3.0': 1024,
+  // Voyage
+  'voyage-3': 1024,
+  'voyage-3-lite': 512,
+};
+
+/** 根据模型 ID 猜测 embedding dimension */
+function guessEmbeddingDimension(modelId: string): number | undefined {
+  // 精确匹配
+  if (KNOWN_EMBEDDING_DIMENSIONS[modelId]) return KNOWN_EMBEDDING_DIMENSIONS[modelId];
+  // 前缀匹配（处理带日期后缀的版本号）
+  for (const [key, dim] of Object.entries(KNOWN_EMBEDDING_DIMENSIONS)) {
+    if (modelId.startsWith(key)) return dim;
+  }
+  return undefined;
+}
+
 /** PI ModelRegistry 模型信息 */
 interface PIModelInfo {
   id: string;
@@ -472,6 +508,21 @@ export function createProviderRoutes(
     const body = await c.req.json<{ provider: string; modelId: string }>();
 
     if (configManager) {
+      // 检查模型是否有 dimension，没有则尝试自动补全
+      const provider = configManager.getProvider(body.provider);
+      if (provider) {
+        const model = provider.models.find(m => m.id === body.modelId);
+        if (model && !model.dimension) {
+          const autoDim = guessEmbeddingDimension(body.modelId);
+          if (autoDim) {
+            model.dimension = autoDim;
+            configManager.setProvider(body.provider, provider);
+          } else {
+            return c.json({ success: false, error: '该 Embedding 模型缺少向量维度（dimension），请先在模型列表中设置' }, 400);
+          }
+        }
+      }
+
       configManager.setEmbeddingModelRef(body.provider, body.modelId);
     }
 

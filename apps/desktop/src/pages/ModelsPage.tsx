@@ -180,6 +180,11 @@ function ProviderCard({
     const name = newModelName.trim() || id;
     const isEmb = newModelType === 'emb';
     const dim = isEmb && newModelDimension.trim() ? Number(newModelDimension.trim()) : undefined;
+    // Embedding 模型必须有 dimension
+    if (isEmb && !dim) {
+      showToast('Embedding 模型必须填写向量维度', 'error');
+      return;
+    }
     const updatedModels = [
       ...provider.models,
       {
@@ -472,7 +477,7 @@ function ProviderCard({
                   <input
                     value={newModelDimension}
                     onChange={(e) => setNewModelDimension(e.target.value.replace(/\D/g, ''))}
-                    placeholder="向量维度（可选，如 1536）"
+                    placeholder="向量维度（必填，如 1536/1024/768）"
                     className="w-full px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg
                       bg-white dark:bg-slate-700 text-slate-900 dark:text-white
                       focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
@@ -481,7 +486,7 @@ function ProviderCard({
                 )}
                 <button
                   onClick={handleAddModel}
-                  disabled={!newModelId.trim()}
+                  disabled={!newModelId.trim() || (newModelType === 'emb' && !newModelDimension.trim())}
                   className="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand text-white
                     hover:bg-brand-active disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >

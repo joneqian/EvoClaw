@@ -207,7 +207,10 @@ function ProviderCard({
         baseUrl: provider.baseUrl,
         apiKey: '___KEEP___',
         api: provider.api,
-        models: updatedModels.map((m) => ({ id: m.id, name: m.name })),
+        models: updatedModels.map((m) => ({
+          id: m.id, name: m.name,
+          ...(m.dimension ? { dimension: m.dimension } : {}),
+        })),
       });
       setNewModelId('');
       setNewModelName('');
@@ -219,7 +222,7 @@ function ProviderCard({
     } catch (err) {
       showToast(err instanceof Error ? err.message : '添加失败', 'error');
     }
-  }, [newModelId, newModelName, provider, showToast, onRefresh]);
+  }, [newModelId, newModelName, newModelType, newModelDimension, provider, showToast, onRefresh]);
 
   /** 切换 API Key 明文显示 */
   const handleToggleApiKey = useCallback(async () => {

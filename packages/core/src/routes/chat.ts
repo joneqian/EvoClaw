@@ -191,6 +191,30 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
     return c.json({ messages });
   });
 
+  /** DELETE /:agentId/conversations — 删除某个会话及关联数据 */
+  app.delete('/:agentId/conversations', async (c) => {
+    const agentId = c.req.param('agentId');
+    const sessionKey = c.req.query('sessionKey');
+
+    if (!sessionKey) {
+      return c.json({ error: '缺少 sessionKey 参数' }, 400);
+    }
+
+    // 删除对话消息
+    store.run(
+      `DELETE FROM conversation_log WHERE agent_id = ? AND session_key = ?`,
+      agentId, sessionKey,
+    );
+    // 删除该会话的工具审计记录
+    store.run(
+      `DELETE FROM tool_audit_log WHERE agent_id = ? AND session_key = ?`,
+      agentId, sessionKey,
+    );
+    // 注意：memory_units.source_session_key 不删除 — 记忆属于 Agent 长期积累
+
+    return c.json({ success: true });
+  });
+
   app.post('/:agentId/send', async (c) => {
     const agentId = c.req.param('agentId');
     const body = await c.req.json<{ message?: string; sessionKey?: string }>().catch(() => ({}));

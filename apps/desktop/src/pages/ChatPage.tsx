@@ -4,7 +4,7 @@ import { useChatStore, type Message, type ToolCall } from '../stores/chat-store'
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 import { useAppStore } from '../stores/app-store';
-import { get } from '../lib/api';
+import { get, del } from '../lib/api';
 
 /** 生成简单的唯一 ID */
 function uid(): string {
@@ -54,6 +54,7 @@ function ConversationListView({
 }) {
   const [conversations, setConversations] = useState<RecentConversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<RecentConversation | null>(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -134,22 +135,57 @@ function ConversationListView({
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
             {filtered.map((conv) => (
-              <button
+              <div
                 key={conv.sessionKey}
-                onClick={() => onSelectConversation(conv.agentId, conv.sessionKey)}
-                className="w-full text-left py-3.5 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                className="flex items-center py-3.5 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
               >
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                  {conv.title || '新对话'}
-                </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Last message {formatRelativeTime(conv.lastAt)}
-                </p>
-              </button>
+                <button
+                  onClick={() => onSelectConversation(conv.agentId, conv.sessionKey)}
+                  className="flex-1 text-left min-w-0"
+                >
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                    {conv.title || '新对话'}
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                    {conv.agentName} · {formatRelativeTime(conv.lastAt)}
+                  </p>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget(conv);
+                  }}
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg
+                    text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100
+                    hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                  title="删除对话"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* 删除确认弹窗 */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="删除对话"
+        message={`确定删除与 ${deleteTarget?.agentName ?? ''} 的对话「${deleteTarget?.title ?? ''}」吗？消息记录将被永久删除。`}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await del(`/chat/${deleteTarget.agentId}/conversations?sessionKey=${encodeURIComponent(deleteTarget.sessionKey)}`);
+            setConversations(prev => prev.filter(c => c.sessionKey !== deleteTarget.sessionKey));
+            window.dispatchEvent(new Event('evoclaw:conversations-changed'));
+          } catch { /* ignore */ }
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -240,8 +276,10 @@ function ChatView() {
   const { sidecarConnected } = useAppStore();
 
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hasSentPending = useRef(false);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
@@ -264,8 +302,17 @@ function ChatView() {
 
   /** 发送消息 */
   const sendMessage = useCallback(async (overrideInput?: string) => {
-    const text = overrideInput ?? input.trim();
-    if (!currentAgentId || !currentSessionKey || !text || isStreaming) return;
+    const rawText = overrideInput ?? input.trim();
+    if (!currentAgentId || !currentSessionKey || isStreaming) return;
+
+    // 构建消息文本：附件路径 + 用户输入
+    const attachParts = attachments.map(f => {
+      // Tauri/Electron 的 File 对象通常有 path 属性
+      const filePath = (f as any).path ?? f.name;
+      return `[附件: ${filePath}]`;
+    });
+    const text = [...attachParts, rawText].filter(Boolean).join('\n');
+    if (!text) return;
 
     const userMsg: Message = {
       id: uid(),
@@ -274,7 +321,10 @@ function ChatView() {
       createdAt: new Date().toISOString(),
     };
     addMessage(userMsg);
-    if (!overrideInput) setInput('');
+    if (!overrideInput) {
+      setInput('');
+      setAttachments([]);
+    }
 
     const assistantMsg: Message = {
       id: uid(),
@@ -350,15 +400,18 @@ function ChatView() {
                 case 'text_delta':
                   appendToLastMessage(payload.delta ?? payload.text ?? '');
                   break;
-                case 'tool_start':
-                  toolCalls.push({ name: payload.name ?? '未知工具', status: 'running' });
+                case 'tool_start': {
+                  const toolName = payload.toolName ?? payload.name ?? '未知工具';
+                  toolCalls.push({ name: toolName, status: 'running' });
                   updateLastMessageToolCalls([...toolCalls]);
                   break;
+                }
                 case 'tool_end': {
-                  const tc = toolCalls.find((t) => t.name === payload.name);
+                  const endName = payload.toolName ?? payload.name;
+                  const tc = toolCalls.find((t) => t.name === endName && t.status === 'running');
                   if (tc) {
-                    tc.status = payload.error ? 'error' : 'done';
-                    tc.result = payload.result;
+                    tc.status = payload.isError ? 'error' : 'done';
+                    tc.result = payload.toolResult ?? payload.result;
                     updateLastMessageToolCalls([...toolCalls]);
                   }
                   break;
@@ -384,7 +437,7 @@ function ChatView() {
       if (currentAgentId) fetchConversations(currentAgentId);
     }
   }, [
-    currentAgentId, currentSessionKey, input, isStreaming,
+    currentAgentId, currentSessionKey, input, attachments, isStreaming,
     addMessage, appendToLastMessage, updateLastMessageToolCalls,
     setStreaming, fetchConversations,
   ]);
@@ -449,9 +502,9 @@ function ChatView() {
             </div>
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto space-y-4">
+          <div className="mx-auto px-6 space-y-4">
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble key={msg.id} message={msg} agentName={currentAgent?.name} />
             ))}
             {isStreaming && (
               <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 text-xs pl-2">
@@ -468,30 +521,88 @@ function ChatView() {
         )}
       </div>
 
-      {/* 输入区域 */}
-      <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shrink-0">
-        <div className="max-w-2xl mx-auto flex gap-2 items-end">
+      {/* 输入区域 — Claude 风格：统一容器，附件卡片在内部上方 */}
+      <div className="px-6 pb-4 pt-2 shrink-0">
+        <div className="mx-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden">
+          {/* 附件卡片区 */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {attachments.map((file, i) => (
+                <div key={i} className="group relative w-[160px] rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 p-3 hover:border-brand/40 transition-colors">
+                  {/* 删除按钮 */}
+                  <button
+                    onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-400 dark:bg-slate-500 text-white text-xs
+                      flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
+                  >×</button>
+                  {/* 文件名 */}
+                  <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate mb-2">{file.name}</p>
+                  {/* 文件类型标签 */}
+                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400">
+                    {getFileExtLabel(file.name)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 文本输入 */}
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            placeholder="回复..."
             rows={1}
-            className="flex-1 resize-none rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm
-              bg-white dark:bg-slate-700 text-slate-900 dark:text-white
-              focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-              placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            className="w-full resize-none px-4 py-3 text-sm bg-transparent text-slate-900 dark:text-white
+              focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
-          <button
-            onClick={() => sendMessage()}
-            disabled={isStreaming || !input.trim()}
-            className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium text-white
-              bg-brand hover:bg-brand-hover transition-colors
-              disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            发送
-          </button>
+
+          {/* 底部操作栏：+ 按钮 ... 发送按钮 */}
+          <div className="flex items-center justify-between px-3 pb-2.5">
+            {/* 左侧：添加附件 */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx,.xls,.xlsx"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const files = e.target.files;
+                if (files && files.length > 0) {
+                  setAttachments(prev => [...prev, ...Array.from(files)]);
+                }
+                e.target.value = '';
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-500
+                hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition-colors
+                disabled:opacity-40 disabled:cursor-not-allowed"
+              title="添加附件"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+
+            {/* 右侧：发送按钮 */}
+            <button
+              onClick={() => sendMessage()}
+              disabled={isStreaming || (!input.trim() && attachments.length === 0)}
+              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
+                isStreaming || (!input.trim() && attachments.length === 0)
+                  ? 'bg-slate-200 dark:bg-slate-600 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                  : 'bg-brand text-white hover:bg-brand-hover'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -551,41 +662,101 @@ export default function ChatPage() {
   );
 }
 
+/** 确认弹窗 */
+function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }: {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-[340px] p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1.5">{title}</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600
+              text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+          >取消</button>
+          <button
+            onClick={onConfirm}
+            className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+          >删除</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 文件扩展名标签 */
+function getFileExtLabel(name: string): string {
+  const ext = name.split('.').pop()?.toUpperCase() ?? '';
+  return ext || 'FILE';
+}
+
 /** 单条消息气泡组件 */
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, agentName }: { message: Message; agentName?: string }) {
   const isUser = message.role === 'user';
+  const hasContent = !!message.content;
+  const hasTools = message.toolCalls && message.toolCalls.length > 0;
+  const isEmpty = !isUser && !hasContent && !hasTools;
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-          isUser
-            ? 'bg-brand text-white rounded-br-sm'
-            : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 rounded-bl-sm shadow-sm'
-        }`}
-      >
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mb-2 space-y-1">
-            {message.toolCalls.map((tc, i) => (
-              <div
-                key={i}
-                className={`text-xs px-2 py-1 rounded ${
-                  tc.status === 'running'
-                    ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
-                    : tc.status === 'error'
-                      ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                      : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                }`}
-              >
-                {tc.status === 'running' ? '🔧 正在执行' : tc.status === 'error' ? '❌' : '✅'}{' '}
-                {tc.name}
-                {tc.result && <span className="ml-1 opacity-70">- {tc.result}</span>}
-              </div>
-            ))}
+    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isEmpty ? 'min-h-0' : ''}`}>
+      {/* 头像 */}
+      <div className="shrink-0 mt-0.5">
+        {isUser ? (
+          <div className="w-8 h-8 rounded-full bg-brand/20 flex items-center justify-center">
+            <span className="text-sm">👤</span>
           </div>
+        ) : (
+          <AgentAvatar name={agentName ?? 'AI'} size="sm" />
         )}
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
       </div>
+
+      {/* 消息体 */}
+      {isEmpty ? (
+        /* streaming 占位：紧凑的思考动画 */
+        <div className="flex items-center gap-1 py-1">
+          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-pulse" />
+          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-pulse [animation-delay:150ms]" />
+          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-pulse [animation-delay:300ms]" />
+        </div>
+      ) : (
+        <div
+          className={`min-w-0 rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
+            isUser
+              ? 'max-w-[75%] bg-brand text-white rounded-br-sm'
+              : 'flex-1 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 rounded-bl-sm shadow-sm'
+          }`}
+        >
+          {hasTools && (
+            <div className={hasContent ? 'mb-2 space-y-1' : 'space-y-1'}>
+              {message.toolCalls!.map((tc, i) => (
+                <div
+                  key={i}
+                  className={`text-xs px-2 py-1 rounded ${
+                    tc.status === 'running'
+                      ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
+                      : tc.status === 'error'
+                        ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                        : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                  }`}
+                >
+                  {tc.status === 'running' ? '🔧 正在执行' : tc.status === 'error' ? '❌' : '✅'}{' '}
+                  {tc.name}
+                  {tc.result && <span className="ml-1 opacity-70">- {String(tc.result).slice(0, 100)}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {hasContent && <div className="whitespace-pre-wrap break-words">{message.content}</div>}
+        </div>
+      )}
     </div>
   );
 }

@@ -320,6 +320,13 @@ export default function App() {
     }
   }, [location.pathname, initState, fetchRecents]);
 
+  // 监听对话删除事件，刷新侧边栏
+  useEffect(() => {
+    const handler = () => fetchRecents();
+    window.addEventListener('evoclaw:conversations-changed', handler);
+    return () => window.removeEventListener('evoclaw:conversations-changed', handler);
+  }, [fetchRecents]);
+
   /** 定期健康检查 */
   const reconnectAttempts = useRef(0);
   useEffect(() => {

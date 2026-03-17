@@ -229,6 +229,16 @@ async function runWithPI(
     `[embedded-runner] 注入工具: ${allTools.map((t) => t.name).join(', ')}`,
   );
 
+  // 拦截 process.exit — PI 框架（CLI 工具出身）可能在 session 完成/dispose 后调用 process.exit()
+  // 在 Sidecar 模式下必须阻止，否则整个 HTTP 服务会被杀死
+  const originalExit = process.exit;
+  let exitIntercepted = false;
+  process.exit = ((code?: number) => {
+    exitIntercepted = true;
+    console.warn(`[embedded-runner] 拦截了 process.exit(${code ?? ''})，Sidecar 模式下忽略`);
+    // 不调用原始 exit，进程继续运行
+  }) as never;
+
   // 通过 createAgentSession 创建完整会话（对标 OpenClaw，启用 compaction/retry）
   const { session } = await piCoding.createAgentSession({
     cwd: process.cwd(),
@@ -392,6 +402,11 @@ async function runWithPI(
   } finally {
     unsubscribe();
     session.dispose();
+    // 恢复原始 process.exit
+    process.exit = originalExit;
+    if (exitIntercepted) {
+      console.log('[embedded-runner] PI 调用期间拦截了 process.exit，进程继续运行');
+    }
   }
 }
 
@@ -648,6 +663,9 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
 - 对于复杂或有风险的操作，先简要说明再执行
 - 工具执行失败时，分析原因并尝试替代方案，而非简单重试
 - 搜索记忆和知识图谱是低成本操作，在不确定时应主动使用
+- 禁止对根目录 / 执行 find 或 ls 等递归搜索，仅在用户主目录 ~ 及其子目录下操作
+- bash 命令应设置合理超时，避免 find 等命令长时间运行（建议加 -maxdepth 3 和 timeout 30）
+- 长时间运行的命令使用 exec_background 工具在后台执行
 </tool_usage>`);
 
   // § 7 沉默回复

@@ -21,6 +21,7 @@ import { createImageTool } from '../tools/image-tool.js';
 import { createPdfTool } from '../tools/pdf-tool.js';
 import { createApplyPatchTool } from '../tools/apply-patch.js';
 import { createSubAgentTools } from '../tools/sub-agent-tools.js';
+import { createExecBackgroundTool, createProcessTool } from '../tools/background-process.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import { createLogger } from '../infrastructure/logger.js';
@@ -316,6 +317,10 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
 
     // 高级编辑工具
     enhancedTools.push(createApplyPatchTool());
+
+    // 进程管理工具
+    enhancedTools.push(createExecBackgroundTool());
+    enhancedTools.push(createProcessTool());
 
     // 子 Agent 工具（需 laneQueue）
     let spawner: SubAgentSpawner | undefined;

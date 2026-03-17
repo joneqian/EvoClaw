@@ -28,6 +28,7 @@ import { ChannelManager } from './channel/channel-manager.js';
 import { DesktopAdapter } from './channel/adapters/desktop.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
+import { createDoctorRoutes } from './routes/doctor.js';
 import {
   createLogger,
   closeLogger,
@@ -228,6 +229,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       app.route('/channel', createChannelRoutes(channelManager));
     }
   }
+
+  // Doctor 自诊断 — 无需 store/agent，始终可用
+  app.route('/doctor', createDoctorRoutes(store, configManager, laneQueue));
 
   // 全局错误处理
   app.onError((err, c) => {

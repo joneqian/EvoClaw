@@ -438,10 +438,12 @@ Skill 注入方式（遵循 PI 渐进式注入模式）
 ```
 packages/core/src/
 ├── agent/
-│   ├── embedded-runner.ts         # PI 嵌入式运行器
+│   ├── embedded-runner.ts         # PI 嵌入式运行器（含多级错误恢复 + 工具安全守卫）✅
 │   ├── agent-manager.ts           # Agent CRUD + 生命周期管理
 │   ├── agent-builder.ts           # 会话式创建引导（生成 SOUL.md 等文件）
 │   ├── lane-queue.ts              # Lane 并发队列
+│   ├── sub-agent-spawner.ts       # 子 Agent 生命周期管理器 ✅
+│   ├── tool-safety.ts             # 工具安全（循环检测 + 结果截断）✅
 │   └── types.ts
 │
 ├── bridge/
@@ -468,6 +470,8 @@ packages/core/src/
 │   ├── pdf-tool.ts                # pdf 工具（双模式：原生 + unpdf 提取）
 │   ├── apply-patch.ts             # apply_patch 工具（多文件统一 diff）
 │   ├── sub-agent-tools.ts         # 子 Agent 工具（spawn/list/kill）
+│   ├── background-process.ts      # 后台进程管理（exec_background/process）✅
+│   ├── provider-direct.ts         # 绕过 PI 直接调用 provider API ✅
 │   ├── sandbox-tools.ts           # 阶段 2: 沙箱感知的 bash/文件工具
 │   ├── channel-tools.ts           # 阶段 4: Channel 操作工具
 │   └── permission-interceptor.ts  # 工具权限拦截器

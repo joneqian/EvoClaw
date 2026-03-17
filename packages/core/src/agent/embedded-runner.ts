@@ -1,6 +1,7 @@
 import os from 'node:os';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
+import { ToolSafetyGuard } from './tool-safety.js';
 
 type EventCallback = (event: RuntimeEvent) => void;
 
@@ -201,12 +202,26 @@ async function runWithPI(
     piCoding.lsTool, // ls
   ];
 
-  // EvoClaw 自定义工具
+  // 工具安全守卫（循环检测 + 结果截断）
+  const toolSafety = new ToolSafetyGuard();
+
+  // EvoClaw 自定义工具（包装 execute 以接入安全守卫）
   const customAgentTools = (config.tools ?? []).map((tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
-    execute: tool.execute,
+    execute: async (args: Record<string, unknown>) => {
+      // 循环检测
+      const check = toolSafety.checkBeforeExecution(tool.name, args);
+      if (check.blocked) {
+        console.warn(`[tool-safety] 阻止工具执行: ${check.reason}`);
+        return `⚠️ ${check.reason}`;
+      }
+      // 执行工具
+      const result = await tool.execute(args);
+      // 结果截断
+      return toolSafety.truncateResult(result);
+    },
   }));
 
   const allTools = [...builtInTools, ...customAgentTools];

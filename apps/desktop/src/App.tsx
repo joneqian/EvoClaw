@@ -146,7 +146,6 @@ const MENU_SECTIONS: MenuSection[] = [
     items: [
       { icon: ICON_PATHS.models, label: '模型管理', path: '/models' },
       { icon: ICON_PATHS.channel, label: 'Channel', path: '/channel' },
-      { icon: ICON_PATHS.skills, label: 'Skill 管理', path: '/skills' },
     ],
   },
   {
@@ -383,6 +382,10 @@ export default function App() {
           <NavLink to="/memory" className={navClassName}>
             <Icon d={ICON_PATHS.memory} className="w-4 h-4 shrink-0" />
             记忆
+          </NavLink>
+          <NavLink to="/skills" className={navClassName}>
+            <Icon d={ICON_PATHS.skills} className="w-4 h-4 shrink-0" />
+            技能商店
           </NavLink>
         </div>
 

@@ -14,6 +14,19 @@ export function createSkillRoutes(skillsBaseDir?: string): Hono {
   const discoverer = new SkillDiscoverer(skillsBaseDir);
   const installer = new SkillInstaller(skillsBaseDir);
 
+  /** GET /browse — 浏览热门/最新技能 */
+  app.get('/browse', async (c) => {
+    const limit = Number(c.req.query('limit') ?? '30');
+    const sort = (c.req.query('sort') ?? 'trending') as 'trending' | 'updated' | 'downloads';
+    try {
+      const results = await discoverer.browse(limit, sort);
+      return c.json({ results });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message, results: [] }, 500);
+    }
+  });
+
   /** POST /search — 搜索 ClawHub + 本地 */
   app.post('/search', async (c) => {
     const body = await c.req.json<{ query: string; limit?: number }>();

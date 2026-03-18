@@ -81,8 +81,10 @@ export class SkillDiscoverer {
       const data = await res.json() as {
         results?: Array<{
           slug: string;
-          name: string;
-          description: string;
+          displayName?: string;
+          name?: string;
+          summary?: string;
+          description?: string;
           version?: string;
           author?: string;
           downloads?: number;
@@ -90,9 +92,9 @@ export class SkillDiscoverer {
       };
 
       const results: SkillSearchResult[] = (data.results ?? []).map(r => ({
-        name: r.name,
+        name: r.displayName ?? r.name ?? r.slug,
         slug: r.slug,
-        description: r.description,
+        description: r.summary ?? r.description ?? '',
         version: r.version,
         author: r.author,
         downloads: r.downloads,
@@ -104,6 +106,53 @@ export class SkillDiscoverer {
       return results;
     } catch {
       // ClawHub 不可用 — 静默降级
+      return [];
+    }
+  }
+
+  /** 浏览 ClawHub 技能列表（热门/最新） */
+  async browse(limit = 30, sort: 'trending' | 'updated' | 'downloads' = 'trending'): Promise<SkillSearchResult[]> {
+    const cacheKey = `clawhub:browse:${sort}:${limit}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.results;
+    }
+
+    try {
+      const url = `${CLAWHUB_API}/skills?limit=${limit}&sort=${sort}&nonSuspiciousOnly=true`;
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!res.ok) return [];
+
+      const data = await res.json() as {
+        items?: Array<{
+          slug: string;
+          displayName?: string;
+          name?: string;
+          summary?: string;
+          description?: string;
+          version?: string;
+          author?: string;
+          downloads?: number;
+        }>;
+      };
+
+      const results: SkillSearchResult[] = (data.items ?? []).map(r => ({
+        name: r.displayName ?? r.name ?? r.slug,
+        slug: r.slug,
+        description: r.summary ?? r.description ?? '',
+        version: r.version,
+        author: r.author,
+        downloads: r.downloads,
+        source: 'clawhub' as const,
+      }));
+
+      this.cache.set(cacheKey, { results, timestamp: Date.now() });
+      return results;
+    } catch {
       return [];
     }
   }

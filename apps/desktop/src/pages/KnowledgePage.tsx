@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
-import AgentAvatar from '../components/AgentAvatar';
+import AgentSelect from '../components/AgentSelect';
 import { get, post, del } from '../lib/api';
 
 /** 知识库文件 */
@@ -191,18 +191,11 @@ export default function KnowledgePage() {
       <div className="px-6 py-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-900">知识库</h2>
-          <select
+          <AgentSelect
+            agents={agents}
             value={selectedAgentId}
-            onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-          >
-            {agents.length === 0 && <option value="">暂无 Agent</option>}
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedAgentId}
+          />
         </div>
 
         {/* 导入表单 */}

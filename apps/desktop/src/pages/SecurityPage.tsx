@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
-import AgentAvatar from '../components/AgentAvatar';
+import AgentSelect from '../components/AgentSelect';
 import { get, del } from '../lib/api';
 
 /** 权限类别显示名称 */
@@ -223,18 +223,11 @@ export default function SecurityPage() {
           </div>
 
           {/* Agent 选择器 */}
-          <select
+          <AgentSelect
+            agents={agents}
             value={selectedAgentId}
-            onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-          >
-            {agents.length === 0 && <option value="">暂无 Agent</option>}
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedAgentId}
+          />
         </div>
 
         {/* Tab 切换 */}

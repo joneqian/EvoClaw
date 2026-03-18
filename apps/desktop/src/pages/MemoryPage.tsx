@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMemoryStore, type MemoryUnit, type SearchResult } from '../stores/memory-store';
 import { useAgentStore } from '../stores/agent-store';
-import AgentAvatar from '../components/AgentAvatar';
+import AgentSelect from '../components/AgentSelect';
 
 /** 分类显示名称和颜色 */
 const CATEGORIES: Record<string, { name: string; color: string }> = {
@@ -298,18 +298,11 @@ export default function MemoryPage() {
           <h2 className="text-lg font-bold text-slate-900">记忆管理</h2>
 
           {/* Agent 选择器 */}
-          <select
+          <AgentSelect
+            agents={agents}
             value={selectedAgentId}
-            onChange={(e) => setSelectedAgentId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
-          >
-            {agents.length === 0 && <option value="">暂无 Agent</option>}
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedAgentId}
+          />
         </div>
 
         {/* 搜索栏 */}

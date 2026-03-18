@@ -21,7 +21,6 @@ export function analyzeQuery(query: string): QueryAnalysis {
   const dateRange = extractDateRange(query);
   const queryType = classifyQuery(query);
   const needsDetail = detectDetailNeed(query);
-
   return { keywords, dateRange, queryType, needsDetail };
 }
 
@@ -32,6 +31,10 @@ const CJK_STOP_WORDS = new Set([
   '自己', '这', '他', '她', '它', '什么', '那', '怎么', '吗', '吧', '呢', '啊',
   '还', '能', '让', '把', '被', '从', '给', '向', '对', '跟', '比', '没', '过',
   '记得', '知道', '觉得', '可以', '应该', '可能', '已经', '正在',
+  // 常见动词短语 — 对记忆搜索无意义
+  '列出', '列出来', '告诉', '帮我', '请问', '名字', '出来', '下面', '上面',
+  '哪些', '那些', '这些', '所有', '全部', '多少', '为什么', '怎样',
+  '显示', '查看', '查询', '搜索', '找到', '找一下',
 ]);
 
 /** 英文停用词 */
@@ -155,3 +158,4 @@ function classifyQuery(query: string): QueryType {
 function detectDetailNeed(query: string): boolean {
   return /详细|具体|详情|展开|全部|完整|detail|full|complete|elaborate|explain/.test(query);
 }
+

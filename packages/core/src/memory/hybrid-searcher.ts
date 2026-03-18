@@ -21,12 +21,28 @@ export interface SearchResult {
   activation: number;
 }
 
+/**
+ * 最低相关性分数阈值 — 低于此分数的结果视为噪音
+ *
+ * finalScore = searchScore × hotness × categoryBoost × correctionBoost
+ * - 高相关（向量cosine≈0.8 + FTS命中 + 活跃）：~0.5-0.7
+ * - 中相关（向量cosine≈0.5，FTS未命中，普通）：~0.12-0.2
+ * - 噪音（向量cosine≈0.3，沾边匹配）：~0.05-0.14
+ *
+ * 0.15 卡在"中等相关"下沿，过滤噪音但保留可能有用的结果
+ * FTS-only 模式分数体系不同（~0.007），不设阈值
+ */
+const MIN_SCORE_WITH_VECTOR = 0.15;
+const MIN_SCORE_FTS_ONLY = 0;
+
 /** 搜索选项 */
 export interface SearchOptions {
   limit?: number;          // 默认 10
   candidateLimit?: number; // Phase 1 候选数量，默认 30
   loadL2?: boolean;        // 强制加载 L2
   visibility?: 'private' | 'shared' | 'channel_only';
+  /** 最低分数阈值（默认 0.15） */
+  minScore?: number;
 }
 
 export class HybridSearcher {
@@ -137,9 +153,15 @@ export class HybridSearcher {
     }
     const deduped = [...mergeKeyMap.values(), ...nonMerge];
 
-    // 排序取 Top-N
+    // 排序 + 分数阈值过滤 + 取 Top-N
     deduped.sort((a, b) => b.finalScore - a.finalScore);
-    const topResults = deduped.slice(0, limit);
+    const defaultMinScore = this.vectorStore.hasEmbeddingFn ? MIN_SCORE_WITH_VECTOR : MIN_SCORE_FTS_ONLY;
+    const minScore = options?.minScore ?? defaultMinScore;
+    const relevant = deduped.filter(r => r.finalScore >= minScore);
+    if (relevant.length < deduped.length) {
+      log.debug(`Phase 2 过滤: ${deduped.length - relevant.length} 条低分噪音 (阈值 ${minScore})`);
+    }
+    const topResults = relevant.slice(0, limit);
 
     // 提升被召回记忆的 activation
     const recalledIds = topResults.map(r => r.memoryId);

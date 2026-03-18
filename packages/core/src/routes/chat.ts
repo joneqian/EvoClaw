@@ -27,8 +27,11 @@ import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryExtractor } from '../memory/memory-extractor.js';
 import { createMemoryRecallPlugin } from '../context/plugins/memory-recall.js';
 import { createMemoryExtractPlugin } from '../context/plugins/memory-extract.js';
+import { createToolRegistryPlugin } from '../context/plugins/tool-registry.js';
+import { createGapDetectionPlugin } from '../context/plugins/gap-detection.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
+import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('chat');
@@ -79,6 +82,7 @@ export function createChatRoutes(
   hybridSearcher?: HybridSearcher,
   memoryExtractor?: MemoryExtractor,
   userMdRenderer?: UserMdRenderer,
+  skillDiscoverer?: SkillDiscoverer,
 ) {
   const app = new Hono();
 
@@ -302,6 +306,10 @@ export function createChatRoutes(
     if (memoryExtractor) {
       contextEngine.register(createMemoryExtractPlugin(memoryExtractor));
     }
+
+    // Skill 系统插件
+    contextEngine.register(createToolRegistryPlugin());                  // Tier 1: <available_skills> 目录注入
+    contextEngine.register(createGapDetectionPlugin(skillDiscoverer));   // afterTurn: 能力缺口检测 + Skill 推荐
 
     // 加载消息历史
     const history = loadMessageHistory(store, agentId, sessionKey);

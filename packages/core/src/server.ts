@@ -39,6 +39,7 @@ import { registerProvider } from './provider/provider-registry.js';
 import { HybridSearcher } from './memory/hybrid-searcher.js';
 import { MemoryExtractor } from './memory/memory-extractor.js';
 import { UserMdRenderer } from './memory/user-md-renderer.js';
+import { SkillDiscoverer } from './skill/skill-discoverer.js';
 import { MemoryStore } from './memory/memory-store.js';
 import { KnowledgeGraphStore } from './memory/knowledge-graph.js';
 import { FtsStore } from './infrastructure/db/fts-store.js';
@@ -93,6 +94,8 @@ export interface CreateAppOptions {
   memoryExtractor?: MemoryExtractor;
   /** USER.md / MEMORY.md 动态渲染器 */
   userMdRenderer?: UserMdRenderer;
+  /** Skill 发现器 */
+  skillDiscoverer?: SkillDiscoverer;
 }
 
 /** 创建 Hono 应用实例 */
@@ -113,6 +116,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     hybridSearcher,
     memoryExtractor,
     userMdRenderer,
+    skillDiscoverer,
   } = options;
 
   const app = new Hono();
@@ -233,7 +237,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -381,6 +385,9 @@ async function main() {
   // USER.md / MEMORY.md 动态渲染器
   const userMdRenderer = new UserMdRenderer(db);
 
+  // Skill 发现器（用于能力缺口检测 + Skill 推荐）
+  const skillDiscoverer = new SkillDiscoverer();
+
   log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
 
   const agentManager = new AgentManager(db);
@@ -410,6 +417,7 @@ async function main() {
     hybridSearcher,
     memoryExtractor,
     userMdRenderer,
+    skillDiscoverer,
   });
 
   // 进程退出时清理

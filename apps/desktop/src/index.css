@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* ─── EvoClaw Design System ─── */
+/* ─── EvoClaw Design System v2 ─── */
 
 @theme {
   /* Brand palette */
@@ -24,23 +24,18 @@
   letter-spacing: -0.011em;
 }
 
+/* 亮色模式：纯白底 */
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #f8fafc; /* slate-50 */
-  color: #0f172a; /* slate-900 */
-}
-
-/* 暗色模式基础背景 */
-.dark body {
-  background-color: #0c1222;
-  color: #e2e8f0; /* slate-200 */
+  background-color: #ffffff;
+  color: #0f172a;
 }
 
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -48,20 +43,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1; /* slate-300 */
+  background: #d1d5db;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8; /* slate-400 */
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #334155; /* slate-700 */
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569; /* slate-600 */
+  background: #9ca3af;
 }
 
 /* macOS 交通灯区域占位 */

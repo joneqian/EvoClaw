@@ -78,11 +78,11 @@ function ConversationListView({
       <div className="max-w-2xl mx-auto px-6 py-6">
         {/* 标题 + 新建按钮 */}
         <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">对话</h1>
+          <h1 className="text-2xl font-bold text-slate-900">对话</h1>
           <button
             onClick={onNewChat}
-            className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600
-              text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200
+              text-slate-500 hover:bg-slate-100 transition-colors"
             title="新建对话"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -101,28 +101,28 @@ function ConversationListView({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索对话..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-xl
-                bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl
+                bg-slate-50 text-slate-900
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                placeholder:text-slate-400"
             />
           </div>
         </div>
 
         {/* 子标题 */}
         <div className="flex items-center gap-2 mb-2 px-1">
-          <span className="text-sm text-slate-500 dark:text-slate-400">你的对话</span>
+          <span className="text-sm text-slate-500">你的对话</span>
         </div>
 
         {/* 对话列表 */}
         {loading ? (
-          <div className="text-center py-16 text-slate-400 dark:text-slate-500">
+          <div className="text-center py-16 text-slate-400">
             <p className="text-sm">加载中...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-4xl mb-3">💬</p>
-            <p className="text-slate-400 dark:text-slate-500 text-sm">
+            <p className="text-slate-400 text-sm">
               {search.trim() ? '没有匹配的对话' : '暂无对话记录'}
             </p>
             {!search.trim() && (
@@ -135,20 +135,20 @@ function ConversationListView({
             )}
           </div>
         ) : (
-          <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          <div className="divide-y divide-slate-100">
             {filtered.map((conv) => (
               <div
                 key={conv.sessionKey}
-                className="flex items-center py-3.5 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
+                className="flex items-center py-3.5 px-1 hover:bg-slate-50 transition-colors group"
               >
                 <button
                   onClick={() => onSelectConversation(conv.agentId, conv.sessionKey)}
                   className="flex-1 text-left min-w-0"
                 >
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                  <p className="text-sm font-medium text-slate-800 truncate">
                     {conv.title || '新对话'}
                   </p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5">
                     {conv.agentName} · {formatRelativeTime(conv.lastAt)}
                   </p>
                 </button>
@@ -158,8 +158,8 @@ function ConversationListView({
                     setDeleteTarget(conv);
                   }}
                   className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg
-                    text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100
-                    hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                    text-slate-300 opacity-0 group-hover:opacity-100
+                    hover:text-red-500 hover:bg-red-50 transition-all"
                   title="删除对话"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -209,13 +209,13 @@ function AgentPicker({
   return (
     <div className="h-full flex flex-col items-center justify-center">
       <div className="w-full max-w-md">
-        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-4 text-center">
+        <h3 className="text-lg font-bold text-slate-800 mb-4 text-center">
           选择 Agent 开始对话
         </h3>
         {agents.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-3xl mb-3">🐾</p>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mb-4">还没有 Agent</p>
+            <p className="text-sm text-slate-400 mb-4">还没有 Agent</p>
             <button
               onClick={() => navigate('/agents')}
               className="text-sm text-brand hover:text-brand-hover"
@@ -229,17 +229,17 @@ function AgentPicker({
               <button
                 key={agent.id}
                 onClick={() => onSelect(agent.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700
-                  bg-white dark:bg-slate-800 hover:border-brand/40 hover:shadow-sm transition-all text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200
+                  bg-white hover:border-brand/40 hover:shadow-sm transition-all text-left"
               >
                 <AgentAvatar name={agent.name} size="md" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{agent.name}</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                  <p className="text-sm font-medium text-slate-800">{agent.name}</p>
+                  <p className="text-xs text-slate-400">
                     {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
                   </p>
                 </div>
-                <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
               </button>
@@ -248,7 +248,7 @@ function AgentPicker({
         )}
         <button
           onClick={onCancel}
-          className="mt-4 w-full text-center text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+          className="mt-4 w-full text-center text-sm text-slate-400 hover:text-slate-600"
         >
           返回对话列表
         </button>
@@ -464,12 +464,12 @@ function ChatView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-900 h-full">
+    <div className="flex-1 flex flex-col bg-white h-full">
       {/* 头部 */}
-      <div className="h-12 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center px-4 gap-3 shrink-0">
+      <div className="h-12 border-b border-slate-200/60 bg-white flex items-center px-4 gap-3 shrink-0">
         <button
           onClick={() => setCurrentAgent(null)}
-          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+          className="text-slate-400 hover:text-slate-600 transition-colors"
           title="返回对话列表"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -479,7 +479,7 @@ function ChatView() {
         {currentAgent && (
           <>
             <AgentAvatar name={currentAgent.name} size="sm" />
-            <span className="font-medium text-sm dark:text-white">{currentAgent.name}</span>
+            <span className="font-medium text-sm">{currentAgent.name}</span>
           </>
         )}
         {!sidecarConnected && (
@@ -491,13 +491,13 @@ function ChatView() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {loadingMessages ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-slate-400 dark:text-slate-500">
+            <div className="text-center text-slate-400">
               <p className="text-sm">加载历史消息...</p>
             </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-slate-400 dark:text-slate-500">
+            <div className="text-center text-slate-400">
               {currentAgent ? <AgentAvatar name={currentAgent.name} size="xl" className="mx-auto mb-3" /> : <p className="text-3xl mb-3">💬</p>}
               <p className="text-sm">
                 与 <span className="font-medium">{currentAgent?.name ?? 'Agent'}</span> 开始对话
@@ -510,7 +510,7 @@ function ChatView() {
               <MessageBubble key={msg.id} message={msg} agentName={currentAgent?.name} />
             ))}
             {isStreaming && (
-              <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 text-xs pl-2">
+              <div className="flex items-center gap-2 text-slate-400 text-xs pl-2">
                 <span className="flex gap-0.5">
                   <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
                   <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
@@ -526,22 +526,22 @@ function ChatView() {
 
       {/* 输入区域 — Claude 风格：统一容器，附件卡片在内部上方 */}
       <div className="px-6 pb-4 pt-2 shrink-0">
-        <div className="mx-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden">
+        <div className="mx-auto rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
           {/* 附件卡片区 */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-4 pt-3">
               {attachments.map((file, i) => (
-                <div key={i} className="group relative w-[160px] rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 p-3 hover:border-brand/40 transition-colors">
+                <div key={i} className="group relative w-[160px] rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-brand/40 transition-colors">
                   {/* 删除按钮 */}
                   <button
                     onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-400 dark:bg-slate-500 text-white text-xs
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-400 text-white text-xs
                       flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
                   >×</button>
                   {/* 文件名 */}
-                  <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate mb-2">{file.name}</p>
+                  <p className="text-xs font-medium text-slate-700 truncate mb-2">{file.name}</p>
                   {/* 文件类型标签 */}
-                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400">
+                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-500">
                     {getFileExtLabel(file.name)}
                   </span>
                 </div>
@@ -557,8 +557,8 @@ function ChatView() {
             onKeyDown={handleKeyDown}
             placeholder="回复..."
             rows={1}
-            className="w-full resize-none px-4 py-3 text-sm bg-transparent text-slate-900 dark:text-white
-              focus:outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
+            className="w-full resize-none px-4 py-3 text-sm bg-transparent text-slate-900
+              focus:outline-none placeholder:text-slate-400"
           />
 
           {/* 底部操作栏：+ 按钮 ... 发送按钮 */}
@@ -581,8 +581,8 @@ function ChatView() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isStreaming}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-500
-                hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition-colors
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400
+                hover:bg-slate-100 hover:text-slate-600 transition-colors
                 disabled:opacity-40 disabled:cursor-not-allowed"
               title="添加附件"
             >
@@ -597,7 +597,7 @@ function ChatView() {
               disabled={isStreaming || (!input.trim() && attachments.length === 0)}
               className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
                 isStreaming || (!input.trim() && attachments.length === 0)
-                  ? 'bg-slate-200 dark:bg-slate-600 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   : 'bg-brand text-white hover:bg-brand-hover'
               }`}
             >
@@ -676,14 +676,14 @@ function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }: {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-[340px] p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1.5">{title}</h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">{message}</p>
+      <div className="bg-white rounded-xl shadow-xl w-[340px] p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-slate-900 mb-1.5">{title}</h3>
+        <p className="text-xs text-slate-500 mb-5">{message}</p>
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-600
-              text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200
+              text-slate-600 hover:bg-slate-50 transition-colors"
           >取消</button>
           <button
             onClick={onConfirm}
@@ -740,7 +740,7 @@ function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasCon
       {!showAll && hiddenCount > 0 && (
         <button
           onClick={() => setExpanded(true)}
-          className="text-xs text-slate-400 dark:text-slate-500 hover:text-brand dark:hover:text-brand px-2 py-0.5 transition-colors"
+          className="text-xs text-slate-400 hover:text-brand px-2 py-0.5 transition-colors"
         >
           ... 还有 {hiddenCount} 个工具调用，点击展开
         </button>
@@ -748,7 +748,7 @@ function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasCon
       {expanded && toolCalls.length > MAX_VISIBLE_TOOLS && (
         <button
           onClick={() => setExpanded(false)}
-          className="text-xs text-slate-400 dark:text-slate-500 hover:text-brand dark:hover:text-brand px-2 py-0.5 transition-colors"
+          className="text-xs text-slate-400 hover:text-brand px-2 py-0.5 transition-colors"
         >
           收起
         </button>
@@ -757,20 +757,43 @@ function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasCon
   );
 }
 
+/** 工具名称美化映射 */
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  bash: 'Exec', read: 'Read', write: 'Write', edit: 'Edit',
+  grep: 'Grep', find: 'Find', ls: 'List',
+  web_search: 'Search', web_fetch: 'Fetch',
+  image: 'Image', pdf: 'PDF',
+  apply_patch: 'Patch', exec_background: 'Background',
+  process: 'Process', memory_search: 'Memory',
+  spawn_agent: 'Spawn', list_agents: 'Agents', kill_agent: 'Kill',
+};
+
 function ToolCallItem({ tc }: { tc: ToolCall }) {
+  const displayName = TOOL_DISPLAY_NAMES[tc.name] ?? tc.name;
+  const statusIcon = tc.status === 'running'
+    ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+    : tc.status === 'error'
+      ? <span className="text-red-500 text-xs font-bold">!</span>
+      : <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
+
   return (
-    <div
-      className={`text-xs px-2 py-1 rounded ${
-        tc.status === 'running'
-          ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
-          : tc.status === 'error'
-            ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-            : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-      }`}
-    >
-      {tc.status === 'running' ? '🔧' : tc.status === 'error' ? '❌' : '✅'}{' '}
-      {tc.name}
-      {tc.summary && <span className="ml-1 opacity-70">{tc.summary}</span>}
+    <div className="rounded-lg border border-slate-100 bg-slate-50/50 overflow-hidden">
+      {/* 标题行 */}
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z" />
+        </svg>
+        <span className="text-xs font-semibold text-slate-700 flex-1">{displayName}</span>
+        <span className="shrink-0">{statusIcon}</span>
+      </div>
+      {/* 命令/摘要 */}
+      {tc.summary && (
+        <div className="px-3 pb-2">
+          <code className="text-[11px] text-slate-500 font-mono break-all leading-relaxed">
+            {tc.summary}
+          </code>
+        </div>
+      )}
     </div>
   );
 }
@@ -783,7 +806,7 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
   const isEmpty = !isUser && !hasContent && !hasTools;
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isEmpty ? 'min-h-0' : ''}`}>
+    <div className={`group flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isEmpty ? 'min-h-0' : ''}`}>
       {/* 头像 */}
       <div className="shrink-0 mt-0.5">
         {isUser ? (
@@ -796,38 +819,83 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
       </div>
 
       {/* 消息体 */}
-      {isEmpty ? (
-        /* streaming 占位：紧凑的思考动画 */
-        <div className="flex items-center gap-1 py-1">
-          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-pulse" />
-          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-pulse [animation-delay:150ms]" />
-          <span className="w-1.5 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full animate-pulse [animation-delay:300ms]" />
-        </div>
-      ) : (
-        <div
-          className={`min-w-0 rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
-            isUser
-              ? 'max-w-[75%] bg-brand text-white rounded-br-sm'
-              : 'flex-1 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 rounded-bl-sm shadow-sm'
-          }`}
-        >
-          {hasTools && (
-            <ToolCallList toolCalls={message.toolCalls!} hasContent={hasContent} />
-          )}
-          {hasContent && (
-            isUser
-              ? <div className="whitespace-pre-wrap break-words">{message.content}</div>
-              : <div className="prose prose-sm dark:prose-invert max-w-none break-words
-                  prose-p:my-1.5 prose-headings:my-2 prose-li:my-0.5
-                  prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-pre:rounded-lg prose-pre:text-xs
-                  prose-code:text-pink-500 dark:prose-code:text-pink-400 prose-code:before:content-none prose-code:after:content-none
-                  prose-a:text-brand prose-a:no-underline hover:prose-a:underline
-                  prose-table:text-xs prose-th:px-2 prose-td:px-2">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-                </div>
-          )}
-        </div>
-      )}
+      <div className="min-w-0 flex-1">
+        {isEmpty ? (
+          /* streaming 占位 */
+          <div className="flex items-center gap-1 py-1">
+            <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse" />
+            <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse [animation-delay:150ms]" />
+            <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse [animation-delay:300ms]" />
+          </div>
+        ) : (
+          <>
+            <div
+              className={`w-fit rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
+                isUser
+                  ? 'max-w-[75%] ml-auto bg-slate-100 text-slate-900 rounded-br-sm'
+                  : 'max-w-[90%] bg-white text-gray-900 border border-gray-200 rounded-bl-sm'
+              }`}
+            >
+              {hasTools && (
+                <ToolCallList toolCalls={message.toolCalls!} hasContent={hasContent} />
+              )}
+              {hasContent && (
+                isUser
+                  ? <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                  : <div className="max-w-none break-words text-sm leading-relaxed
+                      text-slate-900
+                      [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5
+                      [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1.5
+                      [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1
+                      [&_h4]:text-sm [&_h4]:font-semibold [&_h4]:mt-2 [&_h4]:mb-1
+                      [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5
+                      [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto
+                      [&_code]:text-pink-600 [&_code]:text-[13px]
+                      [&_pre_code]:text-slate-100 [&_pre_code]:text-xs
+                      [&_a]:text-brand [&_a]:no-underline hover:[&_a]:underline
+                      [&_strong]:font-semibold [&_strong]:text-slate-900
+                      [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600
+                      [&_table]:text-xs [&_th]:px-2 [&_td]:px-2 [&_hr]:my-3">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                    </div>
+              )}
+            </div>
+
+            {/* 消息操作栏 — 仅 assistant 消息，hover 显示 */}
+            {!isUser && hasContent && (
+              <div className="flex items-center gap-1 mt-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => navigator.clipboard.writeText(message.content)}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] text-slate-400
+                    hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+                  title="复制"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+                  </svg>
+                  复制
+                </button>
+                <button
+                  className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-slate-100 rounded transition-colors"
+                  title="有用"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.5c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 012.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 00.322-1.672V3.75a.75.75 0 01.75-.75A2.25 2.25 0 0116.5 5.25c0 .032-.002.064-.004.096l-.048.576a5.624 5.624 0 01-.88 2.46l-.3.45a1.048 1.048 0 00.21 1.34l.497.39c.486.386.816.948.888 1.57l.14 1.213c.074.646-.16 1.291-.632 1.757l-.64.633a3 3 0 01-2.345.826l-3.083-.211a3 3 0 01-1.536-.527l-1.32-.88A3.75 3.75 0 006 14.25v-3.75z" />
+                  </svg>
+                </button>
+                <button
+                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded transition-colors"
+                  title="无用"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.367 13.5c-.806 0-1.533.446-2.031 1.08a9.041 9.041 0 01-2.861 2.4c-.723.384-1.35.956-1.653 1.715a4.498 4.498 0 00-.322 1.672v.633a.75.75 0 01-.75.75A2.25 2.25 0 017.5 18.75c0-.032.002-.064.004-.096l.048-.576a5.624 5.624 0 01.88-2.46l.3-.45a1.048 1.048 0 00-.21-1.34l-.497-.39a2.622 2.622 0 01-.888-1.57l-.14-1.213a2.25 2.25 0 01.632-1.757l.64-.633a3 3 0 012.345-.826l3.083.211c.546.037 1.07.228 1.536.527l1.32.88A3.75 3.75 0 0018 9.75v3.75z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

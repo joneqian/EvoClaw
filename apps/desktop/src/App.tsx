@@ -84,7 +84,7 @@ function navClassName({ isActive }: { isActive: boolean }): string {
   return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
     isActive
       ? 'bg-brand/10 text-brand-active'
-      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
   }`;
 }
 
@@ -92,13 +92,13 @@ function navClassName({ isActive }: { isActive: boolean }): string {
 
 function LoadingScreen() {
   return (
-    <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-[#0c1222]">
+    <div className="flex items-center justify-center h-screen bg-slate-50">
       <div className="text-center">
         <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-brand/20 to-brand/5
           flex items-center justify-center">
           <Icon d={ICON_PATHS.memory} className="w-6 h-6 text-brand" />
         </div>
-        <p className="text-sm text-slate-400 dark:text-slate-500 font-medium">正在启动 EvoClaw...</p>
+        <p className="text-sm text-slate-400 font-medium">正在启动 EvoClaw...</p>
         <div className="mt-4 flex justify-center gap-1">
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
@@ -111,16 +111,16 @@ function LoadingScreen() {
 
 function ErrorScreen({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex items-center justify-center h-screen bg-slate-50 dark:bg-[#0c1222]">
+    <div className="flex items-center justify-center h-screen bg-slate-50">
       <div className="text-center max-w-sm">
-        <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-red-50 dark:bg-red-900/20
+        <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-red-50
           flex items-center justify-center">
           <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
           </svg>
         </div>
-        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-1.5">连接失败</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
+        <h2 className="text-base font-semibold text-slate-800 mb-1.5">连接失败</h2>
+        <p className="text-sm text-slate-500 mb-5">
           无法连接到后端服务，请确保 Node.js 已安装。
         </p>
         <button
@@ -167,16 +167,12 @@ function BottomMenu({
   open,
   onClose,
   onNavigate,
-  theme,
-  onToggleTheme,
   sidecarConnected,
   onRestartSidecar,
 }: {
   open: boolean;
   onClose: () => void;
   onNavigate: (path: string) => void;
-  theme: string;
-  onToggleTheme: () => void;
   sidecarConnected: boolean;
   onRestartSidecar: () => void;
 }) {
@@ -198,45 +194,34 @@ function BottomMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute bottom-full left-0 right-0 mb-1.5 mx-2 bg-white dark:bg-slate-800
-        border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg shadow-slate-200/50 dark:shadow-black/30
+      className="absolute bottom-full left-0 right-0 mb-1.5 mx-2 bg-white
+        border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50
         overflow-hidden z-50"
     >
       {MENU_SECTIONS.map((section, si) => (
         <div key={si}>
-          {si > 0 && <div className="border-t border-slate-100 dark:border-slate-700/70" />}
+          {si > 0 && <div className="border-t border-slate-100" />}
           <div className="py-1">
             {section.items.map((item) => (
               <button
                 key={item.path}
                 onClick={() => { onNavigate(item.path); onClose(); }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-slate-600 dark:text-slate-300
-                  hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-slate-600
+                  hover:bg-slate-50 transition-colors text-left"
               >
-                <Icon d={item.icon} className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <Icon d={item.icon} className="w-4 h-4 text-slate-400" />
                 {item.label}
               </button>
             ))}
           </div>
         </div>
       ))}
-      {/* 主题切换 */}
-      <div className="border-t border-slate-100 dark:border-slate-700/70 py-1">
-        <button
-          onClick={() => { onToggleTheme(); onClose(); }}
-          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-slate-600 dark:text-slate-300
-            hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors text-left"
-        >
-          <Icon d={theme === 'dark' ? ICON_PATHS.sun : ICON_PATHS.moon} className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-          {theme === 'dark' ? '浅色模式' : '深色模式'}
-        </button>
-      </div>
       {/* Sidecar 状态 */}
-      <div className="border-t border-slate-100 dark:border-slate-700/70 px-3.5 py-2.5 flex items-center gap-2">
+      <div className="border-t border-slate-100 px-3.5 py-2.5 flex items-center gap-2">
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
           sidecarConnected ? 'bg-emerald-400' : 'bg-red-400 animate-pulse'
         }`} />
-        <span className="text-xs text-slate-400 dark:text-slate-500 flex-1">
+        <span className="text-xs text-slate-400 flex-1">
           Sidecar {sidecarConnected ? '已连接' : '未连接'}
         </span>
         {!sidecarConnected && (
@@ -258,7 +243,6 @@ export default function App() {
   const {
     sidecarConnected, setSidecarConnected,
     initState, setInitState,
-    theme, toggleTheme,
   } = useAppStore();
   const { enterConversation } = useChatStore();
   const navigate = useNavigate();
@@ -351,11 +335,6 @@ export default function App() {
     return () => clearInterval(timer);
   }, [initState, setSidecarConnected]);
 
-  /** 同步 dark class */
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-
   /** 点击最近会话 */
   const handleRecentClick = useCallback((conv: RecentConversation) => {
     enterConversation(conv.agentId, conv.sessionKey);
@@ -370,10 +349,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-[#0c1222] text-slate-900 dark:text-slate-100">
+    <div className="flex flex-col h-screen bg-white text-slate-900">
       <div className="flex flex-1 min-h-0">
       {/* ─── Sidebar ─── */}
-      <nav className="w-[220px] bg-slate-100/70 dark:bg-slate-900/80 border-r border-slate-200/80 dark:border-slate-800
+      <nav className="w-[220px] bg-[#fafafa] border-r border-slate-200/60
         flex flex-col shrink-0 select-none">
 
         {/* macOS 交通灯占位 + 拖拽区域 */}
@@ -383,8 +362,8 @@ export default function App() {
         <div className="px-3 mb-1">
           <button
             onClick={() => navigate('/chat')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-slate-600 dark:text-slate-300
-              hover:bg-white/60 dark:hover:bg-slate-800/60 rounded-lg transition-all duration-150"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-slate-600
+              hover:bg-slate-100 rounded-lg transition-all duration-150"
           >
             <Icon d={ICON_PATHS.plus} className="w-4 h-4" strokeWidth={2} />
             新建对话
@@ -407,33 +386,36 @@ export default function App() {
           </NavLink>
         </div>
 
+        {/* 分割线 */}
+        <div className="mx-3 my-2 border-t border-slate-200/60" />
+
         {/* Recents 区域 */}
-        <div className="mt-4 flex-1 overflow-hidden flex flex-col min-h-0">
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
           <div className="px-4 mb-1.5">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-slate-400 tracking-wide">
               最近对话
             </span>
           </div>
           <div className="flex-1 overflow-y-auto px-2">
             {recents.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-slate-400 dark:text-slate-600">暂无最近对话</p>
+              <p className="px-2 py-3 text-xs text-slate-400">暂无最近对话</p>
             ) : (
               <div className="space-y-px">
                 {recents.map((conv) => (
                   <button
                     key={conv.sessionKey}
                     onClick={() => handleRecentClick(conv)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] text-slate-500 dark:text-slate-400
-                      hover:bg-white/60 dark:hover:bg-slate-800/60 transition-all duration-150 group"
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] text-slate-500
+                      hover:bg-slate-100 transition-all duration-150 group"
                     title={`${conv.agentName} — ${conv.title}`}
                   >
                     <div className="truncate leading-snug flex items-center">
                       <AgentAvatar name={conv.agentName} size="xs" className="mr-1 shrink-0" />
-                      <span className="text-slate-600 dark:text-slate-300 group-hover:text-slate-800 dark:group-hover:text-slate-100 transition-colors truncate">
+                      <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate">
                         {conv.title}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 dark:text-slate-600 mt-0.5 pl-5 truncate">
+                    <div className="text-[10px] text-slate-400 mt-0.5 pl-5 truncate">
                       {formatRelativeTime(conv.lastAt)}
                     </div>
                   </button>
@@ -444,31 +426,29 @@ export default function App() {
         </div>
 
         {/* 底部：品牌 + 菜单 */}
-        <div className="relative border-t border-slate-200/60 dark:border-slate-800">
+        <div className="relative border-t border-slate-200/60">
           <BottomMenu
             open={menuOpen}
             onClose={() => setMenuOpen(false)}
             onNavigate={navigate}
-            theme={theme}
-            onToggleTheme={toggleTheme}
             sidecarConnected={sidecarConnected}
             onRestartSidecar={handleRestartSidecar}
           />
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="w-full flex items-center gap-2.5 px-3.5 py-3 hover:bg-white/40 dark:hover:bg-slate-800/40 transition-all duration-150"
+            className="w-full flex items-center gap-2.5 px-3.5 py-3 hover:bg-slate-100 transition-all duration-150"
           >
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-brand-active
               flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm">
               EC
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 leading-tight">EvoClaw</p>
+              <p className="text-[13px] font-semibold text-slate-700 leading-tight">EvoClaw</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${
                   sidecarConnected ? 'bg-emerald-400' : 'bg-red-400'
                 }`} />
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                <span className="text-[10px] text-slate-400">
                   {sidecarConnected ? '已连接' : '未连接'}
                 </span>
               </div>

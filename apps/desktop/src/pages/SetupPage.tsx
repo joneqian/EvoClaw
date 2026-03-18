@@ -340,7 +340,7 @@ export default function SetupPage() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="w-full max-w-lg mx-4">
         {/* 步骤指示器 */}
         {step !== 'welcome' && step !== 'done' && (
@@ -352,11 +352,11 @@ export default function SetupPage() {
                     ? 'bg-brand text-white'
                     : i < (['provider', 'embedding'] as const).indexOf(step)
                       ? 'bg-brand/20 text-brand-active'
-                      : 'bg-slate-200 dark:bg-slate-600 text-slate-400'
+                      : 'bg-slate-200 text-slate-400'
                 }`}>
                   {i + 1}
                 </div>
-                {i < 1 && <div className="w-12 h-px bg-slate-200 dark:bg-slate-600" />}
+                {i < 1 && <div className="w-12 h-px bg-slate-200" />}
               </div>
             ))}
           </div>
@@ -364,16 +364,16 @@ export default function SetupPage() {
 
         {/* 步骤 1: 欢迎 */}
         {step === 'welcome' && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8 text-center">
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">🐾</div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">
               欢迎使用 EvoClaw
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+            <p className="text-slate-500 mb-6 leading-relaxed">
               自进化 AI 伴侣桌面应用。创建具有独立人格、记忆和权限的 AI Agent，
               与你协同工作和成长。
             </p>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mb-8">
+            <p className="text-sm text-slate-400 mb-8">
               首先，让我们配置 LLM Provider 来让你的 Agent 拥有思考和记忆能力。
             </p>
             <button
@@ -388,11 +388,11 @@ export default function SetupPage() {
 
         {/* 步骤 2: LLM Provider 配置 */}
         {step === 'provider' && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">
               配置对话模型
             </h2>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mb-6">
+            <p className="text-sm text-slate-400 mb-6">
               选择一个 LLM Provider 并输入 API Key
             </p>
 
@@ -409,7 +409,7 @@ export default function SetupPage() {
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
                     selectedProvider.id === p.id
                       ? 'border-brand bg-brand/10 text-brand-active font-medium'
-                      : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
                   {p.name}
@@ -418,7 +418,7 @@ export default function SetupPage() {
             </div>
 
             {/* API Key */}
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
               API Key
             </label>
             <input
@@ -426,15 +426,15 @@ export default function SetupPage() {
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setTestResult(null); setError(''); }}
               placeholder={selectedProvider.placeholder}
-              className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg mb-4
-                bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg mb-4
+                bg-white text-slate-900
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                placeholder:text-slate-300"
               autoFocus
             />
 
             {/* 自定义 Base URL（可选） */}
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
               Base URL <span className="text-slate-400 font-normal">（可选，留空使用默认）</span>
             </label>
             <input
@@ -442,14 +442,14 @@ export default function SetupPage() {
               value={customBaseUrl}
               onChange={(e) => setCustomBaseUrl(e.target.value)}
               placeholder={selectedProvider.baseUrl}
-              className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg mb-4
-                bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg mb-4
+                bg-white text-slate-900
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                placeholder:text-slate-300"
             />
 
             {/* 默认模型提示 */}
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
+            <p className="text-xs text-slate-400 mb-4">
               默认模型: {selectedProvider.defaultModel.name} ({selectedProvider.defaultModel.id})
             </p>
 
@@ -457,8 +457,8 @@ export default function SetupPage() {
             {testResult && (
               <div className={`mb-4 text-sm px-3 py-2 rounded-lg ${
                 testResult.success
-                  ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                  : 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400'
+                  ? 'bg-green-50 text-green-600'
+                  : 'bg-red-50 text-red-500'
               }`}>
                 {testResult.success ? '连接成功！' : `连接失败: ${testResult.error}`}
               </div>
@@ -466,7 +466,7 @@ export default function SetupPage() {
 
             {/* 错误提示 */}
             {error && (
-              <div className="mb-4 text-sm px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400">
+              <div className="mb-4 text-sm px-3 py-2 rounded-lg bg-red-50 text-red-500">
                 {error}
               </div>
             )}
@@ -475,15 +475,15 @@ export default function SetupPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep('welcome')}
-                className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
               >
                 返回
               </button>
               <button
                 onClick={handleTest}
                 disabled={testing || !apiKey.trim()}
-                className="px-4 py-2 text-sm font-medium border border-slate-200 dark:border-slate-600
-                  text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700
+                className="px-4 py-2 text-sm font-medium border border-slate-200
+                  text-slate-600 rounded-lg hover:bg-slate-50
                   transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {testing ? '测试中...' : '测试连接'}
@@ -503,22 +503,22 @@ export default function SetupPage() {
 
         {/* 步骤 3: Embedding 配置 */}
         {step === 'embedding' && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">
               配置向量模型
             </h2>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mb-6">
+            <p className="text-sm text-slate-400 mb-6">
               向量模型用于记忆语义搜索和知识库检索，大幅提升 Agent 的记忆能力
             </p>
 
             {llmHasEmbedding ? (
               /* ---- 情况 A: LLM Provider 自带 embedding ---- */
               <div>
-                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 mb-6">
-                  <p className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
+                <div className="bg-green-50 rounded-lg p-4 mb-6">
+                  <p className="text-sm text-green-700 font-medium mb-1">
                     {selectedProvider.name} 支持向量模型
                   </p>
-                  <p className="text-xs text-green-600 dark:text-green-400">
+                  <p className="text-xs text-green-600">
                     推荐使用 {selectedProvider.embedding!.name}（{selectedProvider.embedding!.dimension} 维），
                     共用已配置的 API Key，无需额外设置。
                   </p>
@@ -529,7 +529,7 @@ export default function SetupPage() {
                   <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     embeddingSource === 'same'
                       ? 'border-brand bg-brand/5'
-                      : 'border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      : 'border-slate-200 hover:bg-slate-50'
                   }`}>
                     <input
                       type="radio"
@@ -538,10 +538,10 @@ export default function SetupPage() {
                       className="mt-0.5 accent-brand"
                     />
                     <div>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      <p className="text-sm font-medium text-slate-900">
                         使用 {selectedProvider.name} 的 {selectedProvider.embedding!.name}
                       </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                      <p className="text-xs text-slate-400">
                         共用同一个 API Key，推荐
                       </p>
                     </div>
@@ -550,7 +550,7 @@ export default function SetupPage() {
                   <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     embeddingSource === 'other'
                       ? 'border-brand bg-brand/5'
-                      : 'border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      : 'border-slate-200 hover:bg-slate-50'
                   }`}>
                     <input
                       type="radio"
@@ -559,10 +559,10 @@ export default function SetupPage() {
                       className="mt-0.5 accent-brand"
                     />
                     <div>
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      <p className="text-sm font-medium text-slate-900">
                         使用其他 Provider 的向量模型
                       </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                      <p className="text-xs text-slate-400">
                         如果你想用不同服务商的 embedding
                       </p>
                     </div>
@@ -571,11 +571,11 @@ export default function SetupPage() {
               </div>
             ) : (
               /* ---- 情况 B: LLM Provider 不支持 embedding ---- */
-              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-4 mb-6">
-                <p className="text-sm text-amber-700 dark:text-amber-300 font-medium mb-1">
+              <div className="bg-amber-50 rounded-lg p-4 mb-6">
+                <p className="text-sm text-amber-700 font-medium mb-1">
                   {selectedProvider.name} 不提供向量模型
                 </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">
+                <p className="text-xs text-amber-600">
                   请选择一个支持向量模型的 Provider。推荐 OpenAI 或通义千问，价格低廉且质量可靠。
                 </p>
               </div>
@@ -595,7 +595,7 @@ export default function SetupPage() {
                       className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
                         embeddingProvider.id === p.id
                           ? 'border-brand bg-brand/10 text-brand-active font-medium'
-                          : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                     >
                       {p.name}
@@ -604,13 +604,13 @@ export default function SetupPage() {
                 </div>
 
                 {embeddingProvider.embedding && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                  <p className="text-xs text-slate-400">
                     向量模型: {embeddingProvider.embedding.name}（{embeddingProvider.embedding.dimension} 维）
                   </p>
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
                     API Key
                   </label>
                   <input
@@ -618,15 +618,15 @@ export default function SetupPage() {
                     value={embeddingApiKey}
                     onChange={(e) => { setEmbeddingApiKey(e.target.value); setEmbeddingError(''); }}
                     placeholder={embeddingProvider.placeholder}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg
-                      bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
+                      bg-white text-slate-900
                       focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                      placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                      placeholder:text-slate-300"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
                     Base URL <span className="text-slate-400 font-normal">（可选）</span>
                   </label>
                   <input
@@ -634,10 +634,10 @@ export default function SetupPage() {
                     value={embeddingCustomBaseUrl}
                     onChange={(e) => setEmbeddingCustomBaseUrl(e.target.value)}
                     placeholder={embeddingProvider.baseUrl}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg
-                      bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
+                      bg-white text-slate-900
                       focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                      placeholder:text-slate-300 dark:placeholder:text-slate-500"
+                      placeholder:text-slate-300"
                   />
                 </div>
               </div>
@@ -647,8 +647,8 @@ export default function SetupPage() {
             {embeddingTestResult && (
               <div className={`mt-4 text-sm px-3 py-2 rounded-lg ${
                 embeddingTestResult.success
-                  ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                  : 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400'
+                  ? 'bg-green-50 text-green-600'
+                  : 'bg-red-50 text-red-500'
               }`}>
                 {embeddingTestResult.success
                   ? `连接成功！${embeddingTestResult.error ? `（${embeddingTestResult.error}）` : ''}`
@@ -658,38 +658,38 @@ export default function SetupPage() {
 
             {/* 错误提示 */}
             {embeddingError && (
-              <div className="mt-4 text-sm px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400">
+              <div className="mt-4 text-sm px-3 py-2 rounded-lg bg-red-50 text-red-500">
                 {embeddingError}
               </div>
             )}
 
             {/* 跳过确认提示 */}
             {showSkipConfirm && (
-              <div className="mt-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2">
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm font-medium text-amber-700 mb-2">
                   跳过向量模型配置将影响以下功能：
                 </p>
-                <ul className="text-xs text-amber-600 dark:text-amber-400 space-y-1 mb-3 list-disc list-inside">
+                <ul className="text-xs text-amber-600 space-y-1 mb-3 list-disc list-inside">
                   <li>记忆语义搜索不可用 — Agent 只能通过关键词匹配回忆，无法理解语义相似的记忆</li>
                   <li>知识库 RAG 检索降级 — 文档检索仅靠全文搜索，无法按语义相关度排序</li>
                   <li>记忆检索准确率下降 — 三阶段渐进检索的 Phase 1 向量宽搜索将被跳过</li>
                 </ul>
-                <p className="text-xs text-amber-500 dark:text-amber-500 mb-3">
+                <p className="text-xs text-amber-500 mb-3">
                   你可以稍后在「设置」中随时配置向量模型。
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowSkipConfirm(false)}
-                    className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300
-                      border border-amber-300 dark:border-amber-700 rounded-lg
-                      hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium text-amber-700
+                      border border-amber-300 rounded-lg
+                      hover:bg-amber-100 transition-colors"
                   >
                     返回配置
                   </button>
                   <button
                     onClick={handleSkipEmbedding}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400
-                      hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium text-slate-500
+                      hover:text-slate-700 transition-colors"
                   >
                     确认跳过
                   </button>
@@ -701,14 +701,14 @@ export default function SetupPage() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setStep('provider')}
-                className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
               >
                 返回
               </button>
               <button
                 onClick={() => setShowSkipConfirm(true)}
-                className="px-4 py-2 text-sm font-medium border border-slate-200 dark:border-slate-600
-                  text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700
+                className="px-4 py-2 text-sm font-medium border border-slate-200
+                  text-slate-600 rounded-lg hover:bg-slate-50
                   transition-colors"
               >
                 以后再配置
@@ -716,8 +716,8 @@ export default function SetupPage() {
               <button
                 onClick={handleEmbeddingTest}
                 disabled={embeddingTesting || (embeddingSource === 'other' && !embeddingApiKey.trim())}
-                className="px-4 py-2 text-sm font-medium border border-slate-200 dark:border-slate-600
-                  text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700
+                className="px-4 py-2 text-sm font-medium border border-slate-200
+                  text-slate-600 rounded-lg hover:bg-slate-50
                   transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {embeddingTesting ? '测试中...' : '测试连接'}
@@ -737,12 +737,12 @@ export default function SetupPage() {
 
         {/* 步骤 4: 完成 */}
         {step === 'done' && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8 text-center">
+          <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">🎉</div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+            <h2 className="text-xl font-bold text-slate-900 mb-2">
               配置完成！
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 mb-6">
+            <p className="text-slate-500 mb-6">
               一切就绪，现在你可以创建你的第一个 AI Agent 了。
             </p>
             <button

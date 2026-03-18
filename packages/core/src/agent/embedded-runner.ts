@@ -194,12 +194,13 @@ async function runWithPI(
   // 从工作区文件构建系统提示
   const systemPrompt = buildSystemPrompt(config);
 
-  // 准备 PI coding tools（全部 7 个内置工具）
+  // 准备 PI coding tools — 移除 bash，替换为增强版 exec（参考 OpenClaw pi-tools.ts）
   const builtInTools = [
-    ...piCoding.codingTools, // read, bash, edit, write
+    ...(piCoding.codingTools as Array<{ name: string }>).filter(t => t.name !== 'bash'), // read, edit, write（去掉 bash）
     piCoding.grepTool, // grep
     piCoding.findTool, // find
     piCoding.lsTool, // ls
+    createEnhancedExecTool(), // 增强版 exec 替代 bash
   ];
 
   // 工具安全守卫（循环检测 + 结果截断）
@@ -219,7 +220,13 @@ async function runWithPI(
       }
       // 执行工具
       const result = await tool.execute(args);
-      // 结果截断
+      // 记录结果哈希（无进展检测）
+      const noProgress = toolSafety.recordResult(result);
+      if (noProgress.blocked) {
+        console.warn(`[tool-safety] 无进展检测: ${noProgress.reason}`);
+        return `⚠️ ${noProgress.reason}`;
+      }
+      // 结果截断（头尾保留策略）
       return toolSafety.truncateResult(result);
     },
   }));
@@ -598,6 +605,143 @@ async function parseSSEStream(
 }
 
 /**
+ * 增强版 exec 工具（替代 PI 内置 bash，参考 OpenClaw exec-tool）
+ * 增强点: 超时控制、工作目录、输出限制、退出码格式化
+ */
+function createEnhancedExecTool() {
+  const { execSync } = require('node:child_process') as typeof import('node:child_process');
+  const DEFAULT_TIMEOUT_SEC = 120;
+  const MAX_OUTPUT_CHARS = 200_000;
+
+  return {
+    name: 'bash',  // 保持名称为 bash，模型更熟悉
+    description: `执行 shell 命令。输出截断到 ${MAX_OUTPUT_CHARS / 1000}K 字符。大输出请重定向到文件再用 read 查看。长时间任务用 exec_background 工具。`,
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        command: { type: 'string', description: '要执行的 shell 命令' },
+        workdir: { type: 'string', description: '工作目录（默认当前目录）' },
+        timeout: { type: 'number', description: `超时秒数（默认 ${DEFAULT_TIMEOUT_SEC}）` },
+      },
+      required: ['command'],
+    },
+    execute: async (args: Record<string, unknown>): Promise<string> => {
+      const command = args.command as string;
+      const workdir = (args.workdir as string) || process.cwd();
+      const timeoutSec = (args.timeout as number) || DEFAULT_TIMEOUT_SEC;
+
+      if (!command) return '错误：缺少 command 参数';
+
+      try {
+        const output = execSync(command, {
+          cwd: workdir,
+          timeout: timeoutSec * 1000,
+          maxBuffer: 10 * 1024 * 1024,  // 10MB buffer
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, EVOCLAW_SHELL: 'exec' },
+        });
+
+        const result = (output ?? '').toString();
+
+        if (result.length > MAX_OUTPUT_CHARS) {
+          // 头尾保留截断
+          const head = result.slice(0, Math.floor(MAX_OUTPUT_CHARS * 0.7));
+          const tail = result.slice(-Math.floor(MAX_OUTPUT_CHARS * 0.3));
+          return `${head}\n\n... [省略 ${result.length - MAX_OUTPUT_CHARS} 字符] ...\n\n${tail}`;
+        }
+
+        return result || '(无输出)';
+      } catch (err: unknown) {
+        const e = err as { status?: number; stdout?: string; stderr?: string; message?: string; killed?: boolean };
+
+        if (e.killed) {
+          return `命令超时（${timeoutSec} 秒），已终止。如需更长时间，请使用 exec_background 工具后台执行。`;
+        }
+
+        const stdout = e.stdout?.toString() ?? '';
+        const stderr = e.stderr?.toString() ?? '';
+        const combined = [stdout, stderr].filter(Boolean).join('\n');
+        const exitCode = e.status ?? -1;
+
+        // 输出截断
+        const truncated = combined.length > MAX_OUTPUT_CHARS
+          ? combined.slice(0, MAX_OUTPUT_CHARS) + `\n... [输出已截断]`
+          : combined;
+
+        return `${truncated || e.message || '命令执行失败'}\n\n(退出码 ${exitCode})`;
+      }
+    },
+  };
+}
+
+/**
+ * 工具目录摘要（参考 OpenClaw coreToolSummaries + toolOrder）
+ * 按优先级排序列出所有可用工具的一行摘要，帮助模型快速定位合适的工具
+ */
+const TOOL_SUMMARIES: Record<string, string> = {
+  // 文件操作（最高优先级）
+  read: '读取文件内容（文本或图片），大文件用 offset/limit 分段',
+  write: '创建或覆盖文件，自动创建父目录',
+  edit: '精确替换文件中的文本片段（oldText → newText）',
+  apply_patch: '应用多文件统一补丁（*** Begin/End Patch 格式）',
+  // 搜索（优先于 bash）
+  grep: '搜索文件内容，返回匹配行+文件路径+行号',
+  find: '按 glob 模式搜索文件路径',
+  ls: '列出目录内容',
+  // 命令执行
+  bash: '执行 shell 命令（单次执行，有超时）',
+  exec_background: '后台启动长时间运行的命令（dev server、watch 等）',
+  process: '管理后台进程（查看输出、终止、发送输入）',
+  // Web 工具
+  web_search: '搜索互联网（Brave Search API），返回标题+摘要+链接',
+  web_fetch: '抓取 URL 内容并转换为 Markdown',
+  // 多媒体
+  image: '分析图片内容（支持本地文件和 URL）',
+  pdf: '阅读 PDF 文档（原生模式或文本提取）',
+  // 记忆
+  memory_search: '搜索 Agent 记忆库，查找用户偏好和历史',
+  memory_get: '获取单条记忆的完整详情',
+  knowledge_query: '查询知识图谱中的实体关系',
+  // 子 Agent
+  spawn_agent: '创建子 Agent 并行处理独立子任务',
+  list_agents: '查看所有子 Agent 的状态',
+  kill_agent: '终止运行中的子 Agent',
+};
+
+/** 按优先级排序的工具顺序 */
+const TOOL_ORDER = [
+  'read', 'write', 'edit', 'apply_patch',
+  'grep', 'find', 'ls',
+  'bash', 'exec_background', 'process',
+  'web_search', 'web_fetch',
+  'image', 'pdf',
+  'memory_search', 'memory_get', 'knowledge_query',
+  'spawn_agent', 'list_agents', 'kill_agent',
+];
+
+function buildToolCatalog(availableTools: string[]): string {
+  if (availableTools.length === 0) return '';
+
+  // 按优先级排序，未知工具排最后
+  const sorted = [...availableTools].sort((a, b) => {
+    const ia = TOOL_ORDER.indexOf(a);
+    const ib = TOOL_ORDER.indexOf(b);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+
+  const lines = sorted.map(name => {
+    const summary = TOOL_SUMMARIES[name] ?? '';
+    return `- ${name}${summary ? `: ${summary}` : ''}`;
+  });
+
+  return `<available_tools>
+工具名称区分大小写，请严格按照列出的名称调用。
+${lines.join('\n')}
+</available_tools>`;
+}
+
+/**
  * 模块化系统提示构建（参考 OpenClaw 22 段式架构）
  *
  * 段落顺序:
@@ -656,17 +800,34 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
 4. 如果用户提到之前讨论过的话题，务必先搜索记忆
 </memory_recall>`);
 
-  // § 6 工具使用指导
-  sections.push(`<tool_usage>
-工具调用规范：
-- 默认静默调用工具，不需要向用户解释每一步操作
-- 对于复杂或有风险的操作，先简要说明再执行
-- 工具执行失败时，分析原因并尝试替代方案，而非简单重试
+  // § 5.5 工具目录（按优先级排序的一行摘要，参考 OpenClaw toolOrder 设计）
+  const toolNames = (config.tools ?? []).map(t => t.name);
+  const toolCatalog = buildToolCatalog(toolNames);
+  if (toolCatalog) {
+    sections.push(toolCatalog);
+  }
+
+  // § 6 工具调用风格 + 工具选择指导（参考 OpenClaw Tool Call Style）
+  sections.push(`<tool_call_style>
+## 工具调用风格
+默认：不叙述常规、低风险的工具调用，直接调用工具。
+仅在以下情况简要说明：多步骤工作、复杂/有挑战的问题、敏感操作（如删除文件）、用户明确要求解释时。
+叙述要简短、有价值，避免重复明显的步骤。
+
+## 工具选择指南
+- 优先使用 grep/find/ls 而非 bash 来探索文件（更快、遵守 .gitignore）
+- 修改文件前先用 read 检查文件内容
+- read 工具输出会截断到约 50KB，大文件请用 offset/limit 分段读取
+- grep 最多返回 100 条匹配，find 最多返回 1000 个文件
+- bash 命令的输出会被截断，长输出请重定向到文件再 read
+- 文件搜索限定在用户主目录 ~ 下，禁止搜索根目录 /，find 加 -maxdepth 3
+- bash 执行的命令应加超时控制（如 timeout 30 command），避免长时间阻塞
+- 长时间运行的命令（dev server、watch、构建）使用 exec_background 在后台执行
+- 当存在专用工具时，直接使用工具而非要求用户手动运行等效命令
+- 工具执行失败时，分析原因并尝试替代方案，而非简单重试相同参数
 - 搜索记忆和知识图谱是低成本操作，在不确定时应主动使用
-- 禁止对根目录 / 执行 find 或 ls 等递归搜索，仅在用户主目录 ~ 及其子目录下操作
-- bash 命令应设置合理超时，避免 find 等命令长时间运行（建议加 -maxdepth 3 和 timeout 30）
-- 长时间运行的命令使用 exec_background 工具在后台执行
-</tool_usage>`);
+- 对于可拆分的独立子任务，使用 spawn_agent 并行处理
+</tool_call_style>`);
 
   // § 7 沉默回复
   sections.push(`<silent_reply>

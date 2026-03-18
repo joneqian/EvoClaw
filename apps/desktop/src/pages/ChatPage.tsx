@@ -5,6 +5,8 @@ import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 import { useAppStore } from '../stores/app-store';
 import { get, del } from '../lib/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 /** 生成简单的唯一 ID */
 function uid(): string {
@@ -402,7 +404,9 @@ function ChatView() {
                   break;
                 case 'tool_start': {
                   const toolName = payload.toolName ?? payload.name ?? '未知工具';
-                  toolCalls.push({ name: toolName, status: 'running' });
+                  const args = payload.toolArgs ?? payload.args;
+                  const summary = formatToolSummary(toolName, args);
+                  toolCalls.push({ name: toolName, status: 'running', summary });
                   updateLastMessageToolCalls([...toolCalls]);
                   break;
                 }
@@ -411,7 +415,6 @@ function ChatView() {
                   const tc = toolCalls.find((t) => t.name === endName && t.status === 'running');
                   if (tc) {
                     tc.status = payload.isError ? 'error' : 'done';
-                    tc.result = payload.toolResult ?? payload.result;
                     updateLastMessageToolCalls([...toolCalls]);
                   }
                   break;
@@ -692,10 +695,84 @@ function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }: {
   );
 }
 
+/** 工具调用摘要：显示操作而非结果 */
+function formatToolSummary(name: string, args: unknown): string {
+  if (!args || typeof args !== 'object') return '';
+  const a = args as Record<string, unknown>;
+  switch (name) {
+    case 'bash': return a.command ? `$ ${String(a.command).slice(0, 80)}` : '';
+    case 'read': return a.file_path ? String(a.file_path) : (a.path ? String(a.path) : '');
+    case 'write':
+    case 'edit': return a.file_path ? String(a.file_path) : '';
+    case 'find': return a.pattern ? `${a.pattern}` : '';
+    case 'grep': return a.pattern ? `/${a.pattern}/` : '';
+    case 'web_search': return a.query ? `"${String(a.query).slice(0, 60)}"` : '';
+    case 'web_fetch': return a.url ? String(a.url).slice(0, 80) : '';
+    case 'image': return a.path ? String(a.path).split('/').pop() ?? '' : '';
+    case 'pdf': return a.path ? String(a.path).split('/').pop() ?? '' : '';
+    case 'memory_search': return a.query ? `"${a.query}"` : '';
+    case 'spawn_agent': return a.task ? String(a.task).slice(0, 60) : '';
+    default: return '';
+  }
+}
+
 /** 文件扩展名标签 */
 function getFileExtLabel(name: string): string {
   const ext = name.split('.').pop()?.toUpperCase() ?? '';
   return ext || 'FILE';
+}
+
+/** 工具调用列表（默认最多 3 条，超出折叠） */
+const MAX_VISIBLE_TOOLS = 3;
+
+function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasContent: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasRunning = toolCalls.some(tc => tc.status === 'running');
+  const showAll = expanded || hasRunning || toolCalls.length <= MAX_VISIBLE_TOOLS;
+  const visible = showAll ? toolCalls : toolCalls.slice(0, MAX_VISIBLE_TOOLS);
+  const hiddenCount = toolCalls.length - MAX_VISIBLE_TOOLS;
+
+  return (
+    <div className={hasContent ? 'mb-2 space-y-1' : 'space-y-1'}>
+      {visible.map((tc, i) => (
+        <ToolCallItem key={i} tc={tc} />
+      ))}
+      {!showAll && hiddenCount > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="text-xs text-slate-400 dark:text-slate-500 hover:text-brand dark:hover:text-brand px-2 py-0.5 transition-colors"
+        >
+          ... 还有 {hiddenCount} 个工具调用，点击展开
+        </button>
+      )}
+      {expanded && toolCalls.length > MAX_VISIBLE_TOOLS && (
+        <button
+          onClick={() => setExpanded(false)}
+          className="text-xs text-slate-400 dark:text-slate-500 hover:text-brand dark:hover:text-brand px-2 py-0.5 transition-colors"
+        >
+          收起
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ToolCallItem({ tc }: { tc: ToolCall }) {
+  return (
+    <div
+      className={`text-xs px-2 py-1 rounded ${
+        tc.status === 'running'
+          ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
+          : tc.status === 'error'
+            ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+            : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+      }`}
+    >
+      {tc.status === 'running' ? '🔧' : tc.status === 'error' ? '❌' : '✅'}{' '}
+      {tc.name}
+      {tc.summary && <span className="ml-1 opacity-70">{tc.summary}</span>}
+    </div>
+  );
 }
 
 /** 单条消息气泡组件 */
@@ -735,26 +812,20 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
           }`}
         >
           {hasTools && (
-            <div className={hasContent ? 'mb-2 space-y-1' : 'space-y-1'}>
-              {message.toolCalls!.map((tc, i) => (
-                <div
-                  key={i}
-                  className={`text-xs px-2 py-1 rounded ${
-                    tc.status === 'running'
-                      ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
-                      : tc.status === 'error'
-                        ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                        : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                  }`}
-                >
-                  {tc.status === 'running' ? '🔧 正在执行' : tc.status === 'error' ? '❌' : '✅'}{' '}
-                  {tc.name}
-                  {tc.result && <span className="ml-1 opacity-70">- {String(tc.result).slice(0, 100)}</span>}
-                </div>
-              ))}
-            </div>
+            <ToolCallList toolCalls={message.toolCalls!} hasContent={hasContent} />
           )}
-          {hasContent && <div className="whitespace-pre-wrap break-words">{message.content}</div>}
+          {hasContent && (
+            isUser
+              ? <div className="whitespace-pre-wrap break-words">{message.content}</div>
+              : <div className="prose prose-sm dark:prose-invert max-w-none break-words
+                  prose-p:my-1.5 prose-headings:my-2 prose-li:my-0.5
+                  prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-pre:rounded-lg prose-pre:text-xs
+                  prose-code:text-pink-500 dark:prose-code:text-pink-400 prose-code:before:content-none prose-code:after:content-none
+                  prose-a:text-brand prose-a:no-underline hover:prose-a:underline
+                  prose-table:text-xs prose-th:px-2 prose-td:px-2">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                </div>
+          )}
         </div>
       )}
     </div>

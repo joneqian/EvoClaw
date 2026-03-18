@@ -5,7 +5,8 @@ import { get } from '../lib/api';
 export interface ToolCall {
   name: string;
   status: 'running' | 'done' | 'error';
-  result?: string;
+  /** 操作摘要（如执行的命令） */
+  summary?: string;
 }
 
 /** 聊天消息 */

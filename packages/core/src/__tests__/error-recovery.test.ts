@@ -194,8 +194,8 @@ describe('buildSystemPrompt', () => {
       apiKey: '',
       baseUrl: '',
     });
-    expect(result).toContain('<tool_usage>');
-    expect(result).toContain('静默调用');
+    expect(result).toContain('<tool_call_style>');
+    expect(result).toContain('不叙述常规');
   });
 
   it('应该包含沉默回复 token', () => {

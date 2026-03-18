@@ -34,7 +34,7 @@ describe('buildSystemPrompt', () => {
     expect(result).toContain('<safety>');
     expect(result).toContain('<runtime>');
     expect(result).toContain('<memory_recall>');
-    expect(result).toContain('<tool_usage>');
+    expect(result).toContain('<tool_call_style>');
     expect(result).toContain('<silent_reply>');
   });
 

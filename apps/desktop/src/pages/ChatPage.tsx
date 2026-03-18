@@ -438,6 +438,8 @@ function ChatView() {
     } finally {
       setStreaming(false);
       if (currentAgentId) fetchConversations(currentAgentId);
+      // 通知侧边栏刷新最近对话列表
+      window.dispatchEvent(new CustomEvent('evoclaw:conversations-changed'));
     }
   }, [
     currentAgentId, currentSessionKey, input, attachments, isStreaming,

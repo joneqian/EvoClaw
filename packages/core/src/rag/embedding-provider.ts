@@ -26,7 +26,10 @@ export interface EmbeddingProviderConfig {
 }
 
 export class EmbeddingProvider {
-  constructor(private config: EmbeddingProviderConfig) {}
+  constructor(private config: EmbeddingProviderConfig) {
+    // 去掉尾部 /v1（代码会自己拼 /v1/embeddings）
+    this.config.baseUrl = this.config.baseUrl.replace(/\/v1\/?$/, '');
+  }
 
   /** 生成单条文本的 embedding */
   async generate(text: string): Promise<Float32Array> {

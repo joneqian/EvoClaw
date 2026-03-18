@@ -25,35 +25,71 @@ export function analyzeQuery(query: string): QueryAnalysis {
   return { keywords, dateRange, queryType, needsDetail };
 }
 
-/** 提取关键词 — 去除停用词和标点 */
-function extractKeywords(query: string): string[] {
-  // 中文停用词 + 常见英文停用词
-  const stopWords = new Set([
-    '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一', '一个',
-    '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好',
-    '自己', '这', '他', '她', '它', '什么', '那', '怎么', '吗', '吧', '呢', '啊',
-    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
-    'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for', 'on', 'with',
-    'at', 'by', 'from', 'as', 'into', 'about', 'that', 'this', 'it', 'i',
-    'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
-    'my', 'your', 'his', 'its', 'our', 'their', 'what', 'which', 'who', 'how',
-  ]);
+/** 中文停用词 */
+const CJK_STOP_WORDS = new Set([
+  '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一', '一个',
+  '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好',
+  '自己', '这', '他', '她', '它', '什么', '那', '怎么', '吗', '吧', '呢', '啊',
+  '还', '能', '让', '把', '被', '从', '给', '向', '对', '跟', '比', '没', '过',
+  '记得', '知道', '觉得', '可以', '应该', '可能', '已经', '正在',
+]);
 
-  // 按空白和标点分割，保留中文序列
-  const parts = query.replace(/[，。！？、；：""''（）【】《》…—\-.,!?;:'"()\[\]{}<>\/\\@#$%^&*+=|~`]/g, ' ')
+/** 英文停用词 */
+const EN_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+  'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for', 'on', 'with',
+  'at', 'by', 'from', 'as', 'into', 'about', 'that', 'this', 'it', 'i',
+  'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+  'my', 'your', 'his', 'its', 'our', 'their', 'what', 'which', 'who', 'how',
+]);
+
+/** CJK 字符正则 */
+const CJK_RE = /[\u4e00-\u9fff\u3400-\u4dbf\uF900-\uFAFF]+/g;
+
+/** 提取关键词 — 中文按字/词拆分，英文按空格分割，去停用词 */
+function extractKeywords(query: string): string[] {
+  const tokens: string[] = [];
+
+  // 1. 提取中文片段，拆分为有意义的词
+  const cjkMatches = query.match(CJK_RE) ?? [];
+  for (const segment of cjkMatches) {
+    // 先去掉多字停用词，再逐字去单字停用词
+    let cleaned = segment;
+    for (const sw of CJK_STOP_WORDS) {
+      if (sw.length >= 2) {
+        cleaned = cleaned.replaceAll(sw, '|');  // 用分隔符替代
+      }
+    }
+    // 再按单字停用词切分
+    const chars = [...cleaned];
+    let current = '';
+    for (const ch of chars) {
+      if (ch === '|' || CJK_STOP_WORDS.has(ch)) {
+        if (current.length >= 1) tokens.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    if (current.length >= 1) tokens.push(current);
+  }
+
+  // 2. 提取英文/数字片段
+  const nonCjk = query.replace(CJK_RE, ' ');
+  const parts = nonCjk
+    .replace(/[，。！？、；：""''（）【】《》…—\-.,!?;:'"()\[\]{}<>\/\\@#$%^&*+=|~`]/g, ' ')
     .split(/\s+/)
     .filter(Boolean);
-
-  const tokens: string[] = [];
   for (const part of parts) {
     const lower = part.toLowerCase();
-    if (!stopWords.has(lower) && lower.length > 0) {
+    if (!EN_STOP_WORDS.has(lower) && lower.length > 1) {
       tokens.push(lower);
     }
   }
 
-  return tokens;
+  // 3. 去重
+  return [...new Set(tokens)];
 }
 
 /** 提取时间范围 */

@@ -42,7 +42,7 @@ Instructions.`);
       expect(results[0].localPath).toBe(skillDir);
     });
 
-    it('应扫描根目录 .md 文件', () => {
+    it('应忽略根目录文件（只扫描子目录）', () => {
       fs.writeFileSync(path.join(tempDir, 'quick-skill.md'), `---
 name: quick-skill
 description: A quick skill
@@ -51,17 +51,18 @@ description: A quick skill
 Quick instructions.`);
 
       const results = discoverer.listLocal();
-      expect(results).toHaveLength(1);
-      expect(results[0].name).toBe('quick-skill');
+      expect(results).toHaveLength(0); // 根目录文件不扫描
     });
 
-    it('应忽略无效 SKILL.md', () => {
+    it('无效 SKILL.md 应用目录名作 fallback', () => {
       const skillDir = path.join(tempDir, 'bad-skill');
       fs.mkdirSync(skillDir, { recursive: true });
       fs.writeFileSync(path.join(skillDir, 'SKILL.md'), 'No frontmatter here');
 
       const results = discoverer.listLocal();
-      expect(results).toHaveLength(0);
+      // 无法解析 frontmatter → 用目录名作为 name
+      expect(results).toHaveLength(1);
+      expect(results[0].name).toBe('bad-skill');
     });
 
     it('不存在的目录返回空数组', () => {
@@ -101,10 +102,21 @@ K8s deploy.`);
     });
   });
 
-  describe('clearCache', () => {
-    it('应清除缓存', () => {
-      discoverer.clearCache();
-      // 不抛异常即可
+  describe('listLocalWithGates', () => {
+    it('应返回含门控结果的列表', () => {
+      const skillDir = path.join(tempDir, 'gated-skill');
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `---
+name: gated-skill
+description: Needs env
+---
+
+Instructions.`);
+
+      const results = discoverer.listLocalWithGates();
+      expect(results).toHaveLength(1);
+      expect(results[0].gatesPassed).toBe(true);
+      expect(results[0].gateResults).toEqual([]);
     });
   });
 });

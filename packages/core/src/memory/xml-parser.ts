@@ -157,17 +157,30 @@ function parseRelationBlock(block: string): ParsedRelation {
  * @param xml - LLM 输出的 XML 字符串
  * @returns 提取结果，包含记忆列表和关系列表
  */
-export function parseExtractionResult(xml: string): ExtractionResult {
+export function parseExtractionResult(rawXml: string): ExtractionResult {
   const emptyResult: ExtractionResult = { memories: [], relations: [] };
 
   // 空输入
-  if (!xml || !xml.trim()) {
+  if (!rawXml || !rawXml.trim()) {
     return emptyResult;
   }
 
   // 检查 no_extraction 标记（自闭合或空标签）
-  if (/< *no_extraction\s*\/?>/.test(xml)) {
+  if (/< *no_extraction\s*\/?>/.test(rawXml)) {
     return emptyResult;
+  }
+
+  // 容错：如果 LLM 输出了混合内容（文字+XML），尝试提取 XML 部分
+  let xml = rawXml;
+  const extractionMatch = rawXml.match(/<extraction[\s\S]*<\/extraction>/);
+  if (extractionMatch) {
+    xml = extractionMatch[0];
+  } else if (!rawXml.includes('<memory>') && !rawXml.includes('<relation>')) {
+    // 完全没有 XML 标签，尝试从 markdown 代码块中提取
+    const codeBlockMatch = rawXml.match(/```(?:xml)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      xml = codeBlockMatch[1]!;
+    }
   }
 
   // 解析 memory 块

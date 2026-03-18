@@ -6,6 +6,9 @@ import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { KnowledgeGraphStore } from './knowledge-graph.js';
 import type { MemoryStore } from './memory-store.js';
 import { analyzeQuery, type QueryType } from './query-analyzer.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('hybrid-search');
 
 /** 搜索结果 */
 export interface SearchResult {
@@ -44,12 +47,13 @@ export class HybridSearcher {
     const limit = options?.limit ?? 10;
     const candidateLimit = options?.candidateLimit ?? 30;
     const analysis = analyzeQuery(query);
+    log.debug(`搜索查询: "${query.slice(0, 60)}", 关键词: [${analysis.keywords.join(', ')}], 类型: ${analysis.queryType}`);
 
     // === Phase 1: 候选生成 ===
     const candidateScores = new Map<string, number>();
 
-    // 1a: FTS5 关键词搜索（权重 0.3）
-    const ftsQuery = analysis.keywords.join(' ');
+    // 1a: FTS5 关键词搜索（权重 0.3）— 用 OR 连接，任一关键词匹配即可
+    const ftsQuery = analysis.keywords.join(' OR ');
     if (ftsQuery) {
       const ftsResults = this.ftsStore.search(ftsQuery, candidateLimit);
       for (const r of ftsResults) {
@@ -76,7 +80,12 @@ export class HybridSearcher {
       }
     }
 
-    if (candidateScores.size === 0) return [];
+    log.debug(`Phase 1 候选: ${candidateScores.size} 条 (FTS=${ftsQuery ? '✓' : '✗'}, 向量=${this.vectorStore.hasEmbeddingFn ? '✓' : '✗(降级)'})`);
+
+    if (candidateScores.size === 0) {
+      log.debug('Phase 1 无候选，返回空');
+      return [];
+    }
 
     // 取 Top-N 候选 ID
     const candidateIds = [...candidateScores.entries()]
@@ -86,6 +95,7 @@ export class HybridSearcher {
 
     // === Phase 2: 评分排序 ===
     const units = this.memoryStore.getByIds(candidateIds);
+    log.debug(`Phase 2 加载: ${units.length} 条记忆单元 (候选 ${candidateIds.length} 个)`);
     // 按 agent 和可见性过滤
     const filtered = units.filter(u => {
       if (u.agentId !== agentId) return false;

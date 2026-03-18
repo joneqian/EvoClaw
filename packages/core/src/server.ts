@@ -36,6 +36,11 @@ import {
 } from './infrastructure/logger.js';
 import { callLLM } from './agent/llm-client.js';
 import { registerProvider } from './provider/provider-registry.js';
+import { HybridSearcher } from './memory/hybrid-searcher.js';
+import { MemoryExtractor } from './memory/memory-extractor.js';
+import { MemoryStore } from './memory/memory-store.js';
+import { KnowledgeGraphStore } from './memory/knowledge-graph.js';
+import { FtsStore } from './infrastructure/db/fts-store.js';
 
 const log = createLogger('server');
 
@@ -81,6 +86,10 @@ export interface CreateAppOptions {
   channelManager?: ChannelManager;
   configManager?: ConfigManager;
   laneQueue?: LaneQueue;
+  /** 记忆系统：混合检索器 */
+  hybridSearcher?: HybridSearcher;
+  /** 记忆系统：记忆提取器 */
+  memoryExtractor?: MemoryExtractor;
 }
 
 /** 创建 Hono 应用实例 */
@@ -98,6 +107,8 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     channelManager,
     configManager,
     laneQueue,
+    hybridSearcher,
+    memoryExtractor,
   } = options;
 
   const app = new Hono();
@@ -218,7 +229,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -349,6 +360,22 @@ async function main() {
   // 初始化 VectorStore（从 evo_claw.json 读取配置）
   const vectorStore = initVectorStore(db, configManager);
 
+  // 初始化记忆系统（完整版：FTS + 向量 + 知识图谱 + 记忆提取）
+  const memoryStore = new MemoryStore(db, vectorStore);
+  const knowledgeGraph = new KnowledgeGraphStore(db);
+  const ftsStore = new FtsStore(db);
+  const hybridSearcher = new HybridSearcher(ftsStore, vectorStore, knowledgeGraph, memoryStore);
+
+  // 记忆提取器（需要 LLM + VectorStore + FtsStore 索引）
+  const memoryExtractor = new MemoryExtractor(
+    db,
+    async (system: string, user: string) => callLLM(configManager, { systemPrompt: system, userMessage: user }),
+    vectorStore,
+    ftsStore,
+  );
+
+  log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
+
   const agentManager = new AgentManager(db);
 
   // 初始化 LaneQueue + CronRunner
@@ -373,6 +400,8 @@ async function main() {
     channelManager,
     configManager,
     laneQueue,
+    hybridSearcher,
+    memoryExtractor,
   });
 
   // 进程退出时清理

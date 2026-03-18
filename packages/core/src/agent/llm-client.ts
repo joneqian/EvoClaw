@@ -36,7 +36,7 @@ export async function callLLM(
 
   log.info(`调用 LLM: model=${modelId} protocol=${protocol}`);
 
-  if (protocol === 'anthropic-messages') {
+  if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     return callAnthropic(baseUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);
   }
   return callOpenAI(baseUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);

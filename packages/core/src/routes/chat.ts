@@ -23,6 +23,10 @@ import { createApplyPatchTool } from '../tools/apply-patch.js';
 import { createSubAgentTools } from '../tools/sub-agent-tools.js';
 import { createExecBackgroundTool, createProcessTool } from '../tools/background-process.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
+import type { HybridSearcher } from '../memory/hybrid-searcher.js';
+import type { MemoryExtractor } from '../memory/memory-extractor.js';
+import { createMemoryRecallPlugin } from '../context/plugins/memory-recall.js';
+import { createMemoryExtractPlugin } from '../context/plugins/memory-extract.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -65,7 +69,15 @@ function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role:
 }
 
 /** 创建聊天路由 */
-export function createChatRoutes(store: SqliteStore, agentManager: AgentManager, vectorStore?: VectorStore, configManager?: ConfigManager, laneQueue?: LaneQueue) {
+export function createChatRoutes(
+  store: SqliteStore,
+  agentManager: AgentManager,
+  vectorStore?: VectorStore,
+  configManager?: ConfigManager,
+  laneQueue?: LaneQueue,
+  hybridSearcher?: HybridSearcher,
+  memoryExtractor?: MemoryExtractor,
+) {
   const app = new Hono();
 
   /** GET /recents — 最近会话列表（跨 Agent） */
@@ -280,6 +292,14 @@ export function createChatRoutes(store: SqliteStore, agentManager: AgentManager,
     const contextEngine = new ContextEngine();
     contextEngine.register(sessionRouterPlugin);
     contextEngine.register(contextAssemblerPlugin);
+
+    // 记忆系统插件（有实例时注册，无则降级跳过）
+    if (hybridSearcher) {
+      contextEngine.register(createMemoryRecallPlugin(hybridSearcher));
+    }
+    if (memoryExtractor) {
+      contextEngine.register(createMemoryExtractPlugin(memoryExtractor));
+    }
 
     // 加载消息历史
     const history = loadMessageHistory(store, agentId, sessionKey);

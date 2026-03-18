@@ -786,9 +786,19 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
     sections.push(`<identity>\n${config.workspaceFiles['IDENTITY.md']}\n</identity>`);
   }
 
+  // § 3.5 用户画像（USER.md 动态渲染结果）
+  if (config.workspaceFiles['USER.md']) {
+    sections.push(`<user_profile>\n${config.workspaceFiles['USER.md']}\n</user_profile>`);
+  }
+
   // § 4 操作规程
   if (config.workspaceFiles['AGENTS.md']) {
     sections.push(`<operating_procedures>\n${config.workspaceFiles['AGENTS.md']}\n</operating_procedures>`);
+  }
+
+  // § 4.5 BOOTSTRAP.md — 仅首轮对话注入（节省 ~400 token）
+  if (config.workspaceFiles['BOOTSTRAP.md'] && (!config.messages || config.messages.length === 0)) {
+    sections.push(`<bootstrap>\n${config.workspaceFiles['BOOTSTRAP.md']}\n</bootstrap>`);
   }
 
   // § 5 记忆召回指令
@@ -798,7 +808,15 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
 2. 如需详情，使用 memory_get 获取完整记忆内容
 3. 结合记忆中的信息来提供更个性化、更准确的回答
 4. 如果用户提到之前讨论过的话题，务必先搜索记忆
+5. 你有一个个人笔记本文件 MEMORY.md，可以用 read/write 工具读写
+6. 当你发现需要长期记住的重要信息时，主动写入 MEMORY.md
+7. 每次会话开始时，检查 MEMORY.md 了解之前记录的备忘
 </memory_recall>`);
+
+  // § 5.1 Agent 笔记本（MEMORY.md 内容注入）
+  if (config.workspaceFiles['MEMORY.md']) {
+    sections.push(`<agent_notes>\n${config.workspaceFiles['MEMORY.md']}\n</agent_notes>`);
+  }
 
   // § 5.5 工具目录（按优先级排序的一行摘要，参考 OpenClaw toolOrder 设计）
   const toolNames = (config.tools ?? []).map(t => t.name);

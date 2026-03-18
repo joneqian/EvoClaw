@@ -40,6 +40,7 @@ export class SubAgentSpawner {
     private laneQueue: LaneQueue,
     private currentDepth: number,
     private onComplete?: OnSubAgentComplete,
+    private parentWorkspaceFiles?: Record<string, string>,
   ) {}
 
   /** 创建子 Agent */
@@ -66,7 +67,11 @@ export class SubAgentSpawner {
     const childConfig: AgentRunConfig = {
       agent: this.parentConfig.agent,
       systemPrompt: this.buildMinimalPrompt(task, context),
-      workspaceFiles: {},  // minimal 模式不加载工作区文件
+      workspaceFiles: {
+        // 继承父 Agent 的操作规程和工具说明
+        ...(this.parentWorkspaceFiles?.['AGENTS.md'] ? { 'AGENTS.md': this.parentWorkspaceFiles['AGENTS.md'] } : {}),
+        ...(this.parentWorkspaceFiles?.['TOOLS.md'] ? { 'TOOLS.md': this.parentWorkspaceFiles['TOOLS.md'] } : {}),
+      },
       modelId: this.parentConfig.modelId,
       provider: this.parentConfig.provider,
       apiKey: this.parentConfig.apiKey,

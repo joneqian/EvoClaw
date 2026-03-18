@@ -38,6 +38,7 @@ import { callLLM } from './agent/llm-client.js';
 import { registerProvider } from './provider/provider-registry.js';
 import { HybridSearcher } from './memory/hybrid-searcher.js';
 import { MemoryExtractor } from './memory/memory-extractor.js';
+import { UserMdRenderer } from './memory/user-md-renderer.js';
 import { MemoryStore } from './memory/memory-store.js';
 import { KnowledgeGraphStore } from './memory/knowledge-graph.js';
 import { FtsStore } from './infrastructure/db/fts-store.js';
@@ -90,6 +91,8 @@ export interface CreateAppOptions {
   hybridSearcher?: HybridSearcher;
   /** 记忆系统：记忆提取器 */
   memoryExtractor?: MemoryExtractor;
+  /** USER.md / MEMORY.md 动态渲染器 */
+  userMdRenderer?: UserMdRenderer;
 }
 
 /** 创建 Hono 应用实例 */
@@ -109,6 +112,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     laneQueue,
     hybridSearcher,
     memoryExtractor,
+    userMdRenderer,
   } = options;
 
   const app = new Hono();
@@ -229,7 +233,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -374,6 +378,9 @@ async function main() {
     ftsStore,
   );
 
+  // USER.md / MEMORY.md 动态渲染器
+  const userMdRenderer = new UserMdRenderer(db);
+
   log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
 
   const agentManager = new AgentManager(db);
@@ -402,6 +409,7 @@ async function main() {
     laneQueue,
     hybridSearcher,
     memoryExtractor,
+    userMdRenderer,
   });
 
   // 进程退出时清理

@@ -4,8 +4,11 @@ import { isGroupChat } from '../../routing/session-key.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** System prompt 最大字符数 */
-const MAX_SYSTEM_CHARS = 20000;
+/** 单个工作区文件最大字符数 */
+const MAX_FILE_CHARS = 20_000;
+
+/** 所有工作区文件总字符数上限 */
+const MAX_TOTAL_CHARS = 150_000;
 
 /** 工作区文件加载矩阵 — 哪些文件在哪些阶段加载 */
 const FILE_LOAD_MATRIX: Record<string, { bootstrap: boolean; beforeTurn: boolean }> = {
@@ -71,10 +74,23 @@ export const contextAssemblerPlugin: ContextPlugin = {
     let totalChars = 0;
     for (const file of priorityOrder) {
       const content = cache.get(file);
-      if (content && totalChars + content.length <= MAX_SYSTEM_CHARS) {
-        parts.push(`## ${file}\n${content}`);
-        totalChars += content.length;
+      if (!content) continue;
+
+      // 总量截断：超过上限停止加载剩余文件
+      if (totalChars >= MAX_TOTAL_CHARS) {
+        console.warn(`[context-assembler] 工作区文件总量超限 (${totalChars}/${MAX_TOTAL_CHARS})，跳过 ${file} 及后续文件`);
+        break;
       }
+
+      // 单文件截断
+      let truncated = content;
+      if (content.length > MAX_FILE_CHARS) {
+        console.warn(`[context-assembler] 文件 ${file} 超长 (${content.length}/${MAX_FILE_CHARS})，已截断`);
+        truncated = content.slice(0, MAX_FILE_CHARS) + '\n...[文件已截断]';
+      }
+
+      parts.push(`## ${file}\n${truncated}`);
+      totalChars += truncated.length;
     }
 
     if (parts.length > 0) {

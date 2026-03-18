@@ -28,6 +28,7 @@ import type { MemoryExtractor } from '../memory/memory-extractor.js';
 import { createMemoryRecallPlugin } from '../context/plugins/memory-recall.js';
 import { createMemoryExtractPlugin } from '../context/plugins/memory-extract.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
+import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('chat');
@@ -77,6 +78,7 @@ export function createChatRoutes(
   laneQueue?: LaneQueue,
   hybridSearcher?: HybridSearcher,
   memoryExtractor?: MemoryExtractor,
+  userMdRenderer?: UserMdRenderer,
 ) {
   const app = new Hono();
 
@@ -324,6 +326,18 @@ export function createChatRoutes(
       workspacePath,
     });
 
+    // 渲染 USER.md / MEMORY.md 到工作区磁盘（供 contextAssembler 加载）
+    if (userMdRenderer) {
+      try {
+        const userMdContent = userMdRenderer.renderUserMd(agentId);
+        agentManager.writeWorkspaceFile(agentId, 'USER.md', userMdContent);
+        const memoryMdContent = userMdRenderer.renderMemoryMd(agentId);
+        agentManager.writeWorkspaceFile(agentId, 'MEMORY.md', memoryMdContent);
+      } catch (err) {
+        log.warn('UserMdRenderer 渲染失败，降级跳过:', err);
+      }
+    }
+
     // 执行 beforeTurn（记忆召回 + 上下文组装）
     const turnCtx = {
       agentId,
@@ -382,7 +396,7 @@ export function createChatRoutes(
       };
       spawner = new SubAgentSpawner(runConfigForSpawner, laneQueue, 0, (taskId, task, result, success) => {
         log.info(`子 Agent ${taskId} ${success ? '完成' : '失败'}: ${task.slice(0, 50)}`);
-      });
+      }, workspaceFiles);
       enhancedTools.push(...createSubAgentTools(spawner));
     }
 

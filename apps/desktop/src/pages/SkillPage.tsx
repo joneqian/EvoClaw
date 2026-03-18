@@ -3,6 +3,13 @@ import { get, post, del } from '../lib/api';
 
 // ─── 类型 ───
 
+interface GateResult {
+  type: string;
+  name: string;
+  satisfied: boolean;
+  message?: string;
+}
+
 interface InstalledSkillItem {
   name: string;
   description: string;
@@ -11,17 +18,23 @@ interface InstalledSkillItem {
   source: 'clawhub' | 'github' | 'local';
   installPath: string;
   gatesPassed: boolean;
+  gateResults?: GateResult[];
   disableModelInvocation: boolean;
 }
 
-interface SearchResultItem {
+interface SkillItem {
   name: string;
   slug?: string;
   description: string;
+  descriptionZh?: string;
   version?: string;
   author?: string;
   downloads?: number;
-  source: 'clawhub' | 'github' | 'local';
+  installs?: number;
+  stars?: number;
+  score?: number;
+  category?: string;
+  source: string;
 }
 
 interface PrepareResult {
@@ -35,21 +48,33 @@ interface PrepareResult {
 }
 
 type TabType = 'store' | 'my';
+type SortBy = 'score' | 'downloads' | 'installs';
 
 // ─── 分类 ───
 
 const CATEGORIES = [
-  { id: 'all', label: '全部' },
-  { id: 'general', label: '通用' },
-  { id: 'creative', label: '创意' },
-  { id: 'academic', label: '学术' },
-  { id: 'development', label: '开发', hot: true },
-  { id: 'legal', label: '法律' },
-  { id: 'lifestyle', label: '生活' },
-  { id: 'marketing', label: '营销' },
-  { id: 'finance', label: '金融' },
-  { id: 'data', label: '数据' },
+  { id: '', label: '全部' },
+  { id: 'ai-intelligence', label: 'AI 智能' },
+  { id: 'developer-tools', label: '开发工具' },
+  { id: 'productivity', label: '效率提升' },
+  { id: 'data-analysis', label: '数据分析' },
+  { id: 'content-creation', label: '内容创作' },
+  { id: 'security-compliance', label: '安全合规' },
+  { id: 'communication-collaboration', label: '通讯协作' },
 ];
+
+const SORT_OPTIONS: Array<{ id: SortBy; label: string }> = [
+  { id: 'score', label: '热度' },
+  { id: 'downloads', label: '下载量' },
+  { id: 'installs', label: '安装量' },
+];
+
+function formatCount(n?: number): string {
+  if (!n) return '0';
+  if (n >= 10000) return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}万`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
 
 const RISK_STYLES: Record<string, { label: string; color: string }> = {
   low: { label: '低风险', color: 'text-green-600 bg-green-50' },
@@ -61,16 +86,42 @@ const RISK_STYLES: Record<string, { label: string; color: string }> = {
 
 export default function SkillPage() {
   const [tab, setTab] = useState<TabType>('store');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('score');
+  const [keyword, setKeyword] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 24;
+
+  const [storeSkills, setStoreSkills] = useState<SkillItem[]>([]);
+  const [storeLoading, setStoreLoading] = useState(false);
+
   const [skills, setSkills] = useState<InstalledSkillItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
-  const [searching, setSearching] = useState(false);
+
+  const [detailSkill, setDetailSkill] = useState<SkillItem | null>(null);
   const [prepareResult, setPrepareResult] = useState<PrepareResult | null>(null);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState('');
 
+  /** 加载商店列表 */
+  const fetchStore = useCallback(async () => {
+    setStoreLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page), pageSize: String(pageSize), sortBy,
+      });
+      if (category) params.set('category', category);
+      if (keyword.trim()) params.set('keyword', keyword.trim());
+
+      const data = await get<{ results: SkillItem[]; total: number }>(`/skill/browse?${params.toString()}`);
+      setStoreSkills(data.results);
+      setTotal(data.total);
+    } catch { setStoreSkills([]); setTotal(0); }
+    finally { setStoreLoading(false); }
+  }, [page, pageSize, sortBy, category, keyword]);
+
+  /** 加载已安装列表 */
   const fetchSkills = useCallback(async () => {
     setLoading(true);
     try {
@@ -80,120 +131,76 @@ export default function SkillPage() {
     finally { setLoading(false); }
   }, []);
 
-  /** 加载商店热门技能 */
-  const fetchBrowse = useCallback(async () => {
-    setSearching(true);
-    try {
-      const data = await get<{ results: SearchResultItem[] }>('/skill/browse?limit=30&sort=trending');
-      setSearchResults(data.results);
-    } catch { /* ignore */ }
-    finally { setSearching(false); }
-  }, []);
+  useEffect(() => { fetchSkills(); }, [fetchSkills]);
+  useEffect(() => { fetchStore(); }, [fetchStore]);
 
-  useEffect(() => { fetchSkills(); fetchBrowse(); }, [fetchSkills, fetchBrowse]);
+  // 切换分类/排序时重置页码
+  useEffect(() => { setPage(1); }, [category, sortBy, keyword]);
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-    setSearching(true);
-    setError('');
-    try {
-      const data = await post<{ results: SearchResultItem[] }>('/skill/search', {
-        query: searchQuery.trim(), limit: 30,
-      });
-      setSearchResults(data.results);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '搜索失败');
-    } finally { setSearching(false); }
-  }, [searchQuery]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSearch();
+  const handleSearch = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') fetchStore();
   };
 
   const handlePrepare = useCallback(async (slug: string) => {
-    setInstalling(true);
-    setError('');
+    setInstalling(true); setError('');
     try {
       const data = await post<{ result: PrepareResult }>('/skill/prepare', { source: 'clawhub', identifier: slug });
       setPrepareResult(data.result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '准备安装失败');
-    } finally { setInstalling(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : '准备安装失败'); }
+    finally { setInstalling(false); }
   }, []);
 
   const handleConfirm = useCallback(async () => {
     if (!prepareResult) return;
-    setInstalling(true);
-    setError('');
+    setInstalling(true); setError('');
     try {
       await post('/skill/confirm', { prepareId: prepareResult.prepareId });
       setPrepareResult(null);
       await fetchSkills();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '安装失败');
-    } finally { setInstalling(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : '安装失败'); }
+    finally { setInstalling(false); }
   }, [prepareResult, fetchSkills]);
 
   const handleUninstall = useCallback(async (name: string) => {
-    try {
-      await del(`/skill/${encodeURIComponent(name)}`);
-      await fetchSkills();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '卸载失败');
-    }
+    try { await del(`/skill/${encodeURIComponent(name)}`); await fetchSkills(); }
+    catch (err) { setError(err instanceof Error ? err.message : '卸载失败'); }
   }, [fetchSkills]);
 
   const installedNames = new Set(skills.map(s => s.name));
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="h-full flex flex-col bg-white">
       {/* ─── 顶栏 ─── */}
       <div className="px-6 pt-4 pb-0 flex items-center gap-4">
-        {/* 左侧 Tab */}
+        {/* Tab */}
         <div className="flex bg-slate-100 rounded-lg p-0.5 shrink-0">
-          <button
-            onClick={() => setTab('store')}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-              tab === 'store' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
+          <button onClick={() => setTab('store')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'store' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
           >技能商店</button>
-          <button
-            onClick={() => setTab('my')}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-              tab === 'my' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
+          <button onClick={() => setTab('my')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'my' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
           >我的技能{skills.length > 0 && ` (${skills.length})`}</button>
         </div>
-
-        {/* 中间留空 */}
         <div className="flex-1" />
 
-        {/* 右侧搜索 */}
-        <div className="relative w-[260px] shrink-0">
+        {/* 搜索 */}
+        <div className="relative w-[240px] shrink-0">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (!e.target.value.trim()) fetchBrowse(); // 清空时恢复热门列表
-            }}
-            onKeyDown={handleKeyDown}
+          <input type="text" value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onKeyDown={handleSearch}
             placeholder="搜索技能，回车确认"
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg
-              focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-slate-400"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-slate-400"
           />
-          {searching && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-          )}
         </div>
       </div>
 
       {error && <p className="text-xs text-red-500 px-6 mt-2">{error}</p>}
 
-      {/* ─── 安装确认弹窗 ─── */}
+      {/* 安装确认弹窗 */}
       {prepareResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setPrepareResult(null)}>
           <div className="bg-white rounded-xl shadow-xl w-[420px] p-5" onClick={(e) => e.stopPropagation()}>
@@ -217,71 +224,160 @@ export default function SkillPage() {
               </div>
             )}
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setPrepareResult(null)}
-                className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-              >取消</button>
-              <button onClick={handleConfirm}
-                disabled={installing || prepareResult.securityReport.riskLevel === 'high'}
-                className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40 transition-colors"
+              <button onClick={() => setPrepareResult(null)} className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">取消</button>
+              <button onClick={handleConfirm} disabled={installing || prepareResult.securityReport.riskLevel === 'high'}
+                className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40"
               >{installing ? '安装中...' : '确认安装'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── 内容区 ─── */}
+      {/* ─── 技能详情弹窗 ─── */}
+      {detailSkill && !prepareResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDetailSkill(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-[520px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {/* 头部 */}
+            <div className="p-5 border-b border-slate-100">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                  <svg className="w-7 h-7 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900">{detailSkill.name}</h3>
+                  {detailSkill.author && <p className="text-xs text-slate-400 mt-0.5">by {detailSkill.author}</p>}
+                  <div className="flex items-center gap-3 mt-2">
+                    {detailSkill.version && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">v{detailSkill.version}</span>
+                    )}
+                    {detailSkill.category && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand/10 text-brand-active">
+                        {CATEGORIES.find(c => c.id === detailSkill.category)?.label ?? detailSkill.category}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => setDetailSkill(null)} className="text-slate-400 hover:text-slate-600 transition-colors shrink-0 mt-1">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* 统计数据 */}
+            <div className="px-5 py-3 flex items-center gap-6 border-b border-slate-100">
+              <Stat label="下载" value={formatCount(detailSkill.downloads)} />
+              <Stat label="安装" value={formatCount(detailSkill.installs)} />
+              <Stat label="收藏" value={formatCount(detailSkill.stars)} />
+              {detailSkill.score !== undefined && <Stat label="热度" value={Math.round(detailSkill.score).toLocaleString()} />}
+            </div>
+
+            {/* 描述 */}
+            <div className="px-5 py-4">
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">介绍</h4>
+              {detailSkill.descriptionZh && (
+                <p className="text-sm text-slate-700 leading-relaxed mb-3">{detailSkill.descriptionZh}</p>
+              )}
+              <p className={`text-sm leading-relaxed ${detailSkill.descriptionZh ? 'text-slate-400' : 'text-slate-700'}`}>
+                {detailSkill.description}
+              </p>
+            </div>
+
+            {/* 操作 */}
+            <div className="px-5 pb-5 flex items-center gap-3">
+              {installedNames.has(detailSkill.name) ? (
+                <span className="px-4 py-2 text-sm font-medium text-brand bg-brand/10 rounded-lg">已安装</span>
+              ) : (
+                <button
+                  onClick={() => { setDetailSkill(null); handlePrepare(detailSkill.slug ?? detailSkill.name); }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-hover transition-colors"
+                >安装技能</button>
+              )}
+              {detailSkill.slug && (
+                <a
+                  href={`https://clawhub.ai/${detailSkill.author ?? ''}/${detailSkill.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 text-sm font-medium text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                >在 ClawHub 查看</a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 内容 ─── */}
       {tab === 'store' ? (
         <>
-          {/* 分类标签栏 */}
-          <div className="px-6 pt-4 pb-2 flex items-center gap-1 overflow-x-auto">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setCategory(cat.id)}
-                className={`relative px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors rounded-md ${
-                  category === cat.id
-                    ? 'text-slate-900'
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                {cat.label}
-                {category === cat.id && (
-                  <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-slate-900 rounded-full" />
-                )}
-                {cat.hot && (
-                  <span className="absolute -top-1 -right-1 px-1 py-px text-[9px] font-bold bg-red-500 text-white rounded-sm leading-none">HOT</span>
-                )}
-              </button>
-            ))}
+          {/* 分类 + 排序 */}
+          <div className="px-6 pt-3 pb-2 flex items-center gap-4">
+            {/* 分类标签 */}
+            <div className="flex items-center gap-1 flex-1 overflow-x-auto">
+              {CATEGORIES.map((cat) => (
+                <button key={cat.id} onClick={() => setCategory(cat.id)}
+                  className={`relative px-3 py-1.5 text-sm font-medium whitespace-nowrap rounded-md transition-colors ${
+                    category === cat.id ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  {cat.label}
+                  {category === cat.id && <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-slate-900 rounded-full" />}
+                </button>
+              ))}
+            </div>
+
+            {/* 排序 */}
+            <div className="flex items-center gap-1 shrink-0 border-l border-slate-200 pl-3">
+              {SORT_OPTIONS.map((opt) => (
+                <button key={opt.id} onClick={() => setSortBy(opt.id)}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    sortBy === opt.id ? 'bg-brand/10 text-brand-active font-medium' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >{opt.label}</button>
+              ))}
+            </div>
           </div>
 
           {/* 技能卡片网格 */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            {searching ? (
+          <div className="flex-1 overflow-y-auto px-6 py-3">
+            {storeLoading ? (
               <div className="text-center py-20 text-slate-400 text-sm">加载中...</div>
-            ) : searchResults.length > 0 ? (
-              <div className="grid grid-cols-3 gap-3">
-                {searchResults.map((r) => (
-                  <StoreCard
-                    key={`${r.source}-${r.name}`}
-                    name={r.name}
-                    description={r.description}
-                    installed={installedNames.has(r.name)}
-                    onInstall={() => handlePrepare(r.slug ?? r.name)}
-                  />
-                ))}
-              </div>
+            ) : storeSkills.length > 0 ? (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  {storeSkills.map((r) => (
+                    <StoreCard key={r.slug ?? r.name} skill={r} installed={installedNames.has(r.name)}
+                      onInstall={() => handlePrepare(r.slug ?? r.name)}
+                      onDetail={() => setDetailSkill(r)} />
+                  ))}
+                </div>
+
+                {/* 分页 */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6 mb-2">
+                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                      className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                    >上一页</button>
+                    <span className="text-xs text-slate-400">{page} / {totalPages}</span>
+                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                      className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-30"
+                    >下一页</button>
+                    <span className="text-xs text-slate-400 ml-2">共 {formatCount(total)} 个技能</span>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-20">
-                <p className="text-3xl mb-3">⚡</p>
-                <p className="text-sm text-slate-500 font-medium">暂无可用技能</p>
-                <p className="text-xs text-slate-400 mt-1">尝试搜索关键词发现技能</p>
+                <p className="text-3xl mb-3">🔍</p>
+                <p className="text-sm text-slate-400">未找到技能</p>
               </div>
             )}
           </div>
         </>
       ) : (
-        /* ─── 我的技能 ─── */
+        /* 我的技能 */
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading ? (
             <div className="text-center py-20 text-slate-400 text-sm">加载中...</div>
@@ -289,9 +385,7 @@ export default function SkillPage() {
             <div className="text-center py-20">
               <p className="text-3xl mb-3">📦</p>
               <p className="text-sm text-slate-500">暂无已安装技能</p>
-              <button onClick={() => setTab('store')} className="mt-3 text-sm text-brand hover:text-brand-hover">
-                去技能商店 →
-              </button>
+              <button onClick={() => setTab('store')} className="mt-3 text-sm text-brand hover:text-brand-hover">去技能商店 →</button>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
@@ -306,42 +400,48 @@ export default function SkillPage() {
   );
 }
 
-// ─── 商店技能卡片 ───
+// ─── 统计项 ───
 
-function StoreCard({ name, description, installed, onInstall }: {
-  name: string;
-  description: string;
-  installed: boolean;
-  onInstall: () => void;
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all group">
-      {/* 图标 */}
-      <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
-        <svg className="w-6 h-6 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <div className="text-center">
+      <p className="text-sm font-semibold text-slate-800">{value}</p>
+      <p className="text-[10px] text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+// ─── 商店卡片 ───
+
+function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem; installed: boolean; onInstall: () => void; onDetail: () => void }) {
+  const desc = skill.descriptionZh || skill.description;
+
+  return (
+    <div onClick={onDetail} className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all group cursor-pointer">
+      <div className="w-11 h-11 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+        <svg className="w-5 h-5 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       </div>
-
-      {/* 内容 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
-          <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
+          <p className="text-sm font-semibold text-slate-800 truncate flex-1">{skill.name}</p>
           {installed ? (
             <span className="text-[11px] text-brand font-medium shrink-0">Added</span>
           ) : (
-            <button
-              onClick={onInstall}
-              className="shrink-0 text-slate-300 hover:text-brand transition-colors"
-              title="安装"
-            >
+            <button onClick={(e) => { e.stopPropagation(); onInstall(); }} className="shrink-0 text-slate-300 hover:text-brand transition-colors" title="安装">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75v6.75m0 0l-3-3m3 3l3-3m-8.25 6a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
               </svg>
             </button>
           )}
         </div>
-        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{description}</p>
+        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mb-1.5">{desc}</p>
+        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+          {skill.downloads !== undefined && <span>↓ {formatCount(skill.downloads)}</span>}
+          {skill.stars !== undefined && <span>★ {formatCount(skill.stars)}</span>}
+          {skill.author && <span className="truncate">{skill.author}</span>}
+        </div>
       </div>
     </div>
   );
@@ -352,37 +452,40 @@ function StoreCard({ name, description, installed, onInstall }: {
 function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUninstall: (name: string) => void }) {
   return (
     <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-all group">
-      {/* 图标 */}
-      <div className="w-12 h-12 rounded-xl bg-brand/5 flex items-center justify-center shrink-0">
-        <svg className="w-6 h-6 text-brand-active" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="w-11 h-11 rounded-xl bg-brand/5 flex items-center justify-center shrink-0">
+        <svg className="w-5 h-5 text-brand-active" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       </div>
-
-      {/* 内容 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
           <p className="text-sm font-semibold text-slate-800 truncate">{skill.name}</p>
-          {!skill.gatesPassed && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 font-medium shrink-0">需配置</span>
+          {skill.gatesPassed ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-medium shrink-0">可用</span>
+          ) : (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium shrink-0">需配置</span>
           )}
-          {/* 卸载按钮 */}
-          <button
-            onClick={() => onUninstall(skill.name)}
-            className="ml-auto shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
-            title="卸载"
-          >
+          <button onClick={() => onUninstall(skill.name)}
+            className="ml-auto shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all" title="卸载">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{skill.description}</p>
-        <div className="flex items-center gap-2 mt-1.5">
-          {skill.version && <span className="text-[10px] text-slate-400">v{skill.version}</span>}
-          <span className="text-[10px] text-slate-300">
-            {skill.source === 'clawhub' ? 'ClawHub' : '本地'}
-          </span>
+        {/* 门控缺失项 */}
+        {!skill.gatesPassed && skill.gateResults && skill.gateResults.length > 0 && (
+          <div className="mt-1.5 space-y-0.5">
+            {skill.gateResults.filter(g => !g.satisfied).map((g, i) => (
+              <p key={i} className="text-[10px] text-amber-600">
+                {g.type === 'bin' ? '缺少命令' : g.type === 'env' ? '缺少环境变量' : '系统不支持'}: <code className="font-mono bg-amber-50 px-1 rounded">{g.name}</code>
+              </p>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400">
+          {skill.version && <span>v{skill.version}</span>}
+          <span>{skill.source === 'clawhub' ? 'ClawHub' : '本地'}</span>
         </div>
       </div>
     </div>

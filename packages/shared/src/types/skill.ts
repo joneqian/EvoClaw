@@ -38,9 +38,19 @@ export interface SkillSearchResult {
   name: string;
   slug?: string;
   description: string;
+  /** 中文描述 */
+  descriptionZh?: string;
   version?: string;
   author?: string;
   downloads?: number;
+  /** 安装数 */
+  installs?: number;
+  /** 收藏数 */
+  stars?: number;
+  /** 热度分数 */
+  score?: number;
+  /** 分类 */
+  category?: string;
   source: SkillSource;
   /** 本地路径（仅 local 有值） */
   localPath?: string;

@@ -14,16 +14,19 @@ export function createSkillRoutes(skillsBaseDir?: string): Hono {
   const discoverer = new SkillDiscoverer(skillsBaseDir);
   const installer = new SkillInstaller(skillsBaseDir);
 
-  /** GET /browse — 浏览热门/最新技能 */
+  /** GET /browse — 浏览技能列表（支持分类/排序/分页/搜索） */
   app.get('/browse', async (c) => {
-    const limit = Number(c.req.query('limit') ?? '30');
-    const sort = (c.req.query('sort') ?? 'trending') as 'trending' | 'updated' | 'downloads';
+    const page = Number(c.req.query('page') ?? '1');
+    const pageSize = Number(c.req.query('pageSize') ?? '24');
+    const sortBy = (c.req.query('sortBy') ?? 'score') as 'score' | 'downloads' | 'installs';
+    const category = c.req.query('category') || undefined;
+    const keyword = c.req.query('keyword') || undefined;
     try {
-      const results = await discoverer.browse(limit, sort);
-      return c.json({ results });
+      const { results, total } = await discoverer.browse({ page, pageSize, sortBy, category, keyword });
+      return c.json({ results, total });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: message, results: [] }, 500);
+      return c.json({ error: message, results: [], total: 0 }, 500);
     }
   });
 
@@ -87,8 +90,8 @@ export function createSkillRoutes(skillsBaseDir?: string): Hono {
       return c.json({ skills: loaded });
     }
 
-    // 返回所有本地 Skill
-    const local = discoverer.listLocal();
+    // 返回所有本地 Skill（含门控检查结果）
+    const local = discoverer.listLocalWithGates();
     return c.json({ skills: local });
   });
 

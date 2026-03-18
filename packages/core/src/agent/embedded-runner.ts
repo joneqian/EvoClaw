@@ -705,8 +705,10 @@ const TOOL_SUMMARIES: Record<string, string> = {
   knowledge_query: '查询知识图谱中的实体关系',
   // 子 Agent
   spawn_agent: '创建子 Agent 并行处理独立子任务',
-  list_agents: '查看所有子 Agent 的状态',
+  list_agents: '查看所有子 Agent 的状态和结果',
   kill_agent: '终止运行中的子 Agent',
+  steer_agent: '纠偏运行中的子 Agent（终止并用纠正指令重启）',
+  yield_agents: '让出当前轮次等待子 Agent 完成结果',
 };
 
 /** 按优先级排序的工具顺序 */
@@ -717,7 +719,7 @@ const TOOL_ORDER = [
   'web_search', 'web_fetch',
   'image', 'pdf',
   'memory_search', 'memory_get', 'knowledge_query',
-  'spawn_agent', 'list_agents', 'kill_agent',
+  'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',
 ];
 
 function buildToolCatalog(availableTools: string[]): string {

@@ -102,13 +102,15 @@ describe('子 Agent 工具集', () => {
     spawner = new SubAgentSpawner(makeConfig(), queue, 0);
   });
 
-  it('应该返回 3 个工具', () => {
+  it('应该返回 5 个工具', () => {
     const tools = createSubAgentTools(spawner);
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(5);
     const names = tools.map(t => t.name);
     expect(names).toContain('spawn_agent');
     expect(names).toContain('list_agents');
     expect(names).toContain('kill_agent');
+    expect(names).toContain('steer_agent');
+    expect(names).toContain('yield_agents');
   });
 
   it('spawn_agent 缺少 task 应返回错误', async () => {

@@ -394,9 +394,20 @@ export function createChatRoutes(
         apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
         tools: enhancedTools,  // 子 Agent 继承增强工具（不含子 Agent 工具本身）
       };
+      // 跨 Agent 解析器：根据 agentId 查找目标 Agent 配置 + 工作区文件
+      const agentResolver = (targetId: string) => {
+        const targetAgent = agentManager.getAgent(targetId);
+        if (!targetAgent) return undefined;
+        const targetWsFiles: Record<string, string> = {};
+        for (const file of ['AGENTS.md', 'TOOLS.md', 'SOUL.md', 'IDENTITY.md']) {
+          const content = agentManager.readWorkspaceFile(targetId, file);
+          if (content) targetWsFiles[file] = content;
+        }
+        return { agent: targetAgent, workspaceFiles: targetWsFiles };
+      };
       spawner = new SubAgentSpawner(runConfigForSpawner, laneQueue, 0, (taskId, task, result, success) => {
         log.info(`子 Agent ${taskId} ${success ? '完成' : '失败'}: ${task.slice(0, 50)}`);
-      }, workspaceFiles);
+      }, workspaceFiles, agentResolver);
       enhancedTools.push(...createSubAgentTools(spawner));
     }
 

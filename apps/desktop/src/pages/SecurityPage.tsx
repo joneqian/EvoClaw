@@ -195,7 +195,9 @@ export default function SecurityPage() {
   /** 格式化时间 */
   const formatTime = (iso: string) => {
     try {
-      return new Date(iso).toLocaleString('zh-CN', {
+      const d = (iso.endsWith('Z') || iso.includes('+') || iso.includes('T'))
+        ? new Date(iso) : new Date(iso + 'Z');
+      return d.toLocaleString('zh-CN', {
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',

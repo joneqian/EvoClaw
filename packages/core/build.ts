@@ -139,4 +139,12 @@ function copyDirRecursive(src: string, dest: string) {
   }
 }
 
+// 生成最小 package.json — PI 框架的 getPackageDir() 从 __dirname 向上查找 package.json，
+// 如果找不到会导致 PI 加载失败，回退到无工具的 fetch 模式
+fs.writeFileSync(
+  'dist/package.json',
+  JSON.stringify({ name: '@evoclaw/core', type: 'module', version: '0.1.0' }),
+);
+console.log('Generated dist/package.json for PI framework compatibility');
+
 console.log('Build complete: dist/server.mjs');

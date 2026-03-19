@@ -536,13 +536,9 @@ export default function App() {
         {/* 顶部标题栏：拖拽区域 + 个人中心 + 窗口控制 */}
         <div className="h-[42px] shrink-0 flex items-center justify-end" data-tauri-drag-region>
           <div className="flex items-center">
-            {/* 头像 */}
+            {/* 品牌头像 */}
             <div className="w-10 h-[42px] flex items-center justify-center">
-              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center">
-                <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
-                </svg>
-              </div>
+              <img src="/brand-icon.png" alt={BRAND_NAME} className="w-5 h-5 rounded-full object-cover" />
             </div>
 
             {/* 个人中心（点击展开菜单） */}
@@ -571,8 +567,9 @@ export default function App() {
               />
             </div>
 
-            {/* 最小化 */}
+            {/* 最小化 — stopPropagation 防止 data-tauri-drag-region 吞掉点击 */}
             <button
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => appWindow.minimize()}
               className="w-10 h-[42px] flex items-center justify-center text-slate-400
                 hover:bg-slate-100 hover:text-slate-600 transition-colors"
@@ -585,6 +582,7 @@ export default function App() {
 
             {/* 最大化 */}
             <button
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => appWindow.toggleMaximize()}
               className="w-10 h-[42px] flex items-center justify-center text-slate-400
                 hover:bg-slate-100 hover:text-slate-600 transition-colors"
@@ -597,6 +595,7 @@ export default function App() {
 
             {/* 关闭 */}
             <button
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => appWindow.close()}
               className="w-10 h-[42px] flex items-center justify-center text-slate-400
                 hover:bg-red-500 hover:text-white transition-colors"

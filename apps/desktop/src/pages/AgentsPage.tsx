@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAgentStore, type BuilderStage } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
+import { parseUtcDate } from '../lib/date';
 
 /** 每个阶段的快捷建议 */
 const STAGE_SUGGESTIONS: Partial<Record<BuilderStage, string[]>> = {
@@ -141,6 +142,8 @@ export default function AgentsPage() {
     { id: 'tpl-mental', name: '心理健康顾问', desc: '心理咨询与情绪管理专家，提供压力疏导、睡眠改善、正念冥想指导和心理健康科普。', avatar: '🧠' },
     { id: 'tpl-chronic', name: '慢病管理助手', desc: '针对高血压、糖尿病等慢性病，提供日常监测指导、用药提醒、生活方式干预和健康数据分析。', avatar: '❤️‍🩹' },
     { id: 'tpl-maternal', name: '母婴健康顾问', desc: '覆盖备孕、孕期、产后到育儿全周期，提供科学的营养指导、发育评估和常见问题解答。', avatar: '👶' },
+    { id: 'tpl-health-copy', name: '健康文案专家', desc: '擅长健康科普、患者教育、医疗营销等内容创作，将专业医学知识转化为通俗易懂的优质文案。', avatar: '✍️' },
+    { id: 'tpl-sales', name: '销售咨询专家', desc: '深谙健康产品销售策略，精准分析客户需求，提供专业话术指导和转化优化建议。', avatar: '📈' },
   ];
 
   return (
@@ -576,7 +579,7 @@ export default function AgentsPage() {
                 {/* 名称 */}
                 <h4 className="text-base font-bold text-slate-800 text-center mb-1">{agent.name}</h4>
                 <p className="text-xs text-slate-400 text-center mb-4">
-                  创建于 {new Date(agent.createdAt).toLocaleDateString('zh-CN')}
+                  创建于 {parseUtcDate(agent.createdAt).toLocaleDateString('zh-CN')}
                 </p>
                 {/* 操作按钮 */}
                 <div className="mt-auto space-y-2">

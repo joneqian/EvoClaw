@@ -147,7 +147,11 @@ if (existsSync(brandIconsDir)) {
   if (existsSync(headerPng)) {
     copyFileSync(headerPng, join(publicDir, 'brand-header.png'));
   }
-  console.log(`  ✅ Logo + Header 已复制到 public/`);
+  const icon32 = join(brandIconsDir, '32x32.png');
+  if (existsSync(icon32)) {
+    copyFileSync(icon32, join(publicDir, 'brand-icon.png'));
+  }
+  console.log(`  ✅ Logo + Header + Icon 已复制到 public/`);
 } else {
   console.log(`  ⚠️  品牌图标目录不存在: ${brandIconsDir}，跳过`);
 }

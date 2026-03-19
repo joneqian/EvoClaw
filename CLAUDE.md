@@ -55,13 +55,22 @@ docs/                  — PRD, Architecture, AgentSystemDesign, MemorySystemDes
 ## 开发命令
 
 ```bash
-pnpm install              # 安装依赖
-pnpm build                # 构建所有包
-pnpm test                 # 运行所有测试 (Vitest)
-pnpm lint                 # Oxlint 检查
-pnpm dev                  # 启动开发 (Turbo)
-pnpm dev:core             # 仅启动 Sidecar
-pnpm build:desktop        # 构建桌面应用
+pnpm install                  # 安装依赖
+pnpm build                    # 构建所有包 (默认 EvoClaw 品牌)
+pnpm test                     # 运行所有测试 (Vitest)
+pnpm lint                     # Oxlint 检查
+
+# EvoClaw 品牌
+pnpm dev                      # 启动开发
+pnpm dev:core                 # 仅启动 Sidecar
+pnpm build:desktop            # 构建桌面应用
+pnpm build:dmg                # 打包 DMG
+
+# HealthClaw 品牌
+pnpm dev:healthclaw           # 启动开发
+pnpm build:healthclaw         # 构建所有包
+pnpm build:desktop:healthclaw # 构建桌面应用
+pnpm build:dmg:healthclaw     # 打包 DMG
 ```
 
 ## 数据库

@@ -49,7 +49,11 @@ pub async fn restart_sidecar(app: tauri::AppHandle) -> Result<String, String> {
     if let Ok(mut count) = RESTART_COUNT.lock() {
         *count = 0;
     }
+    // 先杀掉旧的 sidecar 进程
+    kill_sidecar_process(&app);
     clear_sidecar_info();
+    // 重置关闭标记（shutdown_sidecar 可能设置了）
+    SHUTTING_DOWN.store(false, Ordering::SeqCst);
 
     do_spawn_sidecar(&app).map_err(|e| format!("重启 Sidecar 失败: {}", e))?;
     Ok("Sidecar 重启中".to_string())
@@ -78,6 +82,9 @@ pub fn spawn_sidecar(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>>
 
 /// 实际启动逻辑（setup 和 restart 共用）
 fn do_spawn_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // 启动前先杀掉可能残留的旧进程
+    kill_sidecar_process(app);
+
     let shell = app.shell();
 
     // 确定 sidecar 脚本路径
@@ -105,11 +112,15 @@ fn do_spawn_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
         found.unwrap_or_else(|| "packages/core/dist/server.mjs".to_string())
     };
 
+    // 优先使用内嵌的 node，回退到系统 node
+    let node_bin = find_bundled_node(app).or_else(find_node_binary).unwrap_or_else(|| "node".to_string());
+    println!("[sidecar] 使用 node: {}", node_bin);
+
     let (mut rx, child) = shell
-        .command("node")
+        .command(&node_bin)
         .args([&script_path])
         .spawn()
-        .map_err(|e| format!("启动 Sidecar 失败: {}", e))?;
+        .map_err(|e| format!("启动 Sidecar 失败 (node={}): {}", node_bin, e))?;
 
     // 保存子进程 PID 用于退出时清理
     let child_pid = child.pid();
@@ -206,20 +217,204 @@ fn do_spawn_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-/// 存储子进程 PID，用于退出时清理
-pub struct SidecarChild(pub Mutex<Option<u32>>);
+/// 验证 node 二进制能否正常执行（3 秒超时）
+fn verify_node(path: &str) -> bool {
+    let child = std::process::Command::new(path)
+        .args(["-e", "process.exit(0)"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => return status.success(),
+                    Ok(None) => {
+                        if std::time::Instant::now() > deadline {
+                            let _ = child.kill();
+                            eprintln!("[sidecar] verify_node 超时，kill 子进程");
+                            return false;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    Err(_) => return false,
+                }
+            }
+        }
+        Err(_) => false,
+    }
+}
 
-/// 关闭 Sidecar 子进程
-pub fn shutdown_sidecar(app: &tauri::AppHandle) {
-    // 标记正在关闭，防止自动重启
-    SHUTTING_DOWN.store(true, Ordering::SeqCst);
+/// 查找内嵌在 app bundle 里的 node 二进制
+fn find_bundled_node(app: &tauri::AppHandle) -> Option<String> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
-    if let Some(state) = app.try_state::<SidecarChild>() {
-        if let Ok(mut pid_lock) = state.0.lock() {
-            if let Some(_pid) = pid_lock.take() {
-                clear_sidecar_info();
-                println!("[sidecar] 已标记关闭");
+    // 1) 打包后的 resource dir (生产模式)
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("node-bin/node"));
+    }
+
+    // 2) 开发模式：源目录下的 node-bin
+    let dev_node = concat!(env!("CARGO_MANIFEST_DIR"), "/node-bin/node");
+    candidates.push(std::path::PathBuf::from(dev_node));
+
+    for candidate in &candidates {
+        if candidate.exists() {
+            let path = candidate.to_string_lossy().to_string();
+            if verify_node(&path) {
+                eprintln!("[sidecar] 使用内嵌 node: {}", path);
+                return Some(path);
+            }
+            eprintln!("[sidecar] 内嵌 node 无法执行，跳过: {}", path);
+        }
+    }
+    None
+}
+
+/// 获取用户 home 目录（GUI app 里 HOME 可能为空）
+fn get_home_dir() -> String {
+    // 优先环境变量
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return home;
+        }
+    }
+    // 回退：通过系统调用获取
+    if let Ok(output) = std::process::Command::new("/usr/bin/dscl")
+        .args([".", "-read", &format!("/Users/{}", std::env::var("USER").unwrap_or_default()), "NFSHomeDirectory"])
+        .output()
+    {
+        let s = String::from_utf8_lossy(&output.stdout);
+        if let Some(path) = s.split_whitespace().last() {
+            return path.to_string();
+        }
+    }
+    // 最终回退
+    "/Users/".to_string() + &std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
+}
+
+/// 查找 node 可执行文件路径
+/// macOS GUI app 不继承用户 shell 的 PATH，需要主动搜索常见安装位置
+fn find_node_binary() -> Option<String> {
+    let home = get_home_dir();
+    eprintln!("[sidecar] 查找 node, HOME={}", home);
+
+    // 1) 尝试通过用户默认 shell 获取 node 路径
+    for shell in ["/bin/zsh", "/bin/bash"] {
+        if !std::path::Path::new(shell).exists() {
+            continue;
+        }
+        // 使用 -ilc 启动交互式登录 shell，确保 nvm/fnm 等初始化脚本被加载
+        if let Ok(output) = std::process::Command::new(shell)
+            .args(["-ilc", "which node 2>/dev/null || command -v node 2>/dev/null"])
+            .env("HOME", &home)
+            .output()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            eprintln!("[sidecar] {} -ilc which node => '{}'", shell, path);
+            if !path.is_empty() && !path.contains("not found") && std::path::Path::new(&path).exists() {
+                return Some(path);
             }
         }
     }
+
+    // 2) nvm：优先读 default alias 指向的版本
+    let nvm_base = format!("{}/.nvm", home);
+    let nvm_versions = format!("{}/versions/node", nvm_base);
+
+    // 2a) 读 ~/.nvm/alias/default → 得到版本号如 "22" 或 "22.22.1"
+    let alias_path = format!("{}/alias/default", nvm_base);
+    if let Ok(alias_content) = std::fs::read_to_string(&alias_path) {
+        let alias = alias_content.trim();
+        eprintln!("[sidecar] nvm default alias: '{}'", alias);
+        if !alias.is_empty() {
+            // alias 可能是 "22"(主版本) 或 "v22.22.1"(完整版本)，需要匹配
+            let prefix = if alias.starts_with('v') { alias.to_string() } else { format!("v{}", alias) };
+            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                let mut matched: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        name.starts_with(&prefix) && e.path().join("bin/node").exists()
+                    })
+                    .collect();
+                matched.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                if let Some(ver) = matched.first() {
+                    let node_path = ver.path().join("bin/node");
+                    eprintln!("[sidecar] nvm default 找到 node: {}", node_path.display());
+                    return Some(node_path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    // 2b) 没有 alias 文件时，扫描所有版本取最新
+    if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+        let mut versions: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().join("bin/node").exists())
+            .collect();
+        versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        if let Some(latest) = versions.first() {
+            let node_path = latest.path().join("bin/node");
+            eprintln!("[sidecar] nvm 最新版本 node: {}", node_path.display());
+            return Some(node_path.to_string_lossy().to_string());
+        }
+    }
+
+    // 3) 常见固定路径
+    let candidates = [
+        format!("{}/Library/Application Support/fnm/aliases/default/bin/node", home),
+        format!("{}/.local/share/fnm/aliases/default/bin/node", home),
+        format!("{}/.volta/bin/node", home),
+        "/opt/homebrew/bin/node".to_string(),
+        "/usr/local/bin/node".to_string(),
+        "/usr/bin/node".to_string(),
+    ];
+
+    for candidate in &candidates {
+        if std::path::Path::new(candidate).exists() {
+            eprintln!("[sidecar] 固定路径找到 node: {}", candidate);
+            return Some(candidate.clone());
+        }
+    }
+
+    eprintln!("[sidecar] 未找到 node");
+    None
+}
+
+/// 存储子进程 PID，用于退出时清理
+pub struct SidecarChild(pub Mutex<Option<u32>>);
+
+/// 杀掉当前 sidecar 子进程（如果有）
+fn kill_sidecar_process(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<SidecarChild>() {
+        if let Ok(mut pid_lock) = state.0.lock() {
+            if let Some(pid) = pid_lock.take() {
+                println!("[sidecar] 正在终止子进程 PID={}", pid);
+                // 先发 SIGTERM 让进程优雅退出
+                let _ = std::process::Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .output();
+                // 等待 500ms 后强制 SIGKILL
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                });
+            }
+        }
+    }
+}
+
+/// 关闭 Sidecar 子进程（应用退出时调用）
+pub fn shutdown_sidecar(app: &tauri::AppHandle) {
+    // 标记正在关闭，防止自动重启
+    SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    kill_sidecar_process(app);
+    clear_sidecar_info();
+    println!("[sidecar] 已关闭");
 }

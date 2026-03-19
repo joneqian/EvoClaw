@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
+import { parseUtcDate } from '../lib/date';
 
 /** 工作区文件图标和标签 */
 const FILE_LABELS: Record<string, { icon: string; label: string; desc: string; editable: boolean }> = {
@@ -179,7 +180,7 @@ export default function AgentEditPage() {
 
           <div className="pt-4 border-t border-slate-100">
             <p className="text-xs text-slate-400">
-              创建于 {new Date(agent.createdAt).toLocaleString('zh-CN')}
+              创建于 {parseUtcDate(agent.createdAt).toLocaleString('zh-CN')}
             </p>
             <p className="text-xs text-slate-400 mt-1">
               ID: <code className="font-mono">{agent.id.slice(0, 8)}...</code>

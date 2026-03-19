@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useMemoryStore, type MemoryUnit, type SearchResult } from '../stores/memory-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
+import { formatDate } from '../lib/date';
 
 /** 分类显示名称和颜色 */
 const CATEGORIES: Record<string, { name: string; color: string }> = {
@@ -177,8 +178,8 @@ function MemoryCard({
           <p className="text-sm text-slate-600 whitespace-pre-wrap">{unit.l2Content}</p>
           <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
             <span>置信度: {Math.round(unit.confidence * 100)}%</span>
-            <span>创建: {new Date(unit.createdAt).toLocaleDateString('zh-CN')}</span>
-            <span>更新: {new Date(unit.updatedAt).toLocaleDateString('zh-CN')}</span>
+            <span>创建: {formatDate(unit.createdAt)}</span>
+            <span>更新: {formatDate(unit.updatedAt)}</span>
           </div>
         </div>
       )}

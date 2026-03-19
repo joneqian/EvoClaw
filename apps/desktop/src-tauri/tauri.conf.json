@@ -40,6 +40,8 @@
       "minimumSystemVersion": "13.0"
     },
     "resources": [
+      "node-bin/node",
+      "../../../packages/core/dist/package.json",
       "../../../packages/core/dist/server.mjs",
       "../../../packages/core/dist/server.cjs",
       "../../../packages/core/dist/migrations/*",

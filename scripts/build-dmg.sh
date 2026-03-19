@@ -15,32 +15,40 @@ echo "========================================="
 echo "  ${BRAND_NAME} macOS DMG 打包"
 echo "========================================="
 
-# 0. 应用品牌配置
+# 0. 应用品牌配置 + 下载内嵌 Node
 echo ""
-echo "[0/3] 应用品牌配置: ${BRAND} ..."
+echo "[0/4] 应用品牌配置: ${BRAND} ..."
 node scripts/brand-apply.mjs
 
-# 1. 构建所有包
 echo ""
-echo "[1/3] 构建所有包 (shared + core + desktop 前端) ..."
+echo "[1/4] 确保内嵌 Node.js 二进制 ..."
+node scripts/download-node.mjs
+
+# 2. 构建所有包
+echo ""
+echo "[2/4] 构建所有包 (shared + core + desktop 前端) ..."
 pnpm build
 
-# 2. 验证 core 产出
+# 3. 验证 core 产出
 echo ""
-echo "[2/3] 验证 Core 构建产出 ..."
+echo "[3/4] 验证 Core 构建产出 ..."
 if [ ! -f "packages/core/dist/server.mjs" ]; then
   echo "❌ packages/core/dist/server.mjs 不存在"
+  exit 1
+fi
+if [ ! -f "packages/core/dist/package.json" ]; then
+  echo "❌ packages/core/dist/package.json 不存在（PI 框架需要）"
   exit 1
 fi
 if [ ! -f "packages/core/dist/node_modules/better-sqlite3/build/Release/better_sqlite3.node" ]; then
   echo "❌ better-sqlite3 native 模块未打包"
   exit 1
 fi
-echo "✅ server.mjs + better-sqlite3 native 模块已就绪"
+echo "✅ server.mjs + package.json + better-sqlite3 native 模块已就绪"
 
-# 3. Tauri 打包
+# 4. Tauri 打包
 echo ""
-echo "[3/3] 执行 Tauri 打包 (cargo build --release + bundle DMG) ..."
+echo "[4/4] 执行 Tauri 打包 (cargo build --release + bundle DMG) ..."
 echo "  首次打包需要编译 Rust，可能需要 3-5 分钟 ..."
 echo ""
 cd apps/desktop

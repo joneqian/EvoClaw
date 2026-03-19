@@ -284,6 +284,83 @@ async function runWithPI(
     );
   }
 
+  // ─── Tool XML 过滤器（状态机） ───
+  // PI 框架会将模型输出的 tool_call/tool_result XML 标签混入 text_delta，
+  // 这些在 CLI 模式下用于显示工具调用过程，但 GUI 中不应展示给用户
+  // （工具调用信息已通过 tool_execution_start/end 事件单独处理）
+  const TOOL_XML_TAGS = ['tool_call', 'tool_result'];
+  let xmlFilterBuffer = '';  // 缓冲可能是 XML 标签开头的文本
+  let xmlFilterDepth = 0;    // 嵌套深度，>0 表示在 tool XML 块内部
+
+  function flushTextBuffer(): void {
+    if (xmlFilterBuffer && xmlFilterDepth === 0) {
+      emit(onEvent, { type: 'text_delta', delta: xmlFilterBuffer });
+    }
+    xmlFilterBuffer = '';
+  }
+
+  function filterToolXml(delta: string): void {
+    for (let i = 0; i < delta.length; i++) {
+      const ch = delta[i];
+
+      if (ch === '<') {
+        // 先 flush 之前累积的安全文本
+        flushTextBuffer();
+        xmlFilterBuffer = '<';
+        continue;
+      }
+
+      if (xmlFilterBuffer.startsWith('<')) {
+        xmlFilterBuffer += ch;
+
+        if (ch === '>') {
+          // 标签闭合，判断是否是 tool XML 标签
+          const tagContent = xmlFilterBuffer.slice(1, -1).trim();
+          const isClosing = tagContent.startsWith('/');
+          const tagName = (isClosing ? tagContent.slice(1) : tagContent.split(/\s/)[0]).toLowerCase();
+
+          if (TOOL_XML_TAGS.includes(tagName)) {
+            if (isClosing) {
+              xmlFilterDepth = Math.max(0, xmlFilterDepth - 1);
+            } else {
+              xmlFilterDepth++;
+            }
+            xmlFilterBuffer = '';
+          } else if (xmlFilterDepth > 0) {
+            // 在 tool XML 块内部的其它标签，也丢弃
+            xmlFilterBuffer = '';
+          } else {
+            // 非 tool XML 标签，正常输出
+            flushTextBuffer();
+          }
+          continue;
+        }
+
+        // 缓冲区过长说明不是标签，flush 出去
+        if (xmlFilterBuffer.length > 50) {
+          if (xmlFilterDepth === 0) {
+            flushTextBuffer();
+          } else {
+            xmlFilterBuffer = '';
+          }
+        }
+        continue;
+      }
+
+      // 普通字符
+      if (xmlFilterDepth > 0) {
+        // 在 tool XML 块内部，丢弃
+        continue;
+      }
+      xmlFilterBuffer += ch;
+    }
+
+    // flush 不以 < 开头的累积文本
+    if (xmlFilterBuffer && !xmlFilterBuffer.startsWith('<')) {
+      flushTextBuffer();
+    }
+  }
+
   // 订阅事件（加 try-catch 防止回调异常变成 unhandled rejection）
   const unsubscribe = session.subscribe((event: Record<string, unknown>) => {
     try {
@@ -293,6 +370,8 @@ async function runWithPI(
         if (msg?.role === 'assistant' && !msg.usage) {
           msg.usage = { ...ZERO_USAGE, cost: { ...ZERO_USAGE.cost } };
         }
+        // flush 剩余缓冲
+        flushTextBuffer();
       }
 
       // compaction 结束后重置所有 assistant usage（参考 OpenClaw 的 clearStaleAssistantUsageOnSessionMessages）
@@ -306,10 +385,7 @@ async function runWithPI(
             | Record<string, unknown>
             | undefined;
           if (msgEvent?.type === 'text_delta') {
-            emit(onEvent, {
-              type: 'text_delta',
-              delta: msgEvent.delta as string,
-            });
+            filterToolXml(msgEvent.delta as string);
           } else if (msgEvent?.type === 'thinking_delta') {
             emit(onEvent, {
               type: 'thinking_delta',

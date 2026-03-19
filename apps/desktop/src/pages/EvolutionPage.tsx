@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
 import { get, put, post, del } from '../lib/api';
+import { parseUtcDate } from '../lib/date';
 import type {
   CapabilityNode,
   GrowthEvent,
@@ -305,7 +306,7 @@ export default function EvolutionPage() {
                           <span className={`font-mono ${e.delta > 0 ? 'text-green-600' : e.delta < 0 ? 'text-red-500' : 'text-slate-400'}`}>
                             {e.delta > 0 ? '+' : ''}{e.delta.toFixed(2)}
                           </span>
-                          <span className="text-xs text-slate-400">{new Date(e.timestamp).toLocaleString()}</span>
+                          <span className="text-xs text-slate-400">{parseUtcDate(e.timestamp).toLocaleString('zh-CN')}</span>
                         </div>
                       </div>
                     );
@@ -421,7 +422,7 @@ export default function EvolutionPage() {
                         <p className="text-sm font-medium text-slate-700">{job.name}</p>
                         <p className="text-xs text-slate-400">
                           {job.cronExpression} · {job.enabled ? '启用' : '禁用'}
-                          {job.nextRunAt && ` · 下次: ${new Date(job.nextRunAt).toLocaleString()}`}
+                          {job.nextRunAt && ` · 下次: ${parseUtcDate(job.nextRunAt).toLocaleString('zh-CN')}`}
                         </p>
                       </div>
                       <button

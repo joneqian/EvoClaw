@@ -245,7 +245,7 @@ export default function App() {
     sidecarConnected, setSidecarConnected,
     initState, setInitState,
   } = useAppStore();
-  const { enterConversation } = useChatStore();
+  const { enterConversation, setCurrentAgent, clearMessages } = useChatStore();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -402,7 +402,11 @@ export default function App() {
         {/* 新建对话按钮 */}
         <div className={`${sidebarCollapsed ? 'px-1.5' : 'px-3'} mb-2`}>
           <button
-            onClick={() => navigate('/chat')}
+            onClick={() => {
+              setCurrentAgent(null);
+              clearMessages();
+              navigate('/chat');
+            }}
             className={`w-full flex items-center justify-center gap-2.5 py-2.5
               text-[14px] font-semibold text-slate-700
               bg-white border border-slate-200 rounded-xl shadow-sm

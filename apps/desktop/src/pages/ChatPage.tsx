@@ -5,7 +5,7 @@ import { useChatStore, type Message, type ToolCall } from '../stores/chat-store'
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 import { useAppStore } from '../stores/app-store';
-import { get, del } from '../lib/api';
+
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -21,186 +21,13 @@ function parseSSELine(line: string): { event?: string; data?: string } | null {
   return null;
 }
 
-/** 相对时间格式化 */
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const date = new Date(dateStr).getTime();
-  const diff = now - date;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
-  return new Date(dateStr).toLocaleDateString('zh-CN');
-}
 
-// ─── 全局对话列表（类似 Claude 的 Chats 页面） ───
-
-interface RecentConversation {
-  sessionKey: string;
-  agentId: string;
-  agentName: string;
-  agentEmoji: string;
-  title: string;
-  lastAt: string;
-  messageCount: number;
-}
-
-function ConversationListView({
-  onSelectConversation,
-  onNewChat,
-}: {
-  onSelectConversation: (agentId: string, sessionKey: string) => void;
-  onNewChat: () => void;
-}) {
-  const [conversations, setConversations] = useState<RecentConversation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deleteTarget, setDeleteTarget] = useState<RecentConversation | null>(null);
-  const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    get<{ conversations: RecentConversation[] }>('/chat/recents?limit=50')
-      .then((res) => setConversations(res.conversations))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filtered = search.trim()
-    ? conversations.filter((c) =>
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        c.agentName.toLowerCase().includes(search.toLowerCase())
-      )
-    : conversations;
-
-  return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-6 py-6">
-        {/* 标题 + 新建按钮 */}
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-slate-900">对话</h1>
-          <button
-            onClick={onNewChat}
-            className="w-8 h-8 flex items-center justify-center rounded-lg border border-slate-200
-              text-slate-500 hover:bg-slate-100 transition-colors"
-            title="新建对话"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        </div>
-
-        {/* 搜索 */}
-        <div className="mb-4">
-          <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索对话..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl
-                bg-slate-50 text-slate-900
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-400"
-            />
-          </div>
-        </div>
-
-        {/* 子标题 */}
-        <div className="flex items-center gap-2 mb-2 px-1">
-          <span className="text-sm text-slate-500">你的对话</span>
-        </div>
-
-        {/* 对话列表 */}
-        {loading ? (
-          <div className="text-center py-16 text-slate-400">
-            <p className="text-sm">加载中...</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-3">💬</p>
-            <p className="text-slate-400 text-sm">
-              {search.trim() ? '没有匹配的对话' : '暂无对话记录'}
-            </p>
-            {!search.trim() && (
-              <button
-                onClick={onNewChat}
-                className="mt-4 text-sm text-brand hover:text-brand-hover"
-              >
-                开始第一次对话
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {filtered.map((conv) => (
-              <div
-                key={conv.sessionKey}
-                className="flex items-center py-3.5 px-1 hover:bg-slate-50 transition-colors group"
-              >
-                <button
-                  onClick={() => onSelectConversation(conv.agentId, conv.sessionKey)}
-                  className="flex-1 text-left min-w-0"
-                >
-                  <p className="text-sm font-medium text-slate-800 truncate">
-                    {conv.title || '新对话'}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {conv.agentName} · {formatRelativeTime(conv.lastAt)}
-                  </p>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget(conv);
-                  }}
-                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg
-                    text-slate-300 opacity-0 group-hover:opacity-100
-                    hover:text-red-500 hover:bg-red-50 transition-all"
-                  title="删除对话"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 删除确认弹窗 */}
-      <ConfirmDialog
-        isOpen={!!deleteTarget}
-        title="删除对话"
-        message={`确定删除与 ${deleteTarget?.agentName ?? ''} 的对话「${deleteTarget?.title ?? ''}」吗？消息记录将被永久删除。`}
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={async () => {
-          if (!deleteTarget) return;
-          try {
-            await del(`/chat/${deleteTarget.agentId}/conversations?sessionKey=${encodeURIComponent(deleteTarget.sessionKey)}`);
-            setConversations(prev => prev.filter(c => c.sessionKey !== deleteTarget.sessionKey));
-            window.dispatchEvent(new Event(`${BRAND_EVENT_PREFIX}:conversations-changed`));
-          } catch { /* ignore */ }
-          setDeleteTarget(null);
-        }}
-      />
-    </div>
-  );
-}
-
-// ─── Agent 选择弹窗（新建对话时） ───
+// ─── Agent 选择（新建对话时） ───
 
 function AgentPicker({
   onSelect,
-  onCancel,
 }: {
   onSelect: (agentId: string) => void;
-  onCancel: () => void;
 }) {
   const { agents, fetchAgents } = useAgentStore();
   const navigate = useNavigate();
@@ -247,12 +74,6 @@ function AgentPicker({
             ))}
           </div>
         )}
-        <button
-          onClick={onCancel}
-          className="mt-4 w-full text-center text-sm text-slate-400 hover:text-slate-600"
-        >
-          返回对话列表
-        </button>
       </div>
     </div>
   );
@@ -621,26 +442,11 @@ export default function ChatPage() {
   const {
     currentAgentId,
     currentSessionKey,
-    enterConversation,
     newConversation,
-    setCurrentAgent,
   } = useChatStore();
-
-  const [showAgentPicker, setShowAgentPicker] = useState(false);
-
-  /** 从对话列表选择已有会话 */
-  const handleSelectConversation = useCallback((agentId: string, sessionKey: string) => {
-    enterConversation(agentId, sessionKey);
-  }, [enterConversation]);
-
-  /** 点击新建对话 → 显示 Agent 选择器 */
-  const handleNewChat = useCallback(() => {
-    setShowAgentPicker(true);
-  }, []);
 
   /** 选定 Agent → 新建会话进入对话 */
   const handleSelectAgent = useCallback((agentId: string) => {
-    setShowAgentPicker(false);
     newConversation(agentId);
   }, [newConversation]);
 
@@ -649,54 +455,10 @@ export default function ChatPage() {
     return <ChatView />;
   }
 
-  // Agent 选择器
-  if (showAgentPicker) {
-    return (
-      <AgentPicker
-        onSelect={handleSelectAgent}
-        onCancel={() => setShowAgentPicker(false)}
-      />
-    );
-  }
-
-  // 默认：会话列表
-  return (
-    <ConversationListView
-      onSelectConversation={handleSelectConversation}
-      onNewChat={handleNewChat}
-    />
-  );
+  // 默认：显示 Agent 选择器
+  return <AgentPicker onSelect={handleSelectAgent} />;
 }
 
-/** 确认弹窗 */
-function ConfirmDialog({ isOpen, title, message, onConfirm, onCancel }: {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel}>
-      <div className="bg-white rounded-xl shadow-xl w-[340px] p-5" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold text-slate-900 mb-1.5">{title}</h3>
-        <p className="text-xs text-slate-500 mb-5">{message}</p>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200
-              text-slate-600 hover:bg-slate-50 transition-colors"
-          >取消</button>
-          <button
-            onClick={onConfirm}
-            className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-          >删除</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** 工具调用摘要：显示操作而非结果 */
 function formatToolSummary(name: string, args: unknown): string {

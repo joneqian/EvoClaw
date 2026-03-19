@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAgentStore, type BuilderStage } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 
@@ -39,6 +39,7 @@ export default function AgentsPage() {
     startGuidedCreation, sendBuilderMessage, resetBuilder, updatePreviewFile,
   } = useAgentStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [showBuilder, setShowBuilder] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -119,6 +120,18 @@ export default function AgentsPage() {
   const suggestions = builderStage ? STAGE_SUGGESTIONS[builderStage] : undefined;
 
   const [activeTab, setActiveTab] = useState<'store' | 'mine'>('store');
+
+  // 从 URL 参数自动切换 tab 并触发创建
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('tab') === 'mine') {
+      setActiveTab('mine');
+      if (params.get('create') === '1') {
+        setShowBuilder(true);
+        startGuidedCreation();
+      }
+    }
+  }, [location.search, startGuidedCreation]);
 
   // 专家商店：健康领域预设模板（后续可从 API 加载）
   const storeAgents = [

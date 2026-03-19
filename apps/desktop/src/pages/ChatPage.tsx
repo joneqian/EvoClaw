@@ -39,6 +39,38 @@ function AgentPicker({
     ? agents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
     : agents;
 
+  // 空状态：整体居中
+  if (agents.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-slate-50/80 to-white">
+        <img
+          src="/brand-logo.png" alt="Logo"
+          className="w-16 h-16 mx-auto mb-5 object-contain drop-shadow-sm"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">选择专家开始对话</h2>
+        <p className="text-sm text-slate-400 mb-6">每位专家拥有独立的人格、记忆和技能</p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => navigate('/agents?tab=mine&create=1')}
+            className="px-6 py-2.5 bg-brand text-white text-sm font-medium rounded-xl
+              hover:bg-brand-hover shadow-sm hover:shadow transition-all"
+          >
+            创建专家
+          </button>
+          <button
+            onClick={() => navigate('/agents')}
+            className="px-6 py-2.5 text-sm font-medium text-slate-600
+              bg-white border border-slate-200 rounded-xl
+              hover:border-brand/40 hover:text-brand transition-all"
+          >
+            去专家商店
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col items-center bg-gradient-to-b from-slate-50/80 to-white">
       {/* 顶部欢迎区域 */}
@@ -54,29 +86,7 @@ function AgentPicker({
 
       {/* 内容区域 */}
       <div className="w-full max-w-lg px-6 flex-1 overflow-hidden flex flex-col">
-        {agents.length === 0 ? (
-          /* 空状态 */
-          <div className="flex-1 flex flex-col items-center justify-center -mt-10">
-            <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-5">
-              <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-              </svg>
-            </div>
-            <h3 className="text-base font-semibold text-slate-600 mb-2">还没有专家</h3>
-            <p className="text-sm text-slate-400 mb-6 text-center leading-relaxed">
-              创建你的第一个 AI 专家，赋予独特人格和技能
-            </p>
-            <button
-              onClick={() => navigate('/agents')}
-              className="px-6 py-2.5 bg-brand text-white text-sm font-medium rounded-xl
-                hover:bg-brand-hover shadow-sm hover:shadow transition-all"
-            >
-              创建专家
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* 搜索框 */}
+          {/* 搜索框 */}
             {agents.length > 4 && (
               <div className="relative mb-4 shrink-0">
                 <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -142,8 +152,6 @@ function AgentPicker({
                 </div>
               )}
             </div>
-          </>
-        )}
       </div>
     </div>
   );

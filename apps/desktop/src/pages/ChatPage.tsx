@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
@@ -183,7 +184,7 @@ function ConversationListView({
           try {
             await del(`/chat/${deleteTarget.agentId}/conversations?sessionKey=${encodeURIComponent(deleteTarget.sessionKey)}`);
             setConversations(prev => prev.filter(c => c.sessionKey !== deleteTarget.sessionKey));
-            window.dispatchEvent(new Event('evoclaw:conversations-changed'));
+            window.dispatchEvent(new Event(`${BRAND_EVENT_PREFIX}:conversations-changed`));
           } catch { /* ignore */ }
           setDeleteTarget(null);
         }}
@@ -439,7 +440,7 @@ function ChatView() {
       setStreaming(false);
       if (currentAgentId) fetchConversations(currentAgentId);
       // 通知侧边栏刷新最近对话列表
-      window.dispatchEvent(new CustomEvent('evoclaw:conversations-changed'));
+      window.dispatchEvent(new CustomEvent(`${BRAND_EVENT_PREFIX}:conversations-changed`));
     }
   }, [
     currentAgentId, currentSessionKey, input, attachments, isStreaming,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { BRAND_NAME, BRAND_ABBREVIATION, BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
 import MemoryPage from './pages/MemoryPage';
@@ -98,7 +99,7 @@ function LoadingScreen() {
           flex items-center justify-center">
           <Icon d={ICON_PATHS.memory} className="w-6 h-6 text-brand" />
         </div>
-        <p className="text-sm text-slate-400 font-medium">正在启动 EvoClaw...</p>
+        <p className="text-sm text-slate-400 font-medium">正在启动 {BRAND_NAME}...</p>
         <div className="mt-4 flex justify-center gap-1">
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
@@ -306,8 +307,8 @@ export default function App() {
   // 监听对话删除事件，刷新侧边栏
   useEffect(() => {
     const handler = () => fetchRecents();
-    window.addEventListener('evoclaw:conversations-changed', handler);
-    return () => window.removeEventListener('evoclaw:conversations-changed', handler);
+    window.addEventListener(`${BRAND_EVENT_PREFIX}:conversations-changed`, handler);
+    return () => window.removeEventListener(`${BRAND_EVENT_PREFIX}:conversations-changed`, handler);
   }, [fetchRecents]);
 
   /** 定期健康检查 */
@@ -443,10 +444,10 @@ export default function App() {
           >
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-brand-active
               flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm">
-              EC
+              {BRAND_ABBREVIATION}
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-[13px] font-semibold text-slate-700 leading-tight">EvoClaw</p>
+              <p className="text-[13px] font-semibold text-slate-700 leading-tight">{BRAND_NAME}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${
                   sidecarConnected ? 'bg-emerald-400' : 'bg-red-400'

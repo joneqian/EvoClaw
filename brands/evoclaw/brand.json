@@ -1,0 +1,16 @@
+{
+  "name": "EvoClaw",
+  "identifier": "com.evoclaw.app",
+  "abbreviation": "EC",
+  "dataDir": ".evoclaw",
+  "dbFilename": "evoclaw.db",
+  "configFilename": "evo_claw.json",
+  "keychainService": "com.evoclaw",
+  "eventPrefix": "evoclaw",
+  "colors": {
+    "primary": "#34d399",
+    "primaryDark": "#059669",
+    "gradient": ["#34d399", "#059669"]
+  },
+  "windowTitle": "EvoClaw"
+}

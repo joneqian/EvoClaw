@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BRAND_NAME } from '@evoclaw/shared';
 import { put, post, healthCheck } from '../lib/api';
 import { useAppStore } from '../stores/app-store';
 
@@ -367,7 +368,7 @@ export default function SetupPage() {
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">🐾</div>
             <h1 className="text-2xl font-bold text-slate-900 mb-2">
-              欢迎使用 EvoClaw
+              欢迎使用 {BRAND_NAME}
             </h1>
             <p className="text-slate-500 mb-6 leading-relaxed">
               自进化 AI 伴侣桌面应用。创建具有独立人格、记忆和权限的 AI Agent，
@@ -750,7 +751,7 @@ export default function SetupPage() {
               className="px-6 py-3 bg-brand text-white font-medium rounded-xl
                 hover:bg-brand-hover transition-colors"
             >
-              进入 EvoClaw
+              进入 {BRAND_NAME}
             </button>
           </div>
         )}

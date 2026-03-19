@@ -6,6 +6,7 @@
  */
 
 import type { SkillSearchResult, SkillGateResult } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -63,7 +64,7 @@ export class SkillDiscoverer {
   private skillsBaseDir: string;
 
   constructor(skillsBaseDir?: string) {
-    this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), '.evoclaw', 'skills');
+    this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
   }
 
   /** 浏览技能列表（支持分类、排序、分页） */

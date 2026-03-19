@@ -7,6 +7,7 @@
  */
 
 import type { SkillPrepareResult, SkillSource, SkillGateResult } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -27,7 +28,7 @@ export class SkillInstaller {
   private skillsBaseDir: string;
 
   constructor(skillsBaseDir?: string) {
-    this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), '.evoclaw', 'skills');
+    this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
   }
 
   /**

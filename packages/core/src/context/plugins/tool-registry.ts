@@ -13,6 +13,7 @@
 import type { ContextPlugin, TurnContext, BootstrapContext } from '../plugin.interface.js';
 import type { InstalledSkill } from '@evoclaw/shared';
 import type { ChatMessage } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -30,10 +31,10 @@ interface SkillPaths {
   agentDirTemplate: string;
 }
 
-/** 默认路径 */
+/** 默认路径（由品牌配置决定） */
 const DEFAULT_PATHS: SkillPaths = {
-  userDir: path.join(os.homedir(), '.evoclaw', 'skills'),
-  agentDirTemplate: path.join(os.homedir(), '.evoclaw', 'agents', '{agentId}', 'workspace', 'skills'),
+  userDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+  agentDirTemplate: path.join(os.homedir(), DEFAULT_DATA_DIR, 'agents', '{agentId}', 'workspace', 'skills'),
 };
 
 /** 创建 ToolRegistry 插件 */

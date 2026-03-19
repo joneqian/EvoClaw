@@ -9,16 +9,21 @@
   },
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "build": "turbo run build",
+    "brand:apply": "node scripts/brand-apply.mjs",
+    "build": "node scripts/brand-apply.mjs && turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "dev": "turbo run dev",
     "dev:core": "turbo run dev --filter=@evoclaw/core",
-    "build:desktop": "turbo run build --filter=@evoclaw/desktop"
+    "build:desktop": "node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "dev:healthclaw": "BRAND=healthclaw ./scripts/dev.sh",
+    "build:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build",
+    "build:desktop:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "oxlint": "^0.17.0",
+    "sharp": "^0.34.5",
     "turbo": "^2.5.0",
     "typescript": "^5.8.0",
     "vitest": "^3.1.0"

@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
-# EvoClaw macOS DMG 打包
-# 用法: ./scripts/build-dmg.sh
+# macOS DMG 打包
+# 用法: ./scripts/build-dmg.sh                    # 默认品牌 evoclaw
+#       BRAND=healthclaw ./scripts/build-dmg.sh    # 指定品牌
 #
-# 产出: apps/desktop/src-tauri/target/release/bundle/dmg/EvoClaw_0.1.0_aarch64.dmg
 # 注意: 未签名，安装后需右键 → 打开 绕过 Gatekeeper
 
 set -e
 cd "$(dirname "$0")/.."
 
+export BRAND="${BRAND:-evoclaw}"
+BRAND_NAME=$(node -e "const b=require('./brands/${BRAND}/brand.json');console.log(b.name)")
+
 echo "========================================="
-echo "  EvoClaw macOS DMG 打包"
+echo "  ${BRAND_NAME} macOS DMG 打包"
 echo "========================================="
+
+# 0. 应用品牌配置
+echo ""
+echo "[0/3] 应用品牌配置: ${BRAND} ..."
+node scripts/brand-apply.mjs
 
 # 1. 构建所有包
 echo ""
@@ -53,8 +61,8 @@ if [ -n "$DMG" ]; then
   echo ""
   echo "安装方式:"
   echo "  1. 双击 DMG 打开"
-  echo "  2. 拖拽 EvoClaw.app 到 Applications"
-  echo "  3. 首次打开: 右键 EvoClaw.app → 打开 (绕过 Gatekeeper)"
+  echo "  2. 拖拽 ${BRAND_NAME}.app 到 Applications"
+  echo "  3. 首次打开: 右键 ${BRAND_NAME}.app → 打开 (绕过 Gatekeeper)"
 else
   echo "⚠️  未找到 DMG 文件，请检查 src-tauri/target/release/bundle/"
 fi

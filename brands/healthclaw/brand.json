@@ -1,0 +1,16 @@
+{
+  "name": "HealthClaw",
+  "identifier": "com.healthclaw.app",
+  "abbreviation": "HC",
+  "dataDir": ".healthclaw",
+  "dbFilename": "healthclaw.db",
+  "configFilename": "health_claw.json",
+  "keychainService": "com.healthclaw",
+  "eventPrefix": "healthclaw",
+  "colors": {
+    "primary": "#3B82F6",
+    "primaryDark": "#1D4ED8",
+    "gradient": ["#60A5FA", "#2563EB"]
+  },
+  "windowTitle": "HealthClaw"
+}

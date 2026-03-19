@@ -1,3 +1,5 @@
+import { BRAND_NAME } from '@evoclaw/shared';
+
 export default function SettingsPage() {
   return (
     <div className="h-full flex flex-col">
@@ -14,7 +16,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">应用名称</span>
-                <span className="text-sm text-slate-800 font-medium">EvoClaw</span>
+                <span className="text-sm text-slate-800 font-medium">{BRAND_NAME}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">架构</span>

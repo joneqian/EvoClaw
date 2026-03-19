@@ -4,7 +4,11 @@ use security_framework::passwords::{
 };
 use serde::{Deserialize, Serialize};
 
-const SERVICE_PREFIX: &str = "com.evoclaw";
+/// Keychain 服务前缀 — 构建时 Tauri 自动注入 identifier，回退到默认值
+const SERVICE_PREFIX: &str = match option_env!("TAURI_ENV_IDENTIFIER") {
+    Some(id) => id,
+    None => "com.evoclaw.app",
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CredentialResult {

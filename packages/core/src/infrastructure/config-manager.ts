@@ -15,15 +15,16 @@ import type {
   ModelReference,
 } from '@evoclaw/shared';
 import { parseModelRef } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME } from '@evoclaw/shared';
 import { createLogger } from './logger.js';
 
 const log = createLogger('config');
 
-/** 默认配置目录 */
-const DEFAULT_CONFIG_DIR = path.join(os.homedir(), '.evoclaw');
+/** 默认配置目录（由品牌配置决定） */
+const DEFAULT_CONFIG_DIR = path.join(os.homedir(), DEFAULT_DATA_DIR);
 
-/** 默认配置文件名 */
-const CONFIG_FILENAME = 'evo_claw.json';
+/** 默认配置文件名（由品牌配置决定） */
+const CONFIG_FILENAME = BRAND_CONFIG_FILENAME;
 
 export class ConfigManager {
   private configPath: string;

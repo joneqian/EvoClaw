@@ -4,11 +4,13 @@ export const PORT_RANGE = { min: 49152, max: 65535 } as const;
 /** Bearer Token 长度（bytes） */
 export const TOKEN_BYTES = 32; // 256-bit
 
-/** 默认数据目录 */
-export const DEFAULT_DATA_DIR = '.evoclaw';
+import { BRAND_DATA_DIR, BRAND_DB_FILENAME } from './brand.js';
 
-/** 数据库文件名 */
-export const DB_FILENAME = 'evoclaw.db';
+/** 默认数据目录（由品牌配置决定） */
+export const DEFAULT_DATA_DIR = BRAND_DATA_DIR;
+
+/** 数据库文件名（由品牌配置决定） */
+export const DB_FILENAME = BRAND_DB_FILENAME;
 
 /** Agent 工作区目录名 */
 export const AGENTS_DIR = 'agents';

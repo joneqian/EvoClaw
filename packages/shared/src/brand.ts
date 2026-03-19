@@ -1,5 +1,5 @@
 // ⚠️ 此文件由 scripts/brand-apply.mjs 自动生成，请勿手动编辑
-// 品牌: EvoClaw | 生成时间: 2026-03-19T04:00:40.610Z
+// 品牌: EvoClaw | 生成时间: 2026-03-19T04:05:42.182Z
 
 /** 品牌配置类型 */
 export interface BrandConfig {

@@ -251,6 +251,9 @@ export default function App() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [recentsPage, setRecentsPage] = useState(1);
+  const [recentsHasMore, setRecentsHasMore] = useState(true);
+  const [recentsLoading, setRecentsLoading] = useState(false);
   const [recents, setRecents] = useState<RecentConversation[]>([]);
 
   /** 手动重启 Sidecar */
@@ -288,13 +291,33 @@ export default function App() {
     initialize();
   }, [initialize]);
 
-  /** 加载最近会话 */
+  const PAGE_SIZE = 20;
+
+  /** 加载会话列表（首次或刷新） */
   const fetchRecents = useCallback(async () => {
     try {
-      const res = await get<{ conversations: RecentConversation[] }>('/chat/recents?limit=15');
+      const res = await get<{ conversations: RecentConversation[] }>(`/chat/recents?limit=${PAGE_SIZE}`);
       setRecents(res.conversations);
+      setRecentsPage(1);
+      setRecentsHasMore(res.conversations.length >= PAGE_SIZE);
     } catch { /* Sidecar 可能未就绪 */ }
   }, []);
+
+  /** 加载更多（滚动触发） */
+  const fetchMoreRecents = useCallback(async () => {
+    if (recentsLoading || !recentsHasMore) return;
+    setRecentsLoading(true);
+    try {
+      const offset = recentsPage * PAGE_SIZE;
+      const res = await get<{ conversations: RecentConversation[] }>(`/chat/recents?limit=${PAGE_SIZE}&offset=${offset}`);
+      if (res.conversations.length > 0) {
+        setRecents(prev => [...prev, ...res.conversations]);
+        setRecentsPage(p => p + 1);
+      }
+      setRecentsHasMore(res.conversations.length >= PAGE_SIZE);
+    } catch { /* ignore */ }
+    setRecentsLoading(false);
+  }, [recentsPage, recentsLoading, recentsHasMore]);
 
   useEffect(() => {
     if (initState === 'connected') fetchRecents();
@@ -396,10 +419,6 @@ export default function App() {
 
         {/* 主导航 */}
         <div className={`${sidebarCollapsed ? 'px-1.5' : 'px-3'} space-y-0.5`}>
-          <NavLink to="/chat" className={navClassName} title="对话">
-            <Icon d={ICON_PATHS.chat} className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && '对话'}
-          </NavLink>
           <NavLink to="/agents" className={navClassName} title="Agents">
             <Icon d={ICON_PATHS.agents} className="w-4 h-4 shrink-0" />
             {!sidebarCollapsed && 'Agents'}
@@ -417,16 +436,24 @@ export default function App() {
         {/* 分割线 */}
         <div className={`${sidebarCollapsed ? 'mx-1.5' : 'mx-3'} my-2 border-t border-slate-200/60`} />
 
-        {/* Recents 区域（收起时隐藏） */}
+        {/* 所有对话（收起时隐藏） */}
         <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${sidebarCollapsed ? 'hidden' : ''}`}>
           <div className="px-4 mb-1.5">
             <span className="text-[11px] font-medium text-slate-400 tracking-wide">
-              最近对话
+              所有对话
             </span>
           </div>
-          <div className="flex-1 overflow-y-auto px-2">
+          <div
+            className="flex-1 overflow-y-auto px-2"
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+                fetchMoreRecents();
+              }
+            }}
+          >
             {recents.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-slate-400">暂无最近对话</p>
+              <p className="px-2 py-3 text-xs text-slate-400">暂无对话</p>
             ) : (
               <div className="space-y-px">
                 {recents.map((conv) => (
@@ -448,6 +475,11 @@ export default function App() {
                     </div>
                   </button>
                 ))}
+                {recentsLoading && (
+                  <div className="py-2 flex justify-center">
+                    <span className="w-4 h-4 border-2 border-slate-300 border-t-brand rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
             )}
           </div>

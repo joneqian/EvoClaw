@@ -34,10 +34,12 @@ export async function callLLM(
 
   const maxTokens = options.maxTokens ?? 4096;
 
-  log.info(`调用 LLM: model=${modelId} protocol=${protocol}`);
+  log.info(`调用 LLM: model=${modelId} protocol=${protocol} baseUrl=${baseUrl}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
-    return callAnthropic(baseUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);
+    // 兼容第三方 Anthropic 端点（如 MiniMax）：baseUrl 不含 /v1 时自动补上
+    const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;
+    return callAnthropic(anthropicUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);
   }
   return callOpenAI(baseUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);
 }

@@ -10,15 +10,24 @@
   "packageManager": "pnpm@10.14.0",
   "scripts": {
     "brand:apply": "node scripts/brand-apply.mjs",
-    "build": "node scripts/brand-apply.mjs && turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "dev": "./scripts/dev.sh",
     "dev:core": "turbo run dev --filter=@evoclaw/core",
+
+    "dev": "./scripts/dev.sh",
+    "build": "node scripts/brand-apply.mjs && turbo run build",
     "build:desktop": "node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "build:dmg": "./scripts/build-dmg.sh",
+
+    "dev:evoclaw": "./scripts/dev.sh",
+    "build:evoclaw": "node scripts/brand-apply.mjs && turbo run build",
+    "build:desktop:evoclaw": "node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "build:dmg:evoclaw": "./scripts/build-dmg.sh",
+
     "dev:healthclaw": "BRAND=healthclaw ./scripts/dev.sh",
     "build:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build",
-    "build:desktop:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop"
+    "build:desktop:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "build:dmg:healthclaw": "BRAND=healthclaw ./scripts/build-dmg.sh"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

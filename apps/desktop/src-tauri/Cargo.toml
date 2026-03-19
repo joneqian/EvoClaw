@@ -1,10 +1,10 @@
 [package]
-name = "evoclaw-desktop"
+name = "healthclaw-desktop"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "evoclaw_desktop_lib"
+name = "healthclaw_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

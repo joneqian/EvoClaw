@@ -366,7 +366,7 @@ export default function SetupPage() {
         {/* 步骤 1: 欢迎 */}
         {step === 'welcome' && (
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
-            <div className="text-6xl mb-4">🐾</div>
+            <img src="/brand-logo.png" alt="Logo" className="w-16 h-16 mx-auto mb-4 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             <h1 className="text-2xl font-bold text-slate-900 mb-2">
               欢迎使用 {BRAND_NAME}
             </h1>

@@ -8,9 +8,9 @@
   "keychainService": "com.evoclaw",
   "eventPrefix": "evoclaw",
   "colors": {
-    "primary": "#34d399",
-    "primaryDark": "#059669",
-    "gradient": ["#34d399", "#059669"]
+    "primary": "#00d4aa",
+    "primaryDark": "#00a88a",
+    "gradient": ["#00d4aa", "#00a88a"]
   },
   "windowTitle": "EvoClaw"
 }

@@ -125,6 +125,25 @@ if (existsSync(brandIconsDir)) {
     copyFileSync(join(brandIconsDir, file), join(tauriIconsDir, file));
   }
   console.log(`  ✅ 图标已复制 (${iconFiles.length} 个文件)`);
+
+  // 同时复制 logo 到前端 public 目录（供 UI 中引用）
+  const publicDir = join(ROOT, 'apps', 'desktop', 'public');
+  // 优先 PNG，其次 SVG；统一复制为 brand-logo.png（PNG 源）或 brand-logo.svg（SVG 源）
+  // 同时生成另一个格式的副本确保 <img src="/brand-logo.png"> 总能工作
+  const logoPng = join(brandIconsDir, 'logo.png');
+  const logoSvg = join(brandIconsDir, 'logo.svg');
+  if (existsSync(logoPng)) {
+    copyFileSync(logoPng, join(publicDir, 'brand-logo.png'));
+    console.log(`  ✅ Logo 已复制到 public/ (PNG)`);
+  } else if (existsSync(logoSvg)) {
+    copyFileSync(logoSvg, join(publicDir, 'brand-logo.svg'));
+    // 同时用 icon.png（已生成的 512px）作为 PNG 版本
+    const iconPng = join(brandIconsDir, 'icon.png');
+    if (existsSync(iconPng)) {
+      copyFileSync(iconPng, join(publicDir, 'brand-logo.png'));
+    }
+    console.log(`  ✅ Logo 已复制到 public/ (SVG+PNG)`);
+  }
 } else {
   console.log(`  ⚠️  品牌图标目录不存在: ${brandIconsDir}，跳过`);
 }
@@ -136,5 +155,53 @@ let indexHtml = readFileSync(indexHtmlPath, 'utf-8');
 indexHtml = indexHtml.replace(/<title>[^<]*<\/title>/, `<title>${config.name}</title>`);
 writeFileSync(indexHtmlPath, indexHtml, 'utf-8');
 console.log(`  ✅ ${indexHtmlPath}`);
+
+// ─── 6. 更新 index.css 品牌色 ───
+
+const indexCssPath = join(ROOT, 'apps', 'desktop', 'src', 'index.css');
+let indexCss = readFileSync(indexCssPath, 'utf-8');
+
+// 从品牌主色派生 hover / active / muted 变体
+function hexToRgb(hex) {
+  const m = hex.replace('#', '').match(/.{2}/g);
+  return m.map(c => parseInt(c, 16));
+}
+
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(c => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('');
+}
+
+function darken(hex, amount) {
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
+}
+
+function toOklchMuted(hex) {
+  // 简化：生成一个浅色 muted 变体（高亮度、低饱和度）
+  const [r, g, b] = hexToRgb(hex);
+  // 计算色相角度（简化版）
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0;
+  if (max !== min) {
+    const d = max - min;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60;
+    else if (max === g) h = ((b - r) / d + 2) * 60;
+    else h = ((r - g) / d + 4) * 60;
+  }
+  return `oklch(0.93 0.05 ${Math.round(h)})`;
+}
+
+const brandPrimary = config.colors.primary;
+const brandHover = darken(brandPrimary, 0.08);
+const brandActive = config.colors.primaryDark;
+const brandMuted = toOklchMuted(brandPrimary);
+
+indexCss = indexCss.replace(
+  /--color-brand:\s*[^;]+;\s*\n\s*--color-brand-hover:\s*[^;]+;\s*\n\s*--color-brand-active:\s*[^;]+;\s*\n\s*--color-brand-muted:\s*[^;]+;/,
+  `--color-brand: ${brandPrimary};\n  --color-brand-hover: ${brandHover};\n  --color-brand-active: ${brandActive};\n  --color-brand-muted: ${brandMuted};`
+);
+
+writeFileSync(indexCssPath, indexCss, 'utf-8');
+console.log(`  ✅ ${indexCssPath} (brand: ${brandPrimary})`);
 
 console.log(`\n✨ 品牌 ${config.name} 已应用完成`);

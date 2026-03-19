@@ -422,7 +422,7 @@ export default function AgentsPage() {
           </div>
         ) : agents.length === 0 && !showBuilder ? (
           <div className="text-center py-16">
-            <p className="text-5xl mb-4">🐾</p>
+            <img src="/brand-logo.png" alt="Logo" className="w-14 h-14 mx-auto mb-4 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             <h3 className="text-lg font-semibold text-slate-700 mb-2">
               创建你的第一个 Agent
             </h3>

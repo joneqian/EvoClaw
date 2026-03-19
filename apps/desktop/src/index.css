@@ -5,10 +5,10 @@
 
 @theme {
   /* Brand palette */
-  --color-brand: #00d4aa;
-  --color-brand-hover: #00c49d;
-  --color-brand-active: #00a88a;
-  --color-brand-muted: oklch(0.93 0.05 170);
+  --color-brand: #3B82F6;
+  --color-brand-hover: #3678e2;
+  --color-brand-active: #1D4ED8;
+  --color-brand-muted: oklch(0.93 0.05 217);
 
   /* Semantic */
   --color-success: #22c55e;

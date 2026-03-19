@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- EvoClaw Chameleon Logo — 扁平卡通风格，绿色渐变 -->
+
+  <defs>
+    <!-- 身体渐变：翠绿到深绿 -->
+    <linearGradient id="bodyGrad" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- 头顶冠渐变 -->
+    <linearGradient id="crestGrad" x1="0.5" y1="1" x2="0.5" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+
+    <!-- 卷尾渐变 -->
+    <linearGradient id="tailGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ======== 卷尾（身体后面） ======== -->
+  <path d="M 340,260
+           C 380,240 420,200 415,155
+           C 410,110 380,85 350,95
+           C 320,105 315,135 330,155
+           C 345,175 365,165 360,145"
+        stroke="url(#tailGrad)" stroke-width="22" stroke-linecap="round" fill="none"/>
+
+  <!-- ======== 主身体：大圆 ======== -->
+  <circle cx="240" cy="290" r="145" fill="url(#bodyGrad)"/>
+
+  <!-- 浅色肚皮 -->
+  <ellipse cx="240" cy="315" rx="85" ry="75" fill="#6ee7b7" opacity="0.3"/>
+
+  <!-- ======== 头顶冠 ======== -->
+  <path d="M 210,175 Q 240,100 270,175" fill="url(#crestGrad)"/>
+
+  <!-- ======== 大眼睛（突出的圆球眼，参考图风格） ======== -->
+  <!-- 左眼球 -->
+  <circle cx="185" cy="215" r="45" fill="url(#bodyGrad)"/>
+  <circle cx="185" cy="208" r="28" fill="white"/>
+  <circle cx="190" cy="210" r="14" fill="#0f172a"/>
+
+  <!-- 右眼球 -->
+  <circle cx="305" cy="215" r="45" fill="url(#bodyGrad)"/>
+  <circle cx="305" cy="208" r="28" fill="white"/>
+  <circle cx="310" cy="210" r="14" fill="#0f172a"/>
+
+  <!-- ======== 嘴巴：微笑弧线 ======== -->
+  <path d="M 205,340 Q 240,365 275,340"
+        stroke="#047857" stroke-width="4" stroke-linecap="round" fill="none"/>
+
+  <!-- ======== 前爪（简化圆润） ======== -->
+  <!-- 左爪 -->
+  <ellipse cx="135" cy="390" rx="30" ry="20" fill="#059669"/>
+  <!-- 左爪趾 -->
+  <circle cx="115" cy="393" r="8" fill="#047857"/>
+  <circle cx="128" cy="400" r="8" fill="#047857"/>
+  <circle cx="142" cy="403" r="8" fill="#047857"/>
+
+  <!-- 右爪 -->
+  <ellipse cx="345" cy="390" rx="30" ry="20" fill="#059669"/>
+  <!-- 右爪趾 -->
+  <circle cx="338" cy="403" r="8" fill="#047857"/>
+  <circle cx="352" cy="400" r="8" fill="#047857"/>
+  <circle cx="365" cy="393" r="8" fill="#047857"/>
+
+</svg>

@@ -215,7 +215,7 @@ function AgentPicker({
         </h3>
         {agents.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-3xl mb-3">🐾</p>
+            <img src="/brand-logo.png" alt="Logo" className="w-10 h-10 mx-auto mb-3 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             <p className="text-sm text-slate-400 mb-4">还没有 Agent</p>
             <button
               onClick={() => navigate('/agents')}

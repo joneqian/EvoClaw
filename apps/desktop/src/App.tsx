@@ -83,7 +83,7 @@ function formatRelativeTime(dateStr: string): string {
 
 /** 侧栏主导航项样式 */
 function navClassName({ isActive }: { isActive: boolean }): string {
-  return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+  return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 justify-start ${
     isActive
       ? 'bg-brand/10 text-brand-active'
       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
@@ -250,6 +250,7 @@ export default function App() {
   const location = useLocation();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [recents, setRecents] = useState<RecentConversation[]>([]);
 
   /** 手动重启 Sidecar */
@@ -355,51 +356,69 @@ export default function App() {
     <div className="flex flex-col h-screen bg-white text-slate-900">
       <div className="flex flex-1 min-h-0">
       {/* ─── Sidebar ─── */}
-      <nav className="w-[220px] bg-[#fafafa] border-r border-slate-200/60
-        flex flex-col shrink-0 select-none">
+      <nav className={`${sidebarCollapsed ? 'w-[54px]' : 'w-[240px]'} bg-[#fafafa] border-r border-slate-200/60
+        flex flex-col shrink-0 select-none transition-all duration-200`}>
 
-        {/* 品牌 Logo + 拖拽区域 */}
-        <div className="h-[60px] shrink-0 flex items-center px-3" data-tauri-drag-region>
-          <img src="/brand-header.png" alt={BRAND_NAME} className="h-11 object-contain pointer-events-none" />
+        {/* 菜单缩放按钮 + 品牌 Logo + 拖拽区域 */}
+        <div className="h-[60px] shrink-0 flex items-center px-2 gap-1" data-tauri-drag-region>
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="w-8 h-8 flex items-center justify-center text-slate-400
+              hover:bg-slate-200/60 hover:text-slate-600 rounded-lg transition-colors shrink-0"
+            title={sidebarCollapsed ? '展开菜单' : '收起菜单'}
+          >
+            <svg className={`w-[18px] h-[18px] transition-transform duration-200 ${sidebarCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+            </svg>
+          </button>
+          {!sidebarCollapsed && (
+            <img src="/brand-header.png" alt={BRAND_NAME} className="h-11 object-contain pointer-events-none" />
+          )}
         </div>
 
         {/* 新建对话按钮 */}
-        <div className="px-3 mb-1">
+        <div className={`${sidebarCollapsed ? 'px-1.5' : 'px-3'} mb-2`}>
           <button
             onClick={() => navigate('/chat')}
-            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-slate-600
-              hover:bg-slate-100 rounded-lg transition-all duration-150"
+            className={`w-full flex items-center justify-center gap-2.5 py-2.5
+              text-[14px] font-semibold text-slate-700
+              bg-white border border-slate-200 rounded-xl shadow-sm
+              hover:shadow hover:border-slate-300 transition-all duration-150`}
+            title="新建对话"
           >
-            <Icon d={ICON_PATHS.plus} className="w-4 h-4" strokeWidth={2} />
-            新建对话
+            <svg className="w-5 h-5 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <circle cx="12" cy="12" r="9" />
+              <path strokeLinecap="round" d="M12 8.5v7M8.5 12h7" />
+            </svg>
+            {!sidebarCollapsed && '新建对话'}
           </button>
         </div>
 
         {/* 主导航 */}
-        <div className="px-3 space-y-0.5">
-          <NavLink to="/chat" className={navClassName}>
+        <div className={`${sidebarCollapsed ? 'px-1.5' : 'px-3'} space-y-0.5`}>
+          <NavLink to="/chat" className={navClassName} title="对话">
             <Icon d={ICON_PATHS.chat} className="w-4 h-4 shrink-0" />
-            对话
+            {!sidebarCollapsed && '对话'}
           </NavLink>
-          <NavLink to="/agents" className={navClassName}>
+          <NavLink to="/agents" className={navClassName} title="Agents">
             <Icon d={ICON_PATHS.agents} className="w-4 h-4 shrink-0" />
-            Agents
+            {!sidebarCollapsed && 'Agents'}
           </NavLink>
-          <NavLink to="/memory" className={navClassName}>
+          <NavLink to="/memory" className={navClassName} title="记忆">
             <Icon d={ICON_PATHS.memory} className="w-4 h-4 shrink-0" />
-            记忆
+            {!sidebarCollapsed && '记忆'}
           </NavLink>
-          <NavLink to="/skills" className={navClassName}>
+          <NavLink to="/skills" className={navClassName} title="技能商店">
             <Icon d={ICON_PATHS.skills} className="w-4 h-4 shrink-0" />
-            技能商店
+            {!sidebarCollapsed && '技能商店'}
           </NavLink>
         </div>
 
         {/* 分割线 */}
-        <div className="mx-3 my-2 border-t border-slate-200/60" />
+        <div className={`${sidebarCollapsed ? 'mx-1.5' : 'mx-3'} my-2 border-t border-slate-200/60`} />
 
-        {/* Recents 区域 */}
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        {/* Recents 区域（收起时隐藏） */}
+        <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${sidebarCollapsed ? 'hidden' : ''}`}>
           <div className="px-4 mb-1.5">
             <span className="text-[11px] font-medium text-slate-400 tracking-wide">
               最近对话

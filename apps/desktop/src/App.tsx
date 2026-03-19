@@ -14,6 +14,7 @@ import ChannelPage from './pages/ChannelPage';
 import SetupPage from './pages/SetupPage';
 import CronPage from './pages/CronPage';
 import AlertPage from './pages/AlertPage';
+import SecurityGuardPage from './pages/SecurityGuardPage';
 import AgentEditPage from './pages/AgentEditPage';
 import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
@@ -57,6 +58,7 @@ const ICON_PATHS = {
   cron: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
   alert: ['M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0'],
   connect: ['M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244'],
+  shield: ['M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'],
 } as const;
 
 // ─── 类型 ───
@@ -256,6 +258,7 @@ export default function App() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
   const [recentsPage, setRecentsPage] = useState(1);
   const [recentsHasMore, setRecentsHasMore] = useState(true);
   const [recentsLoading, setRecentsLoading] = useState(false);
@@ -384,8 +387,11 @@ export default function App() {
     <div className="flex flex-col h-screen bg-white text-slate-900">
       <div className="flex flex-1 min-h-0">
       {/* ─── Sidebar ─── */}
-      <nav className={`${sidebarCollapsed ? 'w-[54px]' : 'w-[240px]'} bg-[#fafafa] border-r border-slate-200/60
-        flex flex-col shrink-0 select-none transition-all duration-200`}>
+      <nav
+        className="bg-[#fafafa] border-r border-slate-200/60
+          flex flex-col shrink-0 select-none transition-all duration-200"
+        style={{ width: sidebarCollapsed ? 54 : sidebarWidth }}
+      >
 
         {/* 菜单缩放按钮 + 品牌 Logo + 拖拽区域 */}
         <div className="h-[60px] shrink-0 flex items-center px-2 gap-1" data-tauri-drag-region>
@@ -400,7 +406,20 @@ export default function App() {
             </svg>
           </button>
           {!sidebarCollapsed && (
-            <img src="/brand-header.png" alt={BRAND_NAME} className="h-11 object-contain pointer-events-none" />
+            <img
+              src="/brand-header.png"
+              alt={BRAND_NAME}
+              className="h-11 object-contain pointer-events-none"
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                // 根据图片实际渲染宽度计算侧栏宽度：汉堡按钮(32) + gap(4) + 图片宽度 + 右边距(16)
+                const imgWidth = img.offsetWidth;
+                const computed = 32 + 4 + imgWidth + 16;
+                // 限制在合理范围内
+                const clamped = Math.max(200, Math.min(320, computed));
+                setSidebarWidth(clamped);
+              }}
+            />
           )}
         </div>
 
@@ -452,6 +471,10 @@ export default function App() {
             <Icon d={ICON_PATHS.connect} className="w-4 h-4 shrink-0" />
             {!sidebarCollapsed && '连接'}
           </NavLink>
+          <NavLink to="/security-guard" className={navClassName} title="安全防护">
+            <Icon d={ICON_PATHS.shield} className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && '安全防护'}
+          </NavLink>
         </div>
 
         {/* 分割线 */}
@@ -459,8 +482,8 @@ export default function App() {
 
         {/* 所有对话（收起时隐藏） */}
         <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${sidebarCollapsed ? 'hidden' : ''}`}>
-          <div className="px-4 mb-1.5">
-            <span className="text-[11px] font-medium text-slate-400 tracking-wide">
+          <div className="px-3 mb-1">
+            <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase">
               所有对话
             </span>
           </div>
@@ -474,24 +497,24 @@ export default function App() {
             }}
           >
             {recents.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-slate-400">暂无对话</p>
+              <p className="px-2.5 py-3 text-xs text-slate-400">暂无对话</p>
             ) : (
-              <div className="space-y-px">
+              <div className="space-y-0.5">
                 {recents.map((conv) => (
                   <button
                     key={conv.sessionKey}
                     onClick={() => handleRecentClick(conv)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] text-slate-500
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-sm text-slate-500
                       hover:bg-slate-100 transition-all duration-150 group"
                     title={`${conv.agentName} — ${conv.title}`}
                   >
-                    <div className="truncate leading-snug flex items-center">
-                      <AgentAvatar name={conv.agentName} size="xs" className="mr-1 shrink-0" />
-                      <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate">
+                    <div className="truncate leading-snug flex items-center gap-1.5">
+                      <AgentAvatar name={conv.agentName} size="xs" className="shrink-0" />
+                      <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate text-[13px] font-medium">
                         {conv.title}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 pl-5 truncate">
+                    <div className="text-[11px] text-slate-400 mt-0.5 pl-[26px] truncate">
                       {formatRelativeTime(conv.lastAt)}
                     </div>
                   </button>
@@ -601,6 +624,7 @@ export default function App() {
           <Route path="/cron" element={<CronPage />} />
           <Route path="/alert" element={<AlertPage />} />
           <Route path="/channel" element={<ChannelPage />} />
+          <Route path="/security-guard" element={<SecurityGuardPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/setup" element={<SetupPage />} />

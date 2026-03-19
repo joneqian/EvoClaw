@@ -31,48 +31,118 @@ function AgentPicker({
 }) {
   const { agents, fetchAgents } = useAgentStore();
   const navigate = useNavigate();
+  const [search, setSearch] = useState('');
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
+  const filtered = search.trim()
+    ? agents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+    : agents;
+
   return (
-    <div className="h-full flex flex-col items-center justify-center">
-      <div className="w-full max-w-md">
-        <h3 className="text-lg font-bold text-slate-800 mb-4 text-center">
-          选择 Agent 开始对话
-        </h3>
+    <div className="h-full flex flex-col items-center bg-gradient-to-b from-slate-50/80 to-white">
+      {/* 顶部欢迎区域 */}
+      <div className="pt-16 pb-8 text-center">
+        <img
+          src="/brand-logo.png" alt="Logo"
+          className="w-16 h-16 mx-auto mb-5 object-contain drop-shadow-sm"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">选择专家开始对话</h2>
+        <p className="text-sm text-slate-400">每位专家拥有独立的人格、记忆和技能</p>
+      </div>
+
+      {/* 内容区域 */}
+      <div className="w-full max-w-lg px-6 flex-1 overflow-hidden flex flex-col">
         {agents.length === 0 ? (
-          <div className="text-center py-8">
-            <img src="/brand-logo.png" alt="Logo" className="w-10 h-10 mx-auto mb-3 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            <p className="text-sm text-slate-400 mb-4">还没有 Agent</p>
+          /* 空状态 */
+          <div className="flex-1 flex flex-col items-center justify-center -mt-10">
+            <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-5">
+              <svg className="w-10 h-10 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+              </svg>
+            </div>
+            <h3 className="text-base font-semibold text-slate-600 mb-2">还没有专家</h3>
+            <p className="text-sm text-slate-400 mb-6 text-center leading-relaxed">
+              创建你的第一个 AI 专家，赋予独特人格和技能
+            </p>
             <button
               onClick={() => navigate('/agents')}
-              className="text-sm text-brand hover:text-brand-hover"
+              className="px-6 py-2.5 bg-brand text-white text-sm font-medium rounded-xl
+                hover:bg-brand-hover shadow-sm hover:shadow transition-all"
             >
-              去创建 Agent →
+              创建专家
             </button>
           </div>
         ) : (
-          <div className="space-y-2">
-            {agents.map((agent) => (
-              <button
-                key={agent.id}
-                onClick={() => onSelect(agent.id)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200
-                  bg-white hover:border-brand/40 hover:shadow-sm transition-all text-left"
-              >
-                <AgentAvatar name={agent.name} size="md" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{agent.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
-                  </p>
-                </div>
-                <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          <>
+            {/* 搜索框 */}
+            {agents.length > 4 && (
+              <div className="relative mb-4 shrink-0">
+                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
-              </button>
-            ))}
-          </div>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="搜索专家..."
+                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl
+                    bg-white text-slate-900 shadow-sm
+                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
+                    placeholder:text-slate-400"
+                />
+              </div>
+            )}
+
+            {/* 专家网格 */}
+            <div className="flex-1 overflow-y-auto pb-6">
+              {filtered.length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  没有匹配的专家
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {filtered.map((agent) => (
+                    <button
+                      key={agent.id}
+                      onClick={() => onSelect(agent.id)}
+                      className="group flex flex-col items-center gap-3 px-4 py-5 rounded-2xl
+                        bg-white border border-slate-200/80 shadow-sm
+                        hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5
+                        transition-all duration-200 text-center"
+                    >
+                      <AgentAvatar name={agent.name} size="xl" />
+                      <div className="min-w-0 w-full">
+                        <p className="text-sm font-semibold text-slate-800 truncate group-hover:text-brand-active transition-colors">
+                          {agent.name}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {agent.status === 'active' ? '在线' : agent.status === 'draft' ? '草稿' : agent.status}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+
+                  {/* 创建新专家入口 */}
+                  <button
+                    onClick={() => navigate('/agents')}
+                    className="flex flex-col items-center justify-center gap-2 px-4 py-5 rounded-2xl
+                      border-2 border-dashed border-slate-200
+                      hover:border-brand/40 hover:bg-brand/5
+                      transition-all duration-200 text-center"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center
+                      group-hover:bg-brand/10 transition-colors">
+                      <svg className="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-medium text-slate-500">创建专家</p>
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -324,7 +394,7 @@ function ChatView() {
             <div className="text-center text-slate-400">
               {currentAgent ? <AgentAvatar name={currentAgent.name} size="xl" className="mx-auto mb-3" /> : <p className="text-3xl mb-3">💬</p>}
               <p className="text-sm">
-                与 <span className="font-medium">{currentAgent?.name ?? 'Agent'}</span> 开始对话
+                与 <span className="font-medium">{currentAgent?.name ?? '专家'}</span> 开始对话
               </p>
             </div>
           </div>

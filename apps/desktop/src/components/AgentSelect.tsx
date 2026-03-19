@@ -17,7 +17,7 @@ interface AgentSelectProps {
   placeholder?: string;
 }
 
-export default function AgentSelect({ agents, value, onChange, placeholder = '暂无 Agent' }: AgentSelectProps) {
+export default function AgentSelect({ agents, value, onChange, placeholder = '暂无专家' }: AgentSelectProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 

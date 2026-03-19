@@ -423,9 +423,9 @@ export default function App() {
 
         {/* 主导航 */}
         <div className={`${sidebarCollapsed ? 'px-1.5' : 'px-3'} space-y-0.5`}>
-          <NavLink to="/agents" className={navClassName} title="Agents">
+          <NavLink to="/agents" className={navClassName} title="专家中心">
             <Icon d={ICON_PATHS.agents} className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && 'Agents'}
+            {!sidebarCollapsed && '专家中心'}
           </NavLink>
           <NavLink to="/memory" className={navClassName} title="记忆">
             <Icon d={ICON_PATHS.memory} className="w-4 h-4 shrink-0" />

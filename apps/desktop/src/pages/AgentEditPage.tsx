@@ -5,10 +5,10 @@ import AgentAvatar from '../components/AgentAvatar';
 
 /** 工作区文件图标和标签 */
 const FILE_LABELS: Record<string, { icon: string; label: string; desc: string; editable: boolean }> = {
-  'SOUL.md': { icon: '💎', label: '行为哲学', desc: '核心真理 + 角色人格 — Agent 的灵魂', editable: true },
+  'SOUL.md': { icon: '💎', label: '行为哲学', desc: '核心真理 + 角色人格 — 专家的灵魂', editable: true },
   'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、气质、标志 — 外在表现', editable: true },
   'AGENTS.md': { icon: '📋', label: '操作规程', desc: '通用准则 + 角色工作规范', editable: true },
-  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: 'Agent 醒来后的"出生仪式"', editable: true },
+  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: '专家醒来后的"出生仪式"', editable: true },
   'TOOLS.md': { icon: '🔧', label: '环境笔记', desc: '你的环境特有的备忘信息', editable: true },
   'HEARTBEAT.md': { icon: '💓', label: '定时检查', desc: '周期性自动执行的检查清单', editable: true },
   'USER.md': { icon: '👤', label: '用户画像', desc: '运行时从记忆中动态渲染', editable: false },
@@ -102,9 +102,9 @@ export default function AgentEditPage() {
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <p className="text-4xl mb-3">404</p>
-          <p className="text-sm text-slate-400 mb-4">Agent 不存在</p>
+          <p className="text-sm text-slate-400 mb-4">专家不存在</p>
           <button onClick={() => navigate('/agents')} className="text-sm text-brand">
-            返回 Agent 管理
+            返回专家中心
           </button>
         </div>
       </div>
@@ -194,7 +194,7 @@ export default function AgentEditPage() {
               工作区文件
             </h3>
             <p className="text-[10px] text-slate-400 mt-1">
-              这些文件定义了 Agent 的人格、行为和能力。运行时 Agent 会自动进化部分文件。
+              这些文件定义了专家的人格、行为和能力。运行时专家会自动进化部分文件。
             </p>
           </div>
 

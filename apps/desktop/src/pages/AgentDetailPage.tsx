@@ -25,7 +25,7 @@ const FILE_LABELS: Record<string, { icon: string; label: string; desc: string }>
   'SOUL.md': { icon: '💎', label: '行为哲学', desc: '核心真理 + 角色人格' },
   'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、气质、标志' },
   'AGENTS.md': { icon: '📋', label: '操作规程', desc: '通用准则 + 工作规范' },
-  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: 'Agent 的"出生仪式"' },
+  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: '专家的"出生仪式"' },
   'TOOLS.md': { icon: '🔧', label: '环境笔记', desc: '环境特有的备忘信息' },
   'HEARTBEAT.md': { icon: '💓', label: '定时检查', desc: '周期性自动检查清单' },
 };
@@ -109,7 +109,7 @@ export default function AgentDetailPage() {
   if (!agent) {
     return (
       <div className="h-full flex items-center justify-center text-slate-400">
-        <p className="text-sm">Agent 不存在或正在加载...</p>
+        <p className="text-sm">专家不存在或正在加载...</p>
       </div>
     );
   }
@@ -131,7 +131,7 @@ export default function AgentDetailPage() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
           </svg>
-          所有 Agents
+          所有专家
         </button>
 
         <div className="flex gap-8">
@@ -162,7 +162,7 @@ export default function AgentDetailPage() {
                       className="w-full text-left px-4 py-2 text-sm text-slate-700
                         hover:bg-slate-50 transition-colors"
                     >
-                      编辑 Agent
+                      编辑专家
                     </button>
                     {deleteConfirm ? (
                       <div className="px-4 py-2 space-y-1.5">
@@ -188,7 +188,7 @@ export default function AgentDetailPage() {
                         className="w-full text-left px-4 py-2 text-sm text-red-500
                           hover:bg-red-50 transition-colors"
                       >
-                        删除 Agent
+                        删除专家
                       </button>
                     )}
                   </div>
@@ -291,7 +291,7 @@ export default function AgentDetailPage() {
                 </button>
               </div>
               <p className="text-xs text-slate-400 mb-3">
-                自定义指令来调整 Agent 的行为
+                自定义指令来调整专家的行为
               </p>
               {editableFiles.length === 0 ? (
                 <div className="bg-slate-50 rounded-lg p-3">
@@ -345,7 +345,7 @@ export default function AgentDetailPage() {
                   </svg>
                 </div>
                 <p className="text-xs text-slate-400 text-center">
-                  添加文档、PDF 等文件<br />作为 Agent 的参考资料
+                  添加文档、PDF 等文件<br />作为专家的参考资料
                 </p>
               </div>
             </div>

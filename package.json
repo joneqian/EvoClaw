@@ -13,7 +13,7 @@
     "build": "node scripts/brand-apply.mjs && turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "dev": "turbo run dev",
+    "dev": "./scripts/dev.sh",
     "dev:core": "turbo run dev --filter=@evoclaw/core",
     "build:desktop": "node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
     "dev:healthclaw": "BRAND=healthclaw ./scripts/dev.sh",

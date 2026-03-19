@@ -1,5 +1,5 @@
 // ⚠️ 此文件由 scripts/brand-apply.mjs 自动生成，请勿手动编辑
-// 品牌: HealthClaw | 生成时间: 2026-03-19T02:58:40.053Z
+// 品牌: EvoClaw | 生成时间: 2026-03-19T03:11:35.137Z
 
 /** 品牌配置类型 */
 export interface BrandConfig {
@@ -21,23 +21,23 @@ export interface BrandConfig {
 
 /** 当前品牌配置 */
 export const BRAND: BrandConfig = {
-  "name": "HealthClaw",
-  "identifier": "com.healthclaw.app",
-  "abbreviation": "HC",
-  "dataDir": ".healthclaw",
-  "dbFilename": "healthclaw.db",
-  "configFilename": "health_claw.json",
-  "keychainService": "com.healthclaw",
-  "eventPrefix": "healthclaw",
+  "name": "EvoClaw",
+  "identifier": "com.evoclaw.app",
+  "abbreviation": "EC",
+  "dataDir": ".evoclaw",
+  "dbFilename": "evoclaw.db",
+  "configFilename": "evo_claw.json",
+  "keychainService": "com.evoclaw",
+  "eventPrefix": "evoclaw",
   "colors": {
-    "primary": "#3B82F6",
-    "primaryDark": "#1D4ED8",
+    "primary": "#00d4aa",
+    "primaryDark": "#00a88a",
     "gradient": [
-      "#60A5FA",
-      "#2563EB"
+      "#00d4aa",
+      "#00a88a"
     ]
   },
-  "windowTitle": "HealthClaw"
+  "windowTitle": "EvoClaw"
 } as const;
 
 // 便捷导出

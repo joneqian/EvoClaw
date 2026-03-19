@@ -20,7 +20,7 @@ import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from './stores/app-store';
-import { initSidecar, healthCheck, get } from './lib/api';
+import { initSidecar, healthCheck, get, del } from './lib/api';
 import { useChatStore } from './stores/chat-store';
 import AgentAvatar from './components/AgentAvatar';
 
@@ -374,6 +374,17 @@ export default function App() {
     navigate('/chat');
   }, [enterConversation, navigate]);
 
+  /** 删除最近会话 */
+  const handleDeleteRecent = useCallback(async (conv: RecentConversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await del(`/chat/${conv.agentId}/conversations?sessionKey=${encodeURIComponent(conv.sessionKey)}`);
+      setRecents(prev => prev.filter(c => c.sessionKey !== conv.sessionKey));
+    } catch (err) {
+      console.error('删除会话失败:', err);
+    }
+  }, []);
+
   // 加载中 / 错误
   if (initState === 'loading') return <LoadingScreen />;
   if (initState === 'error') return <ErrorScreen onRetry={initialize} />;
@@ -501,23 +512,37 @@ export default function App() {
             ) : (
               <div className="space-y-0.5">
                 {recents.map((conv) => (
-                  <button
+                  <div
                     key={conv.sessionKey}
-                    onClick={() => handleRecentClick(conv)}
-                    className="w-full text-left px-2.5 py-2 rounded-lg text-slate-500
-                      hover:bg-slate-100 transition-all duration-150 group"
-                    title={`${conv.agentName} — ${conv.title}`}
+                    className="flex items-center rounded-lg hover:bg-slate-100 transition-all duration-150 group"
                   >
-                    <div className="truncate leading-snug flex items-center gap-1.5">
-                      <AgentAvatar name={conv.agentName} size="xs" className="shrink-0" />
-                      <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate text-sm font-medium">
-                        {conv.title}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 mt-0.5 pl-[26px] truncate">
-                      {formatRelativeTime(conv.lastAt)}
-                    </div>
-                  </button>
+                    <button
+                      onClick={() => handleRecentClick(conv)}
+                      className="flex-1 min-w-0 text-left px-2.5 py-2"
+                      title={`${conv.agentName} — ${conv.title}`}
+                    >
+                      <div className="truncate leading-snug flex items-center gap-1.5">
+                        <AgentAvatar name={conv.agentName} size="xs" className="shrink-0" />
+                        <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate text-sm font-medium">
+                          {conv.title}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5 pl-[26px] truncate">
+                        {formatRelativeTime(conv.lastAt)}
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteRecent(conv, e)}
+                      className="shrink-0 w-6 h-6 mr-1 flex items-center justify-center rounded
+                        opacity-0 group-hover:opacity-100
+                        text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                      title="删除会话"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                 ))}
                 {recentsLoading && (
                   <div className="py-2 flex justify-center">
@@ -533,9 +558,9 @@ export default function App() {
 
       {/* ─── Main content ─── */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        {/* 顶部标题栏：拖拽区域 + 个人中心 + 窗口控制 */}
+        {/* 顶部标题栏：整体可拖拽，按钮区域通过独立 div 脱离拖拽 */}
         <div className="h-[42px] shrink-0 flex items-center justify-end" data-tauri-drag-region>
-          <div className="flex items-center">
+          <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             {/* 品牌头像 */}
             <div className="w-10 h-[42px] flex items-center justify-center">
               <img src="/brand-icon.png" alt={BRAND_NAME} className="w-5 h-5 rounded-full object-cover" />
@@ -567,9 +592,8 @@ export default function App() {
               />
             </div>
 
-            {/* 最小化 — stopPropagation 防止 data-tauri-drag-region 吞掉点击 */}
+            {/* 最小化 */}
             <button
-              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => appWindow.minimize()}
               className="w-10 h-[42px] flex items-center justify-center text-slate-400
                 hover:bg-slate-100 hover:text-slate-600 transition-colors"
@@ -582,7 +606,6 @@ export default function App() {
 
             {/* 最大化 */}
             <button
-              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => appWindow.toggleMaximize()}
               className="w-10 h-[42px] flex items-center justify-center text-slate-400
                 hover:bg-slate-100 hover:text-slate-600 transition-colors"
@@ -595,7 +618,6 @@ export default function App() {
 
             {/* 关闭 */}
             <button
-              onMouseDown={(e) => e.stopPropagation()}
               onClick={() => appWindow.close()}
               className="w-10 h-[42px] flex items-center justify-center text-slate-400
                 hover:bg-red-500 hover:text-white transition-colors"

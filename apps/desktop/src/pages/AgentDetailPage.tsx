@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 import { useChatStore, type Conversation } from '../stores/chat-store';
-import { get, del } from '../lib/api';
+import { get } from '../lib/api';
 import { formatRelativeTime } from '../lib/date';
 
 /** 工作区文件图标和标签 */
@@ -49,17 +49,6 @@ export default function AgentDetailPage() {
       .then((files) => setWorkspaceFiles(files))
       .catch(() => {});
   }, [id, fetchWorkspaceFiles]);
-
-  // 删除会话
-  const handleDeleteConversation = useCallback(async (agentId: string, sessionKey: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await del(`/chat/${agentId}/conversations?sessionKey=${encodeURIComponent(sessionKey)}`);
-      setConversations((prev) => prev.filter((c) => c.sessionKey !== sessionKey));
-    } catch (err) {
-      console.error('删除会话失败:', err);
-    }
-  }, []);
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -252,35 +241,19 @@ export default function AgentDetailPage() {
               ) : (
                 <div className="divide-y divide-slate-100">
                   {conversations.map((conv) => (
-                    <div
+                    <button
                       key={conv.sessionKey}
-                      className="relative group"
+                      onClick={() => handleEnterConversation(conv)}
+                      className="w-full text-left py-3.5 px-1 hover:bg-slate-50
+                        transition-colors group"
                     >
-                      <button
-                        onClick={() => handleEnterConversation(conv)}
-                        className="w-full text-left py-3.5 px-1 pr-8 hover:bg-slate-50
-                          transition-colors"
-                      >
-                        <p className="text-sm font-medium text-slate-800 group-hover:text-brand transition-colors truncate">
-                          {conv.title || '新对话'}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {formatRelativeTime(conv.lastAt)}
-                        </p>
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteConversation(conv.agentId, conv.sessionKey, e)}
-                        className="absolute right-1 top-1/2 -translate-y-1/2
-                          w-6 h-6 flex items-center justify-center rounded
-                          text-slate-300 opacity-0 group-hover:opacity-100
-                          hover:text-red-500 hover:bg-red-50 transition-all"
-                        title="删除会话"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
+                      <p className="text-sm font-medium text-slate-800 group-hover:text-brand transition-colors">
+                        {conv.title || '新对话'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {formatRelativeTime(conv.lastAt)}
+                      </p>
+                    </button>
                   ))}
                 </div>
               )}

@@ -313,9 +313,9 @@ export default function AgentDetailPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-slate-700">{meta.label}</p>
                           {hasContent ? (
-                            <p className="text-[10px] text-slate-400 truncate">{content.slice(0, 40)}...</p>
+                            <p className="text-xs text-slate-400 truncate">{content.slice(0, 40)}...</p>
                           ) : (
-                            <p className="text-[10px] text-slate-400 italic">未配置</p>
+                            <p className="text-xs text-slate-400 italic">未配置</p>
                           )}
                         </div>
                       </button>

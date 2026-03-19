@@ -256,7 +256,7 @@ export default function AgentsPage() {
                           ? 'text-green-500'
                           : 'text-slate-400'
                     }`}>
-                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
                         isDone
                           ? 'bg-green-500 text-white'
                           : isActive
@@ -443,12 +443,12 @@ export default function AgentsPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs font-medium text-slate-700">{meta.label}</span>
-                              <code className="text-[10px] px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">{filename}</code>
+                              <code className="text-xs px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">{filename}</code>
                             </div>
-                            <div className="text-[10px] text-slate-400 truncate mt-0.5">{meta.desc}</div>
+                            <div className="text-xs text-slate-400 truncate mt-0.5">{meta.desc}</div>
                           </div>
                           {isRuntime ? (
-                            <span className="text-[10px] text-slate-400 italic shrink-0">运行时生成</span>
+                            <span className="text-xs text-slate-400 italic shrink-0">运行时生成</span>
                           ) : hasContent ? (
                             <span className={`text-slate-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                               ▶
@@ -462,7 +462,7 @@ export default function AgentsPage() {
                                 <textarea
                                   value={content}
                                   onChange={(e) => updatePreviewFile(filename, e.target.value)}
-                                  className="w-full text-[11px] text-slate-700 bg-white
+                                  className="w-full text-xs text-slate-700 bg-white
                                     border border-slate-200 rounded p-2 font-mono leading-relaxed
                                     focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
                                     resize-y"
@@ -471,7 +471,7 @@ export default function AgentsPage() {
                                 <div className="flex justify-end mt-1">
                                   <button
                                     onClick={() => setEditingFile(null)}
-                                    className="text-[10px] text-brand hover:text-brand-hover"
+                                    className="text-xs text-brand hover:text-brand-hover"
                                   >
                                     完成编辑
                                   </button>
@@ -479,13 +479,13 @@ export default function AgentsPage() {
                               </div>
                             ) : (
                               <div className="group relative">
-                                <pre className="text-[11px] text-slate-600 bg-slate-50
+                                <pre className="text-xs text-slate-600 bg-slate-50
                                   rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
                                   {content}
                                 </pre>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setEditingFile(filename); }}
-                                  className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-[10px] text-slate-400
+                                  className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-xs text-slate-400
                                     bg-white border border-slate-200 rounded
                                     opacity-0 group-hover:opacity-100 hover:text-brand hover:border-brand/30
                                     transition-all"
@@ -575,7 +575,7 @@ export default function AgentsPage() {
                 </div>
                 {/* 名称 */}
                 <h4 className="text-base font-bold text-slate-800 text-center mb-1">{agent.name}</h4>
-                <p className="text-[11px] text-slate-400 text-center mb-4">
+                <p className="text-xs text-slate-400 text-center mb-4">
                   创建于 {new Date(agent.createdAt).toLocaleDateString('zh-CN')}
                 </p>
                 {/* 操作按钮 */}

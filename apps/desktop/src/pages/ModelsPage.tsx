@@ -260,7 +260,7 @@ function ProviderCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h4 className="text-sm font-semibold text-slate-800">{provider.name}</h4>
-            <code className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">
+            <code className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">
               {provider.id}
             </code>
             {provider.hasApiKey ? (
@@ -426,10 +426,10 @@ function ProviderCard({
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-slate-500">模型列表</p>
               <div className="flex items-center gap-2">
-                <p className="text-[10px] text-slate-400">{provider.models.length} 个</p>
+                <p className="text-xs text-slate-400">{provider.models.length} 个</p>
                 <button
                   onClick={() => setAddingModel(!addingModel)}
-                  className="text-[10px] px-2 py-0.5 rounded border border-dashed border-slate-300
+                  className="text-xs px-2 py-0.5 rounded border border-dashed border-slate-300
                     text-slate-500 hover:border-brand hover:text-brand-active transition-colors"
                 >
                   {addingModel ? '取消' : '+ 添加'}
@@ -542,7 +542,7 @@ function ProviderCard({
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
                               isEmbedding
                                 ? 'bg-amber-50 text-amber-600'
                                 : 'bg-blue-50 text-blue-600'
@@ -550,9 +550,9 @@ function ProviderCard({
                               {isEmbedding ? 'EMB' : 'LLM'}
                             </span>
                             <span className="font-medium text-slate-700 truncate">{model.name}</span>
-                            <code className="text-[10px] text-slate-400 font-mono truncate">{model.id}</code>
+                            <code className="text-xs text-slate-400 font-mono truncate">{model.id}</code>
                             {model.dimension && (
-                              <span className="text-[10px] text-slate-400 shrink-0">{model.dimension}d</span>
+                              <span className="text-xs text-slate-400 shrink-0">{model.dimension}d</span>
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">

@@ -91,7 +91,7 @@ function formatRelativeTime(dateStr: string): string {
 
 /** 侧栏主导航项样式 */
 function navClassName({ isActive }: { isActive: boolean }): string {
-  return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 justify-start ${
+  return `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 justify-start ${
     isActive
       ? 'bg-brand/10 text-brand-active'
       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
@@ -214,7 +214,7 @@ function BottomMenu({
               <button
                 key={item.path}
                 onClick={() => { onNavigate(item.path); onClose(); }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[13px] text-slate-600
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-slate-600
                   hover:bg-slate-50 transition-colors text-left"
               >
                 <Icon d={item.icon} className="w-4 h-4 text-slate-400" />
@@ -432,7 +432,7 @@ export default function App() {
               navigate('/chat');
             }}
             className={`w-full flex items-center justify-center gap-2.5 py-2.5
-              text-[14px] font-semibold text-slate-700
+              text-sm font-semibold text-slate-700
               bg-white border border-slate-200 rounded-xl shadow-sm
               hover:shadow hover:border-slate-300 transition-all duration-150`}
             title="新建对话"
@@ -504,17 +504,17 @@ export default function App() {
                   <button
                     key={conv.sessionKey}
                     onClick={() => handleRecentClick(conv)}
-                    className="w-full text-left px-2.5 py-2 rounded-lg text-sm text-slate-500
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-slate-500
                       hover:bg-slate-100 transition-all duration-150 group"
                     title={`${conv.agentName} — ${conv.title}`}
                   >
                     <div className="truncate leading-snug flex items-center gap-1.5">
                       <AgentAvatar name={conv.agentName} size="xs" className="shrink-0" />
-                      <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate text-[13px] font-medium">
+                      <span className="text-slate-600 group-hover:text-slate-800 transition-colors truncate text-sm font-medium">
                         {conv.title}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5 pl-[26px] truncate">
+                    <div className="text-xs text-slate-400 mt-0.5 pl-[26px] truncate">
                       {formatRelativeTime(conv.lastAt)}
                     </div>
                   </button>

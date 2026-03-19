@@ -230,16 +230,16 @@ export default function CronPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="text-sm font-bold text-slate-800">{task.name}</h4>
-                        <span className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 text-slate-500 rounded-full">
+                        <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-500 rounded-full">
                           {task.expert}
                         </span>
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${sc.text}`}>
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium ${sc.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                           {sc.label}
                         </span>
                       </div>
                       <p className="text-xs text-slate-400 mb-2">{task.description}</p>
-                      <div className="flex items-center gap-4 text-[11px] text-slate-400">
+                      <div className="flex items-center gap-4 text-xs text-slate-400">
                         <span className="flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />

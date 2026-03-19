@@ -250,10 +250,10 @@ export default function SkillPage() {
                   {detailSkill.author && <p className="text-xs text-slate-400 mt-0.5">by {detailSkill.author}</p>}
                   <div className="flex items-center gap-3 mt-2">
                     {detailSkill.version && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">v{detailSkill.version}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">v{detailSkill.version}</span>
                     )}
                     {detailSkill.category && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand/10 text-brand-active">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-brand/10 text-brand-active">
                         {CATEGORIES.find(c => c.id === detailSkill.category)?.label ?? detailSkill.category}
                       </span>
                     )}
@@ -406,7 +406,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center">
       <p className="text-sm font-semibold text-slate-800">{value}</p>
-      <p className="text-[10px] text-slate-400">{label}</p>
+      <p className="text-xs text-slate-400">{label}</p>
     </div>
   );
 }
@@ -427,7 +427,7 @@ function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem
         <div className="flex items-center gap-1.5 mb-1">
           <p className="text-sm font-semibold text-slate-800 truncate flex-1">{skill.name}</p>
           {installed ? (
-            <span className="text-[11px] text-brand font-medium shrink-0">Added</span>
+            <span className="text-xs text-brand font-medium shrink-0">Added</span>
           ) : (
             <button onClick={(e) => { e.stopPropagation(); onInstall(); }} className="shrink-0 text-slate-300 hover:text-brand transition-colors" title="安装">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -437,7 +437,7 @@ function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem
           )}
         </div>
         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mb-1.5">{desc}</p>
-        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+        <div className="flex items-center gap-3 text-xs text-slate-400">
           {skill.downloads !== undefined && <span>↓ {formatCount(skill.downloads)}</span>}
           {skill.stars !== undefined && <span>★ {formatCount(skill.stars)}</span>}
           {skill.author && <span className="truncate">{skill.author}</span>}
@@ -461,9 +461,9 @@ function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUnin
         <div className="flex items-center gap-1.5 mb-1">
           <p className="text-sm font-semibold text-slate-800 truncate">{skill.name}</p>
           {skill.gatesPassed ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-medium shrink-0">可用</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-medium shrink-0">可用</span>
           ) : (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium shrink-0">需配置</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium shrink-0">需配置</span>
           )}
           <button onClick={() => onUninstall(skill.name)}
             className="ml-auto shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all" title="卸载">
@@ -477,13 +477,13 @@ function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUnin
         {!skill.gatesPassed && skill.gateResults && skill.gateResults.length > 0 && (
           <div className="mt-1.5 space-y-0.5">
             {skill.gateResults.filter(g => !g.satisfied).map((g, i) => (
-              <p key={i} className="text-[10px] text-amber-600">
+              <p key={i} className="text-xs text-amber-600">
                 {g.type === 'bin' ? '缺少命令' : g.type === 'env' ? '缺少环境变量' : '系统不支持'}: <code className="font-mono bg-amber-50 px-1 rounded">{g.name}</code>
               </p>
             ))}
           </div>
         )}
-        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400">
+        <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400">
           {skill.version && <span>v{skill.version}</span>}
           <span>{skill.source === 'clawhub' ? 'ClawHub' : '本地'}</span>
         </div>

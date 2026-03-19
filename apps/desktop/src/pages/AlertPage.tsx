@@ -136,7 +136,7 @@ export default function AlertPage() {
             </div>
             <div>
               <p className="text-xl font-bold text-red-500">{criticalCount}</p>
-              <p className="text-[11px] text-slate-400">严重预警</p>
+              <p className="text-xs text-slate-400">严重预警</p>
             </div>
           </div>
           <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
@@ -147,7 +147,7 @@ export default function AlertPage() {
             </div>
             <div>
               <p className="text-xl font-bold text-amber-500">{activeCount}</p>
-              <p className="text-[11px] text-slate-400">待处理</p>
+              <p className="text-xs text-slate-400">待处理</p>
             </div>
           </div>
           <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
@@ -158,7 +158,7 @@ export default function AlertPage() {
             </div>
             <div>
               <p className="text-xl font-bold text-brand">{patientCount}</p>
-              <p className="text-[11px] text-slate-400">关注对象</p>
+              <p className="text-xs text-slate-400">关注对象</p>
             </div>
           </div>
           <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
@@ -169,7 +169,7 @@ export default function AlertPage() {
             </div>
             <div>
               <p className="text-xl font-bold text-green-500">{alerts.filter(a => a.status === 'resolved').length}</p>
-              <p className="text-[11px] text-slate-400">已处理</p>
+              <p className="text-xs text-slate-400">已处理</p>
             </div>
           </div>
         </div>
@@ -188,7 +188,7 @@ export default function AlertPage() {
             >
               {tab.label}
               {tab.key === 'active' && activeCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full">
+                <span className="ml-1.5 px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">
                   {activeCount}
                 </span>
               )}
@@ -244,18 +244,18 @@ export default function AlertPage() {
                       {/* 内容 */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold bg-slate-100 text-slate-600 rounded-full">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-full">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
                             </svg>
                             {alert.patient}
                           </span>
                           <h4 className="text-sm font-bold text-slate-800">{alert.title}</h4>
-                          <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${lc.bg} ${lc.text}`}>
+                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${lc.bg} ${lc.text}`}>
                             {lc.label}
                           </span>
                           {isResolved && (
-                            <span className="px-2 py-0.5 text-[10px] font-medium bg-green-50 text-green-500 rounded-full">
+                            <span className="px-2 py-0.5 text-xs font-medium bg-green-50 text-green-500 rounded-full">
                               已处理
                             </span>
                           )}
@@ -268,16 +268,16 @@ export default function AlertPage() {
                             {alert.metric && (
                               <div className="flex gap-4">
                                 <div className="px-3 py-2 bg-slate-50 rounded-lg flex-1">
-                                  <p className="text-[10px] text-slate-400 mb-0.5">监测指标</p>
+                                  <p className="text-xs text-slate-400 mb-0.5">监测指标</p>
                                   <p className="text-sm font-semibold text-slate-700">{alert.metric}</p>
                                 </div>
                                 <div className="px-3 py-2 bg-slate-50 rounded-lg flex-1">
-                                  <p className="text-[10px] text-slate-400 mb-0.5">当前值</p>
+                                  <p className="text-xs text-slate-400 mb-0.5">当前值</p>
                                   <p className={`text-sm font-semibold ${lc.text}`}>{alert.value}</p>
                                 </div>
                                 {alert.threshold && (
                                   <div className="px-3 py-2 bg-slate-50 rounded-lg flex-1">
-                                    <p className="text-[10px] text-slate-400 mb-0.5">预警阈值</p>
+                                    <p className="text-xs text-slate-400 mb-0.5">预警阈值</p>
                                     <p className="text-sm font-semibold text-slate-700">{alert.threshold}</p>
                                   </div>
                                 )}
@@ -314,8 +314,8 @@ export default function AlertPage() {
 
                       {/* 右侧信息 */}
                       <div className="text-right shrink-0">
-                        <p className="text-[11px] text-slate-400">{alert.time}</p>
-                        <p className="text-[11px] text-slate-400 mt-1">{alert.source}</p>
+                        <p className="text-xs text-slate-400">{alert.time}</p>
+                        <p className="text-xs text-slate-400 mt-1">{alert.source}</p>
                         <svg className={`w-4 h-4 text-slate-300 ml-auto mt-2 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                         </svg>

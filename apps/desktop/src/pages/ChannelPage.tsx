@@ -208,7 +208,7 @@ export default function ChannelPage() {
                     <div className="flex items-start justify-between mb-3">
                       <img src={p.logo} alt={p.name} className="w-10 h-10 object-contain" />
                       {isConnected && (
-                        <span className="px-2 py-0.5 text-[11px] font-medium bg-green-100 text-green-600 rounded-full">
+                        <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-600 rounded-full">
                           已连接
                         </span>
                       )}

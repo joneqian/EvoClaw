@@ -48,7 +48,7 @@ type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 const SIZE_MAP: Record<AvatarSize, { container: string; text: string }> = {
   xs: { container: 'w-5 h-5 rounded', text: 'text-[9px]' },
-  sm: { container: 'w-7 h-7 rounded-lg', text: 'text-[11px]' },
+  sm: { container: 'w-7 h-7 rounded-lg', text: 'text-xs' },
   md: { container: 'w-9 h-9 rounded-xl', text: 'text-sm' },
   lg: { container: 'w-11 h-11 rounded-xl', text: 'text-base' },
   xl: { container: 'w-14 h-14 rounded-2xl', text: 'text-lg' },

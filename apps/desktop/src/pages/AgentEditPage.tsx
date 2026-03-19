@@ -178,10 +178,10 @@ export default function AgentEditPage() {
           </button>
 
           <div className="pt-4 border-t border-slate-100">
-            <p className="text-[10px] text-slate-400">
+            <p className="text-xs text-slate-400">
               创建于 {new Date(agent.createdAt).toLocaleString('zh-CN')}
             </p>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               ID: <code className="font-mono">{agent.id.slice(0, 8)}...</code>
             </p>
           </div>
@@ -193,7 +193,7 @@ export default function AgentEditPage() {
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
               工作区文件
             </h3>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               这些文件定义了专家的人格、行为和能力。运行时专家会自动进化部分文件。
             </p>
           </div>
@@ -222,14 +222,14 @@ export default function AgentEditPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-slate-700">{meta.label}</span>
-                        <code className="text-[10px] px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">
+                        <code className="text-xs px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">
                           {filename}
                         </code>
                       </div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">{meta.desc}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{meta.desc}</div>
                     </div>
                     {isRuntime ? (
-                      <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
                         运行时生成
                       </span>
                     ) : (
@@ -243,7 +243,7 @@ export default function AgentEditPage() {
                   {isExpanded && (
                     <div className="px-4 pb-3 border-t border-slate-100">
                       {isRuntime ? (
-                        <pre className="mt-2 text-[11px] text-slate-500 bg-slate-50
+                        <pre className="mt-2 text-xs text-slate-500 bg-slate-50
                           rounded p-3 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed italic">
                           {content || '(空 — 运行时从记忆数据动态渲染)'}
                         </pre>

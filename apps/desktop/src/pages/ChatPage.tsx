@@ -126,7 +126,7 @@ function AgentPicker({
                         <p className="text-sm font-semibold text-slate-800 truncate group-hover:text-brand-active transition-colors">
                           {agent.name}
                         </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
+                        <p className="text-xs text-slate-400 mt-0.5">
                           {agent.status === 'active' ? '在线' : agent.status === 'draft' ? '草稿' : agent.status}
                         </p>
                       </div>
@@ -443,7 +443,7 @@ function ChatView() {
                   {/* 文件名 */}
                   <p className="text-xs font-medium text-slate-700 truncate mb-2">{file.name}</p>
                   {/* 文件类型标签 */}
-                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-500">
+                  <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-500">
                     {getFileExtLabel(file.name)}
                   </span>
                 </div>
@@ -632,7 +632,7 @@ function ToolCallItem({ tc }: { tc: ToolCall }) {
       {/* 命令/摘要 */}
       {tc.summary && (
         <div className="px-3 pb-2">
-          <code className="text-[11px] text-slate-500 font-mono break-all leading-relaxed">
+          <code className="text-xs text-slate-500 font-mono break-all leading-relaxed">
             {tc.summary}
           </code>
         </div>
@@ -693,7 +693,7 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
                       [&_h4]:text-sm [&_h4]:font-semibold [&_h4]:mt-2 [&_h4]:mb-1
                       [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5
                       [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto
-                      [&_code]:text-pink-600 [&_code]:text-[13px]
+                      [&_code]:text-pink-600 [&_code]:text-sm
                       [&_pre_code]:text-slate-100 [&_pre_code]:text-xs
                       [&_a]:text-brand [&_a]:no-underline hover:[&_a]:underline
                       [&_strong]:font-semibold [&_strong]:text-slate-900
@@ -709,7 +709,7 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
               <div className="flex items-center gap-1 mt-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={() => navigator.clipboard.writeText(message.content)}
-                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] text-slate-400
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs text-slate-400
                     hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
                   title="复制"
                 >

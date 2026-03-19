@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicolo-ribaudo/oxc/json-schema/tauri.conf.json",
-  "productName": "EvoClaw",
+  "productName": "HealthClaw",
   "version": "0.1.0",
-  "identifier": "com.evoclaw.app",
+  "identifier": "com.healthclaw.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,14 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "EvoClaw",
+        "title": "HealthClaw",
         "width": 1200,
         "height": 800,
         "minWidth": 1200,
         "minHeight": 800,
         "center": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "decorations": false
       }
     ],
     "security": {

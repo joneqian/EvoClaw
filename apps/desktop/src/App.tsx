@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { BRAND_NAME, BRAND_ABBREVIATION, BRAND_EVENT_PREFIX } from '@evoclaw/shared';
+import { BRAND_NAME, BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
 import MemoryPage from './pages/MemoryPage';
@@ -15,6 +15,7 @@ import SetupPage from './pages/SetupPage';
 import AgentEditPage from './pages/AgentEditPage';
 import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from './stores/app-store';
 import { initSidecar, healthCheck, get } from './lib/api';
 import { useChatStore } from './stores/chat-store';
@@ -194,7 +195,7 @@ function BottomMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute bottom-full left-0 right-0 mb-1.5 mx-2 bg-white
+      className="absolute top-full right-0 mt-1.5 w-52 bg-white
         border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50
         overflow-hidden z-50"
     >
@@ -348,6 +349,8 @@ export default function App() {
     return <Routes><Route path="/setup" element={<SetupPage />} /></Routes>;
   }
 
+  const appWindow = getCurrentWindow();
+
   return (
     <div className="flex flex-col h-screen bg-white text-slate-900">
       <div className="flex flex-1 min-h-0">
@@ -355,8 +358,10 @@ export default function App() {
       <nav className="w-[220px] bg-[#fafafa] border-r border-slate-200/60
         flex flex-col shrink-0 select-none">
 
-        {/* macOS 交通灯占位 + 拖拽区域 */}
-        <div className="h-[38px] shrink-0" data-tauri-drag-region />
+        {/* 品牌 Logo + 拖拽区域 */}
+        <div className="h-[60px] shrink-0 flex items-center px-3" data-tauri-drag-region>
+          <img src="/brand-header.png" alt={BRAND_NAME} className="h-11 object-contain pointer-events-none" />
+        </div>
 
         {/* 新建对话按钮 */}
         <div className="px-3 mb-1">
@@ -429,47 +434,86 @@ export default function App() {
           </div>
         </div>
 
-        {/* 底部：品牌 + 菜单 */}
-        <div className="relative border-t border-slate-200/60">
-          <BottomMenu
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            onNavigate={navigate}
-            sidecarConnected={sidecarConnected}
-            onRestartSidecar={handleRestartSidecar}
-          />
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="w-full flex items-center gap-2.5 px-3.5 py-3 hover:bg-slate-100 transition-all duration-150"
-          >
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand to-brand-active
-              flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm">
-              {BRAND_ABBREVIATION}
-            </div>
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-[13px] font-semibold text-slate-700 leading-tight">{BRAND_NAME}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  sidecarConnected ? 'bg-emerald-400' : 'bg-red-400'
-                }`} />
-                <span className="text-[10px] text-slate-400">
-                  {sidecarConnected ? '已连接' : '未连接'}
-                </span>
-              </div>
-            </div>
-            <Icon
-              d={ICON_PATHS.chevronUp}
-              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`}
-              strokeWidth={2}
-            />
-          </button>
-        </div>
       </nav>
 
       {/* ─── Main content ─── */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        {/* 主内容区顶部拖拽区域 */}
-        <div className="h-[38px] shrink-0" data-tauri-drag-region />
+        {/* 顶部标题栏：拖拽区域 + 个人中心 + 窗口控制 */}
+        <div className="h-[42px] shrink-0 flex items-center justify-end" data-tauri-drag-region>
+          <div className="flex items-center">
+            {/* 头像 */}
+            <div className="w-10 h-[42px] flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center">
+                <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* 个人中心（点击展开菜单） */}
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="w-10 h-[42px] flex items-center justify-center text-slate-400
+                  hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                title="个人中心"
+              >
+                <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="5" cy="6" r="1.5" fill="currentColor" stroke="none" />
+                  <path strokeLinecap="round" d="M10 6h10" />
+                  <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <path strokeLinecap="round" d="M10 12h10" />
+                  <circle cx="5" cy="18" r="1.5" fill="currentColor" stroke="none" />
+                  <path strokeLinecap="round" d="M10 18h10" />
+                </svg>
+              </button>
+              <BottomMenu
+                open={menuOpen}
+                onClose={() => setMenuOpen(false)}
+                onNavigate={(path) => { setMenuOpen(false); navigate(path); }}
+                sidecarConnected={sidecarConnected}
+                onRestartSidecar={handleRestartSidecar}
+              />
+            </div>
+
+            {/* 最小化 */}
+            <button
+              onClick={() => appWindow.minimize()}
+              className="w-10 h-[42px] flex items-center justify-center text-slate-400
+                hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              title="最小化"
+            >
+              <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path d="M5 12h14" />
+              </svg>
+            </button>
+
+            {/* 最大化 */}
+            <button
+              onClick={() => appWindow.toggleMaximize()}
+              className="w-10 h-[42px] flex items-center justify-center text-slate-400
+                hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              title="最大化"
+            >
+              <svg className="w-[14px] h-[14px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <rect x="4" y="4" width="16" height="16" rx="1" />
+              </svg>
+            </button>
+
+            {/* 关闭 */}
+            <button
+              onClick={() => appWindow.close()}
+              className="w-10 h-[42px] flex items-center justify-center text-slate-400
+                hover:bg-red-500 hover:text-white transition-colors"
+              title="关闭"
+            >
+              <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-hidden">
         <Routes>
           <Route path="/" element={<ChatPage />} />

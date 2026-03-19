@@ -84,6 +84,10 @@ tauriConf.productName = config.name;
 tauriConf.identifier = config.identifier;
 if (tauriConf.app?.windows?.[0]) {
   tauriConf.app.windows[0].title = config.windowTitle;
+  tauriConf.app.windows[0].decorations = false;
+  // 清理旧字段
+  delete tauriConf.app.windows[0].titleBarStyle;
+  delete tauriConf.app.windows[0].hiddenTitle;
 }
 
 writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8');
@@ -128,22 +132,22 @@ if (existsSync(brandIconsDir)) {
 
   // 同时复制 logo 到前端 public 目录（供 UI 中引用）
   const publicDir = join(ROOT, 'apps', 'desktop', 'public');
-  // 优先 PNG，其次 SVG；统一复制为 brand-logo.png（PNG 源）或 brand-logo.svg（SVG 源）
-  // 同时生成另一个格式的副本确保 <img src="/brand-logo.png"> 总能工作
+  // 复制 brand-logo（图标）和 brand-header（logo+文字）到 public
   const logoPng = join(brandIconsDir, 'logo.png');
   const logoSvg = join(brandIconsDir, 'logo.svg');
   if (existsSync(logoPng)) {
     copyFileSync(logoPng, join(publicDir, 'brand-logo.png'));
-    console.log(`  ✅ Logo 已复制到 public/ (PNG)`);
   } else if (existsSync(logoSvg)) {
     copyFileSync(logoSvg, join(publicDir, 'brand-logo.svg'));
-    // 同时用 icon.png（已生成的 512px）作为 PNG 版本
     const iconPng = join(brandIconsDir, 'icon.png');
-    if (existsSync(iconPng)) {
-      copyFileSync(iconPng, join(publicDir, 'brand-logo.png'));
-    }
-    console.log(`  ✅ Logo 已复制到 public/ (SVG+PNG)`);
+    if (existsSync(iconPng)) copyFileSync(iconPng, join(publicDir, 'brand-logo.png'));
   }
+
+  const headerPng = join(brandIconsDir, 'brand-header.png');
+  if (existsSync(headerPng)) {
+    copyFileSync(headerPng, join(publicDir, 'brand-header.png'));
+  }
+  console.log(`  ✅ Logo + Header 已复制到 public/`);
 } else {
   console.log(`  ⚠️  品牌图标目录不存在: ${brandIconsDir}，跳过`);
 }

@@ -48,7 +48,7 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     `SELECT id, session_key, role, content, created_at
      FROM conversation_log
      WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
-     ORDER BY created_at DESC
+     ORDER BY created_at DESC, rowid DESC
      LIMIT ?`,
     agentId, sessionKey, limit,
   );

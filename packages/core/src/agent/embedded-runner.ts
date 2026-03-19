@@ -2,6 +2,9 @@ import os from 'node:os';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
 import { ToolSafetyGuard } from './tool-safety.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('embedded-runner');
 
 type EventCallback = (event: RuntimeEvent) => void;
 
@@ -26,25 +29,25 @@ export async function runEmbeddedAgent(
   emit(onEvent, { type: 'agent_start' });
 
   try {
-    console.log('[embedded-runner] 开始运行 PI');
+    log.info('开始运行 PI');
     await Promise.race([
       runWithPI(config, message, onEvent, abortSignal),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('PI 超时 (120s)')), 120_000),
       ),
     ]);
-    console.log('[embedded-runner] PI 调用完成');
+    log.info('PI 调用完成');
   } catch (piError) {
     const piMsg = piError instanceof Error ? piError.message : String(piError);
-    console.log(`[embedded-runner] PI 失败: ${piMsg}`);
-    console.log(
-      `[embedded-runner] 回退 fetch (protocol=${config.apiProtocol}, baseUrl=${config.baseUrl})`,
+    log.warn(`PI 失败: ${piMsg}`);
+    log.info(
+      `回退 fetch (protocol=${config.apiProtocol}, baseUrl=${config.baseUrl})`,
     );
     try {
       await runWithFetch(config, message, onEvent, abortSignal);
-      console.log('[embedded-runner] fetch 完成');
+      log.info('fetch 完成');
     } catch (fetchError) {
-      console.error('[embedded-runner] fetch 失败:', fetchError);
+      log.error('fetch 失败:', fetchError);
       emit(onEvent, { type: 'error', error: String(fetchError) });
     }
   }
@@ -170,8 +173,8 @@ async function runWithPI(
 
   const model = buildModel();
 
-  console.log(
-    `[embedded-runner] PI model: ${piProvider}/${model.id}, api=${model.api}, baseUrl=${modelBaseUrl || 'default'}${piProvider !== config.provider ? ` (evoclaw=${config.provider})` : ''}`,
+  log.info(
+    `PI model: ${piProvider}/${model.id}, api=${model.api}, baseUrl=${modelBaseUrl || 'default'}${piProvider !== config.provider ? ` (evoclaw=${config.provider})` : ''}`,
   );
 
   // 使用 InMemory AuthStorage，用 PI 的 provider ID 注册 API Key
@@ -215,7 +218,7 @@ async function runWithPI(
       // 循环检测
       const check = toolSafety.checkBeforeExecution(tool.name, args);
       if (check.blocked) {
-        console.warn(`[tool-safety] 阻止工具执行: ${check.reason}`);
+        log.warn(`阻止工具执行: ${check.reason}`);
         return `⚠️ ${check.reason}`;
       }
       // 执行工具
@@ -223,7 +226,7 @@ async function runWithPI(
       // 记录结果哈希（无进展检测）
       const noProgress = toolSafety.recordResult(result);
       if (noProgress.blocked) {
-        console.warn(`[tool-safety] 无进展检测: ${noProgress.reason}`);
+        log.warn(`无进展检测: ${noProgress.reason}`);
         return `⚠️ ${noProgress.reason}`;
       }
       // 结果截断（头尾保留策略）
@@ -232,8 +235,8 @@ async function runWithPI(
   }));
 
   const allTools = [...builtInTools, ...customAgentTools];
-  console.log(
-    `[embedded-runner] 注入工具: ${allTools.map((t) => t.name).join(', ')}`,
+  log.debug(
+    `注入工具: ${allTools.map((t) => t.name).join(', ')}`,
   );
 
   // 拦截 process.exit — PI 框架（CLI 工具出身）可能在 session 完成/dispose 后调用 process.exit()
@@ -242,7 +245,7 @@ async function runWithPI(
   let exitIntercepted = false;
   process.exit = ((code?: number) => {
     exitIntercepted = true;
-    console.warn(`[embedded-runner] 拦截了 process.exit(${code ?? ''})，Sidecar 模式下忽略`);
+    log.warn(`拦截了 process.exit(${code ?? ''})，Sidecar 模式下忽略`);
     // 不调用原始 exit，进程继续运行
   }) as never;
 
@@ -332,8 +335,8 @@ async function runWithPI(
           break;
       }
     } catch (subErr) {
-      console.error(
-        '[embedded-runner] subscribe 回调异常:',
+      log.error(
+        'subscribe 回调异常:',
         subErr instanceof Error ? subErr.message : subErr,
       );
     }
@@ -365,14 +368,14 @@ async function runWithPI(
         const errMsg = err instanceof Error ? err.message : String(err);
 
         if (attempt >= MAX_RETRIES) {
-          console.error(`[embedded-runner] 已达最大重试次数 (${MAX_RETRIES})，放弃: ${errMsg}`);
+          log.error(`已达最大重试次数 (${MAX_RETRIES})，放弃: ${errMsg}`);
           break;
         }
 
         if (isOverloadError(err)) {
           // overload/rate-limit → 指数退避重试
           const delay = calculateBackoff(attempt);
-          console.log(`[embedded-runner] overload 错误，${delay.toFixed(0)}ms 后重试 (${attempt + 1}/${MAX_RETRIES}): ${errMsg}`);
+          log.warn(`overload 错误，${delay.toFixed(0)}ms 后重试 (${attempt + 1}/${MAX_RETRIES}): ${errMsg}`);
           await new Promise(resolve => setTimeout(resolve, delay));
           ensureUsageOnAssistantMessages(session.agent as any);
           continue;
@@ -380,7 +383,7 @@ async function runWithPI(
 
         if (isThinkingError(err)) {
           // thinking 不支持 → 降级 reasoning=false 重试
-          console.log(`[embedded-runner] thinking 错误，降级 reasoning=false 重试: ${errMsg}`);
+          log.warn(`thinking 错误，降级 reasoning=false 重试: ${errMsg}`);
           reasoning = false;
           (session.agent as any).model = buildModel();
           ensureUsageOnAssistantMessages(session.agent as any);
@@ -389,7 +392,7 @@ async function runWithPI(
 
         if (isContextOverflowError(err)) {
           // context overflow → 裁剪消息保留最近 3 轮重试
-          console.log(`[embedded-runner] context overflow，裁剪消息重试: ${errMsg}`);
+          log.warn(`context overflow，裁剪消息重试: ${errMsg}`);
           const msgs = (session.agent as any).state?.messages;
           if (msgs && msgs.length > 6) {
             // 保留最近 6 条消息（约 3 轮对话）
@@ -401,7 +404,7 @@ async function runWithPI(
         }
 
         // 其它错误 → 不重试，直接抛出（触发 fetch fallback）
-        console.log(`[embedded-runner] 不可重试错误: ${errMsg}`);
+        log.error(`不可重试错误: ${errMsg}`);
         break;
       }
     }
@@ -412,7 +415,7 @@ async function runWithPI(
     // 恢复原始 process.exit
     process.exit = originalExit;
     if (exitIntercepted) {
-      console.log('[embedded-runner] PI 调用期间拦截了 process.exit，进程继续运行');
+      log.info('PI 调用期间拦截了 process.exit，进程继续运行');
     }
   }
 }
@@ -499,8 +502,8 @@ async function runWithAnthropicFetch(
 
   const url = `${baseUrl}/messages`;
   const msgCount = (config.messages ?? []).length;
-  console.log(
-    `[embedded-runner] Anthropic 请求: ${url}, model=${config.modelId}, messages=${msgCount}`,
+  log.info(
+    `Anthropic 请求: ${url}, model=${config.modelId}, messages=${msgCount}`,
   );
 
   const response = await fetch(url, {
@@ -524,13 +527,13 @@ async function runWithAnthropicFetch(
     signal,
   });
 
-  console.log(
-    `[embedded-runner] Anthropic 响应: ${response.status} ${response.statusText}`,
+  log.info(
+    `Anthropic 响应: ${response.status} ${response.statusText}`,
   );
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
-    console.error(`[embedded-runner] Anthropic 错误响应体:`, errorBody);
+    log.error(`Anthropic 错误响应体:`, errorBody);
     throw new Error(
       `LLM API 调用失败: ${response.status} ${response.statusText} - ${errorBody}`,
     );
@@ -570,8 +573,8 @@ async function parseSSEStream(
   while (true) {
     const { done, value } = await reader.read();
     if (done) {
-      console.log(
-        `[embedded-runner] SSE 流结束, chunks=${chunkCount}, textLen=${fullText.length}`,
+      log.debug(
+        `SSE 流结束, chunks=${chunkCount}, textLen=${fullText.length}`,
       );
       break;
     }

@@ -148,25 +148,25 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       const queryStr = Object.keys(query).length
         ? ` query=${JSON.stringify(query)}`
         : '';
-      // 记录请求体（仅 POST/PUT/PATCH，且排除流式请求）
+      // 请求体仅在 debug 级别记录（避免日志暴涨）
       let bodyStr = '';
       if (['POST', 'PUT', 'PATCH'].includes(method)) {
         try {
           const cloned = c.req.raw.clone();
           const text = await cloned.text();
           if (text) {
-            // 脱敏：隐藏 apiKey/token 等敏感字段
             const sanitized = text.replace(
               /"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
               (_, key) => `"${key}":"***"`,
             );
-            bodyStr = ` body=${sanitized.length > 1000 ? sanitized.slice(0, 1000) + '...' : sanitized}`;
+            bodyStr = ` body=${sanitized.length > 500 ? sanitized.slice(0, 500) + '...' : sanitized}`;
           }
         } catch {
           /* 读取失败忽略 */
         }
       }
-      httpLog.info(`--> ${method} ${path}${queryStr}${bodyStr}`);
+      httpLog.info(`--> ${method} ${path}${queryStr}`);
+      if (bodyStr) httpLog.debug(`    请求体${bodyStr}`);
     } else {
       httpLog.debug(`--> ${method} ${path}`);
     }
@@ -176,23 +176,23 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     const ms = Date.now() - start;
     const status = c.res.status;
 
-    // 响应体
+    // 响应：仅记录状态码和耗时，body 仅 debug 级别
     if (!isHealth) {
-      let resBody = '';
+      httpLog.info(`<-- ${method} ${path} ${status} ${ms}ms`);
+      // 响应体仅 debug 级别记录（避免大响应撑爆日志）
       try {
         const cloned = c.res.clone();
         const text = await cloned.text();
-        if (text) {
+        if (text && text.length < 2000) {
           const sanitized = text.replace(
             /"(apiKey|api_key|token|secret|password)"\s*:\s*"[^"]*"/gi,
             (_, key) => `"${key}":"***"`,
           );
-          resBody = ` body=${sanitized.length > 1000 ? sanitized.slice(0, 1000) + '...' : sanitized}`;
+          httpLog.debug(`    响应体 body=${sanitized.length > 500 ? sanitized.slice(0, 500) + '...' : sanitized}`);
         }
       } catch {
         /* 流式响应等无法读取，忽略 */
       }
-      httpLog.info(`<-- ${method} ${path} ${status} ${ms}ms${resBody}`);
     } else {
       httpLog.debug(`<-- ${method} ${path} ${status} ${ms}ms`);
     }

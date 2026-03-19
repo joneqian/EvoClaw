@@ -3,7 +3,6 @@ import { buildExtractionPrompt } from './extraction-prompt.js';
 import { parseExtractionResult } from './xml-parser.js';
 import { MergeResolver } from './merge-resolver.js';
 import { KnowledgeGraphStore } from './knowledge-graph.js';
-import { ConversationLogger } from './conversation-logger.js';
 import { MemoryStore } from './memory-store.js';
 import type { ChatMessage } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
@@ -23,7 +22,6 @@ export type LLMCallFn = (system: string, user: string) => Promise<string>;
 export class MemoryExtractor {
   private mergeResolver: MergeResolver;
   private knowledgeGraph: KnowledgeGraphStore;
-  private conversationLogger: ConversationLogger;
   private memoryStore: MemoryStore;
 
   private ftsStore?: FtsStore;
@@ -37,7 +35,6 @@ export class MemoryExtractor {
     this.memoryStore = new MemoryStore(db, vectorStore);
     this.mergeResolver = new MergeResolver(this.memoryStore);
     this.knowledgeGraph = new KnowledgeGraphStore(db);
-    this.conversationLogger = new ConversationLogger(db);
     this.ftsStore = ftsStore;
   }
 
@@ -113,19 +110,8 @@ export class MemoryExtractor {
       relationCount++;
     }
 
-    // 若提供 sessionKey 则记录会话日志
-    if (sessionKey) {
-      for (const msg of messages) {
-        this.conversationLogger.log({
-          id: crypto.randomUUID(),
-          agentId,
-          sessionKey,
-          role: msg.role,
-          content: msg.content,
-          tokenCount: Math.ceil(msg.content.length / 4), // 粗略估算 token 数
-        });
-      }
-    }
+    // 注意：conversation_log 的写入由 chat.ts 的 saveMessage() 负责
+    // 此处不再重复写入，避免历史消息被多次插入
 
     return { memoryIds, relationCount, skipped: false };
   }

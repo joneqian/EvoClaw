@@ -210,16 +210,6 @@ export default function AgentsPage() {
       {/* ─── 我的专家 Tab ─── */}
       {activeTab === 'mine' && (
         <div className="flex-1 overflow-hidden flex flex-col px-6 pb-6">
-          {/* 创建按钮 */}
-          <div className="flex justify-end mb-4 shrink-0">
-            <button
-              onClick={handleStartCreate}
-              className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg
-                hover:bg-brand-hover transition-colors"
-            >
-              + 创建专家
-            </button>
-          </div>
 
       {/* 引导式创建面板 */}
       {showBuilder && (
@@ -503,8 +493,8 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* 专家卡片网格 */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      {/* 专家卡片网格（创建面板打开时隐藏） */}
+      {!showBuilder && <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <div className="text-center py-16 text-slate-400">
             <span className="w-5 h-5 border-2 border-slate-300 border-t-brand rounded-full animate-spin inline-block" />
@@ -540,6 +530,21 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* 创建新专家入口卡片 — 始终在第一位 */}
+            <button
+              onClick={handleStartCreate}
+              className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-5
+                hover:border-brand/40 hover:bg-brand/5
+                transition-all duration-200 flex flex-col items-center justify-center min-h-[220px]"
+            >
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3">
+                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-slate-500">创建专家</p>
+            </button>
+
             {agents.map((agent) => (
               <div
                 key={agent.id}
@@ -560,54 +565,59 @@ export default function AgentsPage() {
                 <p className="text-[11px] text-slate-400 text-center mb-4">
                   创建于 {new Date(agent.createdAt).toLocaleDateString('zh-CN')}
                 </p>
-                {/* 操作按钮 — 与商店的 "+ 添加" 按钮风格一致 */}
-                <div className="mt-auto flex gap-2">
+                {/* 操作按钮 */}
+                <div className="mt-auto space-y-2">
                   <button
                     onClick={() => openAgent(agent.id)}
-                    className="flex-1 py-2.5 text-sm font-medium text-slate-600
+                    className="w-full py-2.5 text-sm font-medium text-slate-600
                       bg-white border border-slate-200 rounded-xl
                       hover:border-brand/40 hover:text-brand hover:bg-brand/5
                       transition-all duration-150"
                   >
-                    打开
+                    对话
                   </button>
-                  {deleteConfirmId === agent.id ? (
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleDelete(agent.id)}
-                        className="px-3 py-2.5 text-sm font-medium text-red-500
-                          border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
-                      >
-                        确认
-                      </button>
-                      <button
-                        onClick={() => setDeleteConfirmId(null)}
-                        className="px-3 py-2.5 text-sm text-slate-400
-                          border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  ) : (
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => setDeleteConfirmId(agent.id)}
-                      className="px-3 py-2.5 text-slate-400
-                        border border-slate-200 rounded-xl
-                        hover:border-red-200 hover:text-red-500 hover:bg-red-50
-                        transition-all duration-150"
-                      title="删除"
+                      onClick={() => navigate(`/agents/${agent.id}/edit`)}
+                      className="flex-1 py-2 text-xs font-medium text-slate-500
+                        hover:text-brand hover:bg-brand/5 rounded-lg transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
+                      编辑
                     </button>
-                  )}
+                    {deleteConfirmId === agent.id ? (
+                      <>
+                        <button
+                          onClick={() => handleDelete(agent.id)}
+                          className="flex-1 py-2 text-xs font-medium text-red-500
+                            hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          确认删除
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="flex-1 py-2 text-xs text-slate-400
+                            hover:bg-slate-50 rounded-lg transition-colors"
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirmId(agent.id)}
+                        className="flex-1 py-2 text-xs font-medium text-slate-400
+                          hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        删除
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
+
           </div>
         )}
-      </div>
+      </div>}
         </div>
       )}
     </div>

@@ -12,6 +12,8 @@ import ModelsPage from './pages/ModelsPage';
 import EvolutionPage from './pages/EvolutionPage';
 import ChannelPage from './pages/ChannelPage';
 import SetupPage from './pages/SetupPage';
+import CronPage from './pages/CronPage';
+import AlertPage from './pages/AlertPage';
 import AgentEditPage from './pages/AgentEditPage';
 import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
@@ -39,6 +41,7 @@ const ICON_PATHS = {
   plus: 'M12 4.5v15m7.5-7.5h-15',
   chat: 'M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z',
   agents: 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z',
+  experts: ['M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z'],
   memory: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z',
   models: 'M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5M4.5 15.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z',
   channel: 'M9.348 14.652a3.75 3.75 0 010-5.304m5.304 0a3.75 3.75 0 010 5.304m-7.425 2.121a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z',
@@ -51,6 +54,9 @@ const ICON_PATHS = {
   moon: 'M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z',
   chevronUp: 'M4.5 15.75l7.5-7.5 7.5 7.5',
   back: 'M15.75 19.5L8.25 12l7.5-7.5',
+  cron: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
+  alert: ['M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0'],
+  connect: ['M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244'],
 } as const;
 
 // ─── 类型 ───
@@ -147,7 +153,6 @@ const MENU_SECTIONS: MenuSection[] = [
   {
     items: [
       { icon: ICON_PATHS.models, label: '模型管理', path: '/models' },
-      { icon: ICON_PATHS.channel, label: 'Channel', path: '/channel' },
     ],
   },
   {
@@ -423,17 +428,29 @@ export default function App() {
 
         {/* 主导航 */}
         <div className={`${sidebarCollapsed ? 'px-1.5' : 'px-3'} space-y-0.5`}>
+          <NavLink to="/skills" className={navClassName} title="技能商店">
+            <Icon d={ICON_PATHS.skills} className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && '技能商店'}
+          </NavLink>
           <NavLink to="/agents" className={navClassName} title="专家中心">
-            <Icon d={ICON_PATHS.agents} className="w-4 h-4 shrink-0" />
+            <Icon d={ICON_PATHS.experts} className="w-4 h-4 shrink-0" />
             {!sidebarCollapsed && '专家中心'}
           </NavLink>
           <NavLink to="/memory" className={navClassName} title="记忆">
             <Icon d={ICON_PATHS.memory} className="w-4 h-4 shrink-0" />
             {!sidebarCollapsed && '记忆'}
           </NavLink>
-          <NavLink to="/skills" className={navClassName} title="技能商店">
-            <Icon d={ICON_PATHS.skills} className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && '技能商店'}
+          <NavLink to="/cron" className={navClassName} title="定时任务">
+            <Icon d={ICON_PATHS.cron} className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && '定时任务'}
+          </NavLink>
+          <NavLink to="/alert" className={navClassName} title="预警中心">
+            <Icon d={ICON_PATHS.alert} className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && '预警中心'}
+          </NavLink>
+          <NavLink to="/channel" className={navClassName} title="连接">
+            <Icon d={ICON_PATHS.connect} className="w-4 h-4 shrink-0" />
+            {!sidebarCollapsed && '连接'}
           </NavLink>
         </div>
 
@@ -581,6 +598,8 @@ export default function App() {
           <Route path="/skills" element={<SkillPage />} />
           <Route path="/models" element={<ModelsPage />} />
           <Route path="/evolution" element={<EvolutionPage />} />
+          <Route path="/cron" element={<CronPage />} />
+          <Route path="/alert" element={<AlertPage />} />
           <Route path="/channel" element={<ChannelPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />

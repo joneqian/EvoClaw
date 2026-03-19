@@ -228,81 +228,95 @@ export default function ChannelPage() {
     fetchData();
   }, [fetchData]);
 
+  /** 可连接平台列表 */
+  const PLATFORMS = [
+    { type: 'feishu', name: '飞书', logo: '/logo-feishu.png', desc: '接入飞书企业内部应用，实现自动化群聊与私信交互。' },
+    { type: 'wecom', name: '企业微信', logo: '/logo-wecom.png', desc: '使用 BotID 和 Secret 连接企业微信官方机器人。' },
+    { type: 'qq', name: 'QQ', logo: '/logo-qq.png', desc: '接入 QQ 官方机器人，覆盖群聊、频道与私信全场景互动。' },
+    { type: 'dingtalk', name: '钉钉', logo: '/logo-dingtalk.png', desc: '接入钉钉企业内部机器人，通过 Stream 模式实现稳定的群聊与私信交互。' },
+  ];
+
+  /** 获取某平台的连接状态 */
+  const getChannelStatus = (type: string) => channels.find(ch => ch.type === type);
+
+  /** 点击连接/断开 */
+  const handlePlatformAction = (type: string) => {
+    const status = getChannelStatus(type);
+    if (status?.status === 'connected') {
+      handleDisconnect(type);
+    } else if (type === 'feishu') {
+      setShowFeishu(!showFeishu); setShowWecom(false);
+    } else if (type === 'wecom') {
+      setShowWecom(!showWecom); setShowFeishu(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-slate-200 bg-white">
-        <h2 className="text-lg font-bold text-slate-900">Channel 管理</h2>
-        <p className="text-sm text-slate-400 mt-1">管理 IM 通道连接和 Agent 绑定规则</p>
+      <div className="px-6 pt-5 pb-4 shrink-0">
+        <h2 className="text-lg font-bold text-slate-900">连接</h2>
+        <p className="text-sm text-slate-400 mt-1">接入第三方平台，让专家跨平台服务</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
         {loading ? (
-          <div className="text-center text-slate-400 mt-20"><p className="text-sm">加载中...</p></div>
+          <div className="text-center text-slate-400 mt-20">
+            <span className="w-5 h-5 border-2 border-slate-300 border-t-brand rounded-full animate-spin inline-block" />
+          </div>
         ) : (
-          <div className="max-w-3xl mx-auto space-y-6">
-            {/* Channel 连接状态 */}
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-medium text-slate-700 mb-3">通道连接</h3>
-
-              {/* 已连接列表 */}
-              {channels.length > 0 ? (
-                <div className="space-y-2 mb-4">
-                  {channels.map((ch) => {
-                    const statusInfo = STATUS_STYLES[ch.status] ?? STATUS_STYLES.disconnected;
-                    return (
-                      <div key={ch.type} className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-50">
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-medium text-slate-700">{ch.name}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusInfo.color}`}>
-                            {statusInfo.label}
-                          </span>
-                          {ch.error && <span className="text-xs text-red-400">{ch.error}</span>}
-                        </div>
-                        {ch.status === 'connected' && ch.type !== 'local' && (
-                          <button
-                            onClick={() => handleDisconnect(ch.type)}
-                            className="text-xs text-slate-400 hover:text-red-500 transition-colors"
-                          >
-                            断开
-                          </button>
+          <div className="space-y-6">
+            {/* 平台卡片网格 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {PLATFORMS.map((p) => {
+                const status = getChannelStatus(p.type);
+                const isConnected = status?.status === 'connected';
+                const hasForm = (p.type === 'feishu' && showFeishu) || (p.type === 'wecom' && showWecom);
+                return (
+                  <div
+                    key={p.type}
+                    className={`bg-white rounded-2xl border p-5 transition-all duration-200 flex flex-col ${
+                      isConnected
+                        ? 'border-green-200 bg-green-50/30'
+                        : 'border-slate-200 hover:border-brand/30 hover:shadow-md'
+                    }`}
+                  >
+                    {/* 图标 + 状态 */}
+                    <div className="flex items-start justify-between mb-3">
+                      <img src={p.logo} alt={p.name} className="w-10 h-10 object-contain" />
+                      {isConnected && (
+                        <span className="px-2 py-0.5 text-[11px] font-medium bg-green-100 text-green-600 rounded-full">
+                          已连接
+                        </span>
+                      )}
+                    </div>
+                    {/* 名称 + 描述 */}
+                    <h4 className="text-sm font-bold text-slate-800 mb-1">{p.name}</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed flex-1 mb-4">{p.desc}</p>
+                    {/* 连接表单（展开时） */}
+                    {hasForm && (
+                      <div className="mb-3 p-3 bg-slate-50 rounded-xl">
+                        {p.type === 'feishu' && (
+                          <FeishuConnectForm onConnect={() => { setShowFeishu(false); fetchData(); }} />
+                        )}
+                        {p.type === 'wecom' && (
+                          <WecomConnectForm onConnect={() => { setShowWecom(false); fetchData(); }} />
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 mb-4">暂无通道</p>
-              )}
-
-              {/* 连接按钮 */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setShowFeishu(!showFeishu); setShowWecom(false); }}
-                  className="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  {showFeishu ? '取消' : '连接飞书'}
-                </button>
-                <button
-                  onClick={() => { setShowWecom(!showWecom); setShowFeishu(false); }}
-                  className="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  {showWecom ? '取消' : '连接企微'}
-                </button>
-              </div>
-
-              {/* 连接表单 */}
-              {showFeishu && (
-                <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500 mb-2">飞书机器人配置</p>
-                  <FeishuConnectForm onConnect={() => { setShowFeishu(false); fetchData(); }} />
-                </div>
-              )}
-              {showWecom && (
-                <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-                  <p className="text-xs text-slate-500 mb-2">企业微信应用配置</p>
-                  <WecomConnectForm onConnect={() => { setShowWecom(false); fetchData(); }} />
-                </div>
-              )}
+                    )}
+                    {/* 操作按钮 */}
+                    <button
+                      onClick={() => handlePlatformAction(p.type)}
+                      className={`w-full py-2 text-sm font-medium rounded-xl border transition-all duration-150 ${
+                        isConnected
+                          ? 'border-red-200 text-red-500 hover:bg-red-50'
+                          : 'border-brand/30 text-brand hover:bg-brand/5'
+                      }`}
+                    >
+                      {isConnected ? '断开' : hasForm ? '取消' : '连接'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Binding 管理 */}

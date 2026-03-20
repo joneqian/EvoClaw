@@ -91,9 +91,9 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 
 > 安全是企业品牌承诺，不能打折。本阶段完成权限模型和安全检测能力的全面提升。
 
-#### Sprint 11: 权限模型 Rust 层集成（W1-W2）
+#### Sprint 11: 权限模型 Rust 层集成 + 基础设施前置（W1-W2）
 
-**目标**: 将权限模型从 Node.js 层实现提升为 Rust 全链路集成，消除绕过路径。
+**目标**: 将权限模型从 Node.js 层实现提升为 Rust 全链路集成，消除绕过路径。同时提前搭建内存泄漏检测和架构守卫测试基础设施（与 Sprint 11-15 并行持续监控）。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
@@ -102,12 +102,16 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | 11.3 | 权限弹窗 UI 增强：展示工具名、参数摘要、历史授权记录，支持"仅本次/本次会话/始终/拒绝" | P0 | 2d | F1.2 |
 | 11.4 | 安全仪表盘 UI：已授权权限清单 + 一键撤销 + 最近安全事件日志 | P1 | 2d | F1.10 |
 | 11.5 | 权限集成测试：全链路测试（Node.js 请求 → Rust 拦截 → UI 弹窗 → 持久化 → 审计日志） | P0 | 1d | F1.2 |
+| 11.6 | 内存泄漏检测基础设施（从 Sprint 16 前置）：Node.js heap snapshot 定时采集（每 6 小时）+ 内存增长趋势分析 + PI Session dispose 验证 + AbortController 清理验证 + EventListener 泄漏检测 | P1 | 2d | F10.7 |
+| 11.7 | 架构守卫测试（从 Sprint 16 前置）`__tests__/architecture/`：导入关系验证（禁止循环依赖）+ 层级边界检查（infrastructure 不依赖 agent/context）+ 公共 API 兼容性测试 | P1 | 2d | F10.8 |
 
 **验收标准**:
 - [ ] 所有工具调用经过 Rust 层验证，不存在 Node.js 层绕过路径
 - [ ] 权限弹窗在 500ms 内响应
 - [ ] 安全仪表盘展示完整权限历史
 - [ ] 集成测试覆盖 7 类别 × 4 作用域全组合
+- [ ] 内存泄漏检测可采集 heap snapshot 并生成增长趋势报告
+- [ ] 架构守卫测试检测到 0 个循环依赖、0 个层级违反
 
 ---
 
@@ -209,12 +213,10 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 16.1 | 内存泄漏检测基础设施：Node.js heap snapshot 定时采集（每 6 小时）+ 内存增长趋势分析 + PI Session dispose 验证 + AbortController 清理验证 + EventListener 泄漏检测 | P1 | 2d | F10.7 |
-| 16.2 | 168 小时稳定性测试：Sidecar 连续运行 7 天，模拟正常使用负载（每小时 10 轮对话 × 3 个 Agent），验证无内存泄漏、无 OOM、无崩溃 | P1 | 2d（含运行等待） | F10.7 |
-| 16.3 | 架构守卫测试 `__tests__/architecture/`：导入关系验证（禁止循环依赖）+ 层级边界检查（infrastructure 不依赖 agent/context）+ 公共 API 兼容性测试 | P1 | 2d | F10.8 |
-| 16.4 | 全量集成测试回归：覆盖 agent-lifecycle、chat-flow、guided-creation、memory-cycle、permission-flow、provider-config、startup、feishu-channel、wecom-channel、skillhub | P1 | 2d | — |
-| 16.5 | macOS DMG 打包 + 签名 + 分发（企业内部分发通道） | P1 | 1d | — |
-| 16.6 | v1.0 Release Notes + 部署文档 + 企业管理员指南 | P1 | 1d | — |
+| 16.1 | 168 小时稳定性测试：Sidecar 连续运行 7 天，模拟正常使用负载（每小时 10 轮对话 × 3 个 Agent），验证无内存泄漏、无 OOM、无崩溃。基于 Sprint 11 搭建的内存泄漏检测基础设施运行 | P1 | 2d（含运行等待） | F10.7 |
+| 16.2 | 全量集成测试回归：覆盖 agent-lifecycle、chat-flow、guided-creation、memory-cycle、permission-flow、provider-config、startup、feishu-channel、wecom-channel、skillhub | P1 | 2d | — |
+| 16.3 | macOS DMG 打包 + 签名 + 分发（企业内部分发通道） | P1 | 1d | — |
+| 16.4 | v1.0 Release Notes + 部署文档 + 企业管理员指南 | P1 | 1d | — |
 
 **验收标准**:
 - [ ] 168 小时稳定性测试通过，内存增长 < 50MB
@@ -368,9 +370,8 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 
 | # | 任务 | 优先级 | 预估 | 说明 |
 |---|------|--------|------|------|
-| 16.7 | 错误提示中文化 + 修复建议：所有错误信息提供用户可理解的中文描述和具体修复步骤 | P1 | 1d | 企业用户零门槛 |
-| 16.8 | 性能基准验证：冷启动 < 3 秒、空闲内存 < 200MB、三阶段记忆检索 < 200ms、流式首 Token < 500ms（不含 LLM） | P1 | 1d | 性能指标量化达标 |
-| ~~16.9~~ | ~~Node.js 内嵌打包~~ | — | — | ✅ 已完成（sidecar.rs `find_bundled_node()` + tauri.conf.json `node-bin/node`） |
+| 16.5 | 错误提示中文化 + 修复建议：所有错误信息提供用户可理解的中文描述和具体修复步骤 | P1 | 1d | 企业用户零门槛 |
+| 16.6 | 性能基准验证：冷启动 < 3 秒、空闲内存 < 200MB、三阶段记忆检索 < 200ms、流式首 Token < 500ms（不含 LLM） | P1 | 1d | 性能指标量化达标 |
 
 **验收标准补充**:
 - [ ] 所有用户可见的错误信息为中文且附带修复建议
@@ -431,8 +432,8 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | 8 | EvoClaw SkillHub v1.0 | Sprint 14 | 6d |
 | 9 | 使用量追踪 | Sprint 15 | 7d |
 | 10 | Auth Doctor 诊断 | Sprint 15 | 2d |
-| 11 | 内存泄漏检测 + 168h 测试 | Sprint 16 | 4d |
-| 12 | 架构守卫测试 | Sprint 16 | 2d |
+| 11 | 内存泄漏检测基础设施 | Sprint 11（前置） | 2d |
+| 12 | 架构守卫测试 | Sprint 11（前置） | 2d |
 | 13 | 安全仪表盘 UI | Sprint 11 | 2d |
 | 14 | 错误提示中文化 + 修复建议 | Sprint 16 | 1d |
 | 15 | 性能基准验证 | Sprint 16 | 1d |

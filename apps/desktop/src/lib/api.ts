@@ -115,3 +115,33 @@ export async function patch<T>(path: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+
+/** 全量同步权限到 Rust 层 */
+export async function syncPermissionsToRust(): Promise<void> {
+  try {
+    // 获取所有 Agent
+    const agentsData = await get<{ agents: { id: string }[] }>('/agents');
+    const entries: { agent_id: string; category: string; scope: string }[] = [];
+
+    for (const agent of agentsData.agents) {
+      try {
+        const permData = await get<{ permissions: { category: string; scope: string }[] }>(
+          `/security/${agent.id}/permissions`,
+        );
+        for (const perm of permData.permissions) {
+          entries.push({
+            agent_id: agent.id,
+            category: perm.category,
+            scope: perm.scope,
+          });
+        }
+      } catch {
+        // 跳过加载失败的 agent
+      }
+    }
+
+    await invoke('sync_all_permissions', { entries });
+  } catch (err) {
+    console.error('权限同步到 Rust 层失败:', err);
+  }
+}

@@ -20,7 +20,7 @@ import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from './stores/app-store';
-import { initSidecar, healthCheck, get, del } from './lib/api';
+import { initSidecar, healthCheck, get, del, syncPermissionsToRust } from './lib/api';
 import { useChatStore } from './stores/chat-store';
 import AgentAvatar from './components/AgentAvatar';
 
@@ -292,6 +292,8 @@ export default function App() {
       navigate('/setup');
     } else {
       setInitState('connected');
+      // 启动时全量同步权限到 Rust 层
+      syncPermissionsToRust().catch(() => {});
     }
   }, [setInitState, setSidecarConnected, navigate]);
 

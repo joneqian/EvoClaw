@@ -30,7 +30,7 @@ export interface PermissionDialogProps {
   category: string;
   resource: string;
   reason?: string;
-  onDecision: (scope: 'once' | 'always' | 'deny') => void;
+  onDecision: (scope: 'once' | 'session' | 'always' | 'deny') => void;
   onClose: () => void;
 }
 
@@ -57,7 +57,7 @@ export default function PermissionDialog({
 
   /** 处理决定 */
   const handleDecision = useCallback(
-    (scope: 'once' | 'always' | 'deny') => {
+    (scope: 'once' | 'session' | 'always' | 'deny') => {
       onDecision(scope);
       onClose();
     },
@@ -116,27 +116,34 @@ export default function PermissionDialog({
         </div>
 
         {/* 操作按钮 */}
-        <div className="px-6 pb-6 pt-2 flex gap-3">
+        <div className="px-6 pb-6 pt-2 flex gap-2">
           <button
             onClick={() => handleDecision('once')}
-            className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors
+            className="flex-1 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors
               border border-blue-300 text-blue-600 hover:bg-blue-50"
           >
             仅本次
           </button>
           <button
+            onClick={() => handleDecision('session')}
+            className="flex-1 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors
+              border border-purple-300 text-purple-600 hover:bg-purple-50"
+          >
+            本次会话
+          </button>
+          <button
             onClick={() => handleDecision('always')}
-            className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors
+            className="flex-1 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors
               bg-green-500 text-white hover:bg-green-600"
           >
             始终允许
           </button>
           <button
             onClick={() => handleDecision('deny')}
-            className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors
+            className="flex-1 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors
               border border-red-300 text-red-600 hover:bg-red-50"
           >
-            始终拒绝
+            拒绝
           </button>
         </div>
       </div>

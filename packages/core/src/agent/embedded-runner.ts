@@ -197,46 +197,92 @@ async function runWithPI(
   // 从工作区文件构建系统提示
   const systemPrompt = buildSystemPrompt(config);
 
-  // 准备 PI coding tools — 移除 bash，替换为增强版 exec（参考 OpenClaw pi-tools.ts）
-  const builtInTools = [
-    ...(piCoding.codingTools as Array<{ name: string }>).filter(t => t.name !== 'bash'), // read, edit, write（去掉 bash）
-    piCoding.grepTool, // grep
-    piCoding.findTool, // find
-    piCoding.lsTool, // ls
-    createEnhancedExecTool(), // 增强版 exec 替代 bash
-  ];
+  // 准备 PI coding tools — 浅拷贝避免污染模块级单例
+  const piBuiltInTools = [
+    ...(piCoding.codingTools as any[]).filter((t: any) => t.name !== 'bash'),
+    piCoding.grepTool,
+    piCoding.findTool,
+    piCoding.lsTool,
+    createEnhancedExecTool(),
+  ].map(t => ({ ...t as any }));
 
   // 工具安全守卫（循环检测 + 结果截断）
   const toolSafety = new ToolSafetyGuard();
 
-  // EvoClaw 自定义工具（包装 execute 以接入安全守卫）
-  const customAgentTools = (config.tools ?? []).map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.parameters,
-    execute: async (args: Record<string, unknown>) => {
-      // 循环检测
-      const check = toolSafety.checkBeforeExecution(tool.name, args);
-      if (check.blocked) {
-        log.warn(`阻止工具执行: ${check.reason}`);
-        return `⚠️ ${check.reason}`;
-      }
-      // 执行工具
-      const result = await tool.execute(args);
-      // 记录结果哈希（无进展检测）
-      const noProgress = toolSafety.recordResult(result);
-      if (noProgress.blocked) {
-        log.warn(`无进展检测: ${noProgress.reason}`);
-        return `⚠️ ${noProgress.reason}`;
-      }
-      // 结果截断（头尾保留策略）
-      return toolSafety.truncateResult(result);
-    },
-  }));
+  // 权限拦截函数
+  const permissionFn = config.permissionInterceptFn;
 
-  const allTools = [...builtInTools, ...customAgentTools];
+  /**
+   * 将所有工具（PI 内置 + EvoClaw 自定义）统一转为 PI customTools 格式
+   * 关键：OpenClaw 发现 PI 对 `tools` 参数用内部实现，绕过 execute()
+   * 只有 `customTools` 参数的工具才走 execute() —— 所以全部放进 customTools
+   *
+   * PI ToolDefinition.execute 签名:
+   *   (toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: callback)
+   *   => Promise<{ content: [{type: "text", text: string}], details?: unknown }>
+   */
+  function wrapAsCustomTool(tool: any) {
+    const originalExecute = tool.execute;
+    return {
+      name: tool.name,
+      label: tool.label ?? tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      execute: async (toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: unknown) => {
+        const args = (params && typeof params === 'object' ? params : {}) as Record<string, unknown>;
+
+        // 权限拦截
+        if (permissionFn) {
+          log.debug(`[权限检查] 工具=${tool.name}`);
+          const rejection = await permissionFn(tool.name, args);
+          if (rejection) {
+            log.info(`权限拦截 ${tool.name}: ${rejection}`);
+            return { content: [{ type: 'text', text: `[权限拒绝] ${rejection}` }] };
+          }
+        }
+
+        // 循环检测
+        const check = toolSafety.checkBeforeExecution(tool.name, args);
+        if (check.blocked) {
+          log.warn(`阻止工具执行: ${check.reason}`);
+          return { content: [{ type: 'text', text: `⚠️ ${check.reason}` }] };
+        }
+
+        // 执行原始工具
+        const rawResult = await originalExecute(toolCallId, params, signal, onUpdate);
+
+        // 安全守卫：结果截断和无进展检测
+        // rawResult 可能是 PI AgentToolResult 格式或字符串
+        const resultText = typeof rawResult === 'string'
+          ? rawResult
+          : rawResult?.content?.[0]?.text ?? JSON.stringify(rawResult);
+        const noProgress = toolSafety.recordResult(resultText);
+        if (noProgress.blocked) {
+          log.warn(`无进展检测: ${noProgress.reason}`);
+          return { content: [{ type: 'text', text: `⚠️ ${noProgress.reason}` }] };
+        }
+        const truncated = toolSafety.truncateResult(resultText);
+
+        // 如果原始结果已经是 AgentToolResult 格式，替换文本内容
+        if (typeof rawResult === 'object' && rawResult?.content) {
+          if (truncated !== resultText && rawResult.content[0]) {
+            rawResult.content[0].text = truncated;
+          }
+          return rawResult;
+        }
+
+        return { content: [{ type: 'text', text: truncated }] };
+      },
+    };
+  }
+
+  // 所有工具统一包装为 customTools 格式（含权限拦截 + 安全守卫）
+  const allCustomTools = [
+    ...piBuiltInTools.map(wrapAsCustomTool),
+    ...(config.tools ?? []).map(wrapAsCustomTool),
+  ];
   log.debug(
-    `注入工具: ${allTools.map((t) => t.name).join(', ')}`,
+    `注入工具: ${allCustomTools.map((t: any) => t.name).join(', ')}`,
   );
 
   // 拦截 process.exit — PI 框架（CLI 工具出身）可能在 session 完成/dispose 后调用 process.exit()
@@ -257,7 +303,8 @@ async function runWithPI(
     sessionManager,
     settingsManager,
     model: model as any,
-    tools: allTools as any,
+    tools: [] as any,
+    customTools: allCustomTools as any,
   });
 
   // 设置 streamFn（参考 OpenClaw，缺少会导致 unhandled rejection）

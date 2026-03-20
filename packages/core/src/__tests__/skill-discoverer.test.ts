@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,6 +11,8 @@ describe('skill-discoverer', () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-discoverer-test-'));
     discoverer = new SkillDiscoverer(tempDir);
+    // Mock 远程 API 调用，避免网络超时
+    vi.spyOn(discoverer, 'browse').mockResolvedValue({ results: [], total: 0 });
   });
 
   afterEach(() => {

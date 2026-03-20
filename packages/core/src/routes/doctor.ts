@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
+import type { MemoryMonitor } from '../infrastructure/memory-monitor.js';
 
 /** 单项检查结果 */
 export interface CheckResult {
@@ -274,13 +275,21 @@ function checkAgentCount(store?: SqliteStore): CheckResult {
 
 // ─── 路由 ───
 
-export function createDoctorRoutes(store?: SqliteStore, configManager?: ConfigManager, laneQueue?: LaneQueue) {
+export function createDoctorRoutes(store?: SqliteStore, configManager?: ConfigManager, laneQueue?: LaneQueue, memoryMonitor?: MemoryMonitor) {
   const app = new Hono();
 
   app.get('/', (c) => {
     const report = runDiagnostics({ store, configManager, laneQueue });
     const statusCode = report.overall === 'unhealthy' ? 503 : 200;
     return c.json(report, statusCode);
+  });
+
+  // 内存监控报告
+  app.get('/memory', (c) => {
+    if (!memoryMonitor) {
+      return c.json({ error: '内存监控未启用' }, 503);
+    }
+    return c.json(memoryMonitor.getReport());
   });
 
   return app;

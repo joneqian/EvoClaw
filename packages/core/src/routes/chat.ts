@@ -29,6 +29,11 @@ import { createMemoryRecallPlugin } from '../context/plugins/memory-recall.js';
 import { createMemoryExtractPlugin } from '../context/plugins/memory-extract.js';
 import { createToolRegistryPlugin } from '../context/plugins/tool-registry.js';
 import { createGapDetectionPlugin } from '../context/plugins/gap-detection.js';
+import { SecurityExtension } from '../bridge/security-extension.js';
+import { createPermissionPlugin } from '../context/plugins/permission.js';
+import { PermissionInterceptor } from '../tools/permission-interceptor.js';
+import { waitForPermission, resolvePermission } from '../tools/permission-gate.js';
+import type { PermissionScope } from '@evoclaw/shared';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
@@ -299,6 +304,10 @@ export function createChatRoutes(
     contextEngine.register(sessionRouterPlugin);
     contextEngine.register(contextAssemblerPlugin);
 
+    // 权限检查插件
+    const security = new SecurityExtension(store);
+    contextEngine.register(createPermissionPlugin(security));
+
     // 记忆系统插件（有实例时注册，无则降级跳过）
     if (hybridSearcher) {
       contextEngine.register(createMemoryRecallPlugin(hybridSearcher));
@@ -423,6 +432,44 @@ export function createChatRoutes(
     setToolInjectorConfig({ agentId, evoClawTools: enhancedTools });
     const tools = getInjectedTools();
 
+    // 权限拦截器 — 通过 permissionInterceptFn 传入 embedded-runner，拦截所有工具（含 PI 内置）
+    const interceptor = new PermissionInterceptor(security);
+    const sseRef: { emit: ((event: string, data: unknown) => Promise<void>) | null } = { emit: null };
+
+    const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
+      const result = interceptor.intercept(agentId, toolName, args);
+
+      if (!result.allowed && result.requiresConfirmation && sseRef.emit) {
+        // 发送 SSE 通知前端弹窗
+        const requestId = crypto.randomUUID();
+        await sseRef.emit('permission_required', {
+          requestId,
+          toolName,
+          category: result.permissionCategory ?? 'skill',
+          resource: (args['path'] as string) ?? (args['file_path'] as string) ?? (args['command'] as string) ?? '*',
+          reason: result.reason,
+        });
+
+        // 等待用户决策（60s 超时自动 deny）
+        const decision = await waitForPermission(requestId);
+        if (decision === 'deny') {
+          return result.reason ?? '用户拒绝了此操作';
+        }
+
+        // 用户授权后，持久化权限（非 once）
+        if (decision !== 'once' && result.permissionCategory) {
+          security.grantPermission(agentId, result.permissionCategory, decision as PermissionScope);
+        }
+        return null; // 允许
+      }
+
+      if (!result.allowed && !result.requiresConfirmation) {
+        return result.reason ?? '操作被拒绝';
+      }
+
+      return null; // 允许
+    };
+
     const runConfig: AgentRunConfig = {
       agent,
       systemPrompt,
@@ -434,6 +481,7 @@ export function createChatRoutes(
       apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
       tools,
       messages,
+      permissionInterceptFn,
     };
 
     // 存储用户消息
@@ -441,6 +489,11 @@ export function createChatRoutes(
 
     // 返回 SSE 流
     return streamSSE(c, async (stream) => {
+      // 绑定 SSE 发射器，供权限拦截包装使用
+      sseRef.emit = async (event: string, data: unknown) => {
+        await stream.writeSSE({ event, data: JSON.stringify(data) });
+      };
+
       let fullResponse = '';
 
       await runEmbeddedAgent(runConfig, message, async (event) => {
@@ -473,6 +526,40 @@ export function createChatRoutes(
         log.error('afterTurn 失败:', err);
       });
     });
+  });
+
+  /** POST /:agentId/permission-response — 前端权限决策回调 */
+  app.post('/:agentId/permission-response', async (c) => {
+    const agentId = c.req.param('agentId');
+    const body = await c.req.json<{
+      requestId: string;
+      scope: PermissionScope | 'deny';
+      category?: string;
+      resource?: string;
+    }>();
+
+    if (!body.requestId || !body.scope) {
+      return c.json({ error: '缺少 requestId 或 scope' }, 400);
+    }
+
+    // 持久化权限（非 once/deny 时）
+    if (body.scope !== 'deny' && body.category) {
+      const security = new SecurityExtension(store);
+      security.grantPermission(
+        agentId,
+        body.category as any,
+        body.scope as any,
+        body.resource ?? '*',
+      );
+    }
+
+    // 解除等待
+    const resolved = resolvePermission(body.requestId, body.scope);
+    if (!resolved) {
+      return c.json({ error: '请求已过期或不存在' }, 404);
+    }
+
+    return c.json({ success: true });
   });
 
   return app;

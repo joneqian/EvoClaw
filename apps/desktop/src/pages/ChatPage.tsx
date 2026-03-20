@@ -5,6 +5,8 @@ import { useChatStore, type Message, type ToolCall } from '../stores/chat-store'
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 import { useAppStore } from '../stores/app-store';
+import PermissionDialog from '../components/PermissionDialog';
+import { invoke } from '@tauri-apps/api/core';
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -179,6 +181,13 @@ function ChatView() {
 
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [permissionRequest, setPermissionRequest] = useState<{
+    requestId: string;
+    toolName: string;
+    category: string;
+    resource: string;
+    reason?: string;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -319,6 +328,15 @@ function ChatView() {
                   }
                   break;
                 }
+                case 'permission_required':
+                  setPermissionRequest({
+                    requestId: payload.requestId,
+                    toolName: payload.toolName,
+                    category: payload.category,
+                    resource: payload.resource ?? '*',
+                    reason: payload.reason,
+                  });
+                  break;
                 case 'agent_done':
                   setStreaming(false);
                   break;
@@ -357,6 +375,46 @@ function ChatView() {
       sendMessage(pending);
     }
   }, [currentAgentId, currentSessionKey, sendMessage]);
+
+  /** 权限决策回调 */
+  const handlePermissionDecision = useCallback(
+    async (scope: 'once' | 'session' | 'always' | 'deny') => {
+      if (!permissionRequest || !currentAgentId) return;
+      try {
+        const configStr = localStorage.getItem('sidecar-config');
+        if (!configStr) return;
+        const config = JSON.parse(configStr) as { port: number; token: string };
+        await fetch(
+          `http://127.0.0.1:${config.port}/chat/${currentAgentId}/permission-response`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${config.token}`,
+            },
+            body: JSON.stringify({
+              requestId: permissionRequest.requestId,
+              scope,
+              category: permissionRequest.category,
+              resource: permissionRequest.resource,
+            }),
+          },
+        );
+        // 实时同步到 Rust 层
+        if (scope !== 'deny' && permissionRequest.category) {
+          invoke('update_permission', {
+            agentId: currentAgentId,
+            category: permissionRequest.category,
+            scope,
+          }).catch(() => {});
+        }
+      } catch (err) {
+        console.error('权限回调失败:', err);
+      }
+      setPermissionRequest(null);
+    },
+    [permissionRequest, currentAgentId],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -510,6 +568,18 @@ function ChatView() {
           </div>
         </div>
       </div>
+
+      {/* 权限弹窗 */}
+      <PermissionDialog
+        isOpen={!!permissionRequest}
+        agentName={currentAgent?.name ?? 'Agent'}
+        agentEmoji={currentAgent?.emoji ?? ''}
+        category={permissionRequest?.category ?? ''}
+        resource={permissionRequest?.resource ?? ''}
+        reason={permissionRequest?.reason}
+        onDecision={handlePermissionDecision}
+        onClose={() => setPermissionRequest(null)}
+      />
     </div>
   );
 }

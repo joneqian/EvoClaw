@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
-import { get, del } from '../lib/api';
+import { get, del, post } from '../lib/api';
+import { syncPermissionsToRust } from '../lib/api';
+import { invoke } from '@tauri-apps/api/core';
 
 /** 权限类别显示名称 */
 const CATEGORY_LABELS: Record<string, string> = {
@@ -59,6 +61,13 @@ interface AuditLogEntry {
   createdAt: string;
 }
 
+/** 权限统计 */
+interface PermissionStats {
+  total: number;
+  byCategory: Record<string, number>;
+  byScope: Record<string, number>;
+}
+
 /** 分类标签组件 */
 function CategoryBadge({ category }: { category: string }) {
   const label = CATEGORY_LABELS[category] ?? category;
@@ -79,7 +88,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 /** Tab 类型 */
-type TabKey = 'permissions' | 'audit';
+type TabKey = 'permissions' | 'audit' | 'guard';
 
 /** 安全设置页面 */
 export default function SecurityPage() {
@@ -88,11 +97,15 @@ export default function SecurityPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<TabKey>('permissions');
   const [permissions, setPermissions] = useState<PermissionRecord[]>([]);
+  const [stats, setStats] = useState<PermissionStats | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [auditOffset, setAuditOffset] = useState(0);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkConfirm, setBulkConfirm] = useState<string | null>(null);
+  const [auditFilter, setAuditFilter] = useState({ toolName: '', status: '' });
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const PAGE_SIZE = 20;
@@ -110,17 +123,20 @@ export default function SecurityPage() {
     }
   }, [agents, selectedAgentId]);
 
-  /** 加载权限列表 */
+  /** 加载权限列表 + 统计 */
   const fetchPermissions = useCallback(async (agentId: string) => {
     if (!agentId) return;
     setLoading(true);
     try {
-      const data = await get<{ permissions: PermissionRecord[] }>(
-        `/agents/${agentId}/permissions`,
-      );
-      setPermissions(data.permissions ?? []);
+      const [permData, statsData] = await Promise.all([
+        get<{ permissions: PermissionRecord[] }>(`/security/${agentId}/permissions`),
+        get<PermissionStats>(`/security/${agentId}/permission-stats`),
+      ]);
+      setPermissions(permData.permissions ?? []);
+      setStats(statsData);
     } catch {
       setPermissions([]);
+      setStats(null);
     } finally {
       setLoading(false);
     }
@@ -132,10 +148,17 @@ export default function SecurityPage() {
       if (!agentId) return;
       setLoading(true);
       try {
-        const data = await get<{ logs: AuditLogEntry[]; total: number }>(
-          `/agents/${agentId}/audit-log?limit=${PAGE_SIZE}&offset=${offset}`,
+        const params = new URLSearchParams({
+          limit: String(PAGE_SIZE),
+          offset: String(offset),
+        });
+        if (auditFilter.toolName) params.set('toolName', auditFilter.toolName);
+        if (auditFilter.status) params.set('status', auditFilter.status);
+
+        const data = await get<{ entries: AuditLogEntry[]; total: number }>(
+          `/security/${agentId}/audit-log?${params}`,
         );
-        const logs = data.logs ?? [];
+        const logs = data.entries ?? [];
         setAuditLogs((prev) => (append ? [...prev, ...logs] : logs));
         setHasMore(offset + logs.length < (data.total ?? 0));
         setAuditOffset(offset + logs.length);
@@ -146,7 +169,7 @@ export default function SecurityPage() {
         setLoading(false);
       }
     },
-    [],
+    [auditFilter],
   );
 
   /** 切换 agent 或 tab 时重新加载 */
@@ -154,7 +177,8 @@ export default function SecurityPage() {
     if (!selectedAgentId) return;
     if (activeTab === 'permissions') {
       fetchPermissions(selectedAgentId);
-    } else {
+      setSelectedIds(new Set());
+    } else if (activeTab === 'audit') {
       setAuditOffset(0);
       fetchAuditLogs(selectedAgentId, 0);
     }
@@ -168,8 +192,16 @@ export default function SecurityPage() {
         return;
       }
       try {
-        await del(`/agents/${selectedAgentId}/permissions/${permissionId}`);
+        const revokedPerm = permissions.find(p => p.id === permissionId);
+        await del(`/security/${selectedAgentId}/permissions/${permissionId}`);
         setPermissions((prev) => prev.filter((p) => p.id !== permissionId));
+        setSelectedIds(prev => { const next = new Set(prev); next.delete(permissionId); return next; });
+        if (revokedPerm) {
+          invoke('revoke_permission', {
+            agentId: selectedAgentId,
+            category: revokedPerm.category,
+          }).catch(() => {});
+        }
         showToast('权限已撤销');
       } catch {
         showToast('撤销失败', 'error');
@@ -177,13 +209,60 @@ export default function SecurityPage() {
         setRevoking(null);
       }
     },
-    [selectedAgentId, revoking, showToast],
+    [selectedAgentId, revoking, permissions, showToast],
   );
 
-  /** 取消撤销确认 */
-  const cancelRevoke = useCallback(() => {
+  /** 批量撤销 */
+  const handleBulkRevoke = useCallback(async (mode: 'selected' | 'session' | 'always') => {
+    if (bulkConfirm !== mode) {
+      setBulkConfirm(mode);
+      return;
+    }
+    try {
+      if (mode === 'selected') {
+        await post(`/security/${selectedAgentId}/permissions/bulk-revoke`, {
+          ids: Array.from(selectedIds),
+        });
+      } else {
+        await post(`/security/${selectedAgentId}/permissions/bulk-revoke`, {
+          scope: mode,
+        });
+      }
+      await fetchPermissions(selectedAgentId);
+      setSelectedIds(new Set());
+      // 同步到 Rust 层
+      syncPermissionsToRust().catch(() => {});
+      showToast('批量撤销完成');
+    } catch {
+      showToast('批量撤销失败', 'error');
+    } finally {
+      setBulkConfirm(null);
+    }
+  }, [selectedAgentId, selectedIds, bulkConfirm, fetchPermissions, showToast]);
+
+  /** 取消确认 */
+  const cancelAction = useCallback(() => {
     setRevoking(null);
+    setBulkConfirm(null);
   }, []);
+
+  /** 多选切换 */
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  /** 全选/取消全选 */
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === permissions.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(permissions.map(p => p.id)));
+    }
+  }, [selectedIds.size, permissions]);
 
   /** 加载更多审计日志 */
   const handleLoadMore = useCallback(() => {
@@ -234,26 +313,23 @@ export default function SecurityPage() {
 
         {/* Tab 切换 */}
         <div className="flex gap-1">
-          <button
-            onClick={() => setActiveTab('permissions')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              activeTab === 'permissions'
-                ? 'bg-brand/10 text-brand-active'
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            已授权权限
-          </button>
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              activeTab === 'audit'
-                ? 'bg-brand/10 text-brand-active'
-                : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            审计日志
-          </button>
+          {([
+            ['permissions', '已授权权限'],
+            ['audit', '审计日志'],
+            ['guard', '安全防护'],
+          ] as [TabKey, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                activeTab === key
+                  ? 'bg-brand/10 text-brand-active'
+                  : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -269,102 +345,287 @@ export default function SecurityPage() {
             <p className="text-sm">加载中...</p>
           </div>
         ) : activeTab === 'permissions' ? (
-          /* 已授权权限列表 */
-          permissions.length === 0 ? (
-            <div className="text-center text-slate-400 mt-20">
-              <p className="text-lg">暂无已授权权限</p>
-              <p className="text-sm mt-1">Agent 请求权限后将在此处显示</p>
-            </div>
-          ) : (
-            <div className="space-y-3 max-w-3xl mx-auto">
-              <p className="text-xs text-slate-400 mb-2">
-                共 {permissions.length} 条权限记录
-              </p>
-              {permissions.map((perm) => (
-                <div
-                  key={perm.id}
-                  className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <CategoryBadge category={perm.category} />
-                      <ScopeBadge scope={perm.scope} />
-                    </div>
-                    <p className="text-sm text-slate-800 truncate font-mono">{perm.resource}</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      授权于 {formatTime(perm.grantedAt)}
-                    </p>
-                  </div>
-
-                  <div className="shrink-0">
-                    {revoking === perm.id ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleRevoke(perm.id)}
-                          className="px-2.5 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-                        >
-                          确认撤销
-                        </button>
-                        <button
-                          onClick={cancelRevoke}
-                          className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleRevoke(perm.id)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
-                          border border-red-200 text-red-500 hover:bg-red-50"
-                      >
-                        撤销
-                      </button>
-                    )}
-                  </div>
+          /* ─── 已授权权限 ─── */
+          <div className="max-w-3xl mx-auto">
+            {/* 权限统计面板 */}
+            {stats && stats.total > 0 && (
+              <div className="mb-6 p-4 bg-white rounded-xl border border-slate-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-sm font-medium text-slate-700">权限概览</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 text-xs text-slate-600">
+                    共 {stats.total} 条
+                  </span>
                 </div>
-              ))}
-            </div>
-          )
-        ) : /* 审计日志列表 */
-        auditLogs.length === 0 ? (
-          <div className="text-center text-slate-400 mt-20">
-            <p className="text-lg">暂无审计日志</p>
-            <p className="text-sm mt-1">Agent 执行工具调用后将在此处记录</p>
-          </div>
-        ) : (
-          <div className="space-y-3 max-w-3xl mx-auto">
-            <p className="text-xs text-slate-400 mb-2">审计日志记录</p>
-            {auditLogs.map((log) => (
-              <div
-                key={log.id}
-                className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-slate-900">{log.toolName}</p>
-                    <StatusBadge status={log.status} />
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-slate-400">
-                    <span>耗时 {formatDuration(log.durationMs)}</span>
-                    <span>{formatTime(log.createdAt)}</span>
-                  </div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(stats.byCategory).map(([cat, count]) => (
+                    <span key={cat} className="flex items-center gap-1.5">
+                      <CategoryBadge category={cat} />
+                      <span className="text-xs text-slate-500">{count}</span>
+                    </span>
+                  ))}
                 </div>
-              </div>
-            ))}
-
-            {/* 加载更多 */}
-            {hasMore && (
-              <div className="text-center pt-2">
-                <button
-                  onClick={handleLoadMore}
-                  disabled={loading}
-                  className="px-6 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors"
-                >
-                  {loading ? '加载中...' : '加载更多'}
-                </button>
               </div>
             )}
+
+            {/* 批量操作栏 */}
+            {permissions.length > 0 && (
+              <div className="flex items-center gap-2 mb-4">
+                <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === permissions.length && permissions.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-slate-300"
+                  />
+                  全选
+                </label>
+                {selectedIds.size > 0 && (
+                  <button
+                    onClick={() => handleBulkRevoke('selected')}
+                    className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                      bulkConfirm === 'selected'
+                        ? 'bg-red-500 text-white'
+                        : 'border border-red-200 text-red-500 hover:bg-red-50'
+                    }`}
+                  >
+                    {bulkConfirm === 'selected' ? `确认撤销 ${selectedIds.size} 条` : `撤销选中 (${selectedIds.size})`}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleBulkRevoke('session')}
+                  className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                    bulkConfirm === 'session'
+                      ? 'bg-red-500 text-white'
+                      : 'border border-purple-200 text-purple-500 hover:bg-purple-50'
+                  }`}
+                >
+                  {bulkConfirm === 'session' ? '确认撤销' : '撤销所有 session'}
+                </button>
+                <button
+                  onClick={() => handleBulkRevoke('always')}
+                  className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                    bulkConfirm === 'always'
+                      ? 'bg-red-500 text-white'
+                      : 'border border-green-200 text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  {bulkConfirm === 'always' ? '确认撤销' : '撤销所有 always'}
+                </button>
+                {bulkConfirm && (
+                  <button
+                    onClick={cancelAction}
+                    className="px-3 py-1 text-xs rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300"
+                  >
+                    取消
+                  </button>
+                )}
+              </div>
+            )}
+
+            {permissions.length === 0 ? (
+              <div className="text-center text-slate-400 mt-20">
+                <p className="text-lg">暂无已授权权限</p>
+                <p className="text-sm mt-1">Agent 请求权限后将在此处显示</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {permissions.map((perm) => (
+                  <div
+                    key={perm.id}
+                    className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(perm.id)}
+                      onChange={() => toggleSelect(perm.id)}
+                      className="rounded border-slate-300 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <CategoryBadge category={perm.category} />
+                        <ScopeBadge scope={perm.scope} />
+                      </div>
+                      <p className="text-sm text-slate-800 truncate font-mono">{perm.resource}</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        授权于 {formatTime(perm.grantedAt)}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0">
+                      {revoking === perm.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleRevoke(perm.id)}
+                            className="px-2.5 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+                          >
+                            确认撤销
+                          </button>
+                          <button
+                            onClick={cancelAction}
+                            className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleRevoke(perm.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors
+                            border border-red-200 text-red-500 hover:bg-red-50"
+                        >
+                          撤销
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'audit' ? (
+          /* ─── 审计日志 ─── */
+          <div className="max-w-3xl mx-auto">
+            {/* 过滤栏 */}
+            <div className="flex items-center gap-3 mb-4">
+              <input
+                value={auditFilter.toolName}
+                onChange={(e) => {
+                  setAuditFilter(prev => ({ ...prev, toolName: e.target.value }));
+                  setAuditOffset(0);
+                }}
+                placeholder="工具名称筛选..."
+                className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white
+                  focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
+                  placeholder:text-slate-400"
+              />
+              <select
+                value={auditFilter.status}
+                onChange={(e) => {
+                  setAuditFilter(prev => ({ ...prev, status: e.target.value }));
+                  setAuditOffset(0);
+                }}
+                className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white
+                  focus:outline-none focus:ring-2 focus:ring-brand/30"
+              >
+                <option value="">全部状态</option>
+                <option value="success">成功</option>
+                <option value="error">错误</option>
+                <option value="denied">拒绝</option>
+                <option value="timeout">超时</option>
+              </select>
+              <button
+                onClick={() => {
+                  setAuditOffset(0);
+                  if (selectedAgentId) fetchAuditLogs(selectedAgentId, 0);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-hover transition-colors"
+              >
+                搜索
+              </button>
+            </div>
+
+            {auditLogs.length === 0 ? (
+              <div className="text-center text-slate-400 mt-20">
+                <p className="text-lg">暂无审计日志</p>
+                <p className="text-sm mt-1">Agent 执行工具调用后将在此处记录</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-400 mb-2">审计日志记录</p>
+                {auditLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-medium text-slate-900">{log.toolName}</p>
+                        <StatusBadge status={log.status} />
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-slate-400">
+                        <span>耗时 {formatDuration(log.durationMs)}</span>
+                        <span>{formatTime(log.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* 加载更多 */}
+                {hasMore && (
+                  <div className="text-center pt-2">
+                    <button
+                      onClick={handleLoadMore}
+                      disabled={loading}
+                      className="px-6 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                    >
+                      {loading ? '加载中...' : '加载更多'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ─── 安全防护 ─── */
+          <div className="max-w-3xl mx-auto space-y-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <h3 className="text-base font-semibold text-slate-900 mb-2">双层防御架构</h3>
+              <p className="text-sm text-slate-500 mb-4">
+                EvoClaw 采用 Rust + Node.js 双层权限检查，确保 Agent 操作的安全性。
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
+                  <p className="text-sm font-medium text-orange-800 mb-1">Rust 层</p>
+                  <p className="text-xs text-orange-600">凭证访问权限检查（Keychain 操作前置拦截）</p>
+                </div>
+                <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                  <p className="text-sm font-medium text-blue-800 mb-1">Node.js 层</p>
+                  <p className="text-xs text-blue-600">工具级权限拦截 + 危险命令检测 + 审计日志</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <h3 className="text-base font-semibold text-slate-900 mb-2">安全策略</h3>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">危险命令检测</p>
+                    <p className="text-xs text-slate-500">自动拦截 rm -rf、DROP TABLE、sudo 等危险操作</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-purple-500" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">受限路径保护</p>
+                    <p className="text-xs text-slate-500">禁止访问 /etc、~/.ssh、/System 等敏感路径</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">消息发送确认</p>
+                    <p className="text-xs text-slate-500">邮件、Slack、微信等消息类工具强制用户确认</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">循环检测与熔断</p>
+                    <p className="text-xs text-slate-500">重复调用检测（阈值 30 次），防止 Agent 陷入无限循环</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -29,6 +29,7 @@ import { DesktopAdapter } from './channel/adapters/desktop.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { createDoctorRoutes } from './routes/doctor.js';
+import { MemoryMonitor } from './infrastructure/memory-monitor.js';
 import {
   createLogger,
   closeLogger,
@@ -96,6 +97,8 @@ export interface CreateAppOptions {
   userMdRenderer?: UserMdRenderer;
   /** Skill 发现器 */
   skillDiscoverer?: SkillDiscoverer;
+  /** 内存监控 */
+  memoryMonitor?: MemoryMonitor;
 }
 
 /** 创建 Hono 应用实例 */
@@ -117,6 +120,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     memoryExtractor,
     userMdRenderer,
     skillDiscoverer,
+    memoryMonitor,
   } = options;
 
   const app = new Hono();
@@ -261,7 +265,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   }
 
   // Doctor 自诊断 — 无需 store/agent，始终可用
-  app.route('/doctor', createDoctorRoutes(store, configManager, laneQueue));
+  app.route('/doctor', createDoctorRoutes(store, configManager, laneQueue, memoryMonitor));
 
   // 全局错误处理
   app.onError((err, c) => {
@@ -405,6 +409,11 @@ async function main() {
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
   log.info('ChannelManager 已初始化');
 
+  // 内存监控
+  const memoryMonitor = new MemoryMonitor();
+  memoryMonitor.start();
+  log.info('MemoryMonitor 已启动');
+
   const app = createApp({
     token,
     store: db,
@@ -418,11 +427,13 @@ async function main() {
     memoryExtractor,
     userMdRenderer,
     skillDiscoverer,
+    memoryMonitor,
   });
 
   // 进程退出时清理
   const cleanup = () => {
     log.info('正在关闭服务...');
+    memoryMonitor.stop();
     cronRunner.stop();
     channelManager.disconnectAll();
     closeLogger();

@@ -1,5 +1,6 @@
 mod credential;
 mod crypto;
+mod permission;
 mod sidecar;
 
 use tauri::Manager;
@@ -8,6 +9,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .manage(permission::PermissionState::new())
         .setup(|app| {
             // 启动 Node.js Sidecar
             if let Err(e) = sidecar::spawn_sidecar(app) {
@@ -31,6 +33,9 @@ pub fn run() {
             crypto::encrypt,
             crypto::decrypt,
             crypto::generate_key,
+            permission::update_permission,
+            permission::revoke_permission,
+            permission::sync_all_permissions,
         ])
         .run(tauri::generate_context!())
         .expect("启动 EvoClaw 失败");

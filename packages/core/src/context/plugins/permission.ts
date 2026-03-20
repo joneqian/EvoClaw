@@ -1,33 +1,42 @@
 import type { ContextPlugin, TurnContext } from '../plugin.interface.js';
+import type { SecurityExtension, PermissionResult } from '../../bridge/security-extension.js';
 
-/** 权限缓存（内存缓存，后续对接 Rust 层） */
-const permissionCache = new Map<string, Map<string, boolean>>();
-
-/** 检查权限 */
-export function checkPermission(agentId: string, category: string): boolean {
-  const agentPerms = permissionCache.get(agentId);
-  if (!agentPerms) return true; // 默认允许
-  return agentPerms.get(category) ?? true;
+/**
+ * 创建权限检查插件
+ * 每轮对话前检查 agent 是否有 'skill' 权限
+ * deny → 抛错阻止对话，ask/allow → 通过
+ */
+export function createPermissionPlugin(security: SecurityExtension): ContextPlugin {
+  return {
+    name: 'permission',
+    priority: 20,
+    async beforeTurn(ctx: TurnContext) {
+      const result: PermissionResult = security.checkPermission(ctx.agentId, 'skill', '*');
+      if (result === 'deny') {
+        throw new Error(`Agent ${ctx.agentId} 的技能权限被拒绝`);
+      }
+      // 'ask' 和 'allow' 均通过 — 工具级别的权限由 PermissionInterceptor 在执行时检查
+    },
+  };
 }
 
-/** 设置权限（供测试和初始化用） */
-export function setPermission(agentId: string, category: string, allowed: boolean): void {
-  if (!permissionCache.has(agentId)) {
-    permissionCache.set(agentId, new Map());
-  }
-  permissionCache.get(agentId)!.set(category, allowed);
-}
+// ─── 向后兼容导出 ───
 
-/** 权限检查插件 */
+/** @deprecated 使用 createPermissionPlugin(security) 代替 */
 export const permissionPlugin: ContextPlugin = {
   name: 'permission',
   priority: 20,
-  async beforeTurn(ctx: TurnContext) {
-    // 当前实现：检查 agent 级别权限，全部通过
-    // 后续对接 Rust Keychain 层的权限弹窗
-    const allowed = checkPermission(ctx.agentId, 'chat');
-    if (!allowed) {
-      throw new Error(`Agent ${ctx.agentId} 没有聊天权限`);
-    }
+  async beforeTurn() {
+    // 旧版空操作，保持向后兼容
   },
 };
+
+/** @deprecated */
+export function checkPermission(_agentId: string, _category: string): boolean {
+  return true;
+}
+
+/** @deprecated */
+export function setPermission(_agentId: string, _category: string, _allowed: boolean): void {
+  // no-op
+}

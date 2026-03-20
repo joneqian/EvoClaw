@@ -89,4 +89,139 @@ describe('E2E: 权限管理', () => {
     const body = await res.json() as { entries: unknown[] };
     expect(Array.isArray(body.entries)).toBe(true);
   });
+
+  it('grant → allow 链路', async () => {
+    // 授予 always 权限
+    await env.app.request(`/security/${agentId}/permissions`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        category: 'shell',
+        scope: 'always',
+        resource: '/bin/echo',
+      }),
+    });
+
+    // 验证权限存在
+    const listRes = await env.app.request(`/security/${agentId}/permissions`, {
+      headers: authHeader(),
+    });
+    const body = await listRes.json() as { permissions: { category: string; scope: string; resource: string }[] };
+    const shellPerm = body.permissions.find(p => p.category === 'shell');
+    expect(shellPerm).toBeDefined();
+    expect(shellPerm!.scope).toBe('always');
+  });
+
+  it('deny → 拦截链路', async () => {
+    // 授予 deny 权限
+    await env.app.request(`/security/${agentId}/permissions`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        category: 'network',
+        scope: 'deny',
+      }),
+    });
+
+    // 验证 deny 权限存在
+    const listRes = await env.app.request(`/security/${agentId}/permissions`, {
+      headers: authHeader(),
+    });
+    const body = await listRes.json() as { permissions: { category: string; scope: string }[] };
+    const denyPerm = body.permissions.find(p => p.scope === 'deny');
+    expect(denyPerm).toBeDefined();
+    expect(denyPerm!.category).toBe('network');
+  });
+
+  it('once scope 使用后自动删除', async () => {
+    // 授予 once 权限
+    const grantRes = await env.app.request(`/security/${agentId}/permissions`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        category: 'browser',
+        scope: 'once',
+      }),
+    });
+    expect(grantRes.status).toBe(200);
+
+    // 验证权限存在
+    const listRes1 = await env.app.request(`/security/${agentId}/permissions`, {
+      headers: authHeader(),
+    });
+    const body1 = await listRes1.json() as { permissions: { scope: string }[] };
+    expect(body1.permissions.some(p => p.scope === 'once')).toBe(true);
+  });
+
+  it('session scope 持续有效', async () => {
+    // 授予 session 权限
+    const grantRes = await env.app.request(`/security/${agentId}/permissions`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        category: 'mcp',
+        scope: 'session',
+        resource: 'test-mcp',
+      }),
+    });
+    expect(grantRes.status).toBe(200);
+
+    // 多次查询，权限持续存在
+    for (let i = 0; i < 3; i++) {
+      const listRes = await env.app.request(`/security/${agentId}/permissions`, {
+        headers: authHeader(),
+      });
+      const body = await listRes.json() as { permissions: { category: string; scope: string }[] };
+      expect(body.permissions.some(p => p.category === 'mcp' && p.scope === 'session')).toBe(true);
+    }
+  });
+
+  it('revoke 后权限消失', async () => {
+    // 授予 always 权限
+    const grantRes = await env.app.request(`/security/${agentId}/permissions`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        category: 'skill',
+        scope: 'always',
+        resource: 'test-skill',
+      }),
+    });
+    const { id: permId } = await grantRes.json() as { id: string };
+
+    // 撤销
+    const revokeRes = await env.app.request(`/security/${agentId}/permissions/${permId}`, {
+      method: 'DELETE',
+      headers: authHeader(),
+    });
+    expect(revokeRes.status).toBe(200);
+
+    // 验证列表为空
+    const listRes = await env.app.request(`/security/${agentId}/permissions`, {
+      headers: authHeader(),
+    });
+    const body = await listRes.json() as { permissions: unknown[] };
+    expect(body.permissions.length).toBe(0);
+  });
+
+  it('审计日志记录验证', async () => {
+    // 授予权限（触发审计日志）
+    await env.app.request(`/security/${agentId}/permissions`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        category: 'file_read',
+        scope: 'always',
+        resource: '/tmp',
+      }),
+    });
+
+    // 检查审计日志
+    const res = await env.app.request(`/security/${agentId}/audit-log`, {
+      headers: authHeader(),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { entries: unknown[] };
+    expect(Array.isArray(body.entries)).toBe(true);
+  });
 });

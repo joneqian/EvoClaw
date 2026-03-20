@@ -172,11 +172,23 @@ export default function AgentsPage() {
             我的专家
           </button>
         </div>
-        <p className="text-sm text-slate-500 mt-3 mb-4">
-          {activeTab === 'store'
-            ? '你的专属 AI 助理库。海量精选专家随心挑选，一键装配，即刻开工。'
-            : '管理你创建和添加的专家。'}
-        </p>
+        <div className="flex items-center gap-3 mt-3 mb-4">
+          <p className="text-sm text-slate-500">
+            {activeTab === 'store'
+              ? '你的专属 AI 专家团。从营销、转化到服务交付，各类精选各类专家供你自由选择。'
+              : '管理你创建和添加的专家。'}
+          </p>
+          {activeTab === 'mine' && !showBuilder && (
+            <button
+              onClick={handleStartCreate}
+              className="shrink-0 px-3.5 py-1.5 text-xs font-medium text-white
+                bg-brand rounded-lg
+                hover:bg-brand-hover transition-all"
+            >
+              + 创建专家
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── 专家商店 Tab ─── */}
@@ -545,96 +557,64 @@ export default function AgentsPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* 创建新专家入口卡片 — 始终在第一位 */}
-            <button
-              onClick={handleStartCreate}
-              className="bg-white rounded-2xl border-2 border-dashed border-slate-200 p-5
-                hover:border-brand/40 hover:bg-brand/5
-                transition-all duration-200 flex flex-col items-center justify-center min-h-[220px]"
-            >
-              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3">
-                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-slate-500">创建专家</p>
-            </button>
-
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {agents.map((agent) => (
               <div
                 key={agent.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5
-                  hover:border-brand/30 hover:shadow-md transition-all duration-200 flex flex-col"
+                className="bg-white rounded-xl border border-slate-200 p-4
+                  hover:border-brand/30 hover:shadow-sm transition-all duration-200
+                  flex flex-col items-center h-[180px] relative"
               >
-                {/* 头像 */}
-                <div className="flex justify-center mb-4">
-                  <div className="relative">
-                    <AgentAvatar name={agent.name} size="xl" className="w-20 h-20 rounded-full text-2xl" />
-                    <span className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${
-                      agent.status === 'active' ? 'bg-green-400' : 'bg-slate-300'
-                    }`} />
+                {/* 删除按钮 — 右上角 */}
+                {deleteConfirmId === agent.id ? (
+                  <div className="absolute top-1.5 right-1.5 flex gap-1">
+                    <button onClick={() => handleDelete(agent.id)}
+                      className="px-2 py-0.5 text-xs font-medium text-red-500 bg-red-50 rounded">确认</button>
+                    <button onClick={() => setDeleteConfirmId(null)}
+                      className="px-2 py-0.5 text-xs text-slate-400 bg-slate-50 rounded">取消</button>
                   </div>
+                ) : (
+                  <button onClick={() => setDeleteConfirmId(agent.id)}
+                    className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded
+                      text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="删除">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                  </button>
+                )}
+
+                {/* 头像 */}
+                <div className="relative mt-2 mb-2">
+                  <AgentAvatar name={agent.name} size="lg" className="w-12 h-12 rounded-full text-lg" />
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                    agent.status === 'active' ? 'bg-green-400' : 'bg-slate-300'
+                  }`} />
                 </div>
                 {/* 名称 */}
-                <h4 className="text-base font-bold text-slate-800 text-center mb-1">{agent.name}</h4>
-                <p className="text-xs text-slate-400 text-center mb-4">
-                  创建于 {parseUtcDate(agent.createdAt).toLocaleDateString('zh-CN')}
+                <h4 className="text-sm font-bold text-slate-800 text-center truncate w-full">{agent.name}</h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {parseUtcDate(agent.createdAt).toLocaleDateString('zh-CN')}
                 </p>
-                {/* 操作按钮 */}
-                <div className="mt-auto space-y-2">
-                  <button
-                    onClick={() => openAgent(agent.id)}
-                    className="w-full py-2.5 text-sm font-medium text-slate-600
-                      bg-white border border-slate-200 rounded-xl
-                      hover:border-brand/40 hover:text-brand hover:bg-brand/5
-                      transition-all duration-150"
-                  >
+                {/* 操作 */}
+                <div className="mt-auto flex gap-2 w-full">
+                  <button onClick={() => openAgent(agent.id)}
+                    className="flex-1 py-1.5 text-xs font-medium text-brand bg-brand/5 border border-brand/20 rounded-lg
+                      hover:bg-brand/10 hover:border-brand/40 transition-all">
                     对话
                   </button>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => navigate(`/agents/${agent.id}/edit`)}
-                      className="flex-1 py-2 text-xs font-medium text-slate-500
-                        hover:text-brand hover:bg-brand/5 rounded-lg transition-colors"
-                    >
-                      编辑
-                    </button>
-                    {deleteConfirmId === agent.id ? (
-                      <>
-                        <button
-                          onClick={() => handleDelete(agent.id)}
-                          className="flex-1 py-2 text-xs font-medium text-red-500
-                            hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          确认删除
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirmId(null)}
-                          className="flex-1 py-2 text-xs text-slate-400
-                            hover:bg-slate-50 rounded-lg transition-colors"
-                        >
-                          取消
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => setDeleteConfirmId(agent.id)}
-                        className="flex-1 py-2 text-xs font-medium text-slate-400
-                          hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        删除
-                      </button>
-                    )}
-                  </div>
+                  <button onClick={() => navigate(`/agents/${agent.id}/edit`)}
+                    className="flex-1 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg
+                      hover:text-brand hover:border-brand/30 transition-colors">
+                    编辑
+                  </button>
                 </div>
               </div>
             ))}
-
           </div>
         )}
       </div>}
-        </div>
+      </div>
       )}
     </div>
   );

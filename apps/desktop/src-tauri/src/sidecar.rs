@@ -251,14 +251,14 @@ fn verify_node(path: &str) -> bool {
 fn find_bundled_node(app: &tauri::AppHandle) -> Option<String> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
-    // 1) 打包后的 resource dir (生产模式)
+    // 1) 开发模式：优先用源目录下的 node-bin（跳过 target/debug 里可能无法执行的副本）
+    let dev_node = concat!(env!("CARGO_MANIFEST_DIR"), "/node-bin/node");
+    candidates.push(std::path::PathBuf::from(dev_node));
+
+    // 2) 打包后的 resource dir (生产模式)
     if let Ok(resource_dir) = app.path().resource_dir() {
         candidates.push(resource_dir.join("node-bin/node"));
     }
-
-    // 2) 开发模式：源目录下的 node-bin
-    let dev_node = concat!(env!("CARGO_MANIFEST_DIR"), "/node-bin/node");
-    candidates.push(std::path::PathBuf::from(dev_node));
 
     for candidate in &candidates {
         if candidate.exists() {

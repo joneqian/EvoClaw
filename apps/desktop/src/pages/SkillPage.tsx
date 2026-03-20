@@ -126,6 +126,18 @@ const BRAND_CATEGORIES: BrandCategory[] = [
       { name: '晨起 / 夜间风险时段关怀', description: '在心血管事件高发时段主动关怀，提醒注意事项和应急措施' },
     ],
   },
+  {
+    id: 'marketing',
+    name: '营销转化',
+    icon: '🚀',
+    color: 'from-indigo-500 to-blue-400',
+    skills: [
+      { name: '健康公众号文案撰写', description: '生成高打开率的公众号图文标题与正文，覆盖涨粉、促活、带货等核心场景' },
+      { name: '爆款健康视频脚本撰写', description: '输出抖音、视频号短视频完整脚本，包含钩子、卖点、行动引导全结构' },
+      { name: '销冠话术框架', description: '提供经过验证的销售对话结构，适配直播、私域等场景，系统提升成交转化率' },
+      { name: '竞品对比话术', description: '构建差异化对比话术体系，帮助销售在客户比价时放大优势、避开价格战' },
+    ],
+  },
 ];
 type SortBy = 'score' | 'downloads' | 'installs';
 
@@ -398,7 +410,7 @@ export default function SkillPage() {
                 <img src="/brand-icon.png" alt={BRAND_NAME} className="w-8 h-8 rounded-lg bg-white/20 p-0.5" />
                 <h2 className="text-lg font-bold text-white">{BRAND_NAME} 专属技能</h2>
               </div>
-              <p className="text-sm text-white/80 max-w-md">专为健康管理场景打造的 AI 技能，覆盖慢病管理、营养膳食、运动指导等领域，让 AI 成为您的私人健康助手。</p>
+              <p className="text-sm text-white/80 leading-relaxed">专为泛健康领域打造的 AI 技能，覆盖健身运动、心理管理、体重管理、慢病管理、中医养生、功能医学、生活方式医学、养老康复、医美、母婴、养发护发等等领域，打通从健康内容创作到商业转化、服务交付的全链路，让 AI 成为企业腾飞跃迁的新引擎。</p>
             </div>
             {/* 装饰圆 */}
             <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />

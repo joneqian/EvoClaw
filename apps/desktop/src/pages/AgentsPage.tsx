@@ -136,14 +136,14 @@ export default function AgentsPage() {
 
   // 专家商店：健康领域预设模板（后续可从 API 加载）
   const storeAgents = [
+    { id: 'tpl-health-copy', name: '健康文案专家', desc: '擅长健康科普、患者教育、医疗营销等内容创作，将专业医学知识转化为通俗易懂的优质文案。', avatar: '✍️' },
+    { id: 'tpl-sales', name: '销售咨询专家', desc: '深谙健康产品销售策略，精准分析客户需求，提供专业话术指导和转化优化建议。', avatar: '📈' },
     { id: 'tpl-nutrition', name: '营养膳食专家', desc: '专业营养师，根据个人体质、健康目标和饮食偏好，定制科学膳食方案，提供营养搭配和食谱推荐。', avatar: '🥗' },
     { id: 'tpl-tcm', name: '中医养生顾问', desc: '传统中医理论与现代养生结合，提供体质辨识、经络调理、药膳食疗和四季养生方案指导。', avatar: '🌿' },
     { id: 'tpl-fitness', name: '运动健身教练', desc: '根据身体状况和健身目标，制定个性化训练计划，提供动作指导、运动损伤预防和体能评估。', avatar: '💪' },
     { id: 'tpl-mental', name: '心理健康顾问', desc: '心理咨询与情绪管理专家，提供压力疏导、睡眠改善、正念冥想指导和心理健康科普。', avatar: '🧠' },
     { id: 'tpl-chronic', name: '慢病管理助手', desc: '针对高血压、糖尿病等慢性病，提供日常监测指导、用药提醒、生活方式干预和健康数据分析。', avatar: '❤️‍🩹' },
     { id: 'tpl-maternal', name: '母婴健康顾问', desc: '覆盖备孕、孕期、产后到育儿全周期，提供科学的营养指导、发育评估和常见问题解答。', avatar: '👶' },
-    { id: 'tpl-health-copy', name: '健康文案专家', desc: '擅长健康科普、患者教育、医疗营销等内容创作，将专业医学知识转化为通俗易懂的优质文案。', avatar: '✍️' },
-    { id: 'tpl-sales', name: '销售咨询专家', desc: '深谙健康产品销售策略，精准分析客户需求，提供专业话术指导和转化优化建议。', avatar: '📈' },
   ];
 
   return (

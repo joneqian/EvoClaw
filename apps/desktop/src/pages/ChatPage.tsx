@@ -376,13 +376,12 @@ function ChatView() {
     }
   }, [currentAgentId, currentSessionKey, sendMessage]);
 
-  /** 权限决策回调 — 持久化权限后关闭弹窗，用户重新发消息时生效 */
+  /** 权限决策回调 — 允许则持久化，拒绝则忽略（下次再问） */
   const handlePermissionDecision = useCallback(
-    async (scope: 'once' | 'session' | 'always' | 'deny') => {
+    async (scope: 'always' | 'deny') => {
       if (!permissionRequest || !currentAgentId) return;
       try {
-        if (scope !== 'deny') {
-          // 通过 security API 持久化权限
+        if (scope === 'always') {
           const configStr = localStorage.getItem('sidecar-config');
           if (configStr) {
             const config = JSON.parse(configStr) as { port: number; token: string };
@@ -396,17 +395,15 @@ function ChatView() {
                 },
                 body: JSON.stringify({
                   category: permissionRequest.category,
-                  scope,
-                  // always/session 授权整个类别，once 授权特定资源
-                  resource: scope === 'once' ? permissionRequest.resource : '*',
+                  scope: 'always',
+                  resource: '*',
                 }),
               },
             );
-            // 同步到 Rust 层
             invoke('update_permission', {
               agentId: currentAgentId,
               category: permissionRequest.category,
-              scope,
+              scope: 'always',
             }).catch(() => {});
           }
         }

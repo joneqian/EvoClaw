@@ -47,28 +47,6 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: string; color: stri
   },
 };
 
-/** 作用域按钮配置 */
-const SCOPE_BUTTONS = [
-  {
-    scope: 'once' as const,
-    label: '仅本次',
-    desc: '执行一次后自动撤销',
-    style: 'border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300',
-  },
-  {
-    scope: 'session' as const,
-    label: '本次会话',
-    desc: '关闭应用后自动撤销',
-    style: 'border border-brand/30 text-brand hover:bg-brand/5 hover:border-brand/50',
-  },
-  {
-    scope: 'always' as const,
-    label: '始终允许',
-    desc: '永久授权，可在安全设置中撤销',
-    style: 'bg-brand text-white hover:bg-brand-hover shadow-sm',
-  },
-];
-
 export interface PermissionDialogProps {
   isOpen: boolean;
   agentName: string;
@@ -76,7 +54,7 @@ export interface PermissionDialogProps {
   category: string;
   resource: string;
   reason?: string;
-  onDecision: (scope: 'once' | 'session' | 'always' | 'deny') => void;
+  onDecision: (scope: 'always' | 'deny') => void;
   onClose: () => void;
 }
 
@@ -97,14 +75,6 @@ export default function PermissionDialog({
   const handleDialogClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
   }, []);
-
-  const handleDecision = useCallback(
-    (scope: 'once' | 'session' | 'always' | 'deny') => {
-      onDecision(scope);
-      onClose();
-    },
-    [onDecision, onClose],
-  );
 
   if (!isOpen) return null;
 
@@ -131,8 +101,8 @@ export default function PermissionDialog({
         </div>
 
         {/* 主体 */}
-        <div className="px-5 pt-5 pb-4">
-          {/* Agent 信息 + 权限类别 */}
+        <div className="px-5 pt-5 pb-5">
+          {/* Agent 信息 */}
           <div className="flex items-center gap-3 mb-5">
             <AgentAvatar name={agentName} size="lg" />
             <div className="flex-1 min-w-0">
@@ -142,10 +112,10 @@ export default function PermissionDialog({
           </div>
 
           {/* 权限详情卡片 */}
-          <div className={`rounded-xl p-4 ${config.bg} mb-4`}>
+          <div className={`rounded-xl p-4 ${config.bg} mb-5`}>
             <div className="flex items-start gap-3">
               {config.icon && (
-                <div className={`w-9 h-9 rounded-lg bg-white/80 flex items-center justify-center shrink-0 shadow-sm`}>
+                <div className="w-9 h-9 rounded-lg bg-white/80 flex items-center justify-center shrink-0 shadow-sm">
                   <svg className={`w-5 h-5 ${config.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d={config.icon} />
                   </svg>
@@ -166,31 +136,27 @@ export default function PermissionDialog({
             )}
           </div>
 
-          {/* 授权按钮组 */}
-          <div className="space-y-2">
-            {SCOPE_BUTTONS.map(({ scope, label, desc, style }) => (
-              <button
-                key={scope}
-                onClick={() => handleDecision(scope)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl
-                  text-sm font-medium transition-all duration-150 ${style}`}
-              >
-                <span>{label}</span>
-                <span className="text-xs font-normal opacity-60">{desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+          <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+            允许后该专家将永久获得此类权限，你可以随时在安全中心撤销。
+          </p>
 
-        {/* 底部拒绝 */}
-        <div className="px-5 pb-4">
-          <button
-            onClick={() => handleDecision('deny')}
-            className="w-full py-2 text-xs text-slate-400 hover:text-red-500
-              transition-colors text-center"
-          >
-            拒绝此次请求
-          </button>
+          {/* 两个按钮 */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => { onDecision('deny'); onClose(); }}
+              className="flex-1 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-150
+                border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
+            >
+              拒绝
+            </button>
+            <button
+              onClick={() => { onDecision('always'); onClose(); }}
+              className="flex-1 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-150
+                bg-brand text-white hover:bg-brand-hover shadow-sm"
+            >
+              允许
+            </button>
+          </div>
         </div>
       </div>
     </div>

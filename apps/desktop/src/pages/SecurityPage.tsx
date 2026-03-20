@@ -17,13 +17,6 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: string; color: stri
   skill:      { label: '技能调用', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z', color: 'text-green-600', bg: 'bg-green-50', dot: 'bg-green-500' },
 };
 
-const SCOPE_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  once:    { label: '仅本次',   color: 'text-slate-600', bg: 'bg-slate-100' },
-  session: { label: '本次会话', color: 'text-brand',     bg: 'bg-brand/10' },
-  always:  { label: '始终允许', color: 'text-emerald-700', bg: 'bg-emerald-50' },
-  deny:    { label: '始终拒绝', color: 'text-red-700',   bg: 'bg-red-50' },
-};
-
 const STATUS_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
   success: { label: '成功', icon: 'M4.5 12.75l6 6 9-13.5', color: 'text-emerald-500' },
   error:   { label: '错误', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z', color: 'text-red-500' },
@@ -266,51 +259,53 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
 
   return (
     <div className="w-full px-6 py-6 space-y-5">
-      {/* 统计卡片 */}
-      {stats && stats.total > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl border border-slate-200/60 p-4 text-center">
-            <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
-            <p className="text-xs text-slate-400 mt-1">总权限数</p>
+      {/* 统计卡片 — 始终显示所有类别 */}
+      <div className="grid grid-cols-4 lg:grid-cols-8 gap-2">
+        <div className="bg-white rounded-xl border border-slate-200/60 p-3 text-center">
+          <p className="text-xl font-bold text-slate-900">{stats?.total ?? 0}</p>
+          <p className="text-xs text-slate-400 mt-0.5">全部</p>
+        </div>
+        {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => (
+          <div key={cat} className={`rounded-xl border border-slate-200/60 p-3 text-center ${cfg.bg}`}>
+            <p className={`text-xl font-bold ${stats?.byCategory[cat] ? cfg.color : 'text-slate-300'}`}>
+              {stats?.byCategory[cat] ?? 0}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">{cfg.label}</p>
           </div>
-          {Object.entries(stats.byCategory).slice(0, 3).map(([cat, count]) => {
-            const cfg = CATEGORY_CONFIG[cat];
-            return (
-              <div key={cat} className={`rounded-xl border border-slate-200/60 p-4 text-center ${cfg?.bg ?? 'bg-white'}`}>
-                <p className={`text-2xl font-bold ${cfg?.color ?? 'text-slate-900'}`}>{count}</p>
-                <p className="text-xs text-slate-500 mt-1">{cfg?.label ?? cat}</p>
-              </div>
-            );
-          })}
+        ))}
+      </div>
+
+      {/* 操作栏 */}
+      {permissions.length > 0 && (
+        <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200/60 px-4 py-2.5">
+          <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+            <input type="checkbox" checked={selectedIds.size === permissions.length && permissions.length > 0} onChange={onToggleAll}
+              className="rounded border-slate-300 text-brand focus:ring-brand/30" />
+            {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
+          </label>
+          {selectedIds.size > 0 && (
+            <>
+              <div className="w-px h-4 bg-slate-200" />
+              <button
+                onClick={() => onBulkRevoke('selected')}
+                className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
+                  bulkConfirm === 'selected' ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-50'
+                }`}
+              >
+                {bulkConfirm === 'selected' ? `确认撤销 ${selectedIds.size} 条` : `撤销选中`}
+              </button>
+              {bulkConfirm === 'selected' && (
+                <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">取消</button>
+              )}
+            </>
+          )}
         </div>
       )}
-
-      {/* 批量操作栏 */}
-      <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200/60 px-4 py-2.5">
-        <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
-          <input type="checkbox" checked={selectedIds.size === permissions.length} onChange={onToggleAll}
-            className="rounded border-slate-300 text-brand focus:ring-brand/30" />
-          {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
-        </label>
-        <div className="w-px h-4 bg-slate-200 mx-1" />
-        {selectedIds.size > 0 && (
-          <BulkBtn label={`撤销选中`} confirmLabel={`确认撤销 ${selectedIds.size} 条`}
-            active={bulkConfirm === 'selected'} onClick={() => onBulkRevoke('selected')} variant="red" />
-        )}
-        <BulkBtn label="撤销会话级" confirmLabel="确认撤销" active={bulkConfirm === 'session'}
-          onClick={() => onBulkRevoke('session')} variant="purple" />
-        <BulkBtn label="撤销永久级" confirmLabel="确认撤销" active={bulkConfirm === 'always'}
-          onClick={() => onBulkRevoke('always')} variant="emerald" />
-        {bulkConfirm && (
-          <button onClick={onCancel} className="ml-auto text-xs text-slate-400 hover:text-slate-600 transition-colors">取消</button>
-        )}
-      </div>
 
       {/* 权限列表 */}
       <div className="space-y-2">
         {permissions.map((perm) => {
           const cfg = CATEGORY_CONFIG[perm.category] ?? { label: perm.category, icon: '', color: 'text-slate-600', bg: 'bg-slate-50', dot: 'bg-slate-400' };
-          const scopeCfg = SCOPE_CONFIG[perm.scope] ?? { label: perm.scope, color: 'text-slate-600', bg: 'bg-slate-100' };
           const isConfirming = revoking === perm.id;
           return (
             <div key={perm.id} className={`group bg-white rounded-xl border transition-all duration-150 ${
@@ -325,7 +320,7 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className={`text-sm font-medium ${cfg.color}`}>{cfg.label}</span>
-                    <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${scopeCfg.bg} ${scopeCfg.color}`}>{scopeCfg.label}</span>
+                    <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">已允许</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="text-xs text-slate-500 font-mono truncate">{perm.resource}</code>
@@ -359,22 +354,6 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
         })}
       </div>
     </div>
-  );
-}
-
-function BulkBtn({ label, confirmLabel, active, onClick, variant }: {
-  label: string; confirmLabel: string; active: boolean; onClick: () => void;
-  variant: 'red' | 'purple' | 'emerald';
-}) {
-  const colors = {
-    red: active ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-50',
-    purple: active ? 'bg-purple-500 text-white' : 'text-purple-500 hover:bg-purple-50',
-    emerald: active ? 'bg-emerald-500 text-white' : 'text-emerald-600 hover:bg-emerald-50',
-  };
-  return (
-    <button onClick={onClick} className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all ${colors[variant]}`}>
-      {active ? confirmLabel : label}
-    </button>
   );
 }
 

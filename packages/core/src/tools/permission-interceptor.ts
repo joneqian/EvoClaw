@@ -22,16 +22,31 @@ const MESSAGE_TOOLS = new Set([
   'slack_send', 'telegram_send', 'wechat_send',
 ]);
 
-/** 工具名称 → 权限类别映射 */
+/** 自动放行的只读工具 — 不需要权限确认 */
+const AUTO_ALLOW_TOOLS = new Set([
+  'read', 'ls', 'find', 'grep',       // 文件只读
+  'image', 'pdf',                       // 多媒体只读
+  'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',  // Agent 管理
+]);
+
+/** 工具名称 → 权限类别映射（仅需拦截的工具） */
 const TOOL_CATEGORY_MAP: Record<string, PermissionCategory> = {
-  read: 'file_read',
+  // 文件修改
   write: 'file_write',
   edit: 'file_write',
+  apply_patch: 'file_write',
+  // 命令执行
   bash: 'shell',
   shell: 'shell',
-  browse: 'browser',
+  exec_background: 'shell',
+  process: 'shell',
+  // 网络
+  web_search: 'network',
+  web_fetch: 'network',
   fetch: 'network',
   http: 'network',
+  // 浏览器
+  browse: 'browser',
 };
 
 /** 拦截结果 */
@@ -54,6 +69,20 @@ export class PermissionInterceptor {
    * @returns InterceptResult — 是否允许执行及原因
    */
   intercept(agentId: string, toolName: string, params: Record<string, unknown>): InterceptResult {
+    // 0. 只读工具自动放行（但仍检查受限路径）
+    if (AUTO_ALLOW_TOOLS.has(toolName)) {
+      const filePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
+      if (filePath && this.isRestrictedPath(filePath)) {
+        return {
+          allowed: false,
+          reason: `访问受限路径: ${filePath}`,
+          requiresConfirmation: true,
+          permissionCategory: 'file_read',
+        };
+      }
+      return { allowed: true };
+    }
+
     // 1. 确定权限类别
     const category = this.resolveCategory(toolName);
 

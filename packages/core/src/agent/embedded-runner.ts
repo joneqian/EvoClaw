@@ -221,7 +221,49 @@ async function runWithPI(
    *   (toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: callback)
    *   => Promise<{ content: [{type: "text", text: string}], details?: unknown }>
    */
-  function wrapAsCustomTool(tool: any) {
+  /** 权限检查 + 安全守卫的公共逻辑 */
+  async function runGuards(toolName: string, args: Record<string, unknown>): Promise<{ content: [{ type: string; text: string }] } | null> {
+    if (permissionFn) {
+      log.debug(`[权限检查] 工具=${toolName}`);
+      const rejection = await permissionFn(toolName, args);
+      if (rejection) {
+        log.info(`权限拦截 ${toolName}: ${rejection}`);
+        return { content: [{ type: 'text', text: `[权限拒绝] ${rejection}` }] };
+      }
+    }
+    const check = toolSafety.checkBeforeExecution(toolName, args);
+    if (check.blocked) {
+      log.warn(`阻止工具执行: ${check.reason}`);
+      return { content: [{ type: 'text', text: `⚠️ ${check.reason}` }] };
+    }
+    return null;
+  }
+
+  /** 安全守卫：结果截断和无进展检测 */
+  function postProcess(rawResult: unknown): { content: [{ type: string; text: string }] } {
+    const resultText = typeof rawResult === 'string'
+      ? rawResult
+      : (rawResult as any)?.content?.[0]?.text ?? JSON.stringify(rawResult);
+    const noProgress = toolSafety.recordResult(resultText);
+    if (noProgress.blocked) {
+      log.warn(`无进展检测: ${noProgress.reason}`);
+      return { content: [{ type: 'text', text: `⚠️ ${noProgress.reason}` }] };
+    }
+    const truncated = toolSafety.truncateResult(resultText);
+    if (typeof rawResult === 'object' && (rawResult as any)?.content) {
+      if (truncated !== resultText && (rawResult as any).content[0]) {
+        (rawResult as any).content[0].text = truncated;
+      }
+      return rawResult as any;
+    }
+    return { content: [{ type: 'text', text: truncated }] };
+  }
+
+  /**
+   * 包装 PI 内置工具（4 参数 execute 签名）
+   * PI: execute(toolCallId, params, signal, onUpdate) => AgentToolResult
+   */
+  function wrapPITool(tool: any) {
     const originalExecute = tool.execute;
     return {
       name: tool.name,
@@ -230,56 +272,42 @@ async function runWithPI(
       parameters: tool.parameters,
       execute: async (toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: unknown) => {
         const args = (params && typeof params === 'object' ? params : {}) as Record<string, unknown>;
-
-        // 权限拦截
-        if (permissionFn) {
-          log.debug(`[权限检查] 工具=${tool.name}`);
-          const rejection = await permissionFn(tool.name, args);
-          if (rejection) {
-            log.info(`权限拦截 ${tool.name}: ${rejection}`);
-            return { content: [{ type: 'text', text: `[权限拒绝] ${rejection}` }] };
-          }
-        }
-
-        // 循环检测
-        const check = toolSafety.checkBeforeExecution(tool.name, args);
-        if (check.blocked) {
-          log.warn(`阻止工具执行: ${check.reason}`);
-          return { content: [{ type: 'text', text: `⚠️ ${check.reason}` }] };
-        }
-
-        // 执行原始工具
+        const blocked = await runGuards(tool.name, args);
+        if (blocked) return blocked;
         const rawResult = await originalExecute(toolCallId, params, signal, onUpdate);
-
-        // 安全守卫：结果截断和无进展检测
-        // rawResult 可能是 PI AgentToolResult 格式或字符串
-        const resultText = typeof rawResult === 'string'
-          ? rawResult
-          : rawResult?.content?.[0]?.text ?? JSON.stringify(rawResult);
-        const noProgress = toolSafety.recordResult(resultText);
-        if (noProgress.blocked) {
-          log.warn(`无进展检测: ${noProgress.reason}`);
-          return { content: [{ type: 'text', text: `⚠️ ${noProgress.reason}` }] };
-        }
-        const truncated = toolSafety.truncateResult(resultText);
-
-        // 如果原始结果已经是 AgentToolResult 格式，替换文本内容
-        if (typeof rawResult === 'object' && rawResult?.content) {
-          if (truncated !== resultText && rawResult.content[0]) {
-            rawResult.content[0].text = truncated;
-          }
-          return rawResult;
-        }
-
-        return { content: [{ type: 'text', text: truncated }] };
+        return postProcess(rawResult);
       },
     };
   }
 
-  // 所有工具统一包装为 customTools 格式（含权限拦截 + 安全守卫）
+  /**
+   * 包装 EvoClaw 自定义工具（1 参数 execute 签名）
+   * EvoClaw: execute(args) => string
+   */
+  function wrapEvoclawTool(tool: any) {
+    const originalExecute = tool.execute;
+    return {
+      name: tool.name,
+      label: tool.label ?? tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      execute: async (toolCallId: string, params: unknown, _signal?: AbortSignal, _onUpdate?: unknown) => {
+        const args = (params && typeof params === 'object' ? params : {}) as Record<string, unknown>;
+        const blocked = await runGuards(tool.name, args);
+        if (blocked) return blocked;
+        const rawResult = await originalExecute(args);
+        return postProcess(rawResult);
+      },
+    };
+  }
+
+  // 所有工具统一包装为 PI customTools 格式
+  // PI 内置工具（read/edit/write/grep/find/ls）用 4 参数签名
+  // EvoClaw 工具（bash/web_fetch/image/...）和 config.tools 用 1 参数签名
   const allCustomTools = [
-    ...piBuiltInTools.map(wrapAsCustomTool),
-    ...(config.tools ?? []).map(wrapAsCustomTool),
+    ...piBuiltInTools.filter((t: any) => t.name !== 'bash').map(wrapPITool),
+    ...piBuiltInTools.filter((t: any) => t.name === 'bash').map(wrapEvoclawTool), // createEnhancedExecTool 是 1 参数
+    ...(config.tools ?? []).map(wrapEvoclawTool),
   ];
   log.debug(
     `注入工具: ${allCustomTools.map((t: any) => t.name).join(', ')}`,

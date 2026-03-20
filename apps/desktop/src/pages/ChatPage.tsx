@@ -376,40 +376,42 @@ function ChatView() {
     }
   }, [currentAgentId, currentSessionKey, sendMessage]);
 
-  /** 权限决策回调 */
+  /** 权限决策回调 — 持久化权限后关闭弹窗，用户重新发消息时生效 */
   const handlePermissionDecision = useCallback(
     async (scope: 'once' | 'session' | 'always' | 'deny') => {
       if (!permissionRequest || !currentAgentId) return;
       try {
-        const configStr = localStorage.getItem('sidecar-config');
-        if (!configStr) return;
-        const config = JSON.parse(configStr) as { port: number; token: string };
-        await fetch(
-          `http://127.0.0.1:${config.port}/chat/${currentAgentId}/permission-response`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${config.token}`,
-            },
-            body: JSON.stringify({
-              requestId: permissionRequest.requestId,
-              scope,
+        if (scope !== 'deny') {
+          // 通过 security API 持久化权限
+          const configStr = localStorage.getItem('sidecar-config');
+          if (configStr) {
+            const config = JSON.parse(configStr) as { port: number; token: string };
+            await fetch(
+              `http://127.0.0.1:${config.port}/security/${currentAgentId}/permissions`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${config.token}`,
+                },
+                body: JSON.stringify({
+                  category: permissionRequest.category,
+                  scope,
+                  // always/session 授权整个类别，once 授权特定资源
+                  resource: scope === 'once' ? permissionRequest.resource : '*',
+                }),
+              },
+            );
+            // 同步到 Rust 层
+            invoke('update_permission', {
+              agentId: currentAgentId,
               category: permissionRequest.category,
-              resource: permissionRequest.resource,
-            }),
-          },
-        );
-        // 实时同步到 Rust 层
-        if (scope !== 'deny' && permissionRequest.category) {
-          invoke('update_permission', {
-            agentId: currentAgentId,
-            category: permissionRequest.category,
-            scope,
-          }).catch(() => {});
+              scope,
+            }).catch(() => {});
+          }
         }
       } catch (err) {
-        console.error('权限回调失败:', err);
+        console.error('权限授予失败:', err);
       }
       setPermissionRequest(null);
     },

@@ -161,7 +161,6 @@ const MENU_SECTIONS: MenuSection[] = [
     items: [
       { icon: ICON_PATHS.evolution, label: '进化统计', path: '/evolution' },
       { icon: ICON_PATHS.knowledge, label: '知识库', path: '/knowledge' },
-      { icon: ICON_PATHS.security, label: '安全设置', path: '/security' },
     ],
   },
   {
@@ -484,9 +483,9 @@ export default function App() {
             <Icon d={ICON_PATHS.connect} className="w-4 h-4 shrink-0" />
             {!sidebarCollapsed && '连接'}
           </NavLink>
-          <NavLink to="/security-guard" className={navClassName} title="安全防护">
+          <NavLink to="/security" className={navClassName} title="安全中心">
             <Icon d={ICON_PATHS.shield} className="w-4 h-4 shrink-0" />
-            {!sidebarCollapsed && '安全防护'}
+            {!sidebarCollapsed && '安全中心'}
           </NavLink>
         </div>
 

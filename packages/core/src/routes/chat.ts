@@ -32,7 +32,7 @@ import { createGapDetectionPlugin } from '../context/plugins/gap-detection.js';
 import { SecurityExtension } from '../bridge/security-extension.js';
 import { createPermissionPlugin } from '../context/plugins/permission.js';
 import { PermissionInterceptor } from '../tools/permission-interceptor.js';
-import { waitForPermission, resolvePermission } from '../tools/permission-gate.js';
+import { resolvePermission } from '../tools/permission-gate.js';
 import type { PermissionScope } from '@evoclaw/shared';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
@@ -434,33 +434,29 @@ export function createChatRoutes(
 
     // 权限拦截器 — 通过 permissionInterceptFn 传入 embedded-runner，拦截所有工具（含 PI 内置）
     const interceptor = new PermissionInterceptor(security);
-    const sseRef: { emit: ((event: string, data: unknown) => Promise<void>) | null } = { emit: null };
+
+    // 记录本次对话中需要弹窗的权限请求（流结束后随最后一批 SSE 事件到达前端）
+    const pendingPermissions: Array<{
+      requestId: string; toolName: string; category: string; resource: string; reason?: string;
+    }> = [];
 
     const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
       const result = interceptor.intercept(agentId, toolName, args);
 
-      if (!result.allowed && result.requiresConfirmation && sseRef.emit) {
-        // 发送 SSE 通知前端弹窗
-        const requestId = crypto.randomUUID();
-        await sseRef.emit('permission_required', {
-          requestId,
+      if (!result.allowed && result.requiresConfirmation) {
+        // 记录待弹窗的权限请求（Tauri WKWebView 不支持 fetch streaming，
+        // SSE 事件在流结束后才到达前端，无法阻塞等待用户决策）
+        const category = result.permissionCategory ?? 'skill';
+        const resource = (args['path'] as string) ?? (args['file_path'] as string) ?? (args['command'] as string) ?? '*';
+        pendingPermissions.push({
+          requestId: crypto.randomUUID(),
           toolName,
-          category: result.permissionCategory ?? 'skill',
-          resource: (args['path'] as string) ?? (args['file_path'] as string) ?? (args['command'] as string) ?? '*',
+          category,
+          resource,
           reason: result.reason,
         });
-
-        // 等待用户决策（60s 超时自动 deny）
-        const decision = await waitForPermission(requestId);
-        if (decision === 'deny') {
-          return result.reason ?? '用户拒绝了此操作';
-        }
-
-        // 用户授权后，持久化权限（非 once）
-        if (decision !== 'once' && result.permissionCategory) {
-          security.grantPermission(agentId, result.permissionCategory, decision as PermissionScope);
-        }
-        return null; // 允许
+        // 立即拒绝，提示用户授权后重试
+        return `需要「${category}」权限才能执行此操作。请在弹出的权限对话框中授权后重新发送消息。`;
       }
 
       if (!result.allowed && !result.requiresConfirmation) {
@@ -489,11 +485,6 @@ export function createChatRoutes(
 
     // 返回 SSE 流
     return streamSSE(c, async (stream) => {
-      // 绑定 SSE 发射器，供权限拦截包装使用
-      sseRef.emit = async (event: string, data: unknown) => {
-        await stream.writeSSE({ event, data: JSON.stringify(data) });
-      };
-
       let fullResponse = '';
 
       await runEmbeddedAgent(runConfig, message, async (event) => {
@@ -506,6 +497,14 @@ export function createChatRoutes(
       // 存储 assistant 响应
       if (fullResponse) {
         saveMessage(store, agentId, sessionKey, 'assistant', fullResponse);
+      }
+
+      // 发送待处理的权限弹窗请求（流结束前，确保前端收到）
+      for (const perm of pendingPermissions) {
+        await stream.writeSSE({
+          event: 'permission_required',
+          data: JSON.stringify(perm),
+        });
       }
 
       // afterTurn — 记忆提取 + 进化更新（异步，不阻塞响应）

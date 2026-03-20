@@ -1,8 +1,9 @@
-# EvoClaw 迭代计划
+# EvoClaw 迭代计划（已废弃）
 
 > **文档版本**: v4.0
 > **更新日期**: 2026-03-17
-> **文档状态**: 执行中
+> **文档状态**: ⚠️ 已废弃 — 本文档基于 PRD v4.0 / Architecture v4.0，Sprint 1-10C 已全部完成。
+> **替代文档**: [`IterationPlan_2026-03-20.md`](./IterationPlan_2026-03-20.md)（基于 PRD v6.0 / Architecture v6.0）
 > **执行方式**: Claude 自主开发 + 测试
 > **基于**: PRD v4.0 + Architecture v4.0 + AgentSystemDesign.md + MemorySystemDesign.md
 

@@ -61,7 +61,6 @@ export class SecurityExtension {
       const exact = agentCache.get(`${category}:${resource}`);
       if (exact) {
         if (exact.expiresAt && new Date(exact.expiresAt) < new Date()) {
-          // 已过期，删除
           this.revokePermission(exact.id);
         } else {
           return exact.scope === 'deny' ? 'deny' : 'allow';
@@ -74,6 +73,16 @@ export class SecurityExtension {
           this.revokePermission(wildcard.id);
         } else {
           return wildcard.scope === 'deny' ? 'deny' : 'allow';
+        }
+      }
+      // 类别级匹配：该类别下有任何 always 权限即放行（简化权限模型）
+      for (const [key, record] of agentCache) {
+        if (key.startsWith(`${category}:`) && record.scope === 'always') {
+          if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
+            this.revokePermission(record.id);
+            continue;
+          }
+          return 'allow';
         }
       }
     }

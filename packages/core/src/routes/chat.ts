@@ -13,7 +13,7 @@ import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js'
 import { sessionRouterPlugin } from '../context/plugins/session-router.js';
 import { resolveModel } from '../provider/model-resolver.js';
 import { generateSessionKey } from '../routing/session-key.js';
-import { setToolInjectorConfig, getInjectedTools } from '../bridge/tool-injector.js';
+import { setToolInjectorConfig, getInjectedTools, ToolAuditor } from '../bridge/tool-injector.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
@@ -478,6 +478,22 @@ export function createChatRoutes(
       tools,
       messages,
       permissionInterceptFn,
+      auditLogFn: (entry) => {
+        try {
+          const auditor = new ToolAuditor(store);
+          auditor.log({
+            agentId,
+            sessionKey,
+            toolName: entry.toolName,
+            inputJson: JSON.stringify(entry.args),
+            outputJson: entry.result.slice(0, 5000),
+            status: entry.status,
+            durationMs: entry.durationMs,
+          });
+        } catch (err) {
+          log.warn('审计日志写入失败:', err);
+        }
+      },
     };
 
     // 存储用户消息

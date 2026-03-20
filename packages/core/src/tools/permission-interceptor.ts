@@ -126,8 +126,9 @@ export class PermissionInterceptor {
       }
     }
 
-    // 5. 常规权限检查
-    const result = this.security.checkPermission(agentId, category);
+    // 5. 常规权限检查（先查具体资源，再查通配符 — SecurityExtension 内部处理）
+    const resource = (params['command'] as string) ?? (params['path'] as string) ?? (params['file_path'] as string) ?? (params['url'] as string) ?? (params['query'] as string) ?? '*';
+    const result = this.security.checkPermission(agentId, category, resource);
     if (result === 'deny') {
       return { allowed: false, reason: `Agent 没有 ${category} 权限` };
     }

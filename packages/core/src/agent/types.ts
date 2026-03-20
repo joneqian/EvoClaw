@@ -18,6 +18,8 @@ export interface AgentRunConfig {
   messages?: ChatMessage[];
   /** 权限拦截函数 — 工具执行前调用，返回 null 表示允许，返回字符串表示拒绝（拒绝原因） */
   permissionInterceptFn?: (toolName: string, args: Record<string, unknown>) => Promise<string | null>;
+  /** 审计日志回调 — 工具执行后调用 */
+  auditLogFn?: (entry: { toolName: string; args: Record<string, unknown>; result: string; status: 'success' | 'error' | 'denied'; durationMs: number }) => void;
 }
 
 /** Agent 事件类型 */

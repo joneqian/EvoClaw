@@ -253,102 +253,190 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
   onToggle: (id: string) => void; onToggleAll: () => void; onCancel: () => void;
   formatTime: (s: string) => string;
 }) {
-  if (!permissions.length) {
-    return <EmptyState icon="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" title="暂无已授权权限" desc="Agent 请求权限后将在此处显示" />;
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleCollapse = useCallback((cat: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      return next;
+    });
+  }, []);
+
+  // 按过滤器筛选
+  const filteredPermissions = filterCategory === 'all'
+    ? permissions
+    : permissions.filter(p => p.category === filterCategory);
+
+  // 按类别分组
+  const grouped = new Map<string, PermissionRecord[]>();
+  for (const perm of filteredPermissions) {
+    if (!grouped.has(perm.category)) grouped.set(perm.category, []);
+    grouped.get(perm.category)!.push(perm);
   }
 
   return (
     <div className="w-full px-6 py-6 space-y-5">
-      {/* 统计卡片 — 始终显示所有类别 */}
-      <div className="grid grid-cols-4 lg:grid-cols-8 gap-2">
-        <div className="bg-white rounded-xl border border-slate-200/60 p-3 text-center">
-          <p className="text-xl font-bold text-slate-900">{stats?.total ?? 0}</p>
-          <p className="text-xs text-slate-400 mt-0.5">全部</p>
-        </div>
-        {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => (
-          <div key={cat} className={`rounded-xl border border-slate-200/60 p-3 text-center ${cfg.bg}`}>
-            <p className={`text-xl font-bold ${stats?.byCategory[cat] ? cfg.color : 'text-slate-300'}`}>
-              {stats?.byCategory[cat] ?? 0}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">{cfg.label}</p>
-          </div>
-        ))}
+      {/* 类别卡片（过滤器 + 统计） */}
+      <div className="flex gap-2 flex-wrap">
+        <button
+          onClick={() => setFilterCategory('all')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+            filterCategory === 'all'
+              ? 'bg-slate-900 text-white border-slate-900'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          全部
+          <span className={`px-1.5 py-0.5 rounded-md text-xs ${
+            filterCategory === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+          }`}>{permissions.length}</span>
+        </button>
+        {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => {
+          const count = stats?.byCategory[cat] ?? 0;
+          const isActive = filterCategory === cat;
+          return (
+            <button
+              key={cat}
+              onClick={() => setFilterCategory(isActive ? 'all' : cat)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                isActive
+                  ? `${cfg.bg} ${cfg.color} border-current/20`
+                  : count > 0
+                    ? 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                    : 'bg-white text-slate-400 border-slate-100'
+              }`}
+            >
+              {cfg.icon && <Icon d={cfg.icon} className="w-3.5 h-3.5" />}
+              {cfg.label}
+              <span className={`px-1.5 py-0.5 rounded-md text-xs ${
+                isActive ? 'bg-white/50' : count > 0 ? 'bg-slate-100 text-slate-500' : 'bg-slate-50 text-slate-300'
+              }`}>{count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* 操作栏 */}
-      {permissions.length > 0 && (
-        <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200/60 px-4 py-2.5">
-          <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
-            <input type="checkbox" checked={selectedIds.size === permissions.length && permissions.length > 0} onChange={onToggleAll}
-              className="rounded border-slate-300 text-brand focus:ring-brand/30" />
-            {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
-          </label>
-          {selectedIds.size > 0 && (
-            <>
-              <div className="w-px h-4 bg-slate-200" />
-              <button
-                onClick={() => onBulkRevoke('selected')}
-                className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
-                  bulkConfirm === 'selected' ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-50'
-                }`}
-              >
-                {bulkConfirm === 'selected' ? `确认撤销 ${selectedIds.size} 条` : `撤销选中`}
-              </button>
-              {bulkConfirm === 'selected' && (
-                <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">取消</button>
-              )}
-            </>
-          )}
+      {filteredPermissions.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+              <input type="checkbox"
+                checked={filteredPermissions.length > 0 && filteredPermissions.every(p => selectedIds.has(p.id))}
+                onChange={() => {
+                  const filteredIds = filteredPermissions.map(p => p.id);
+                  const allSelected = filteredIds.every(id => selectedIds.has(id));
+                  if (allSelected) {
+                    // 取消选中当前筛选的
+                    const next = new Set(selectedIds);
+                    filteredIds.forEach(id => next.delete(id));
+                    onToggleAll(); // 这里简化处理，全选/全不选
+                  } else {
+                    onToggleAll();
+                  }
+                }}
+                className="rounded border-slate-300 text-brand focus:ring-brand/30" />
+              {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
+            </label>
+            {selectedIds.size > 0 && (
+              <>
+                <div className="w-px h-4 bg-slate-200" />
+                <button
+                  onClick={() => onBulkRevoke('selected')}
+                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
+                    bulkConfirm === 'selected' ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-50'
+                  }`}
+                >
+                  {bulkConfirm === 'selected' ? `确认撤销 ${selectedIds.size} 条` : '撤销选中'}
+                </button>
+                {bulkConfirm === 'selected' && (
+                  <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">取消</button>
+                )}
+              </>
+            )}
+          </div>
+          <span className="text-xs text-slate-400">
+            {filterCategory !== 'all' ? `${filteredPermissions.length} / ` : ''}{permissions.length} 条权限
+          </span>
         </div>
       )}
 
-      {/* 权限列表 */}
-      <div className="space-y-2">
-        {permissions.map((perm) => {
-          const cfg = CATEGORY_CONFIG[perm.category] ?? { label: perm.category, icon: '', color: 'text-slate-600', bg: 'bg-slate-50', dot: 'bg-slate-400' };
-          const isConfirming = revoking === perm.id;
+      {/* 空状态 */}
+      {filteredPermissions.length === 0 && (
+        <EmptyState
+          icon="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
+          title={filterCategory === 'all' ? '暂无已授权权限' : `暂无${CATEGORY_CONFIG[filterCategory]?.label ?? ''}权限`}
+          desc="Agent 请求权限后将在此处显示"
+        />
+      )}
+
+      {/* 按类别分组 + 可折叠 */}
+      <div className="space-y-4">
+        {Array.from(grouped.entries()).map(([cat, perms]) => {
+          const cfg = CATEGORY_CONFIG[cat] ?? { label: cat, icon: '', color: 'text-slate-600', bg: 'bg-slate-50', dot: 'bg-slate-400' };
+          const collapsed = collapsedGroups.has(cat);
           return (
-            <div key={perm.id} className={`group bg-white rounded-xl border transition-all duration-150 ${
-              selectedIds.has(perm.id) ? 'border-brand/30 bg-brand/[0.02]' : 'border-slate-200/60 hover:border-slate-300'
-            }`}>
-              <div className="flex items-center gap-4 px-4 py-3.5">
-                <input type="checkbox" checked={selectedIds.has(perm.id)} onChange={() => onToggle(perm.id)}
-                  className="rounded border-slate-300 text-brand focus:ring-brand/30 shrink-0" />
-                <div className={`w-9 h-9 rounded-lg ${cfg.bg} flex items-center justify-center shrink-0`}>
-                  {cfg.icon && <Icon d={cfg.icon} className={`w-4.5 h-4.5 ${cfg.color}`} />}
+            <div key={cat} className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden">
+              {/* 分组标题（可点击折叠） */}
+              <button
+                onClick={() => toggleCollapse(cat)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50/50 transition-colors"
+              >
+                <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${collapsed ? '' : 'rotate-90'}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+                <div className={`w-7 h-7 rounded-lg ${cfg.bg} flex items-center justify-center`}>
+                  {cfg.icon && <Icon d={cfg.icon} className={`w-3.5 h-3.5 ${cfg.color}`} />}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm font-medium ${cfg.color}`}>{cfg.label}</span>
-                    <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">已允许</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs text-slate-500 font-mono truncate">{perm.resource}</code>
-                    <span className="text-xs text-slate-300">|</span>
-                    <span className="text-xs text-slate-400 shrink-0">{formatTime(perm.grantedAt)}</span>
-                  </div>
+                <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
+                <span className="ml-auto text-xs text-slate-400">{perms.length} 条</span>
+              </button>
+
+              {/* 权限条目（折叠内容） */}
+              {!collapsed && (
+                <div className="border-t border-slate-100">
+                  {perms.map((perm, idx) => {
+                    const isConfirming = revoking === perm.id;
+                    return (
+                      <div key={perm.id} className={`group flex items-center gap-3 px-4 py-3 transition-all duration-150 ${
+                        idx > 0 ? 'border-t border-slate-50' : ''
+                      } ${selectedIds.has(perm.id) ? 'bg-brand/[0.02]' : 'hover:bg-slate-50/50'}`}>
+                        <input type="checkbox" checked={selectedIds.has(perm.id)} onChange={() => onToggle(perm.id)}
+                          className="rounded border-slate-300 text-brand focus:ring-brand/30 shrink-0 ml-7" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-slate-800">
+                            {perm.resource === '*' ? '所有操作' : perm.resource}
+                          </span>
+                        </div>
+                        <span className="text-xs text-slate-400 shrink-0">{formatTime(perm.grantedAt)}</span>
+                        <div className="shrink-0 w-16 text-right">
+                          {isConfirming ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              <button onClick={() => onRevoke(perm.id)}
+                                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
+                                确认
+                              </button>
+                              <button onClick={onCancel}
+                                className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                                取消
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => onRevoke(perm.id)}
+                              className="px-2.5 py-1 text-xs font-medium rounded-lg text-slate-400
+                                opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all">
+                              撤销
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="shrink-0">
-                  {isConfirming ? (
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => onRevoke(perm.id)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
-                        确认
-                      </button>
-                      <button onClick={onCancel}
-                        className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
-                        取消
-                      </button>
-                    </div>
-                  ) : (
-                    <button onClick={() => onRevoke(perm.id)}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-400
-                        opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all">
-                      撤销
-                    </button>
-                  )}
-                </div>
-              </div>
+              )}
             </div>
           );
         })}
@@ -359,91 +447,140 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
 
 // ─── 审计日志 Tab ───
 
+/** 工具名称美化 */
+const TOOL_DISPLAY: Record<string, { label: string; icon: string }> = {
+  bash: { label: 'Shell', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z' },
+  read: { label: 'Read', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
+  write: { label: 'Write', icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z' },
+  edit: { label: 'Edit', icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z' },
+  grep: { label: 'Grep', icon: 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z' },
+  find: { label: 'Find', icon: 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z' },
+  ls: { label: 'List', icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z' },
+  web_search: { label: 'Search', icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3' },
+  web_fetch: { label: 'Fetch', icon: 'M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244' },
+  image: { label: 'Image', icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z' },
+  pdf: { label: 'PDF', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
+};
+
 function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, onLoadMore, formatTime, formatDuration }: {
   logs: AuditLogEntry[]; filter: { toolName: string; status: string }; hasMore: boolean; loading: boolean;
   onFilterChange: (f: { toolName: string; status: string }) => void;
   onSearch: () => void; onLoadMore: () => void;
   formatTime: (s: string) => string; formatDuration: (ms: number) => string;
 }) {
+  // 按状态统计
+  const statusCounts = { all: logs.length, success: 0, error: 0, denied: 0, timeout: 0 };
+  for (const l of logs) {
+    if (l.status in statusCounts) (statusCounts as any)[l.status]++;
+  }
+
   return (
-    <div className="w-full px-6 py-6 space-y-4">
-      {/* 过滤栏 */}
-      <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200/60 p-3">
-        <div className="relative flex-1">
-          <Icon d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+    <div className="w-full px-6 py-6 space-y-5">
+      {/* 状态过滤标签 + 搜索 */}
+      <div className="flex items-center gap-3">
+        <div className="flex gap-1.5 flex-1">
+          {([
+            { key: '', label: '全部', count: statusCounts.all },
+            { key: 'success', label: '成功', count: statusCounts.success },
+            { key: 'denied', label: '拒绝', count: statusCounts.denied },
+            { key: 'error', label: '错误', count: statusCounts.error },
+          ] as { key: string; label: string; count: number }[]).map(({ key, label, count }) => {
+            const active = filter.status === key;
+            const sCfg = key ? STATUS_CONFIG[key] : null;
+            return (
+              <button
+                key={key}
+                onClick={() => { onFilterChange({ ...filter, status: active ? '' : key }); setTimeout(onSearch, 0); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  active
+                    ? 'bg-slate-900 text-white'
+                    : count > 0
+                      ? 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+                      : 'bg-white border border-slate-100 text-slate-400'
+                }`}
+              >
+                {sCfg && <Icon d={sCfg.icon} className="w-3 h-3" />}
+                {label}
+                {count > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded text-xs ${active ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 搜索框 */}
+        <div className="relative w-56">
+          <Icon d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             value={filter.toolName}
             onChange={(e) => onFilterChange({ ...filter, toolName: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && onSearch()}
-            placeholder="搜索工具名称..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50
-              focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40 focus:bg-white
+            placeholder="搜索工具..."
+            className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white
+              focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40
               placeholder:text-slate-400 transition-all"
           />
         </div>
-        <select
-          value={filter.status}
-          onChange={(e) => onFilterChange({ ...filter, status: e.target.value })}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-700
-            focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40 transition-all"
-        >
-          <option value="">全部状态</option>
-          <option value="success">成功</option>
-          <option value="error">错误</option>
-          <option value="denied">拒绝</option>
-          <option value="timeout">超时</option>
-        </select>
-        <button onClick={onSearch}
-          className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-hover transition-colors shadow-sm">
-          筛选
-        </button>
       </div>
 
       {logs.length === 0 ? (
         <EmptyState icon="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" title="暂无审计日志" desc="Agent 执行工具调用后将在此处记录" />
       ) : (
-        <>
+        <div className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden">
           {/* 表头 */}
-          <div className="grid grid-cols-[1fr_80px_80px_100px] gap-4 px-4 text-xs font-medium text-slate-400 uppercase tracking-wider">
-            <span>工具</span><span className="text-center">状态</span><span className="text-right">耗时</span><span className="text-right">时间</span>
+          <div className="grid grid-cols-[1fr_100px_80px_110px] gap-3 px-5 py-2.5 bg-slate-50/80 border-b border-slate-100
+            text-xs font-medium text-slate-400 uppercase tracking-wider">
+            <span>工具调用</span>
+            <span className="text-center">状态</span>
+            <span className="text-right">耗时</span>
+            <span className="text-right">时间</span>
           </div>
 
-          {/* 日志列表 */}
-          <div className="space-y-1">
-            {logs.map((entry) => {
-              const sCfg = STATUS_CONFIG[entry.status] ?? { label: entry.status, icon: '', color: 'text-slate-400' };
-              return (
-                <div key={entry.id} className="grid grid-cols-[1fr_80px_80px_100px] gap-4 items-center
-                  bg-white rounded-xl border border-slate-200/60 px-4 py-3 hover:border-slate-300 transition-colors">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                      <Icon d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" className="w-3.5 h-3.5 text-slate-400" />
-                    </div>
-                    <span className="text-sm font-medium text-slate-800 truncate">{entry.toolName}</span>
+          {/* 日志行 */}
+          {logs.map((entry, idx) => {
+            const sCfg = STATUS_CONFIG[entry.status] ?? { label: entry.status, icon: '', color: 'text-slate-400' };
+            const toolInfo = TOOL_DISPLAY[entry.toolName];
+            const statusBg = entry.status === 'success' ? 'bg-emerald-50' : entry.status === 'error' ? 'bg-red-50' : entry.status === 'denied' ? 'bg-amber-50' : 'bg-slate-50';
+            return (
+              <div key={entry.id} className={`grid grid-cols-[1fr_100px_80px_110px] gap-3 items-center
+                px-5 py-3 hover:bg-slate-50/50 transition-colors ${idx > 0 ? 'border-t border-slate-50' : ''}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                    <Icon d={toolInfo?.icon ?? 'M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z'}
+                      className="w-4 h-4 text-slate-500" />
                   </div>
-                  <div className="flex justify-center">
-                    <div className="flex items-center gap-1">
-                      <Icon d={sCfg.icon} className={`w-3.5 h-3.5 ${sCfg.color}`} />
-                      <span className={`text-xs font-medium ${sCfg.color}`}>{sCfg.label}</span>
-                    </div>
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-slate-800">{toolInfo?.label ?? entry.toolName}</span>
+                    {toolInfo && toolInfo.label !== entry.toolName && (
+                      <span className="text-xs text-slate-400 ml-1.5 font-mono">{entry.toolName}</span>
+                    )}
                   </div>
-                  <span className="text-xs text-slate-500 text-right font-mono">{formatDuration(entry.durationMs)}</span>
-                  <span className="text-xs text-slate-400 text-right">{formatTime(entry.createdAt)}</span>
                 </div>
-              );
-            })}
-          </div>
+                <div className="flex justify-center">
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium ${statusBg} ${sCfg.color}`}>
+                    <Icon d={sCfg.icon} className="w-3 h-3" />
+                    {sCfg.label}
+                  </span>
+                </div>
+                <span className="text-xs text-slate-500 text-right font-mono tabular-nums">{formatDuration(entry.durationMs)}</span>
+                <span className="text-xs text-slate-400 text-right">{formatTime(entry.createdAt)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-          {hasMore && (
-            <div className="text-center pt-2">
-              <button onClick={onLoadMore} disabled={loading}
-                className="px-6 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-200
-                  rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors">
-                {loading ? '加载中...' : '加载更多'}
-              </button>
-            </div>
-          )}
-        </>
+      {hasMore && (
+        <div className="text-center">
+          <button onClick={onLoadMore} disabled={loading}
+            className="px-6 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-200
+              rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors">
+            {loading ? '加载中...' : '加载更多'}
+          </button>
+        </div>
       )}
     </div>
   );

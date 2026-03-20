@@ -396,7 +396,7 @@ function ChatView() {
                 body: JSON.stringify({
                   category: permissionRequest.category,
                   scope: 'always',
-                  resource: '*',
+                  resource: permissionRequest.resource || '*',
                 }),
               },
             );

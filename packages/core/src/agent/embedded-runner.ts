@@ -221,6 +221,8 @@ async function runWithPI(
    *   (toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: callback)
    *   => Promise<{ content: [{type: "text", text: string}], details?: unknown }>
    */
+  const auditFn = config.auditLogFn;
+
   /** 权限检查 + 安全守卫的公共逻辑 */
   async function runGuards(toolName: string, args: Record<string, unknown>): Promise<{ content: [{ type: string; text: string }] } | null> {
     if (permissionFn) {
@@ -272,10 +274,22 @@ async function runWithPI(
       parameters: tool.parameters,
       execute: async (toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: unknown) => {
         const args = (params && typeof params === 'object' ? params : {}) as Record<string, unknown>;
+        const start = Date.now();
         const blocked = await runGuards(tool.name, args);
-        if (blocked) return blocked;
-        const rawResult = await originalExecute(toolCallId, params, signal, onUpdate);
-        return postProcess(rawResult);
+        if (blocked) {
+          auditFn?.({ toolName: tool.name, args, result: blocked.content[0].text, status: 'denied', durationMs: Date.now() - start });
+          return blocked;
+        }
+        try {
+          const rawResult = await originalExecute(toolCallId, params, signal, onUpdate);
+          const processed = postProcess(rawResult);
+          auditFn?.({ toolName: tool.name, args, result: processed.content[0]?.text ?? '', status: 'success', durationMs: Date.now() - start });
+          return processed;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          auditFn?.({ toolName: tool.name, args, result: msg, status: 'error', durationMs: Date.now() - start });
+          throw err;
+        }
       },
     };
   }
@@ -293,10 +307,22 @@ async function runWithPI(
       parameters: tool.parameters,
       execute: async (toolCallId: string, params: unknown, _signal?: AbortSignal, _onUpdate?: unknown) => {
         const args = (params && typeof params === 'object' ? params : {}) as Record<string, unknown>;
+        const start = Date.now();
         const blocked = await runGuards(tool.name, args);
-        if (blocked) return blocked;
-        const rawResult = await originalExecute(args);
-        return postProcess(rawResult);
+        if (blocked) {
+          auditFn?.({ toolName: tool.name, args, result: blocked.content[0].text, status: 'denied', durationMs: Date.now() - start });
+          return blocked;
+        }
+        try {
+          const rawResult = await originalExecute(args);
+          const processed = postProcess(rawResult);
+          auditFn?.({ toolName: tool.name, args, result: processed.content[0]?.text ?? '', status: 'success', durationMs: Date.now() - start });
+          return processed;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          auditFn?.({ toolName: tool.name, args, result: msg, status: 'error', durationMs: Date.now() - start });
+          throw err;
+        }
       },
     };
   }

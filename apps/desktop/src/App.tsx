@@ -14,7 +14,6 @@ import ChannelPage from './pages/ChannelPage';
 import SetupPage from './pages/SetupPage';
 import CronPage from './pages/CronPage';
 import AlertPage from './pages/AlertPage';
-import SecurityGuardPage from './pages/SecurityGuardPage';
 import AgentEditPage from './pages/AgentEditPage';
 import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
@@ -646,7 +645,6 @@ export default function App() {
           <Route path="/cron" element={<CronPage />} />
           <Route path="/alert" element={<AlertPage />} />
           <Route path="/channel" element={<ChannelPage />} />
-          <Route path="/security-guard" element={<SecurityGuardPage />} />
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/setup" element={<SetupPage />} />

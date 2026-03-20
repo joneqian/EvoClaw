@@ -32,8 +32,6 @@ import { createGapDetectionPlugin } from '../context/plugins/gap-detection.js';
 import { SecurityExtension } from '../bridge/security-extension.js';
 import { createPermissionPlugin } from '../context/plugins/permission.js';
 import { PermissionInterceptor } from '../tools/permission-interceptor.js';
-import { resolvePermission } from '../tools/permission-gate.js';
-import type { PermissionScope } from '@evoclaw/shared';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
@@ -541,40 +539,6 @@ export function createChatRoutes(
         log.error('afterTurn 失败:', err);
       });
     });
-  });
-
-  /** POST /:agentId/permission-response — 前端权限决策回调 */
-  app.post('/:agentId/permission-response', async (c) => {
-    const agentId = c.req.param('agentId');
-    const body = await c.req.json<{
-      requestId: string;
-      scope: PermissionScope | 'deny';
-      category?: string;
-      resource?: string;
-    }>();
-
-    if (!body.requestId || !body.scope) {
-      return c.json({ error: '缺少 requestId 或 scope' }, 400);
-    }
-
-    // 持久化权限（非 once/deny 时）
-    if (body.scope !== 'deny' && body.category) {
-      const security = new SecurityExtension(store);
-      security.grantPermission(
-        agentId,
-        body.category as any,
-        body.scope as any,
-        body.resource ?? '*',
-      );
-    }
-
-    // 解除等待
-    const resolved = resolvePermission(body.requestId, body.scope);
-    if (!resolved) {
-      return c.json({ error: '请求已过期或不存在' }, 404);
-    }
-
-    return c.json({ success: true });
   });
 
   return app;

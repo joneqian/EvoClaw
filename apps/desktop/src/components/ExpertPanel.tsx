@@ -82,7 +82,7 @@ export default function ExpertPanel({
   return (
     <aside className="w-[240px] bg-[#fafafa] border-r border-slate-200/60 flex flex-col shrink-0 select-none overflow-hidden">
       {/* 拖拽区域占位 */}
-      <div className="h-[60px] shrink-0" data-tauri-drag-region />
+      <div className="h-[80px] shrink-0" data-tauri-drag-region />
 
       {/* 我的专家 */}
       <div className="px-3 mb-1.5">

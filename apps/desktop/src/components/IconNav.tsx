@@ -48,11 +48,11 @@ export default function IconNav(_props: IconNavProps) {
   return (
     <nav className="w-[88px] bg-[#fafafa] border-r border-slate-200/60 flex flex-col items-center shrink-0 select-none">
       {/* 顶部品牌 logo + 拖拽区域 */}
-      <div className="h-[60px] shrink-0 flex items-center justify-center" data-tauri-drag-region>
+      <div className="h-[80px] shrink-0 flex items-center justify-center px-1" data-tauri-drag-region>
         <img
-          src="/brand-icon.png"
+          src="/brand-header.png"
           alt="Logo"
-          className="w-7 h-7 rounded-lg object-contain"
+          className="w-[72px] object-contain"
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       </div>

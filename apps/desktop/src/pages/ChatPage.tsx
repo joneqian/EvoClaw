@@ -4,6 +4,7 @@ import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
+import ModelSelector from '../components/ModelSelector';
 import { useAppStore } from '../stores/app-store';
 import PermissionDialog from '../components/PermissionDialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -24,136 +25,36 @@ function parseSSELine(line: string): { event?: string; data?: string } | null {
 }
 
 
-// ─── Agent 选择（新建对话时） ───
+// ─── 欢迎页（无专家选中时） ───
 
-function AgentPicker({
-  onSelect,
-}: {
-  onSelect: (agentId: string) => void;
-}) {
-  const { agents, fetchAgents } = useAgentStore();
+function WelcomeState() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-
-  useEffect(() => { fetchAgents(); }, [fetchAgents]);
-
-  const filtered = search.trim()
-    ? agents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
-    : agents;
-
-  // 空状态：整体居中
-  if (agents.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-slate-50/80 to-white">
-        <img
-          src="/brand-logo.png" alt="Logo"
-          className="w-16 h-16 mx-auto mb-5 object-contain drop-shadow-sm"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">选择专家开始对话</h2>
-        <p className="text-sm text-slate-400 mb-6">每位专家拥有独立的人格、记忆和技能</p>
-        <div className="flex gap-3">
-          <button
-            onClick={() => navigate('/agents?tab=mine&create=1')}
-            className="px-6 py-2.5 bg-brand text-white text-sm font-medium rounded-xl
-              hover:bg-brand-hover shadow-sm hover:shadow transition-all"
-          >
-            创建专家
-          </button>
-          <button
-            onClick={() => navigate('/agents')}
-            className="px-6 py-2.5 text-sm font-medium text-slate-600
-              bg-white border border-slate-200 rounded-xl
-              hover:border-brand/40 hover:text-brand transition-all"
-          >
-            去专家商店
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="h-full flex flex-col items-center bg-gradient-to-b from-slate-50/80 to-white">
-      {/* 顶部欢迎区域 */}
-      <div className="pt-16 pb-8 text-center">
-        <img
-          src="/brand-logo.png" alt="Logo"
-          className="w-16 h-16 mx-auto mb-5 object-contain drop-shadow-sm"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">选择专家开始对话</h2>
-        <p className="text-sm text-slate-400">每位专家拥有独立的人格、记忆和技能</p>
-      </div>
-
-      {/* 内容区域 */}
-      <div className="w-full max-w-lg px-6 flex-1 overflow-hidden flex flex-col">
-          {/* 搜索框 */}
-            {agents.length > 4 && (
-              <div className="relative mb-4 shrink-0">
-                <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                </svg>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="搜索专家..."
-                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl
-                    bg-white text-slate-900 shadow-sm
-                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
-                    placeholder:text-slate-400"
-                />
-              </div>
-            )}
-
-            {/* 专家网格 */}
-            <div className="flex-1 overflow-y-auto pb-6">
-              {filtered.length === 0 ? (
-                <div className="text-center py-12 text-slate-400 text-sm">
-                  没有匹配的专家
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {filtered.map((agent) => (
-                    <button
-                      key={agent.id}
-                      onClick={() => onSelect(agent.id)}
-                      className="group flex flex-col items-center gap-3 px-4 py-5 rounded-2xl
-                        bg-white border border-slate-200/80 shadow-sm
-                        hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5
-                        transition-all duration-200 text-center"
-                    >
-                      <AgentAvatar name={agent.name} size="xl" />
-                      <div className="min-w-0 w-full">
-                        <p className="text-sm font-semibold text-slate-800 truncate group-hover:text-brand-active transition-colors">
-                          {agent.name}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {agent.status === 'active' ? '在线' : agent.status === 'draft' ? '草稿' : agent.status}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-
-                  {/* 创建新专家入口 */}
-                  <button
-                    onClick={() => navigate('/agents')}
-                    className="flex flex-col items-center justify-center gap-2 px-4 py-5 rounded-2xl
-                      border-2 border-dashed border-slate-200
-                      hover:border-brand/40 hover:bg-brand/5
-                      transition-all duration-200 text-center"
-                  >
-                    <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center
-                      group-hover:bg-brand/10 transition-colors">
-                      <svg className="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
-                    </div>
-                    <p className="text-sm font-medium text-slate-500">创建专家</p>
-                  </button>
-                </div>
-              )}
-            </div>
+    <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-slate-50/80 to-white">
+      <img
+        src="/brand-logo.png" alt="Logo"
+        className="w-16 h-16 mx-auto mb-5 object-contain drop-shadow-sm"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+      <h2 className="text-2xl font-bold text-slate-800 mb-2">选择专家开始对话</h2>
+      <p className="text-sm text-slate-400 mb-6">从左侧面板选择一位专家，或创建新的专家</p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => navigate('/agents?tab=mine&create=1')}
+          className="px-6 py-2.5 bg-brand text-white text-sm font-medium rounded-xl
+            hover:bg-brand-hover shadow-sm hover:shadow transition-all"
+        >
+          创建专家
+        </button>
+        <button
+          onClick={() => navigate('/agents')}
+          className="px-6 py-2.5 text-sm font-medium text-slate-600
+            bg-white border border-slate-200 rounded-xl
+            hover:border-brand/40 hover:text-brand transition-all"
+        >
+          去专家商店
+        </button>
       </div>
     </div>
   );
@@ -172,7 +73,6 @@ function ChatView() {
     appendToLastMessage,
     updateLastMessageToolCalls,
     setStreaming,
-    setCurrentAgent,
     fetchConversations,
   } = useChatStore();
 
@@ -181,6 +81,7 @@ function ChatView() {
 
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
     toolName: string;
@@ -218,7 +119,6 @@ function ChatView() {
 
     // 构建消息文本：附件路径 + 用户输入
     const attachParts = attachments.map(f => {
-      // Tauri/Electron 的 File 对象通常有 path 属性
       const filePath = (f as any).path ?? f.name;
       return `[附件: ${filePath}]`;
     });
@@ -255,6 +155,12 @@ function ChatView() {
       }
       const config = JSON.parse(configStr) as { port: number; token: string };
 
+      const body: Record<string, unknown> = { message: text, sessionKey: currentSessionKey };
+      // 临时模型覆盖
+      if (selectedModelId) {
+        body.modelId = selectedModelId;
+      }
+
       const response = await fetch(
         `http://127.0.0.1:${config.port}/chat/${currentAgentId}/send`,
         {
@@ -263,7 +169,7 @@ function ChatView() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.token}`,
           },
-          body: JSON.stringify({ message: text, sessionKey: currentSessionKey }),
+          body: JSON.stringify(body),
         },
       );
 
@@ -356,11 +262,10 @@ function ChatView() {
     } finally {
       setStreaming(false);
       if (currentAgentId) fetchConversations(currentAgentId);
-      // 通知侧边栏刷新最近对话列表
       window.dispatchEvent(new CustomEvent(`${BRAND_EVENT_PREFIX}:conversations-changed`));
     }
   }, [
-    currentAgentId, currentSessionKey, input, attachments, isStreaming,
+    currentAgentId, currentSessionKey, input, attachments, isStreaming, selectedModelId,
     addMessage, appendToLastMessage, updateLastMessageToolCalls,
     setStreaming, fetchConversations,
   ]);
@@ -376,7 +281,7 @@ function ChatView() {
     }
   }, [currentAgentId, currentSessionKey, sendMessage]);
 
-  /** 权限决策回调 — 允许则持久化，拒绝则忽略（下次再问） */
+  /** 权限决策回调 */
   const handlePermissionDecision = useCallback(
     async (scope: 'always' | 'deny') => {
       if (!permissionRequest || !currentAgentId) return;
@@ -426,15 +331,6 @@ function ChatView() {
     <div className="flex-1 flex flex-col bg-white h-full">
       {/* 头部 */}
       <div className="h-12 border-b border-slate-200/60 bg-white flex items-center px-4 gap-3 shrink-0">
-        <button
-          onClick={() => setCurrentAgent(null)}
-          className="text-slate-400 hover:text-slate-600 transition-colors"
-          title="返回对话列表"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-        </button>
         {currentAgent && (
           <>
             <AgentAvatar name={currentAgent.name} size="sm" />
@@ -483,7 +379,7 @@ function ChatView() {
         )}
       </div>
 
-      {/* 输入区域 — Claude 风格：统一容器，附件卡片在内部上方 */}
+      {/* 输入区域 */}
       <div className="px-6 pb-4 pt-2 shrink-0">
         <div className="mx-auto rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
           {/* 附件卡片区 */}
@@ -491,15 +387,12 @@ function ChatView() {
             <div className="flex flex-wrap gap-2 px-4 pt-3">
               {attachments.map((file, i) => (
                 <div key={i} className="group relative w-[160px] rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-brand/40 transition-colors">
-                  {/* 删除按钮 */}
                   <button
                     onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
                     className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-400 text-white text-xs
                       flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
                   >×</button>
-                  {/* 文件名 */}
                   <p className="text-xs font-medium text-slate-700 truncate mb-2">{file.name}</p>
-                  {/* 文件类型标签 */}
                   <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-500">
                     {getFileExtLabel(file.name)}
                   </span>
@@ -520,7 +413,7 @@ function ChatView() {
               focus:outline-none placeholder:text-slate-400"
           />
 
-          {/* 底部操作栏：+ 按钮 ... 发送按钮 */}
+          {/* 底部操作栏 */}
           <div className="flex items-center justify-between px-3 pb-2.5">
             {/* 左侧：添加附件 */}
             <input
@@ -550,20 +443,29 @@ function ChatView() {
               </svg>
             </button>
 
-            {/* 右侧：发送按钮 */}
-            <button
-              onClick={() => sendMessage()}
-              disabled={isStreaming || (!input.trim() && attachments.length === 0)}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
-                isStreaming || (!input.trim() && attachments.length === 0)
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-brand text-white hover:bg-brand-hover'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-              </svg>
-            </button>
+            {/* 右侧：模型选择器 + 发送按钮 */}
+            <div className="flex items-center gap-1.5">
+              <ModelSelector
+                selectedModelId={selectedModelId}
+                onModelChange={setSelectedModelId}
+                disabled={isStreaming}
+              />
+
+              {/* 发送按钮 — 保持原样 */}
+              <button
+                onClick={() => sendMessage()}
+                disabled={isStreaming || (!input.trim() && attachments.length === 0)}
+                className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
+                  isStreaming || (!input.trim() && attachments.length === 0)
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-brand text-white hover:bg-brand-hover'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -589,21 +491,15 @@ export default function ChatPage() {
   const {
     currentAgentId,
     currentSessionKey,
-    newConversation,
   } = useChatStore();
 
-  /** 选定 Agent → 新建会话进入对话 */
-  const handleSelectAgent = useCallback((agentId: string) => {
-    newConversation(agentId);
-  }, [newConversation]);
-
-  // 如果已经选中了 Agent 和会话 → 显示对话视图
+  // 如果已经选中了 Agent 和会话 -> 显示对话视图
   if (currentAgentId && currentSessionKey) {
     return <ChatView />;
   }
 
-  // 默认：显示 Agent 选择器
-  return <AgentPicker onSelect={handleSelectAgent} />;
+  // 默认：显示欢迎页（Agent 选择在 ExpertPanel 中完成）
+  return <WelcomeState />;
 }
 
 
@@ -690,7 +586,6 @@ function ToolCallItem({ tc }: { tc: ToolCall }) {
 
   return (
     <div className="rounded-lg border border-slate-100 bg-slate-50/50 overflow-hidden">
-      {/* 标题行 */}
       <div className="flex items-center gap-2 px-3 py-1.5">
         <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z" />
@@ -698,7 +593,6 @@ function ToolCallItem({ tc }: { tc: ToolCall }) {
         <span className="text-xs font-semibold text-slate-700 flex-1">{displayName}</span>
         <span className="shrink-0">{statusIcon}</span>
       </div>
-      {/* 命令/摘要 */}
       {tc.summary && (
         <div className="px-3 pb-2">
           <code className="text-xs text-slate-500 font-mono break-all leading-relaxed">
@@ -733,7 +627,6 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
       {/* 消息体 */}
       <div className="min-w-0 flex-1">
         {isEmpty ? (
-          /* streaming 占位 */
           <div className="flex items-center gap-1 py-1">
             <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse" />
             <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse [animation-delay:150ms]" />
@@ -773,7 +666,7 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
               )}
             </div>
 
-            {/* 消息操作栏 — 仅 assistant 消息，hover 显示 */}
+            {/* 消息操作栏 */}
             {!isUser && hasContent && (
               <div className="flex items-center gap-1 mt-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button

@@ -152,20 +152,36 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ### Phase 2: Channel 生产化（W5-W8）
 
-> Channel 是企业用户最直接的使用入口。飞书和企微必须达到生产可靠性。
+> Channel 是企业用户最直接的使用入口。企微和飞书必须达到生产可靠性。
 
-#### Sprint 13: 飞书 Channel 生产就绪（W5-W6）
+#### Sprint 13: 企微 Channel 生产就绪（W5-W6）
+
+**目标**: 企微 Channel 达到生产级别。
+
+| # | 任务 | 优先级 | 预估 | 对应 Feature |
+|---|------|--------|------|-------------|
+| 13.1 | 企微生产化：消息去重 + @Agent 群聊路由 + 文件消息 + 断连重连 + access_token 轮换 | P0 | 3d | F7.2 |
+| 13.2 | 企微应用回调验证：URL 验证 + 消息签名校验 + 加解密（AES-CBC）| P0 | 1d | F7.2 |
+| 13.3 | 企微集成测试（私聊 + 群聊 + 文件 + 加解密 + 断连重连） | P0 | 1d | F7.2 |
+
+**验收标准**:
+- [ ] 企微 Channel 连续 72 小时无故障运行
+- [ ] 企微消息加解密通过官方验证工具
+
+---
+
+#### Sprint 14: 飞书 Channel 生产就绪（W7-W8）
 
 **目标**: 飞书 Channel 从原型提升到企业生产级别。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 13.1 | 飞书消息去重：基于 `message_id` + Redis-like 去重窗口（内存 LRU，1000 条滑动窗口），防止 webhook 重复推送 | P0 | 1d | F7.1 |
-| 13.2 | 飞书群聊路由增强：@Agent 消息检测 + 线程跟踪（reply_in_thread）+ 群聊 Session Key 隔离 | P0 | 2d | F7.1 |
-| 13.3 | 飞书文件/图片消息支持：接收文件 → 下载 → 传入 Agent（image 工具 / pdf 工具 / knowledge RAG） | P0 | 2d | F7.1 |
-| 13.4 | 飞书卡片消息：Agent 回复支持飞书交互卡片（按钮、确认弹窗），用于权限确认和操作审批 | P1 | 2d | F7.1 |
-| 13.5 | 飞书错误恢复：access_token 2h 自动轮换 + 断连自动重连（指数退避）+ 限频退避（20 次/秒上限） | P0 | 1d | F7.1 |
-| 13.6 | 飞书集成测试（私聊 + 群聊 + 文件 + 断连重连 + 限频） | P0 | 1d | F7.1 |
+| 14.1 | 飞书消息去重：基于 `message_id` + Redis-like 去重窗口（内存 LRU，1000 条滑动窗口），防止 webhook 重复推送 | P0 | 1d | F7.1 |
+| 14.2 | 飞书群聊路由增强：@Agent 消息检测 + 线程跟踪（reply_in_thread）+ 群聊 Session Key 隔离 | P0 | 2d | F7.1 |
+| 14.3 | 飞书文件/图片消息支持：接收文件 → 下载 → 传入 Agent（image 工具 / pdf 工具 / knowledge RAG） | P0 | 2d | F7.1 |
+| 14.4 | 飞书卡片消息：Agent 回复支持飞书交互卡片（按钮、确认弹窗），用于权限确认和操作审批 | P1 | 2d | F7.1 |
+| 14.5 | 飞书错误恢复：access_token 2h 自动轮换 + 断连自动重连（指数退避）+ 限频退避（20 次/秒上限） | P0 | 1d | F7.1 |
+| 14.6 | 飞书集成测试（私聊 + 群聊 + 文件 + 断连重连 + 限频） | P0 | 1d | F7.1 |
 
 **验收标准**:
 - [ ] 飞书 Channel 连续 72 小时无故障运行
@@ -173,22 +189,6 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 - [ ] 群聊中 @Agent 消息 < 3 秒响应开始
 - [ ] 断连后 30 秒内自动重连
 - [ ] 文件/图片消息正确传递给对应工具
-
----
-
-#### Sprint 14: 企微 Channel 生产就绪（W7-W8）
-
-**目标**: 企微 Channel 达到生产级别。
-
-| # | 任务 | 优先级 | 预估 | 对应 Feature |
-|---|------|--------|------|-------------|
-| 14.1 | 企微生产化：消息去重 + @Agent 群聊路由 + 文件消息 + 断连重连 + access_token 轮换（参照飞书 Sprint 13 方案复用） | P0 | 3d | F7.2 |
-| 14.2 | 企微应用回调验证：URL 验证 + 消息签名校验 + 加解密（AES-CBC）| P0 | 1d | F7.2 |
-| 14.3 | 企微集成测试（私聊 + 群聊 + 文件 + 加解密 + 断连重连） | P0 | 1d | F7.2 |
-
-**验收标准**:
-- [ ] 企微 Channel 连续 72 小时无故障运行
-- [ ] 企微消息加解密通过官方验证工具
 
 ---
 
@@ -457,8 +457,8 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | 3 | Prompt 注入检测 17 模式 | Sprint 12 | 3d |
 | 4 | Unicode 混淆检测 | Sprint 12 | 2d |
 | 5 | exec 审批 argv 绑定 | Sprint 12 | 2d |
-| 6 | 飞书 Channel 生产就绪 | Sprint 13 | 9d |
-| 7 | 企微 Channel 生产就绪 | Sprint 14 | 5d |
+| 6 | 企微 Channel 生产就绪 | Sprint 13 | 5d |
+| 7 | 飞书 Channel 生产就绪 | Sprint 14 | 9d |
 | 9 | 使用量追踪 | Sprint 15 | 7d |
 | 10 | Auth Doctor 诊断 | Sprint 15 | 2d |
 | 11 | 内存泄漏检测基础设施 | Sprint 11（前置） | 2d |
@@ -561,8 +561,8 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | F1.9 | 数据分类标记 | Sprint 20 | P2 |
 | F1.10 | 安全仪表盘 | Sprint 11 | P1 |
 | F4.2 | EvoClaw SkillHub | Sprint 21（独立排期） | P2 |
-| F7.1 | 飞书 Channel 生产化 | Sprint 13 | P0 |
-| F7.2 | 企微 Channel 生产化 | Sprint 14 | P0 |
+| F7.1 | 飞书 Channel 生产化 | Sprint 14 | P0 |
+| F7.2 | 企微 Channel 生产化 | Sprint 13 | P0 |
 | F7.3 | 钉钉 Channel | Sprint 17 | P1 |
 | F7.4 | QQ Channel | Sprint 17 | P1 |
 | F8.2 | 使用量追踪 | Sprint 15 | P1 |

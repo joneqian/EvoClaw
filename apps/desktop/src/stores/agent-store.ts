@@ -8,6 +8,10 @@ export interface Agent {
   emoji: string;
   status: string;
   createdAt: string;
+  /** 绑定的模型 ID */
+  modelId?: string;
+  /** 绑定的 Provider ID */
+  provider?: string;
 }
 
 /** Builder 阶段 */
@@ -96,6 +100,8 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
         emoji: a.emoji || '🤖',
         status: a.status || 'active',
         createdAt: a.createdAt || new Date().toISOString(),
+        modelId: a.modelId,
+        provider: a.provider,
       }));
       set({ agents, loading: false });
     } catch (err) {

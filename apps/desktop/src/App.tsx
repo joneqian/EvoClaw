@@ -163,9 +163,7 @@ function BottomMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute bottom-full left-0 mb-1.5 w-52 bg-white
-        border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50
-        overflow-hidden z-50"
+      className="w-52 bg-white border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50 overflow-hidden"
     >
       {MENU_SECTIONS.map((section, si) => (
         <div key={si}>
@@ -225,6 +223,7 @@ export default function App() {
   const location = useLocation();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef<HTMLDivElement>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [recentsPage, setRecentsPage] = useState(1);
   const [recentsHasMore, setRecentsHasMore] = useState(true);
@@ -426,6 +425,25 @@ export default function App() {
         </div>
       )}
 
+      {/* 设置菜单（fixed 定位，避免被裁切） */}
+      {menuOpen && menuBtnRef.current && (
+        <div
+          className="fixed z-[100]"
+          style={{
+            top: `${menuBtnRef.current.getBoundingClientRect().bottom + 4}px`,
+            right: `${window.innerWidth - menuBtnRef.current.getBoundingClientRect().right}px`,
+          }}
+        >
+          <BottomMenu
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            onNavigate={(path) => { setMenuOpen(false); navigate(path); }}
+            sidecarConnected={sidecarConnected}
+            onRestartSidecar={handleRestartSidecar}
+          />
+        </div>
+      )}
+
       {/* 创建专家弹窗（全局） */}
       <AgentCreationModal
         isOpen={showCreateModal}
@@ -464,7 +482,7 @@ export default function App() {
               </div>
 
               {/* 菜单按钮 (设置与更多) */}
-              <div className="relative">
+              <div className="relative" ref={menuBtnRef}>
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
                   className={`w-10 h-[42px] flex items-center justify-center transition-colors ${
@@ -476,17 +494,6 @@ export default function App() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                   </svg>
                 </button>
-                {menuOpen && (
-                  <div className="absolute top-full right-0 z-50">
-                    <BottomMenu
-                      open={menuOpen}
-                      onClose={() => setMenuOpen(false)}
-                      onNavigate={(path) => { setMenuOpen(false); navigate(path); }}
-                      sidecarConnected={sidecarConnected}
-                      onRestartSidecar={handleRestartSidecar}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* 最小化 */}

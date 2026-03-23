@@ -37,14 +37,19 @@ export interface BuilderResponse {
 /** LLM 调用函数签名 */
 export type LLMGenerateFn = (systemPrompt: string, userMessage: string) => Promise<string>;
 
+/** 默认模型配置解析器 */
+export type DefaultModelResolver = () => { provider: string; modelId: string } | null;
+
 /** Agent 对话式创建引导 — 6 阶段会话式创建向导 */
 export class AgentBuilder {
   private agentManager: AgentManager;
   private llmGenerate: LLMGenerateFn | null;
+  private resolveDefaultModel: DefaultModelResolver | null;
 
-  constructor(agentManager: AgentManager, llmGenerate?: LLMGenerateFn) {
+  constructor(agentManager: AgentManager, llmGenerate?: LLMGenerateFn, resolveDefaultModel?: DefaultModelResolver) {
     this.agentManager = agentManager;
     this.llmGenerate = llmGenerate ?? null;
+    this.resolveDefaultModel = resolveDefaultModel ?? null;
   }
 
   /** 创建新的 Builder 会话 */
@@ -131,9 +136,13 @@ export class AgentBuilder {
         }
 
         if (input === '确认' || input === '确定' || input === 'ok' || input === 'yes') {
+          // 读取系统默认模型配置
+          const defaultModel = this.resolveDefaultModel?.();
           const agent = await this.agentManager.createAgent({
             name: state.inputs.name || 'AI Assistant',
             emoji: state.inputs.emoji || '🤖',
+            modelId: defaultModel?.modelId,
+            provider: defaultModel?.provider,
           });
 
           // 用生成的内容覆盖工作区文件

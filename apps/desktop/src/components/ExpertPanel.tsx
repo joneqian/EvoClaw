@@ -54,9 +54,25 @@ export default function ExpertPanel({
 }: ExpertPanelProps) {
   const navigate = useNavigate();
   const { agents, fetchAgents } = useAgentStore();
-  const { currentAgentId, newConversation } = useChatStore();
+  const { currentAgentId, newConversation, setCurrentAgent } = useChatStore();
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
+
+  // 自动选中第一个专家（页面加载时或删除后当前专家不存在时）
+  useEffect(() => {
+    if (agents.length === 0) {
+      // 没有专家 → 清空选中，右侧显示空白
+      if (currentAgentId) {
+        setCurrentAgent(null);
+      }
+      return;
+    }
+    // 当前选中的专家不存在（被删除了），或者没有选中任何专家 → 选第一个
+    const currentExists = agents.some(a => a.id === currentAgentId);
+    if (!currentAgentId || !currentExists) {
+      newConversation(agents[0].id);
+    }
+  }, [agents, currentAgentId, newConversation, setCurrentAgent]);
 
   const handleAgentClick = useCallback((agentId: string) => {
     newConversation(agentId);

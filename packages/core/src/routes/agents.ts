@@ -2,9 +2,10 @@ import { Hono } from 'hono';
 import crypto from 'node:crypto';
 import { AgentManager } from '../agent/agent-manager.js';
 import { AgentBuilder, type BuilderState, type LLMGenerateFn } from '../agent/agent-builder.js';
+import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 
 /** 创建 Agent CRUD 路由 */
-export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMGenerateFn) {
+export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMGenerateFn, db?: SqliteStore) {
   const app = new Hono();
 
   /** GET / — 列出所有 Agent */
@@ -107,7 +108,15 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
   });
 
   // --- 引导式创建 ---
-  const builder = new AgentBuilder(agentManager, llmGenerate);
+  // 默认模型解析器：从 model_configs 表读取 is_default=1 的配置
+  const resolveDefaultModel = db ? () => {
+    const row = db.get<{ provider: string; model_id: string }>(
+      'SELECT provider, model_id FROM model_configs WHERE is_default = 1 LIMIT 1',
+    );
+    return row ? { provider: row.provider, modelId: row.model_id } : null;
+  } : undefined;
+
+  const builder = new AgentBuilder(agentManager, llmGenerate, resolveDefaultModel);
   const builderSessions = new Map<string, BuilderState>();
 
   /** POST /create-guided — 启动或推进引导式创建 */

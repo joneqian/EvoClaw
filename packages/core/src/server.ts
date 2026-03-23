@@ -238,7 +238,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       ? (systemPrompt: string, userMessage: string) =>
           callLLM(configManager, { systemPrompt, userMessage })
       : undefined;
-    app.route('/agents', createAgentRoutes(agentManager, llmGenerateFn));
+    app.route('/agents', createAgentRoutes(agentManager, llmGenerateFn, store));
   }
   if (store && agentManager) {
     app.route(

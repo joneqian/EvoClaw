@@ -4,6 +4,7 @@ import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
+import AgentCreationModal from '../components/AgentCreationModal';
 import ModelSelector from '../components/ModelSelector';
 import { useAppStore } from '../stores/app-store';
 import PermissionDialog from '../components/PermissionDialog';
@@ -29,6 +30,8 @@ function parseSSELine(line: string): { event?: string; data?: string } | null {
 
 function WelcomeState() {
   const navigate = useNavigate();
+  const { newConversation } = useChatStore();
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   return (
     <div className="h-full flex flex-col items-center justify-center bg-gradient-to-b from-slate-50/80 to-white">
@@ -41,7 +44,7 @@ function WelcomeState() {
       <p className="text-sm text-slate-400 mb-6">从左侧面板选择一位专家，或创建新的专家</p>
       <div className="flex gap-3">
         <button
-          onClick={() => navigate('/agents?tab=mine&create=1')}
+          onClick={() => setShowCreateModal(true)}
           className="px-6 py-2.5 bg-brand text-white text-sm font-medium rounded-xl
             hover:bg-brand-hover shadow-sm hover:shadow transition-all"
         >
@@ -56,6 +59,14 @@ function WelcomeState() {
           去专家商店
         </button>
       </div>
+      <AgentCreationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={(agentId) => {
+          setShowCreateModal(false);
+          newConversation(agentId);
+        }}
+      />
     </div>
   );
 }

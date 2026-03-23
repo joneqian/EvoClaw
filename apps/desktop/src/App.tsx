@@ -21,8 +21,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from './stores/app-store';
 import { initSidecar, healthCheck, get, del, syncPermissionsToRust } from './lib/api';
 import { useChatStore } from './stores/chat-store';
+import { useAgentStore } from './stores/agent-store';
 import IconNav from './components/IconNav';
 import ExpertPanel from './components/ExpertPanel';
+import AgentCreationModal from './components/AgentCreationModal';
 
 // ─── SVG Icon 组件 ───
 
@@ -218,11 +220,12 @@ export default function App() {
     sidecarConnected, setSidecarConnected,
     initState, setInitState,
   } = useAppStore();
-  const { enterConversation } = useChatStore();
+  const { enterConversation, newConversation } = useChatStore();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [recentsPage, setRecentsPage] = useState(1);
   const [recentsHasMore, setRecentsHasMore] = useState(true);
   const [recentsLoading, setRecentsLoading] = useState(false);
@@ -350,6 +353,35 @@ export default function App() {
     }
   }, []);
 
+  const { deleteAgent } = useAgentStore();
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{ agentId: string; agentName: string } | null>(null);
+
+  /** 点击删除 → 弹出确认 */
+  const handleDeleteAgent = useCallback((agentId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const agent = useAgentStore.getState().agents.find(a => a.id === agentId);
+    setDeleteConfirm({ agentId, agentName: agent?.name ?? agentId });
+  }, []);
+
+  /** 确认删除专家 + 关联的所有会话 */
+  const confirmDeleteAgent = useCallback(async () => {
+    if (!deleteConfirm) return;
+    const { agentId } = deleteConfirm;
+    try {
+      const agentRecents = recents.filter(c => c.agentId === agentId);
+      for (const conv of agentRecents) {
+        await del(`/chat/${conv.agentId}/conversations?sessionKey=${encodeURIComponent(conv.sessionKey)}`);
+      }
+      setRecents(prev => prev.filter(c => c.agentId !== agentId));
+      await deleteAgent(agentId);
+    } catch (err) {
+      console.error('删除专家失败:', err);
+    } finally {
+      setDeleteConfirm(null);
+    }
+  }, [deleteConfirm, recents, deleteAgent]);
+
   // 加载中 / 错误
   if (initState === 'loading') return <LoadingScreen />;
   if (initState === 'error') return <ErrorScreen onRetry={initialize} />;
@@ -362,6 +394,48 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-white text-slate-900">
+      {/* 删除专家确认弹窗 */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div className="bg-white rounded-xl shadow-xl p-6 w-[360px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-800 mb-2">确认删除</h3>
+            <p className="text-sm text-slate-500 mb-5">
+              确定要删除专家「{deleteConfirm.agentName}」吗？该专家的所有会话记录也将一并删除，此操作不可撤销。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg
+                  hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDeleteAgent}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg
+                  hover:bg-red-600 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 创建专家弹窗（全局） */}
+      <AgentCreationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={(agentId) => {
+          setShowCreateModal(false);
+          newConversation(agentId);
+          navigate('/chat');
+        }}
+      />
       <div className="flex flex-1 min-h-0">
         {/* ─── Column 1: Icon Navigation (54px) ─── */}
         <IconNav />
@@ -374,6 +448,8 @@ export default function App() {
             onRecentClick={handleRecentClick}
             onDeleteRecent={handleDeleteRecent}
             onLoadMoreRecents={fetchMoreRecents}
+            onCreateAgent={() => setShowCreateModal(true)}
+            onDeleteAgent={handleDeleteAgent}
           />
         )}
 

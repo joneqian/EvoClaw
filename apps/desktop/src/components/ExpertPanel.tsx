@@ -25,6 +25,8 @@ interface ExpertPanelProps {
   onRecentClick: (conv: RecentConversation) => void;
   onDeleteRecent: (conv: RecentConversation, e: React.MouseEvent) => void;
   onLoadMoreRecents: () => void;
+  onCreateAgent: () => void;
+  onDeleteAgent: (agentId: string, e: React.MouseEvent) => void;
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -47,6 +49,8 @@ export default function ExpertPanel({
   onRecentClick,
   onDeleteRecent,
   onLoadMoreRecents,
+  onCreateAgent,
+  onDeleteAgent,
 }: ExpertPanelProps) {
   const navigate = useNavigate();
   const { agents, fetchAgents } = useAgentStore();
@@ -78,29 +82,44 @@ export default function ExpertPanel({
         ) : (
           <div className="space-y-0.5">
             {agents.map((agent) => (
-              <button
+              <div
                 key={agent.id}
-                onClick={() => handleAgentClick(agent.id)}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all duration-150 ${
+                className={`flex items-center rounded-lg transition-all duration-150 group ${
                   currentAgentId === agent.id
                     ? 'bg-brand/10 text-brand-active'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
                 }`}
-                title={agent.name}
               >
-                <AgentAvatar name={agent.name} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{agent.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{agent.id}</p>
-                </div>
-              </button>
+                <button
+                  onClick={() => handleAgentClick(agent.id)}
+                  className="flex-1 min-w-0 flex items-center gap-2.5 px-2.5 py-2 text-left"
+                  title={agent.name}
+                >
+                  <AgentAvatar name={agent.name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{agent.name}</p>
+                    <p className="text-xs text-slate-400 truncate">{agent.id}</p>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => onDeleteAgent(agent.id, e)}
+                  className="shrink-0 w-6 h-6 mr-1.5 flex items-center justify-center rounded
+                    opacity-0 group-hover:opacity-100
+                    text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                  title="删除专家"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         )}
 
         {/* 创建专家按钮 */}
         <button
-          onClick={() => navigate('/agents?tab=mine&create=1')}
+          onClick={onCreateAgent}
           className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 mt-2 rounded-lg text-sm
             font-medium text-slate-800 border border-slate-300 hover:border-slate-400 hover:bg-slate-50 transition-colors"
         >

@@ -15,6 +15,9 @@ export const DB_FILENAME = BRAND_DB_FILENAME;
 /** Agent 工作区目录名 */
 export const AGENTS_DIR = 'agents';
 
+/** 共享工作目录名 — 所有 Agent 的 cwd，协作文件在此共享 */
+export const SHARED_WORKSPACE_DIR = 'workspace';
+
 /** 默认 fallback 模型 */
 export const FALLBACK_MODEL = {
   provider: 'openai',

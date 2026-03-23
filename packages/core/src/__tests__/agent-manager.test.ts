@@ -7,11 +7,10 @@ import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { AgentManager } from '../agent/agent-manager.js';
 import { AGENT_WORKSPACE_FILES } from '@evoclaw/shared';
 
-/** 读取初始迁移 SQL */
-const MIGRATION_SQL = fs.readFileSync(
-  path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '001_initial.sql'),
-  'utf-8'
-);
+/** 读取迁移 SQL */
+const migrationsDir = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
+const MIGRATION_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'), 'utf-8');
+const MIGRATION_CONVLOG_SQL = fs.readFileSync(path.join(migrationsDir, '004_conversation_log.sql'), 'utf-8');
 
 describe('AgentManager', () => {
   let store: SqliteStore;
@@ -27,6 +26,9 @@ describe('AgentManager', () => {
 
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_SQL);
+    store.exec(MIGRATION_CONVLOG_SQL);
+    // 011: agents 表新增 last_chat_at 字段
+    try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }
     manager = new AgentManager(store, agentsDir);
   });
 

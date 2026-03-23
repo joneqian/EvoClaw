@@ -6,6 +6,8 @@ export interface AgentRunConfig {
   agent: AgentConfig;
   systemPrompt: string;
   workspaceFiles: Record<string, string>;
+  /** Agent 工作目录 (cwd) — 工具执行和 PI session 的工作目录 */
+  workspacePath?: string;
   modelId: string;
   provider: string;
   apiKey: string;

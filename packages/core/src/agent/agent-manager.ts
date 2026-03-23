@@ -1,5 +1,5 @@
 import type { AgentConfig, AgentStatus } from '@evoclaw/shared';
-import { AGENT_WORKSPACE_FILES, DEFAULT_DATA_DIR, AGENTS_DIR } from '@evoclaw/shared';
+import { AGENT_WORKSPACE_FILES, DEFAULT_DATA_DIR, AGENTS_DIR, SHARED_WORKSPACE_DIR } from '@evoclaw/shared';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -54,12 +54,17 @@ export class AgentManager {
     return this.rowToConfig(row);
   }
 
-  /** 列出所有 Agent */
+  /** 列出所有 Agent（按最近对话时间排序，无对话的按创建时间） */
   listAgents(status?: AgentStatus): AgentConfig[] {
     const rows = status
-      ? this.store.all<any>('SELECT * FROM agents WHERE status = ? ORDER BY updated_at DESC', status)
-      : this.store.all<any>('SELECT * FROM agents ORDER BY updated_at DESC');
+      ? this.store.all<any>('SELECT * FROM agents WHERE status = ? ORDER BY COALESCE(last_chat_at, created_at) DESC', status)
+      : this.store.all<any>('SELECT * FROM agents ORDER BY COALESCE(last_chat_at, created_at) DESC');
     return rows.map(r => this.rowToConfig(r));
+  }
+
+  /** 更新最近对话时间 (ISO 格式，与 created_at 一致，确保排序正确) */
+  touchLastChat(id: string): void {
+    this.store.run('UPDATE agents SET last_chat_at = ? WHERE id = ?', new Date().toISOString(), id);
   }
 
   /** 更新 Agent 状态 */
@@ -94,9 +99,22 @@ export class AgentManager {
     }
   }
 
-  /** 获取工作区路径 */
+  /** 获取工作区路径 (存放 8 个 workspace 文件) */
   getWorkspacePath(agentId: string): string {
     return path.join(this.agentsBaseDir, agentId, 'workspace');
+  }
+
+  /**
+   * 获取 Agent 工作目录 (cwd) — 所有 Agent 共享
+   * 多 Agent 协作时在同一目录下操作，互相可见文件
+   * 路径: ~/.evoclaw/workspace (或 ~/.healthclaw/workspace 等，跟随品牌)
+   */
+  getAgentCwd(): string {
+    const sharedDir = path.join(os.homedir(), DEFAULT_DATA_DIR, SHARED_WORKSPACE_DIR);
+    if (!fs.existsSync(sharedDir)) {
+      fs.mkdirSync(sharedDir, { recursive: true });
+    }
+    return sharedDir;
   }
 
   /** 读取工作区文件 */

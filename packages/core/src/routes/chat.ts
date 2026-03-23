@@ -67,12 +67,12 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
   }));
 }
 
-/** 存储消息到 conversation_log */
+/** 存储消息到 conversation_log (使用 ISO 格式时间戳，确保前端时区正确) */
 function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role: string, content: string): void {
   db.run(
     `INSERT INTO conversation_log (id, agent_id, session_key, role, content, compaction_status, created_at)
-     VALUES (?, ?, ?, ?, ?, 'raw', datetime('now'))`,
-    crypto.randomUUID(), agentId, sessionKey, role, content,
+     VALUES (?, ?, ?, ?, ?, 'raw', ?)`,
+    crypto.randomUUID(), agentId, sessionKey, role, content, new Date().toISOString(),
   );
 }
 
@@ -252,6 +252,9 @@ export function createChatRoutes(
       return c.json({ error: 'Agent 不存在' }, 404);
     }
 
+    // 更新最近对话时间
+    agentManager.touchLastChat(agentId);
+
     // 生成 Session Key
     const sessionKey = body.sessionKey ?? generateSessionKey(agentId, 'local', 'direct', 'local-user');
 
@@ -408,6 +411,7 @@ export function createChatRoutes(
         agent,
         systemPrompt: '',
         workspaceFiles: {},
+        workspacePath: agentManager.getAgentCwd(),
         modelId,
         provider,
         apiKey,
@@ -474,6 +478,7 @@ export function createChatRoutes(
       agent,
       systemPrompt,
       workspaceFiles,
+      workspacePath: agentManager.getAgentCwd(),
       modelId,
       provider,
       apiKey,

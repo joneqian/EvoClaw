@@ -244,6 +244,7 @@ function ChatView() {
     } finally {
       setStreaming(false);
       if (currentAgentId) fetchConversations(currentAgentId);
+      fetchAgents(); // 刷新专家列表排序（last_chat_at 已更新）
       window.dispatchEvent(new CustomEvent(`${BRAND_EVENT_PREFIX}:conversations-changed`));
     }
   }, [

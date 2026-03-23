@@ -349,9 +349,14 @@ async function runWithPI(
     // 不调用原始 exit，进程继续运行
   }) as never;
 
+  // 切换工作目录到 Agent 工作区（参考 OpenClaw process.chdir 模式）
+  const prevCwd = process.cwd();
+  const effectiveWorkspace = config.workspacePath ?? prevCwd;
+  try { process.chdir(effectiveWorkspace); } catch { /* 目录不存在时保持原 cwd */ }
+
   // 通过 createAgentSession 创建完整会话（对标 OpenClaw，启用 compaction/retry）
   const { session } = await piCoding.createAgentSession({
-    cwd: process.cwd(),
+    cwd: effectiveWorkspace,
     authStorage,
     modelRegistry,
     sessionManager,
@@ -591,6 +596,8 @@ async function runWithPI(
     session.dispose();
     // 恢复原始 process.exit
     process.exit = originalExit;
+    // 恢复原始工作目录
+    try { process.chdir(prevCwd); } catch { /* 忽略 */ }
     if (exitIntercepted) {
       log.info('PI 调用期间拦截了 process.exit，进程继续运行');
     }

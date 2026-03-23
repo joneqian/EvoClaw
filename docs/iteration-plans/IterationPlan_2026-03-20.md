@@ -65,8 +65,8 @@
    |                        |                       |                      |
    v                        v                       v                      v
 工程基座+Agent引擎       安全增强+Channel         钉钉+QQ+企业知识源      Windows+移动端
-记忆系统+RAG+Skill       SkillHub+使用量追踪      LSP+压缩审计+SIEM       记忆结晶+规模
-Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘           Agent 市场
+记忆系统+RAG+Skill       使用量追踪+稳定性        LSP+压缩审计+SIEM       记忆结晶+规模
+Provider+进化引擎        Auth Doctor              子Agent+仪表盘           Agent 市场+SkillHub
 ```
 
 ---
@@ -83,7 +83,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 2. **IM 可用**: 飞书 + 企微 Channel 连续 7 天无故障运行
 3. **成本可控**: 使用量追踪仪表盘可输出月度费用报告
 4. **稳定运行**: Sidecar 168 小时（7 天）无内存泄漏，无 OOM
-5. **Skill 安全**: SkillHub 上线 20 个经过安全审计的企业 Skill
+5. **Skill 安全**: ClawHub Skill 安装流程安全审计（SkillHub 独立排期，不阻塞 v1.0）
 
 ---
 
@@ -150,7 +150,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 
 ---
 
-### Phase 2: Channel 生产化 + SkillHub（W5-W8）
+### Phase 2: Channel 生产化（W5-W8）
 
 > Channel 是企业用户最直接的使用入口。飞书和企微必须达到生产可靠性。
 
@@ -176,23 +176,19 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 
 ---
 
-#### Sprint 14: 企微 Channel 生产就绪 + SkillHub v1.0（W7-W8）
+#### Sprint 14: 企微 Channel 生产就绪（W7-W8）
 
-**目标**: 企微 Channel 达到生产级别；EvoClaw SkillHub v1.0 上线。
+**目标**: 企微 Channel 达到生产级别。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
 | 14.1 | 企微生产化：消息去重 + @Agent 群聊路由 + 文件消息 + 断连重连 + access_token 轮换（参照飞书 Sprint 13 方案复用） | P0 | 3d | F7.2 |
 | 14.2 | 企微应用回调验证：URL 验证 + 消息签名校验 + 加解密（AES-CBC）| P0 | 1d | F7.2 |
-| 14.3 | EvoClaw SkillHub API 服务端：`/api/v1/skills/search`（向量搜索）+ `/api/v1/skills/download`（ZIP 下载）+ `/api/v1/skills/audit`（安全审计状态查询）| P1 | 3d | F4.2 |
-| 14.4 | SkillHub 首批 Skill 审核上架：20 个企业场景 Skill（文档分析、数据整理、代码审查、报告生成、会议纪要等），每个通过安全扫描 + 人工审计 | P1 | 2d | F4.2 |
-| 14.5 | skill-discoverer.ts 增加 SkillHub 数据源：搜索优先级 SkillHub > ClawHub，安装流程增加审计状态检查 | P1 | 1d | F4.2, F4.3 |
+| 14.3 | 企微集成测试（私聊 + 群聊 + 文件 + 加解密 + 断连重连） | P0 | 1d | F7.2 |
 
 **验收标准**:
 - [ ] 企微 Channel 连续 72 小时无故障运行
 - [ ] 企微消息加解密通过官方验证工具
-- [ ] SkillHub API 搜索响应 < 2 秒，20 个 Skill 可正常安装
-- [ ] 安全审计状态准确标记（audited/pending/rejected）
 
 ---
 
@@ -228,7 +224,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
 | 16.1 | 168 小时稳定性测试：Sidecar 连续运行 7 天，模拟正常使用负载（每小时 10 轮对话 × 3 个 Agent），验证无内存泄漏、无 OOM、无崩溃。基于 Sprint 11 搭建的内存泄漏检测基础设施运行 | P1 | 2d（含运行等待） | F10.7 |
-| 16.2 | 全量集成测试回归：覆盖 agent-lifecycle、chat-flow、guided-creation、memory-cycle、permission-flow、provider-config、startup、feishu-channel、wecom-channel、skillhub | P1 | 2d | — |
+| 16.2 | 全量集成测试回归：覆盖 agent-lifecycle、chat-flow、guided-creation、memory-cycle、permission-flow、provider-config、startup、feishu-channel、wecom-channel | P1 | 2d | — |
 | 16.3 | macOS DMG 打包 + 签名 + 分发（企业内部分发通道） | P1 | 1d | — |
 | 16.4 | v1.0 Release Notes + 部署文档 + 企业管理员指南 | P1 | 1d | — |
 
@@ -249,7 +245,6 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | 安全检测引擎 | Prompt 注入 17 模式 + Unicode 混淆 + exec argv 绑定 |
 | 飞书 Channel | 生产就绪（私聊 + 群聊 + 文件 + 卡片 + 重连 + 限频） |
 | 企微 Channel | 生产就绪（私聊 + 群聊 + 文件 + 加解密 + 重连） |
-| EvoClaw SkillHub v1.0 | 20 个安全审计 Skill + REST API |
 | 使用量追踪 | 四维度统计 + 费用估算 + CSV 导出 |
 | Auth Doctor | 6 种配置错误诊断 + 修复建议 |
 | 稳定性验证 | 168h 无泄漏 + 架构守卫 + 全量回归 |
@@ -357,7 +352,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 
 ### 目标
 
-覆盖 Windows 平台，扩展 SkillHub 生态规模，支持更大规模企业部署，探索移动端。
+覆盖 Windows 平台，搭建 SkillHub 生态，支持更大规模企业部署，探索移动端。
 
 ### 规划方向（详细计划在 v1.5 完成后制定）
 
@@ -365,7 +360,8 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 |------|------|--------|
 | **跨平台** | Windows 版本（Tauri 跨平台构建 + Windows Credential Manager 凭证适配） | P0 |
 | **移动端** | 评估 Tauri 2.0 mobile 成熟度；飞书/企微/钉钉 Channel 已提供移动入口 | P2 |
-| **Skill 生态** | SkillHub 扩展至 50+ Skill + 付费 Skill 支持 + 企业专属 Skill | P1 |
+| **SkillHub v1.0** | EvoClaw SkillHub API 服务端 + 首批 20 个企业 Skill 审核上架 + skill-discoverer 接入（见独立 Sprint 21） | P2 |
+| **Skill 生态** | SkillHub 扩展至 50+ Skill + 付费 Skill 支持 + 企业专属 Skill | P3 |
 | **记忆进化** | Growth Vectors / Crystallization：成长向量 30+ 天门控结晶化为永久特质写入 SOUL.md | P2 |
 | **图片生成** | image_generate 多 Provider 注册（OpenAI DALL-E / StableDiffusion / MidJourney API） | P2 |
 | **协作增强** | 协作工作流定义 + 人工审核节点 + 协作状态可视化 | P2 |
@@ -373,6 +369,26 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | **知识库** | 多知识库隔离 + 团队级知识库共享 | P2 |
 | **压力测试** | 10 Channel 并发 + 5 Agent 并行压力测试套件 | P1 |
 | **多设备** | 多设备同步（端到端加密） | P3 |
+
+---
+
+## 独立 Sprint: SkillHub（最低优先级，按需排期）
+
+> SkillHub 从 Sprint 14 拆出，独立排期。当前 ClawHub + GitHub URL 直装已满足 Skill 分发需求，SkillHub 作为企业级 Skill 管控平台在核心功能稳定后再启动。
+
+#### Sprint 21: EvoClaw SkillHub v1.0
+
+**目标**: 搭建 EvoClaw 自有 Skill 市场，提供安全审计 + 搜索 + 下载能力。
+
+| # | 任务 | 优先级 | 预估 | 对应 Feature |
+|---|------|--------|------|-------------|
+| 21.1 | EvoClaw SkillHub API 服务端：`/api/v1/skills/search`（向量搜索）+ `/api/v1/skills/download`（ZIP 下载）+ `/api/v1/skills/audit`（安全审计状态查询）| P2 | 3d | F4.2 |
+| 21.2 | SkillHub 首批 Skill 审核上架：20 个企业场景 Skill（文档分析、数据整理、代码审查、报告生成、会议纪要等），每个通过安全扫描 + 人工审计 | P2 | 2d | F4.2 |
+| 21.3 | skill-discoverer.ts 增加 SkillHub 数据源：搜索优先级 SkillHub > ClawHub，安装流程增加审计状态检查 | P2 | 1d | F4.2, F4.3 |
+
+**验收标准**:
+- [ ] SkillHub API 搜索响应 < 2 秒，20 个 Skill 可正常安装
+- [ ] 安全审计状态准确标记（audited/pending/rejected）
 
 ---
 
@@ -442,8 +458,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | 4 | Unicode 混淆检测 | Sprint 12 | 2d |
 | 5 | exec 审批 argv 绑定 | Sprint 12 | 2d |
 | 6 | 飞书 Channel 生产就绪 | Sprint 13 | 9d |
-| 7 | 企微 Channel 生产就绪 | Sprint 14 | 4d |
-| 8 | EvoClaw SkillHub v1.0 | Sprint 14 | 6d |
+| 7 | 企微 Channel 生产就绪 | Sprint 14 | 5d |
 | 9 | 使用量追踪 | Sprint 15 | 7d |
 | 10 | Auth Doctor 诊断 | Sprint 15 | 2d |
 | 11 | 内存泄漏检测基础设施 | Sprint 11（前置） | 2d |
@@ -486,6 +501,12 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | 41 | 文档（使用指南/API Key/Bot 创建） | Sprint 20 | 2d |
 | 42 | macOS 签名 + 公证 | Sprint 20 | 1d |
 
+### P2 — SkillHub（独立排期，最低优先级）
+
+| # | 项目 | Sprint | 工作量 |
+|---|------|--------|--------|
+| 50 | EvoClaw SkillHub v1.0（API + 20 Skill + discoverer 接入） | Sprint 21 | 6d |
+
 ### P3 — v2.0+ 探索
 
 | # | 项目 |
@@ -507,7 +528,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | 项目 | 原因 |
 |------|------|
 | 第三方插件系统 / Plugin SDK | 企业安全：可控攻击面 |
-| GitHub URL 直装 Skill | 通过 SkillHub 统一管控 |
+| GitHub URL 直装 Skill | 保留作为 SkillHub 上线前的过渡方案 |
 | Web UI | 仅桌面应用，IM Channel 作为移动入口 |
 | Linux 版本 | 企业桌面以 macOS + Windows 为主 |
 | 本地模型 | 所有 LLM 调用统一走 ModelRouter |
@@ -521,7 +542,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 |------|------|------|---------|
 | Rust 权限集成复杂度超预期 | v1.0 Phase 1 延期 | 中 | 优先保证 Node.js 层权限的正确性不退化，Rust 层增量增强 |
 | 飞书/企微 API 变更 | Channel 不可用 | 低 | 抽象层隔离变更影响，官方 SDK 跟进 |
-| SkillHub 冷启动 | Skill 数量不足 | 中 | 团队自研首批 20 个高质量企业 Skill |
+| SkillHub 冷启动 | Skill 数量不足 | 低 | 已降为最低优先级独立 Sprint，ClawHub + GitHub URL 直装可先行覆盖 |
 | 168h 稳定性测试发现内存泄漏 | 发布延期 | 中 | 提前在 Sprint 15 就开始内存监控，不等到 Sprint 16 |
 | 企业客户安全审计不通过 | 商业风险 | 低 | Sprint 11-12 安全增强 + 第三方渗透测试 |
 
@@ -539,7 +560,7 @@ Provider+进化引擎        Auth Doctor+稳定性       子Agent+仪表盘     
 | F1.8 | SIEM 审计集成 | Sprint 20 | P2 |
 | F1.9 | 数据分类标记 | Sprint 20 | P2 |
 | F1.10 | 安全仪表盘 | Sprint 11 | P1 |
-| F4.2 | EvoClaw SkillHub | Sprint 14 | P1 |
+| F4.2 | EvoClaw SkillHub | Sprint 21（独立排期） | P2 |
 | F7.1 | 飞书 Channel 生产化 | Sprint 13 | P0 |
 | F7.2 | 企微 Channel 生产化 | Sprint 14 | P0 |
 | F7.3 | 钉钉 Channel | Sprint 17 | P1 |

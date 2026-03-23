@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { get, post } from '../lib/api';
 
 /** Channel 状态信息 */
@@ -125,11 +126,156 @@ function WecomConnectForm({ onConnect }: { onConnect: () => void }) {
   );
 }
 
+/** 微信 QR 扫码登录表单 */
+function WeixinConnectForm({ onConnect }: { onConnect: () => void }) {
+  const [step, setStep] = useState<'idle' | 'loading' | 'scanning' | 'scanned' | 'error'>('idle');
+  const [qrUrl, setQrUrl] = useState('');
+  const [qrcode, setQrcode] = useState('');
+  const [error, setError] = useState('');
+  const [refreshCount, setRefreshCount] = useState(0);
+  const pollingRef = useRef(false);
+
+  const MAX_REFRESH = 3;
+
+  /** 获取二维码 */
+  const fetchQrCode = useCallback(async () => {
+    setStep('loading');
+    setError('');
+    try {
+      const data = await get<{ qrcode: string; qrcode_img_content: string }>('/channel/weixin/qrcode');
+      setQrUrl(data.qrcode_img_content);
+      setQrcode(data.qrcode);
+      setStep('scanning');
+      pollingRef.current = true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '获取二维码失败');
+      setStep('error');
+    }
+  }, []);
+
+  /** 轮询扫码状态 */
+  useEffect(() => {
+    if (step !== 'scanning' && step !== 'scanned') return;
+    if (!qrcode) return;
+
+    pollingRef.current = true;
+
+    const poll = async () => {
+      while (pollingRef.current) {
+        try {
+          const data = await get<{
+            status: string;
+            bot_token?: string;
+            ilink_bot_id?: string;
+            baseurl?: string;
+          }>(`/channel/weixin/qrcode-status?qrcode=${encodeURIComponent(qrcode)}`);
+
+          if (!pollingRef.current) break;
+
+          switch (data.status) {
+            case 'scaned':
+              setStep('scanned');
+              break;
+            case 'confirmed': {
+              pollingRef.current = false;
+              // 存储 token 到 Keychain
+              if (data.bot_token) {
+                try {
+                  await invoke('credential_set', {
+                    service: 'weixin',
+                    account: 'bot_token',
+                    value: data.bot_token,
+                  });
+                } catch {
+                  // Keychain 存储失败时继续，token 仍通过 credentials 传给后端
+                }
+              }
+              // 连接微信渠道
+              await post('/channel/connect', {
+                type: 'weixin',
+                name: '微信',
+                credentials: {
+                  botToken: data.bot_token ?? '',
+                  ilinkBotId: data.ilink_bot_id ?? '',
+                  baseUrl: data.baseurl ?? '',
+                },
+              });
+              onConnect();
+              return;
+            }
+            case 'expired': {
+              if (refreshCount < MAX_REFRESH) {
+                setRefreshCount(prev => prev + 1);
+                pollingRef.current = false;
+                await fetchQrCode();
+                return;
+              }
+              pollingRef.current = false;
+              setError('二维码多次过期，请重新开始');
+              setStep('error');
+              return;
+            }
+            // 'wait' — 继续轮询
+          }
+        } catch {
+          // 网络错误，继续重试
+        }
+        // 2s 轮询间隔
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    };
+
+    void poll();
+
+    return () => {
+      pollingRef.current = false;
+    };
+  }, [step, qrcode, refreshCount, fetchQrCode, onConnect]);
+
+  // 首次自动获取二维码
+  useEffect(() => {
+    fetchQrCode();
+    return () => { pollingRef.current = false; };
+  }, [fetchQrCode]);
+
+  return (
+    <div className="space-y-3 text-center">
+      {step === 'loading' && (
+        <p className="text-xs text-slate-400">正在获取二维码...</p>
+      )}
+      {(step === 'scanning' || step === 'scanned') && qrUrl && (
+        <>
+          <img
+            src={qrUrl}
+            alt="微信扫码登录"
+            className="w-48 h-48 mx-auto rounded-xl border border-slate-200"
+          />
+          <p className="text-xs text-slate-500">
+            {step === 'scanned' ? '已扫描，请在手机上确认...' : '请使用微信扫描二维码'}
+          </p>
+        </>
+      )}
+      {step === 'error' && (
+        <>
+          <p className="text-xs text-red-500">{error}</p>
+          <button
+            onClick={() => { setRefreshCount(0); fetchQrCode(); }}
+            className="px-4 py-1.5 text-sm font-medium text-brand border border-brand/30 rounded-lg hover:bg-brand/5"
+          >
+            重新获取
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function ChannelPage() {
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFeishu, setShowFeishu] = useState(false);
   const [showWecom, setShowWecom] = useState(false);
+  const [showWeixin, setShowWeixin] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -158,6 +304,7 @@ export default function ChannelPage() {
     { type: 'wecom', name: '企业微信', logo: '/logo-wecom.png', desc: '使用 BotID 和 Secret 连接企业微信官方机器人。' },
     { type: 'qq', name: 'QQ', logo: '/logo-qq.png', desc: '接入 QQ 官方机器人，覆盖群聊、频道与私信全场景互动。' },
     { type: 'dingtalk', name: '钉钉', logo: '/logo-dingtalk.png', desc: '接入钉钉企业内部机器人，通过 Stream 模式实现稳定的群聊与私信交互。' },
+    { type: 'weixin', name: '微信', logo: '/logo-weixin.png', desc: '通过 iLink Bot 接入微信个人号，实现 AI 助手私信对话。' },
   ];
 
   /** 获取某平台的连接状态 */
@@ -169,9 +316,11 @@ export default function ChannelPage() {
     if (status?.status === 'connected') {
       handleDisconnect(type);
     } else if (type === 'feishu') {
-      setShowFeishu(!showFeishu); setShowWecom(false);
+      setShowFeishu(!showFeishu); setShowWecom(false); setShowWeixin(false);
     } else if (type === 'wecom') {
-      setShowWecom(!showWecom); setShowFeishu(false);
+      setShowWecom(!showWecom); setShowFeishu(false); setShowWeixin(false);
+    } else if (type === 'weixin') {
+      setShowWeixin(!showWeixin); setShowFeishu(false); setShowWecom(false);
     }
   };
 
@@ -194,7 +343,7 @@ export default function ChannelPage() {
               {PLATFORMS.map((p) => {
                 const status = getChannelStatus(p.type);
                 const isConnected = status?.status === 'connected';
-                const hasForm = (p.type === 'feishu' && showFeishu) || (p.type === 'wecom' && showWecom);
+                const hasForm = (p.type === 'feishu' && showFeishu) || (p.type === 'wecom' && showWecom) || (p.type === 'weixin' && showWeixin);
                 return (
                   <div
                     key={p.type}
@@ -224,6 +373,9 @@ export default function ChannelPage() {
                         )}
                         {p.type === 'wecom' && (
                           <WecomConnectForm onConnect={() => { setShowWecom(false); fetchData(); }} />
+                        )}
+                        {p.type === 'weixin' && (
+                          <WeixinConnectForm onConnect={() => { setShowWeixin(false); fetchData(); }} />
                         )}
                       </div>
                     )}

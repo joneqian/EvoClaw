@@ -1,8 +1,8 @@
 # EvoClaw 技术架构设计文档
 
-> **文档版本**: v6.0
+> **文档版本**: v6.1
 > **创建日期**: 2026-03-11
-> **更新日期**: 2026-03-20
+> **更新日期**: 2026-03-23
 > **文档状态**: 已完成（10 个 Sprint 全部完成）
 > **定位**: 企业级 AI Agent 桌面平台，安全优先、稳定优先
 
@@ -714,6 +714,8 @@ MemoryExtractor.extract(messages)
 阶段 4: Channel 工具
   ├── feishu_send      — 飞书消息发送
   ├── wecom_send       — 企微消息发送
+  ├── weixin_send      — 微信文本消息发送
+  ├── weixin_send_media — 微信媒体消息发送
   └── desktop_notify   — 桌面通知
 
 阶段 5: Skill 工具目录
@@ -930,7 +932,7 @@ EvoClaw 配置的 baseUrl 含 /v1 后缀 (给 fetch fallback 用)
 
 ### 3.8 Channel 系统
 
-✅ `packages/core/src/channel/` (6 文件, 430 行)
+✅ `packages/core/src/channel/` (20+ 文件, 2000+ 行)
 
 #### 3.8.1 架构
 
@@ -943,19 +945,19 @@ EvoClaw 配置的 baseUrl 含 /v1 后缀 (给 fetch fallback 用)
 │  - 全局消息回调                                   │
 └────────────────────────┬─────────────────────────┘
                          │
-        ┌────────────────┼────────────────┐
-        ▼                ▼                ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│DesktopAdapter│ │ WecomAdapter │ │FeishuAdapter │
-│   (64 行)    │ │  (168 行)    │ │  (204 行)    │
-│   本地桌面    │ │   企业微信    │ │    飞书       │
-└──────────────┘ └──────────────┘ └──────────────┘
+        ┌──────────┬────────────┬────────────┬──────────┐
+        ▼          ▼            ▼            ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│DesktopAdapter│ │ WecomAdapter │ │FeishuAdapter │ │WeixinAdapter │
+│   (64 行)    │ │  (168 行)    │ │  (204 行)    │ │  (15 文件)   │
+│   本地桌面    │ │   企业微信    │ │    飞书       │ │ 微信个人号   │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
 **支持的渠道类型**:
 
 ```typescript
-type ChannelType = 'local' | 'feishu' | 'wecom' | 'dingtalk' | 'qq';
+type ChannelType = 'local' | 'feishu' | 'wecom' | 'weixin' | 'dingtalk' | 'qq';
 ```
 
 | 渠道 | 状态 | 适配器文件 |
@@ -963,6 +965,7 @@ type ChannelType = 'local' | 'feishu' | 'wecom' | 'dingtalk' | 'qq';
 | Desktop (local) | ✅ 已实现 | `adapters/desktop.ts` (64 行) |
 | 企业微信 (wecom) | ✅ 已实现 | `adapters/wecom.ts` (168 行) |
 | 飞书 (feishu) | ✅ 已实现 | `adapters/feishu.ts` (204 行) |
+| 微信个人号 (weixin) | ✅ 已实现 | `adapters/weixin.ts` + 14 个子模块 (weixin-api/types/crypto/cdn/upload/send-media/markdown/mime/slash-commands/debug/error-notice/redact/silk) |
 | 钉钉 (dingtalk) | 🔲 计划 | — |
 | QQ | 🔲 计划 | — |
 
@@ -979,6 +982,8 @@ interface ChannelMessage {
   content: string;
   messageId: string;
   timestamp: number;
+  mediaPath?: string;    // 媒体文件本地路径（微信 CDN 解密后）
+  mediaType?: string;    // 媒体 MIME 类型
 }
 ```
 
@@ -988,6 +993,53 @@ interface ChannelMessage {
 - 交互式消息 (卡片/按钮)
 - 速率限制 (per-channel 限速)
 - 凭证轮转 (token 过期自动刷新)
+
+#### 3.8.2 微信个人号适配器架构
+
+✅ 基于腾讯 iLink Bot 平台（ilinkai.weixin.qq.com），**非企业微信**，面向个人微信用户场景。
+
+**与其他 Channel 的架构差异**:
+
+| 维度 | 飞书/企微 | 微信个人号 |
+|------|----------|-----------|
+| 消息接收 | Webhook（平台推送） | Long-polling（getUpdates 主动拉取），EvoClaw 新模式 |
+| 认证方式 | AppID + Secret → access_token | QR 扫码登录 → Bearer bot_token |
+| 媒体处理 | 平台 API 上传/下载 | AES-128-ECB 加密 CDN 管线（上传/下载均需加解密） |
+| 消息格式 | Markdown / 富文本 / 卡片 | 纯文本（微信不支持 Markdown，自动转换） |
+| 状态持久化 | 无需（webhook 无状态） | cursor 持久化到 `channel_state` 表（SQLite） |
+
+**核心模块**:
+
+```
+adapters/weixin.ts            — 主适配器：long-polling 循环 + 消息分发
+adapters/weixin-api.ts        — iLink Bot API 封装（getUpdates/sendMessage/getUploadUrl）
+adapters/weixin-types.ts      — iLink 协议类型定义
+adapters/weixin-crypto.ts     — AES-128-ECB 加解密（媒体文件）
+adapters/weixin-cdn.ts        — CDN 下载 + 解密（入站媒体）
+adapters/weixin-upload.ts     — CDN 上传 + 加密（出站媒体）
+adapters/weixin-send-media.ts — 媒体消息发送（IMAGE/VIDEO/FILE/VOICE）
+adapters/weixin-markdown.ts   — Markdown → 纯文本转换
+adapters/weixin-mime.ts       — MIME 类型检测（30+ 格式）
+adapters/weixin-slash-commands.ts — Slash 命令处理（/echo, /toggle-debug）
+adapters/weixin-debug.ts      — 调试模式（全管线耗时追踪）
+adapters/weixin-error-notice.ts — 中文用户友好错误通知（fire-and-forget）
+adapters/weixin-redact.ts     — 日志脱敏（token/body/URL）
+adapters/weixin-silk.ts       — SILK 语音转码 WAV（可选，silk-wasm）
+```
+
+**iLink 协议特殊机制**:
+- **context_token 回显**: 每次 getUpdates 返回 context_token，下次请求必须回传（协议要求）
+- **cursor 持久化**: `get_updates_buf` 游标存储在 `channel_state` 表，重启后从上次位置继续拉取
+- **媒体 CDN 加密**: 入站 CDN 下载 → AES-128-ECB 解密 → 临时文件 → mediaPath；出站 读取文件 → MD5 生成 AES key → 加密 → CDN PUT → 发送消息
+- **4000 字符分块**: 超长文本自动分块发送（微信消息长度限制）
+- **语音转文字**: 平台侧 ASR，asr_text 字段直接使用
+- **typing 指示器**: 发送 start/cancel typing 状态
+
+**ChannelAdapter 接口扩展**:
+- `sendMediaMessage(accountId, peerId, mediaPath, mediaType)` — 可选方法，微信适配器实现
+- `sendTyping(accountId, peerId, action)` — 可选方法，typing 指示器
+
+**工具注入**: `weixin_send` + `weixin_send_media` 在阶段 4 Channel 工具中注入
 
 ### 3.9 进化引擎
 
@@ -1426,6 +1478,22 @@ CREATE INDEX idx_kb_chunks_file ON knowledge_base_chunks(file_id);
 CREATE INDEX idx_kb_chunks_agent ON knowledge_base_chunks(agent_id);
 ```
 
+#### Migration 010: Channel 状态持久化
+
+```sql
+-- channel_state: Channel 运行时状态（游标、token 等）
+CREATE TABLE channel_state (
+  channel TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (channel, account_id, key)
+);
+```
+
+用于微信个人号 long-polling 的 cursor（`get_updates_buf`）持久化，确保重启后从上次位置继续拉取消息。其他需要状态持久化的 Channel 也可复用此表。
+
 ### 4.3 表关系图
 
 ```
@@ -1446,6 +1514,7 @@ agents (核心)
   └──→ audit_log (1:N)
 
 embeddings (独立, 通过 id 关联 memory_units 或 knowledge_base_chunks)
+channel_state (独立, 按 channel+account_id+key 存储渠道运行时状态)
 ```
 
 ### 4.4 索引策略
@@ -1874,7 +1943,7 @@ Node.js 进程:
 | `message.ts` | ChatMessage, MessageRole, ToolCall, AgentEvent, AgentEventType, SessionKey |
 | `permission.ts` | PermissionGrant, PermissionCategory, PermissionScope |
 | `provider.ts` | ProviderConfig, ModelConfig, ResolvedModel |
-| `channel.ts` | ChannelType, ChannelMessage |
+| `channel.ts` | ChannelType, ChannelMessage (含 mediaPath/mediaType 可选字段) |
 | `skill.ts` | SkillMetadata, SkillRequires, SkillSearchResult, SkillSecurityReport, InstalledSkill |
 | `evolution.ts` | CapabilityNode, CapabilityDimension, GrowthEvent, GrowthVector, SatisfactionSignal, HeartbeatConfig, CronJobConfig |
 | `config.ts` | EvoClawConfig, ModelsConfig, ProviderEntry, ModelEntry, ApiProtocol, ConfigValidation |

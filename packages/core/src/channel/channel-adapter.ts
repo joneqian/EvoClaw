@@ -44,6 +44,12 @@ export interface ChannelAdapter {
   /** 发送消息 */
   sendMessage(peerId: string, content: string, chatType?: 'private' | 'group'): Promise<void>;
 
+  /** 发送媒体消息 (可选，仅部分渠道支持) */
+  sendMediaMessage?(peerId: string, filePath: string, text?: string, chatType?: 'private' | 'group'): Promise<void>;
+
+  /** 发送/取消输入状态指示 (可选，仅部分渠道支持) */
+  sendTyping?(peerId: string, cancel?: boolean): Promise<void>;
+
   /** 获取连接状态 */
   getStatus(): ChannelStatusInfo;
 }

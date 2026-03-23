@@ -101,7 +101,7 @@ export class FileIngester {
       const { extractText } = await import('unpdf');
       const buffer = fs.readFileSync(filePath);
       const result = await extractText(new Uint8Array(buffer));
-      return result.text;
+      return Array.isArray(result.text) ? result.text.join('\n') : result.text;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("Cannot find module") || message.includes("Cannot find package")) {

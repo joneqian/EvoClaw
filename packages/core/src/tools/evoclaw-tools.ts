@@ -102,7 +102,7 @@ export function createEvoClawTools(deps: {
         if (relations.length === 0) return `未找到与 "${entity}" 相关的知识图谱关系。`;
 
         const formatted = relations.map(r =>
-          `- ${r.subjectId} → ${r.relation} → ${r.objectId ?? r.objectLiteral ?? '?'} (置信度: ${r.confidence})`
+          `- ${r.subjectId} → ${r.relation} → ${r.objectId ?? '?'} (置信度: ${r.confidence})`
         ).join('\n');
         return `找到 ${relations.length} 条关系：\n${formatted}`;
       },

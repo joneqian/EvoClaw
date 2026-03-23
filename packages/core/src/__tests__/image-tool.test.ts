@@ -68,9 +68,9 @@ describe('image 工具', () => {
   it('应该构造正确的 OpenAI 请求', async () => {
     // Mock fetch for image download + API call
     let apiCallBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.includes('chat/completions')) {
-        apiCallBody = JSON.parse(arguments[1]?.body || '{}');
+        apiCallBody = JSON.parse((init?.body as string) || '{}');
         return {
           ok: true,
           json: () => Promise.resolve({ choices: [{ message: { content: '这是一张测试图片' } }] }),

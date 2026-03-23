@@ -28,7 +28,7 @@ function createTurnContext(userMessage: string): TurnContext {
   return {
     agentId: TEST_AGENT_ID,
     sessionKey: `agent:${TEST_AGENT_ID}:default:dm:user1` as any,
-    messages: [{ role: 'user', content: userMessage }],
+    messages: [{ role: 'user', content: userMessage, id: 'test-msg-1', conversationId: 'test-conv', createdAt: new Date().toISOString() }],
     systemPrompt: '',
     injectedContext: [],
     estimatedTokens: 0,
@@ -140,7 +140,7 @@ describe('RAG Plugin', () => {
     const vs = new VectorStore(db);
     const plugin = createRagPlugin(vs, db);
 
-    const messages = [{ role: 'user' as const, content: 'test' }];
+    const messages = [{ role: 'user' as const, content: 'test', id: 'test-msg-1', conversationId: 'test-conv', createdAt: new Date().toISOString() }];
     const result = await plugin.compact!({
       agentId: TEST_AGENT_ID,
       sessionKey: `agent:${TEST_AGENT_ID}:default:dm:user1` as any,

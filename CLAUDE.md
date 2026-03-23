@@ -51,6 +51,7 @@ docs/                  — PRD, Architecture, AgentSystemDesign, MemorySystemDes
 - **模块化系统提示**: 安全宪法 + 记忆召回指令 + 运行时信息 + 工具使用指导 + 技能扫描（参考 OpenClaw 22 段式架构）
 - **多级错误恢复**: Auth 轮转 → overload 退避 → thinking 降级 → context overflow compaction → 模型降级
 - **工具安全**: 循环检测（重复/乒乓/熔断器阈值 30）+ 结果截断（超 context budget 50% 自动截断）
+- **微信个人号渠道**: iLink Bot 长轮询 (vs webhook)，QR 扫码登录 (vs AppID/Secret)，CDN + AES-128-ECB 媒体加解密管线，context_token 回传，Markdown→纯文本，/echo + /toggle-debug Slash 命令，全链路 Debug 追踪，SILK 语音转码 (可选)
 
 ## 开发命令
 
@@ -100,5 +101,5 @@ better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/in
 - **不使用本地模型**：所有 LLM 调用（含记忆提取、LCM 摘要）统一走 ModelRouter
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
-- 设计文档: `docs/PRD.md` (v5.0), `docs/Architecture.md` (v5.0), `docs/AgentSystemDesign.md`, `docs/MemorySystemDesign.md`, `docs/IterationPlan.md` (v4.0)
-- **当前冲刺**: Sprint 12 ✅ 已完成 — 安全检测引擎（Prompt 注入 17 模式 + Unicode 混淆检测 + SecurityPlugin + 55 测试）
+- 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.1), `docs/architecture/Architecture_2026-03-20.md` (v6.1), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.1)
+- **当前冲刺**: Sprint 13 ✅ 已完成 — 微信个人号渠道（iLink Bot 长轮询 + QR 扫码 + CDN AES-128-ECB 媒体管线 + Markdown 转换 + Slash 命令 + Debug 追踪 + 918 测试）

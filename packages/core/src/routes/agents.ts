@@ -29,7 +29,8 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
 
   /** POST / — 创建 Agent（简单模式，非引导式） */
   app.post('/', async (c) => {
-    const body = await c.req.json<{ name?: string; emoji?: string; modelId?: string; provider?: string }>().catch(() => ({}));
+    type AgentBody = { name?: string; emoji?: string; modelId?: string; provider?: string };
+    const body: AgentBody = await c.req.json<AgentBody>().catch(() => ({}));
 
     if (!body.name) {
       return c.json({ error: 'name 字段必填' }, 400);
@@ -53,7 +54,8 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
       return c.json({ error: 'Agent 不存在' }, 404);
     }
 
-    const body = await c.req.json<{ name?: string; emoji?: string; modelId?: string; provider?: string }>().catch(() => ({}));
+    type AgentPatchBody = { name?: string; emoji?: string; modelId?: string; provider?: string };
+    const body: AgentPatchBody = await c.req.json<AgentPatchBody>().catch(() => ({}));
     agentManager.updateAgent(id, body);
 
     const updated = agentManager.getAgent(id);

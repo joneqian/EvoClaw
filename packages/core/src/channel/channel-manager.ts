@@ -1,4 +1,4 @@
-import type { ChannelType, ChannelMessage } from '@evoclaw/shared';
+import type { ChannelType } from '@evoclaw/shared';
 import type {
   ChannelAdapter,
   ChannelConfig,
@@ -97,6 +97,32 @@ export class ChannelManager {
       throw new Error(`Channel ${channel} 未连接`);
     }
     await adapter.sendMessage(peerId, content, chatType);
+  }
+
+  /** 发送媒体消息 */
+  async sendMediaMessage(
+    channel: ChannelType,
+    peerId: string,
+    filePath: string,
+    text?: string,
+    chatType?: 'private' | 'group',
+  ): Promise<void> {
+    const adapter = this.adapters.get(channel);
+    if (!adapter) {
+      throw new Error(`Channel ${channel} 未注册`);
+    }
+    if (adapter.getStatus().status !== 'connected') {
+      throw new Error(`Channel ${channel} 未连接`);
+    }
+    if (!adapter.sendMediaMessage) {
+      throw new Error(`Channel ${channel} 不支持媒体发送`);
+    }
+    await adapter.sendMediaMessage(peerId, filePath, text, chatType);
+  }
+
+  /** 获取适配器实例 */
+  getAdapter(type: ChannelType): ChannelAdapter | undefined {
+    return this.adapters.get(type);
   }
 
   /** 获取所有 Channel 状态 */

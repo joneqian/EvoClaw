@@ -239,7 +239,8 @@ export function createChatRoutes(
 
   app.post('/:agentId/send', async (c) => {
     const agentId = c.req.param('agentId');
-    const body = await c.req.json<{ message?: string; sessionKey?: string }>().catch(() => ({}));
+    type SendBody = { message?: string; sessionKey?: string };
+    const body: SendBody = await c.req.json<SendBody>().catch(() => ({}));
     const message = body.message;
 
     if (!message) {

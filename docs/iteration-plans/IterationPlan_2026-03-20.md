@@ -1,9 +1,9 @@
 # EvoClaw 迭代计划
 
-> **文档版本**: v6.0
+> **文档版本**: v6.1
 > **创建日期**: 2026-03-20
-> **文档状态**: 执行中（Sprint 11 ✅ 已完成, Sprint 12 ✅ 已完成）
-> **基于**: PRD v6.0 + Architecture v6.0 + EvoClaw vs OpenClaw 对比报告 (2026-03-20)
+> **文档状态**: 执行中（Sprint 11 ✅ 已完成, Sprint 12 ✅ 已完成, Sprint 13 ✅ 已完成）
+> **基于**: PRD v6.1 + Architecture v6.1 + EvoClaw vs OpenClaw 对比报告 (2026-03-20)
 > **前序**: Sprint 1-10C 已全部完成（基于 PRD v4.0），本计划从 v1.0 企业级就绪版本开始
 > **废弃**: 本文档替代 `IterationPlan.md` (v4.0)
 
@@ -17,7 +17,7 @@
 | 第一优先级 | 功能完整性 | **安全与稳定** |
 | 插件策略 | 规划 Plugin SDK 开放 | **全部内置，不开放第三方** |
 | Skill 生态 | ClawHub + GitHub URL 直装 | **ClawHub + EvoClaw SkillHub** |
-| Channel 覆盖 | 飞书 + 企微 + QQ | **飞书 + 企微 + 钉钉(新增) + QQ** |
+| Channel 覆盖 | 飞书 + 企微 + QQ | **飞书 + 企微 + 微信个人号(新增) + 钉钉(新增) + QQ** |
 | 平台策略 | macOS → Windows → Linux | **macOS → Windows，无 Web/Linux** |
 | 目标用户 | 知识工作者 / 开发者 / 极客 | **IT 部门负责人 / 企业开发者 / 团队负责人** |
 
@@ -64,9 +64,10 @@
 (2026 Q1)               (2026 Q2-Q3, 12w)      (2026 Q3-Q4, 10w)      (2027 Q1-Q2)
    |                        |                       |                      |
    v                        v                       v                      v
-工程基座+Agent引擎       安全增强+Channel         钉钉+QQ+企业知识源      Windows+移动端
-记忆系统+RAG+Skill       使用量追踪+稳定性        LSP+压缩审计+SIEM       记忆结晶+规模
-Provider+进化引擎        Auth Doctor              子Agent+仪表盘           Agent 市场+SkillHub
+工程基座+Agent引擎       安全增强+Channel          钉钉+QQ+企业知识源      Windows+移动端
+记忆系统+RAG+Skill       微信个人号+企微+飞书       LSP+压缩审计+SIEM       记忆结晶+规模
+Provider+进化引擎        使用量追踪+稳定性          子Agent+仪表盘           Agent 市场+SkillHub
+                         Auth Doctor
 ```
 
 ---
@@ -75,12 +76,12 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ### 目标
 
-安全合规达到企业部署标准；飞书 + 企微 Channel 生产就绪；使用量追踪支持企业采购决策；7×24 稳定运行验证。
+安全合规达到企业部署标准；微信个人号 + 企微 + 飞书 Channel 生产就绪；使用量追踪支持企业采购决策；7×24 稳定运行验证。
 
 ### v1.0 成功标准
 
 1. **安全合规**: 权限模型 Rust 全链路集成 + Prompt 注入检测通过渗透测试
-2. **IM 可用**: 飞书 + 企微 Channel 连续 7 天无故障运行
+2. **IM 可用**: 微信个人号 ✅ 已完成 + 企微 + 飞书 Channel 连续 7 天无故障运行
 3. **成本可控**: 使用量追踪仪表盘可输出月度费用报告
 4. **稳定运行**: Sidecar 168 小时（7 天）无内存泄漏，无 OOM
 5. **Skill 安全**: ClawHub Skill 安装流程安全审计（SkillHub 独立排期，不阻塞 v1.0）
@@ -150,19 +151,52 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-### Phase 2: Channel 生产化（W5-W8）
+### Phase 2: Channel 生产化（W5-W10）
 
-> Channel 是企业用户最直接的使用入口。企微和飞书必须达到生产可靠性。
+> Channel 是企业用户最直接的使用入口。微信个人号已完成，企微和飞书必须达到生产可靠性。
 
-#### Sprint 13: 企微 Channel 生产就绪（W5-W6）
+#### Sprint 13: 微信个人号渠道（W5-W6）✅ 已完成
+
+**目标**: 实现完整的微信个人号 Channel，基于腾讯 iLink Bot 平台，支持全媒体消息收发。
+
+| # | 任务 | 优先级 | 预估 | 对应 Feature |
+|---|------|--------|------|-------------|
+| 13.1 | 微信个人号核心适配器：iLink Bot API 封装 + Long-polling 消息循环（getUpdates）+ QR 扫码登录 + Bearer Token 认证 + context_token 回显 + cursor 持久化（channel_state 表 + 010 迁移） | P0 | 3d | F7.7 |
+| 13.2 | 媒体 CDN 管线：AES-128-ECB 加解密 + 入站 CDN 下载解密 + 出站 MD5 密钥生成/加密/CDN PUT 上传 + IMAGE/VIDEO/FILE/VOICE 四类媒体 + MIME 检测（30+ 格式） | P0 | 3d | F7.7 |
+| 13.3 | 消息处理：Markdown → 纯文本转换 + Quote/引用消息处理（ref_msg）+ 4000 字符分块 + 语音转文字（平台 ASR）+ typing 指示器 + ChannelMessage mediaPath/mediaType 扩展 | P0 | 2d | F7.7 |
+| 13.4 | 运维能力：Slash 命令（/echo, /toggle-debug）+ 调试模式（全管线耗时追踪）+ 中文错误通知（fire-and-forget）+ 日志脱敏（token/body/URL）| P1 | 1d | F7.7 |
+| 13.5 | 前端 WeixinConnectForm：QR 码展示 + 扫码轮询 + 连接状态管理（集成到 ChannelPage.tsx） | P0 | 1d | F7.7 |
+| 13.6 | Channel 工具注入：weixin_send（文本）+ weixin_send_media（媒体）+ SILK 语音转码 WAV（可选，silk-wasm） | P1 | 1d | F7.7 |
+
+**验收标准**:
+- [x] 扫码登录后 30 秒内完成连接并开始 long-polling
+- [x] 文本/图片/视频/文件/语音消息双向收发正常
+- [x] 媒体 CDN 加解密管线端到端验证通过
+- [x] 全量测试 918/918 通过（90 个测试文件），无回归
+- [x] 调试模式可追踪完整管线耗时（平台→插件→媒体下载→AI→回复）
+- [x] 日志中无 token/敏感信息泄露
+
+**交付物**:
+- 15 个新文件（weixin.ts + 14 个子模块）
+- channel-state-repo.ts + 010_channel_state.sql 迁移
+- ChannelType 新增 'weixin'
+- ChannelMessage 新增可选 mediaPath/mediaType
+- ChannelAdapter 新增可选 sendMediaMessage/sendTyping 方法
+- 前端 WeixinConnectForm 组件
+
+---
+
+#### Sprint 14: 企微 Channel 生产就绪（W7-W8）
+
+> **注**: 原 Sprint 13 企微生产化任务顺延至 Sprint 14，原 Sprint 14 飞书生产化顺延至 Sprint 15。
 
 **目标**: 企微 Channel 达到生产级别。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 13.1 | 企微生产化：消息去重 + @Agent 群聊路由 + 文件消息 + 断连重连 + access_token 轮换 | P0 | 3d | F7.2 |
-| 13.2 | 企微应用回调验证：URL 验证 + 消息签名校验 + 加解密（AES-CBC）| P0 | 1d | F7.2 |
-| 13.3 | 企微集成测试（私聊 + 群聊 + 文件 + 加解密 + 断连重连） | P0 | 1d | F7.2 |
+| 14.1 | 企微生产化：消息去重 + @Agent 群聊路由 + 文件消息 + 断连重连 + access_token 轮换 | P0 | 3d | F7.2 |
+| 14.2 | 企微应用回调验证：URL 验证 + 消息签名校验 + 加解密（AES-CBC）| P0 | 1d | F7.2 |
+| 14.3 | 企微集成测试（私聊 + 群聊 + 文件 + 加解密 + 断连重连） | P0 | 1d | F7.2 |
 
 **验收标准**:
 - [ ] 企微 Channel 连续 72 小时无故障运行
@@ -170,18 +204,18 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-#### Sprint 14: 飞书 Channel 生产就绪（W7-W8）
+#### Sprint 15: 飞书 Channel 生产就绪（W9-W10）
 
 **目标**: 飞书 Channel 从原型提升到企业生产级别。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 14.1 | 飞书消息去重：基于 `message_id` + Redis-like 去重窗口（内存 LRU，1000 条滑动窗口），防止 webhook 重复推送 | P0 | 1d | F7.1 |
-| 14.2 | 飞书群聊路由增强：@Agent 消息检测 + 线程跟踪（reply_in_thread）+ 群聊 Session Key 隔离 | P0 | 2d | F7.1 |
-| 14.3 | 飞书文件/图片消息支持：接收文件 → 下载 → 传入 Agent（image 工具 / pdf 工具 / knowledge RAG） | P0 | 2d | F7.1 |
-| 14.4 | 飞书卡片消息：Agent 回复支持飞书交互卡片（按钮、确认弹窗），用于权限确认和操作审批 | P1 | 2d | F7.1 |
-| 14.5 | 飞书错误恢复：access_token 2h 自动轮换 + 断连自动重连（指数退避）+ 限频退避（20 次/秒上限） | P0 | 1d | F7.1 |
-| 14.6 | 飞书集成测试（私聊 + 群聊 + 文件 + 断连重连 + 限频） | P0 | 1d | F7.1 |
+| 15.1 | 飞书消息去重：基于 `message_id` + Redis-like 去重窗口（内存 LRU，1000 条滑动窗口），防止 webhook 重复推送 | P0 | 1d | F7.1 |
+| 15.2 | 飞书群聊路由增强：@Agent 消息检测 + 线程跟踪（reply_in_thread）+ 群聊 Session Key 隔离 | P0 | 2d | F7.1 |
+| 15.3 | 飞书文件/图片消息支持：接收文件 → 下载 → 传入 Agent（image 工具 / pdf 工具 / knowledge RAG） | P0 | 2d | F7.1 |
+| 15.4 | 飞书卡片消息：Agent 回复支持飞书交互卡片（按钮、确认弹窗），用于权限确认和操作审批 | P1 | 2d | F7.1 |
+| 15.5 | 飞书错误恢复：access_token 2h 自动轮换 + 断连自动重连（指数退避）+ 限频退避（20 次/秒上限） | P0 | 1d | F7.1 |
+| 15.6 | 飞书集成测试（私聊 + 群聊 + 文件 + 断连重连 + 限频） | P0 | 1d | F7.1 |
 
 **验收标准**:
 - [ ] 飞书 Channel 连续 72 小时无故障运行
@@ -192,21 +226,23 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-### Phase 3: 企业必备功能 + 稳定性（W9-W12）
+### Phase 3: 企业必备功能 + 稳定性（W11-W14）
+
+> **注**: 由于 Sprint 13 插入微信个人号渠道，Phase 3 整体后移 2 周。
 
 > 使用量追踪是企业采购的硬性要求。稳定性是企业部署的基本门槛。
 
-#### Sprint 15: 使用量追踪 + Auth Doctor（W9-W10）
+#### Sprint 16: 使用量追踪 + Auth Doctor（W11-W12）
 
 **目标**: 实现 API 调用费用统计和诊断能力。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 15.1 | usage_tracking 表设计 + 迁移：`010_usage_tracking.sql`（agent_id, provider, model, input_tokens, output_tokens, estimated_cost, channel, session_key, created_at） | P1 | 1d | F8.2 |
-| 15.2 | 使用量拦截中间件：在 embedded-runner.ts 的 LLM 调用后记录 usage 数据（从 PI response.usage 提取），含记忆提取/压缩等内部调用 | P1 | 2d | F8.2 |
-| 15.3 | 使用量统计 API：`GET /usage/summary`（按 Provider/Model/Agent/Channel 四维度聚合）+ `GET /usage/daily`（日趋势）+ `GET /usage/export`（CSV 导出）| P1 | 2d | F8.2 |
-| 15.4 | 使用量仪表盘 UI：费用总览卡片 + 按维度分布图 + 日趋势折线图 + 导出按钮 | P1 | 2d | F8.2 |
-| 15.5 | Auth Doctor `routes/doctor.ts` 增强：API Key 有效性检测（试调 /models 接口）+ 余额查询（支持 OpenAI/Anthropic/DeepSeek）+ 网络可达性检测 + 具体错误提示（"API Key 格式错误"/"余额不足"/"网络不可达"） | P1 | 2d | F9.10 |
+| 16.1 | usage_tracking 表设计 + 迁移：`011_usage_tracking.sql`（agent_id, provider, model, input_tokens, output_tokens, estimated_cost, channel, session_key, created_at） | P1 | 1d | F8.2 |
+| 16.2 | 使用量拦截中间件：在 embedded-runner.ts 的 LLM 调用后记录 usage 数据（从 PI response.usage 提取），含记忆提取/压缩等内部调用 | P1 | 2d | F8.2 |
+| 16.3 | 使用量统计 API：`GET /usage/summary`（按 Provider/Model/Agent/Channel 四维度聚合）+ `GET /usage/daily`（日趋势）+ `GET /usage/export`（CSV 导出）| P1 | 2d | F8.2 |
+| 16.4 | 使用量仪表盘 UI：费用总览卡片 + 按维度分布图 + 日趋势折线图 + 导出按钮 | P1 | 2d | F8.2 |
+| 16.5 | Auth Doctor `routes/doctor.ts` 增强：API Key 有效性检测（试调 /models 接口）+ 余额查询（支持 OpenAI/Anthropic/DeepSeek）+ 网络可达性检测 + 具体错误提示（"API Key 格式错误"/"余额不足"/"网络不可达"） | P1 | 2d | F9.10 |
 
 **验收标准**:
 - [ ] 每次 LLM 调用（含内部调用）都记录到 usage_tracking
@@ -217,16 +253,16 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-#### Sprint 16: 稳定性验证 + 发布准备（W11-W12）
+#### Sprint 17: 稳定性验证 + 发布准备（W13-W14）
 
 **目标**: 验证 7×24 稳定性，完成 macOS 企业级就绪版本发布。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 16.1 | 168 小时稳定性测试：Sidecar 连续运行 7 天，模拟正常使用负载（每小时 10 轮对话 × 3 个 Agent），验证无内存泄漏、无 OOM、无崩溃。基于 Sprint 11 搭建的内存泄漏检测基础设施运行 | P1 | 2d（含运行等待） | F10.7 |
-| 16.2 | 全量集成测试回归：覆盖 agent-lifecycle、chat-flow、guided-creation、memory-cycle、permission-flow、provider-config、startup、feishu-channel、wecom-channel | P1 | 2d | — |
-| 16.3 | macOS DMG 打包 + 签名 + 分发（企业内部分发通道） | P1 | 1d | — |
-| 16.4 | v1.0 Release Notes + 部署文档 + 企业管理员指南 | P1 | 1d | — |
+| 17.1 | 168 小时稳定性测试：Sidecar 连续运行 7 天，模拟正常使用负载（每小时 10 轮对话 × 3 个 Agent），验证无内存泄漏、无 OOM、无崩溃。基于 Sprint 11 搭建的内存泄漏检测基础设施运行 | P1 | 2d（含运行等待） | F10.7 |
+| 17.2 | 全量集成测试回归：覆盖 agent-lifecycle、chat-flow、guided-creation、memory-cycle、permission-flow、provider-config、startup、feishu-channel、wecom-channel、weixin-channel | P1 | 2d | — |
+| 17.3 | macOS DMG 打包 + 签名 + 分发（企业内部分发通道） | P1 | 1d | — |
+| 17.4 | v1.0 Release Notes + 部署文档 + 企业管理员指南 | P1 | 1d | — |
 
 **验收标准**:
 - [ ] 168 小时稳定性测试通过，内存增长 < 50MB
@@ -243,6 +279,7 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | macOS Tauri 应用 | 企业级就绪版，签名 DMG |
 | 权限模型 Rust 全链路 | 7 × 4 全组合，无绕过路径 |
 | 安全检测引擎 | Prompt 注入 17 模式 + Unicode 混淆 + exec argv 绑定 |
+| 微信个人号 Channel | 已实现（扫码登录 + long-polling + 全媒体 CDN 管线 + slash 命令 + 调试模式） |
 | 飞书 Channel | 生产就绪（私聊 + 群聊 + 文件 + 卡片 + 重连 + 限频） |
 | 企微 Channel | 生产就绪（私聊 + 群聊 + 文件 + 加解密 + 重连） |
 | 使用量追踪 | 四维度统计 + 费用估算 + CSV 导出 |
@@ -259,33 +296,33 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-#### Sprint 17: 钉钉 Channel + QQ Channel（W1-W3）
+#### Sprint 18: 钉钉 Channel + QQ Channel（W1-W3）
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 17.1 | 钉钉适配器 `adapters/dingtalk.ts`：机器人 API 接入 + 私聊 + 群聊（@机器人）+ 签名验证 + access_token 轮换 + 限频退避（40 次/分） | P1 | 3d | F7.3 |
-| 17.2 | 钉钉消息去重 + 线程路由 + 文件消息 + 断连重连 | P1 | 2d | F7.3 |
-| 17.3 | 钉钉交互卡片消息（ActionCard）：用于权限审批和操作确认 | P1 | 1d | F7.3 |
-| 17.4 | QQ 适配器 `adapters/qq.ts`：QQ 开放平台 API + 私聊 + Q群（@机器人）+ 签名验证 | P1 | 3d | F7.4 |
-| 17.5 | QQ 消息去重 + 文件消息 + 断连重连 | P1 | 1d | F7.4 |
-| 17.6 | 四平台 Channel 统一集成测试 | P1 | 1d | F7.3, F7.4 |
-| 17.7 | Channel 管理 UI 增强：4 平台连接状态 + 消息统计 + 配置引导 | P1 | 1d | F7.6 |
+| 18.1 | 钉钉适配器 `adapters/dingtalk.ts`：机器人 API 接入 + 私聊 + 群聊（@机器人）+ 签名验证 + access_token 轮换 + 限频退避（40 次/分） | P1 | 3d | F7.3 |
+| 18.2 | 钉钉消息去重 + 线程路由 + 文件消息 + 断连重连 | P1 | 2d | F7.3 |
+| 18.3 | 钉钉交互卡片消息（ActionCard）：用于权限审批和操作确认 | P1 | 1d | F7.3 |
+| 18.4 | QQ 适配器 `adapters/qq.ts`：QQ 开放平台 API + 私聊 + Q群（@机器人）+ 签名验证 | P1 | 3d | F7.4 |
+| 18.5 | QQ 消息去重 + 文件消息 + 断连重连 | P1 | 1d | F7.4 |
+| 18.6 | 五平台 Channel 统一集成测试（含微信个人号） | P1 | 1d | F7.3, F7.4 |
+| 18.7 | Channel 管理 UI 增强：5 平台连接状态 + 消息统计 + 配置引导 | P1 | 1d | F7.6 |
 
 **验收标准**:
 - [ ] 钉钉 + QQ Channel 连续 72 小时无故障
-- [ ] 4 平台适配器通过统一测试套件
+- [ ] 5 平台适配器通过统一测试套件（含微信个人号）
 - [ ] Channel 管理界面一站式配置所有平台
 
 ---
 
-#### Sprint 18: LSP 工具集成 + 企业知识源（W4-W5）
+#### Sprint 19: LSP 工具集成 + 企业知识源（W4-W5）
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 18.1 | LSP 工具运行时 `tools/lsp-tool.ts`：Agent 通过 JSON-RPC 调用 LSP 服务器（TypeScript/Python/Go/Java）。能力：跳转定义、查引用、代码诊断、自动补全、重命名重构 | P1 | 4d | F9.8 |
-| 18.2 | LSP 服务器生命周期管理：按需启动 + 超时自动关闭 + 工作区路径绑定 | P1 | 2d | F9.8 |
-| 18.3 | 企业知识源集成框架 `rag/enterprise-source.ts`：定义 `KnowledgeSource` 接口（connect/sync/search），首批实现飞书文档 API + Confluence REST API | P2 | 3d | F5.6 |
-| 18.4 | 工单系统集成 `tools/ticket-tool.ts`：Jira REST API + 飞书项目 API + 钉钉待办 API，Agent 可创建/查询/更新工单 | P2 | 2d | F11.2 |
+| 19.1 | LSP 工具运行时 `tools/lsp-tool.ts`：Agent 通过 JSON-RPC 调用 LSP 服务器（TypeScript/Python/Go/Java）。能力：跳转定义、查引用、代码诊断、自动补全、重命名重构 | P1 | 4d | F9.8 |
+| 19.2 | LSP 服务器生命周期管理：按需启动 + 超时自动关闭 + 工作区路径绑定 | P1 | 2d | F9.8 |
+| 19.3 | 企业知识源集成框架 `rag/enterprise-source.ts`：定义 `KnowledgeSource` 接口（connect/sync/search），首批实现飞书文档 API + Confluence REST API | P2 | 3d | F5.6 |
+| 19.4 | 工单系统集成 `tools/ticket-tool.ts`：Jira REST API + 飞书项目 API + 钉钉待办 API，Agent 可创建/查询/更新工单 | P2 | 2d | F11.2 |
 
 **验收标准**:
 - [ ] LSP 工具支持至少 TypeScript + Python 两种语言
@@ -295,15 +332,15 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-#### Sprint 19: 记忆系统增强 + 进化仪表盘（W6-W7）
+#### Sprint 20: 记忆系统增强 + 进化仪表盘（W6-W7）
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 19.1 | 压缩质量审计 `context/compression-auditor.ts`：LCM 压缩后调用 LLM 对比压缩前后关键信息保留度（checklist: 关键决策/待办事项/数字数据/人名），保留度 < 80% 则重试 | P2 | 2d | F3.13 |
-| 19.2 | 可配置压缩模型：企业客户可指定用于压缩的模型（数据驻留合规），在 `evo_claw.json` 中增加 `models.compression` 字段 | P2 | 1d | F3.14 |
-| 19.3 | Rule-based 预过滤 `memory/rule-filter.ts`：高置信度记忆模式（用户自报姓名/职业/偏好/纠正）通过 regex 快速捕获，跳过 LLM 调用，降低 API 成本 | P2 | 2d | F3.15 |
-| 19.4 | 子 Agent 派生 + Agent 间通信增强：spawn_agent 支持 maxSpawnDepth=2 + allowlist 显式开启通信 + 结构化消息传递 | P1 | 2d | F6.1, F6.2 |
-| 19.5 | 进化仪表盘 UI：能力雷达图（8 维 ECharts）+ 记忆增长曲线 + 知识图谱网络可视化 + 周报自动生成 | P1 | 3d | F8.1, F8.3, F8.7, F8.5 |
+| 20.1 | 压缩质量审计 `context/compression-auditor.ts`：LCM 压缩后调用 LLM 对比压缩前后关键信息保留度（checklist: 关键决策/待办事项/数字数据/人名），保留度 < 80% 则重试 | P2 | 2d | F3.13 |
+| 20.2 | 可配置压缩模型：企业客户可指定用于压缩的模型（数据驻留合规），在 `evo_claw.json` 中增加 `models.compression` 字段 | P2 | 1d | F3.14 |
+| 20.3 | Rule-based 预过滤 `memory/rule-filter.ts`：高置信度记忆模式（用户自报姓名/职业/偏好/纠正）通过 regex 快速捕获，跳过 LLM 调用，降低 API 成本 | P2 | 2d | F3.15 |
+| 20.4 | 子 Agent 派生 + Agent 间通信增强：spawn_agent 支持 maxSpawnDepth=2 + allowlist 显式开启通信 + 结构化消息传递 | P1 | 2d | F6.1, F6.2 |
+| 20.5 | 进化仪表盘 UI：能力雷达图（8 维 ECharts）+ 记忆增长曲线 + 知识图谱网络可视化 + 周报自动生成 | P1 | 3d | F8.1, F8.3, F8.7, F8.5 |
 
 **验收标准**:
 - [ ] 压缩质量审计在关键信息丢失时触发重试，保留度 ≥ 80%
@@ -313,16 +350,16 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 ---
 
-#### Sprint 20: 安全合规进阶 + Docker 沙箱（W8-W10）
+#### Sprint 21: 安全合规进阶 + Docker 沙箱（W8-W10）
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 20.1 | 沙箱环境变量阻断 `sandbox/env-guard.ts`：Docker 模式下白名单机制，阻断 JAVA_TOOL_OPTIONS / PYTHONBREAKPOINT / DOTNET_STARTUP_HOOKS / NODE_OPTIONS 等注入向量 | P2 | 1d | F1.6 |
-| 20.2 | 审计日志 SIEM 集成 `infrastructure/siem-exporter.ts`：支持 JSON Lines 文件导出 + Syslog (RFC 5424) + Splunk HEC (HTTP Event Collector)，可配置导出周期和目标 | P2 | 3d | F1.8 |
-| 20.3 | 数据分类标记：记忆和对话内容按 L1-L4 分级（公开/内部/机密/绝密），标记影响可见性和导出策略 | P2 | 2d | F1.9 |
-| 20.4 | Docker 沙箱支持（可选）：3 模式（off/selective/all），首次触发引导安装（macOS 推荐 Colima），沙箱感知的 bash 工具 | P2 | 3d | F1.1 |
-| 20.5 | Brave LLM Context API 模式 `tools/web-search.ts` 增强：返回适合 LLM 的预处理内容，减少 token 消耗 | P2 | 1d | F9.2 |
-| 20.6 | 部门/团队记忆隔离验证：文档化 per-agent 架构天然支持的隔离策略 + 增加隔离性集成测试 | P1 | 1d | F11.3 |
+| 21.1 | 沙箱环境变量阻断 `sandbox/env-guard.ts`：Docker 模式下白名单机制，阻断 JAVA_TOOL_OPTIONS / PYTHONBREAKPOINT / DOTNET_STARTUP_HOOKS / NODE_OPTIONS 等注入向量 | P2 | 1d | F1.6 |
+| 21.2 | 审计日志 SIEM 集成 `infrastructure/siem-exporter.ts`：支持 JSON Lines 文件导出 + Syslog (RFC 5424) + Splunk HEC (HTTP Event Collector)，可配置导出周期和目标 | P2 | 3d | F1.8 |
+| 21.3 | 数据分类标记：记忆和对话内容按 L1-L4 分级（公开/内部/机密/绝密），标记影响可见性和导出策略 | P2 | 2d | F1.9 |
+| 21.4 | Docker 沙箱支持（可选）：3 模式（off/selective/all），首次触发引导安装（macOS 推荐 Colima），沙箱感知的 bash 工具 | P2 | 3d | F1.1 |
+| 21.5 | Brave LLM Context API 模式 `tools/web-search.ts` 增强：返回适合 LLM 的预处理内容，减少 token 消耗 | P2 | 1d | F9.2 |
+| 21.6 | 部门/团队记忆隔离验证：文档化 per-agent 架构天然支持的隔离策略 + 增加隔离性集成测试 | P1 | 1d | F11.3 |
 
 **验收标准**:
 - [ ] Docker 沙箱模式下阻断所有已知环境变量注入向量
@@ -359,8 +396,8 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | 类别 | 内容 | 优先级 |
 |------|------|--------|
 | **跨平台** | Windows 版本（Tauri 跨平台构建 + Windows Credential Manager 凭证适配） | P0 |
-| **移动端** | 评估 Tauri 2.0 mobile 成熟度；飞书/企微/钉钉 Channel 已提供移动入口 | P2 |
-| **SkillHub v1.0** | EvoClaw SkillHub API 服务端 + 首批 20 个企业 Skill 审核上架 + skill-discoverer 接入（见独立 Sprint 21） | P2 |
+| **移动端** | 评估 Tauri 2.0 mobile 成熟度；飞书/企微/微信个人号/钉钉 Channel 已提供移动入口 | P2 |
+| **SkillHub v1.0** | EvoClaw SkillHub API 服务端 + 首批 20 个企业 Skill 审核上架 + skill-discoverer 接入（见独立 Sprint 22） | P2 |
 | **Skill 生态** | SkillHub 扩展至 50+ Skill + 付费 Skill 支持 + 企业专属 Skill | P3 |
 | **记忆进化** | Growth Vectors / Crystallization：成长向量 30+ 天门控结晶化为永久特质写入 SOUL.md | P2 |
 | **图片生成** | image_generate 多 Provider 注册（OpenAI DALL-E / StableDiffusion / MidJourney API） | P2 |
@@ -376,15 +413,15 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 > SkillHub 从 Sprint 14 拆出，独立排期。当前 ClawHub + GitHub URL 直装已满足 Skill 分发需求，SkillHub 作为企业级 Skill 管控平台在核心功能稳定后再启动。
 
-#### Sprint 21: EvoClaw SkillHub v1.0
+#### Sprint 22: EvoClaw SkillHub v1.0
 
 **目标**: 搭建 EvoClaw 自有 Skill 市场，提供安全审计 + 搜索 + 下载能力。
 
 | # | 任务 | 优先级 | 预估 | 对应 Feature |
 |---|------|--------|------|-------------|
-| 21.1 | EvoClaw SkillHub API 服务端：`/api/v1/skills/search`（向量搜索）+ `/api/v1/skills/download`（ZIP 下载）+ `/api/v1/skills/audit`（安全审计状态查询）| P2 | 3d | F4.2 |
-| 21.2 | SkillHub 首批 Skill 审核上架：20 个企业场景 Skill（文档分析、数据整理、代码审查、报告生成、会议纪要等），每个通过安全扫描 + 人工审计 | P2 | 2d | F4.2 |
-| 21.3 | skill-discoverer.ts 增加 SkillHub 数据源：搜索优先级 SkillHub > ClawHub，安装流程增加审计状态检查 | P2 | 1d | F4.2, F4.3 |
+| 22.1 | EvoClaw SkillHub API 服务端：`/api/v1/skills/search`（向量搜索）+ `/api/v1/skills/download`（ZIP 下载）+ `/api/v1/skills/audit`（安全审计状态查询）| P2 | 3d | F4.2 |
+| 22.2 | SkillHub 首批 Skill 审核上架：20 个企业场景 Skill（文档分析、数据整理、代码审查、报告生成、会议纪要等），每个通过安全扫描 + 人工审计 | P2 | 2d | F4.2 |
+| 22.3 | skill-discoverer.ts 增加 SkillHub 数据源：搜索优先级 SkillHub > ClawHub，安装流程增加审计状态检查 | P2 | 1d | F4.2, F4.3 |
 
 **验收标准**:
 - [ ] SkillHub API 搜索响应 < 2 秒，20 个 Skill 可正常安装
@@ -396,12 +433,12 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 > 以下任务来自旧版 IterationPlan.md (v4.0)，在新计划中未覆盖但仍有价值，按版本归入。
 
-### 归入 v1.0（Sprint 16 发布准备阶段补充）
+### 归入 v1.0（Sprint 17 发布准备阶段补充）
 
 | # | 任务 | 优先级 | 预估 | 说明 |
 |---|------|--------|------|------|
-| 16.5 | 错误提示中文化 + 修复建议：所有错误信息提供用户可理解的中文描述和具体修复步骤 | P1 | 1d | 企业用户零门槛 |
-| 16.6 | 性能基准验证：冷启动 < 3 秒、空闲内存 < 200MB、三阶段记忆检索 < 200ms、流式首 Token < 500ms（不含 LLM） | P1 | 1d | 性能指标量化达标 |
+| 17.5 | 错误提示中文化 + 修复建议：所有错误信息提供用户可理解的中文描述和具体修复步骤 | P1 | 1d | 企业用户零门槛 |
+| 17.6 | 性能基准验证：冷启动 < 3 秒、空闲内存 < 200MB、三阶段记忆检索 < 200ms、流式首 Token < 500ms（不含 LLM） | P1 | 1d | 性能指标量化达标 |
 
 **验收标准补充**:
 - [ ] 所有用户可见的错误信息为中文且附带修复建议
@@ -411,15 +448,15 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 
 | # | 任务 | 归入 Sprint | 优先级 | 预估 | 说明 |
 |---|------|------------|--------|------|------|
-| 19.6 | 知识图谱增强：关系提取 prompt 增强（支持 5+ 种关系类型）+ 2 度关系扩展 + 图查询 API（`GET /knowledge/:agentId/graph`：实体查询、子图查询、路径查询）+ 实体合并 | Sprint 19 | P1 | 2d | 老计划遗留，知识图谱深化 |
-| 19.7 | 响应质量评估 `evolution/quality-evaluator.ts`：每次对话后自动采集质量指标（工具调用成功率、对话轮数、重试次数、用户满意度信号），评估结果反馈到 capability_graph | Sprint 19 | P1 | 2d | 老计划 F8.8，进化引擎核心 |
-| 19.8 | 记忆溯源 generation 字段：记忆提取时标注 generation 元数据（由哪次对话/哪个模型生成），`migrations/010_memory_generation.sql` + `GET /memory/:agentId/units/:id/provenance` | Sprint 19 | P2 | 1d | 老计划遗留，企业审计需要 |
-| 18.5 | System prompt 缓存 `context/prompt-cache.ts`：缓存不变的 system prompt 段落（安全宪法、工具列表等），避免每轮重复 token 计算，目标命中率 > 50% | Sprint 18 | P2 | 1d | 老计划遗留，降低 token 消耗 |
-| 20.7 | Rust 层 Skill 签名验证 `src-tauri/src/skill_verify.rs`：Ed25519 签名校验 + 内容 hash 比对 + 签名过期检查 | Sprint 20 | P2 | 2d | 老计划遗留，企业 Skill 安全 |
-| 20.8 | 企业专家模板（8 个内置模板）：研究助手、编程伙伴、写作助手、数据分析师、项目管理、翻译助手、学习教练、生活管家。每个含完整 8 文件工作区 | Sprint 20 | P1 | 2d | 老计划 F2.2，降低创建门槛 |
-| 20.9 | UX 体验打磨：暗色/亮色主题跟随系统 + 键盘快捷键（Cmd+N 新对话、Cmd+K 搜索）+ 空状态引导（无 Agent 时引导创建） | Sprint 20 | P2 | 2d | 从 v1.0 后移 |
-| 20.10 | 文档：用户使用指南（内置帮助页）+ 各 Provider API Key 获取指南 + 飞书/企微 Bot 创建指南 + 企业管理员部署手册 | Sprint 20 | P2 | 2d | 从 v1.0 后移 |
-| 20.11 | macOS DMG 签名 + 公证（Apple Notarization）+ Universal Binary（Intel + ARM） | Sprint 20 | P2 | 1d | 从 v1.0 后移 |
+| 20.6 | 知识图谱增强：关系提取 prompt 增强（支持 5+ 种关系类型）+ 2 度关系扩展 + 图查询 API（`GET /knowledge/:agentId/graph`：实体查询、子图查询、路径查询）+ 实体合并 | Sprint 20 | P1 | 2d | 老计划遗留，知识图谱深化 |
+| 20.7 | 响应质量评估 `evolution/quality-evaluator.ts`：每次对话后自动采集质量指标（工具调用成功率、对话轮数、重试次数、用户满意度信号），评估结果反馈到 capability_graph | Sprint 20 | P1 | 2d | 老计划 F8.8，进化引擎核心 |
+| 20.8 | 记忆溯源 generation 字段：记忆提取时标注 generation 元数据（由哪次对话/哪个模型生成），`migrations/011_memory_generation.sql` + `GET /memory/:agentId/units/:id/provenance` | Sprint 20 | P2 | 1d | 老计划遗留，企业审计需要 |
+| 19.5 | System prompt 缓存 `context/prompt-cache.ts`：缓存不变的 system prompt 段落（安全宪法、工具列表等），避免每轮重复 token 计算，目标命中率 > 50% | Sprint 19 | P2 | 1d | 老计划遗留，降低 token 消耗 |
+| 21.7 | Rust 层 Skill 签名验证 `src-tauri/src/skill_verify.rs`：Ed25519 签名校验 + 内容 hash 比对 + 签名过期检查 | Sprint 21 | P2 | 2d | 老计划遗留，企业 Skill 安全 |
+| 21.8 | 企业专家模板（8 个内置模板）：研究助手、编程伙伴、写作助手、数据分析师、项目管理、翻译助手、学习教练、生活管家。每个含完整 8 文件工作区 | Sprint 21 | P1 | 2d | 老计划 F2.2，降低创建门槛 |
+| 21.9 | UX 体验打磨：暗色/亮色主题跟随系统 + 键盘快捷键（Cmd+N 新对话、Cmd+K 搜索）+ 空状态引导（无 Agent 时引导创建） | Sprint 21 | P2 | 2d | 从 v1.0 后移 |
+| 21.10 | 文档：用户使用指南（内置帮助页）+ 各 Provider API Key 获取指南 + 飞书/企微 Bot 创建指南 + 企业管理员部署手册 | Sprint 21 | P2 | 2d | 从 v1.0 后移 |
+| 21.11 | macOS DMG 签名 + 公证（Apple Notarization）+ Universal Binary（Intel + ARM） | Sprint 21 | P2 | 1d | 从 v1.0 后移 |
 
 **验收标准补充**:
 - [ ] 知识图谱图查询 API 支持实体/子图/路径三种查询模式
@@ -457,55 +494,56 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | 3 | Prompt 注入检测 17 模式 | Sprint 12 | 3d |
 | 4 | Unicode 混淆检测 | Sprint 12 | 2d |
 | 5 | exec 审批 argv 绑定 | Sprint 12 | 2d |
-| 6 | 企微 Channel 生产就绪 | Sprint 13 | 5d |
-| 7 | 飞书 Channel 生产就绪 | Sprint 14 | 9d |
-| 9 | 使用量追踪 | Sprint 15 | 7d |
-| 10 | Auth Doctor 诊断 | Sprint 15 | 2d |
+| 6 | 微信个人号渠道 | Sprint 13 | 11d |
+| 7 | 企微 Channel 生产就绪 | Sprint 14 | 5d |
+| 8 | 飞书 Channel 生产就绪 | Sprint 15 | 9d |
+| 9 | 使用量追踪 | Sprint 16 | 7d |
+| 10 | Auth Doctor 诊断 | Sprint 16 | 2d |
 | 11 | 内存泄漏检测基础设施 | Sprint 11（前置） | 2d |
 | 12 | 架构守卫测试 | Sprint 11（前置） | 2d |
 | 13 | 安全仪表盘 UI | Sprint 11 | 2d |
-| 14 | 错误提示中文化 + 修复建议 | Sprint 16 | 1d |
-| 15 | 性能基准验证 | Sprint 16 | 1d |
+| 14 | 错误提示中文化 + 修复建议 | Sprint 17 | 1d |
+| 15 | 性能基准验证 | Sprint 17 | 1d |
 
 ### P1 — v1.5 必须完成
 
 | # | 项目 | Sprint | 工作量 |
 |---|------|--------|--------|
-| 19 | 钉钉 Channel | Sprint 17 | 6d |
-| 20 | QQ Channel | Sprint 17 | 4d |
-| 21 | LSP 工具集成 | Sprint 18 | 6d |
-| 22 | 知识图谱增强（关系提取/图查询 API） | Sprint 19 | 2d |
-| 23 | 响应质量评估（自动指标采集） | Sprint 19 | 2d |
-| 24 | 子 Agent 派生增强 | Sprint 19 | 2d |
-| 25 | 进化仪表盘 | Sprint 19 | 3d |
-| 26 | 企业专家模板（8 个内置） | Sprint 20 | 2d |
-| 27 | 部门/团队记忆隔离验证 | Sprint 20 | 1d |
+| 19 | 钉钉 Channel | Sprint 18 | 6d |
+| 20 | QQ Channel | Sprint 18 | 4d |
+| 21 | LSP 工具集成 | Sprint 19 | 6d |
+| 22 | 知识图谱增强（关系提取/图查询 API） | Sprint 20 | 2d |
+| 23 | 响应质量评估（自动指标采集） | Sprint 20 | 2d |
+| 24 | 子 Agent 派生增强 | Sprint 20 | 2d |
+| 25 | 进化仪表盘 | Sprint 20 | 3d |
+| 26 | 企业专家模板（8 个内置） | Sprint 21 | 2d |
+| 27 | 部门/团队记忆隔离验证 | Sprint 21 | 1d |
 
 ### P2 — v1.5 完成
 
 | # | 项目 | Sprint | 工作量 |
 |---|------|--------|--------|
-| 28 | 企业知识源集成 | Sprint 18 | 3d |
-| 29 | 工单系统集成 | Sprint 18 | 2d |
-| 30 | System prompt 缓存 | Sprint 18 | 1d |
-| 31 | 压缩质量审计 | Sprint 19 | 2d |
-| 32 | Rule-based 预过滤 | Sprint 19 | 2d |
-| 33 | 可配置压缩模型 | Sprint 19 | 1d |
-| 34 | 记忆溯源 generation 字段 | Sprint 19 | 1d |
-| 35 | SIEM 集成 | Sprint 20 | 3d |
-| 36 | Docker 沙箱 | Sprint 20 | 3d |
-| 37 | 数据分类标记 | Sprint 20 | 2d |
-| 38 | Rust 层 Skill 签名验证 | Sprint 20 | 2d |
-| 39 | Brave LLM Context API | Sprint 20 | 1d |
-| 40 | UX 体验打磨（主题/快捷键/空状态） | Sprint 20 | 2d |
-| 41 | 文档（使用指南/API Key/Bot 创建） | Sprint 20 | 2d |
-| 42 | macOS 签名 + 公证 | Sprint 20 | 1d |
+| 28 | 企业知识源集成 | Sprint 19 | 3d |
+| 29 | 工单系统集成 | Sprint 19 | 2d |
+| 30 | System prompt 缓存 | Sprint 19 | 1d |
+| 31 | 压缩质量审计 | Sprint 20 | 2d |
+| 32 | Rule-based 预过滤 | Sprint 20 | 2d |
+| 33 | 可配置压缩模型 | Sprint 20 | 1d |
+| 34 | 记忆溯源 generation 字段 | Sprint 20 | 1d |
+| 35 | SIEM 集成 | Sprint 21 | 3d |
+| 36 | Docker 沙箱 | Sprint 21 | 3d |
+| 37 | 数据分类标记 | Sprint 21 | 2d |
+| 38 | Rust 层 Skill 签名验证 | Sprint 21 | 2d |
+| 39 | Brave LLM Context API | Sprint 21 | 1d |
+| 40 | UX 体验打磨（主题/快捷键/空状态） | Sprint 21 | 2d |
+| 41 | 文档（使用指南/API Key/Bot 创建） | Sprint 21 | 2d |
+| 42 | macOS 签名 + 公证 | Sprint 21 | 1d |
 
 ### P2 — SkillHub（独立排期，最低优先级）
 
 | # | 项目 | Sprint | 工作量 |
 |---|------|--------|--------|
-| 50 | EvoClaw SkillHub v1.0（API + 20 Skill + discoverer 接入） | Sprint 21 | 6d |
+| 50 | EvoClaw SkillHub v1.0（API + 20 Skill + discoverer 接入） | Sprint 22 | 6d |
 
 ### P3 — v2.0+ 探索
 
@@ -543,7 +581,7 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | Rust 权限集成复杂度超预期 | v1.0 Phase 1 延期 | 中 | 优先保证 Node.js 层权限的正确性不退化，Rust 层增量增强 |
 | 飞书/企微 API 变更 | Channel 不可用 | 低 | 抽象层隔离变更影响，官方 SDK 跟进 |
 | SkillHub 冷启动 | Skill 数量不足 | 低 | 已降为最低优先级独立 Sprint，ClawHub + GitHub URL 直装可先行覆盖 |
-| 168h 稳定性测试发现内存泄漏 | 发布延期 | 中 | 提前在 Sprint 15 就开始内存监控，不等到 Sprint 16 |
+| 168h 稳定性测试发现内存泄漏 | 发布延期 | 中 | 提前在 Sprint 16 就开始内存监控，不等到 Sprint 17 |
 | 企业客户安全审计不通过 | 商业风险 | 低 | Sprint 11-12 安全增强 + 第三方渗透测试 |
 
 ---
@@ -556,23 +594,24 @@ Provider+进化引擎        Auth Doctor              子Agent+仪表盘        
 | F1.3 | Prompt 注入检测 | Sprint 12 | P1 |
 | F1.4 | Unicode 混淆检测 | Sprint 12 | P1 |
 | F1.5 | exec 审批绑定 | Sprint 12 | P1 |
-| F1.6 | 沙箱环境变量阻断 | Sprint 20 | P2 |
-| F1.8 | SIEM 审计集成 | Sprint 20 | P2 |
-| F1.9 | 数据分类标记 | Sprint 20 | P2 |
+| F1.6 | 沙箱环境变量阻断 | Sprint 21 | P2 |
+| F1.8 | SIEM 审计集成 | Sprint 21 | P2 |
+| F1.9 | 数据分类标记 | Sprint 21 | P2 |
 | F1.10 | 安全仪表盘 | Sprint 11 | P1 |
-| F4.2 | EvoClaw SkillHub | Sprint 21（独立排期） | P2 |
-| F7.1 | 飞书 Channel 生产化 | Sprint 14 | P0 |
-| F7.2 | 企微 Channel 生产化 | Sprint 13 | P0 |
-| F7.3 | 钉钉 Channel | Sprint 17 | P1 |
-| F7.4 | QQ Channel | Sprint 17 | P1 |
-| F8.2 | 使用量追踪 | Sprint 15 | P1 |
-| F9.8 | LSP 工具集成 | Sprint 18 | P1 |
-| F9.10 | Auth Doctor | Sprint 15 | P1 |
-| F10.7 | 内存泄漏检测 | Sprint 16 | P1 |
-| F10.8 | 架构守卫测试 | Sprint 16 | P1 |
-| F3.13 | 压缩质量审计 | Sprint 19 | P2 |
-| F3.14 | 可配置压缩模型 | Sprint 19 | P2 |
-| F3.15 | Rule-based 预过滤 | Sprint 19 | P2 |
-| F5.6 | 企业知识源集成 | Sprint 18 | P2 |
-| F6.1 | 子 Agent 派生 | Sprint 19 | P1 |
-| F11.2 | 工单系统集成 | Sprint 18 | P2 |
+| F4.2 | EvoClaw SkillHub | Sprint 22（独立排期） | P2 |
+| F7.1 | 飞书 Channel 生产化 | Sprint 15 | P0 |
+| F7.2 | 企微 Channel 生产化 | Sprint 14 | P0 |
+| F7.3 | 钉钉 Channel | Sprint 18 | P1 |
+| F7.4 | QQ Channel | Sprint 18 | P1 |
+| F7.7 | 微信个人号 Channel | Sprint 13 | P0 |
+| F8.2 | 使用量追踪 | Sprint 16 | P1 |
+| F9.8 | LSP 工具集成 | Sprint 19 | P1 |
+| F9.10 | Auth Doctor | Sprint 16 | P1 |
+| F10.7 | 内存泄漏检测 | Sprint 17 | P1 |
+| F10.8 | 架构守卫测试 | Sprint 17 | P1 |
+| F3.13 | 压缩质量审计 | Sprint 20 | P2 |
+| F3.14 | 可配置压缩模型 | Sprint 20 | P2 |
+| F3.15 | Rule-based 预过滤 | Sprint 20 | P2 |
+| F5.6 | 企业知识源集成 | Sprint 19 | P2 |
+| F6.1 | 子 Agent 派生 | Sprint 20 | P1 |
+| F11.2 | 工单系统集成 | Sprint 19 | P2 |

@@ -8,6 +8,7 @@ import type { ChannelConfig } from '../channel/channel-adapter.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { FeishuAdapter } from '../channel/adapters/feishu.js';
 import type { WecomAdapter } from '../channel/adapters/wecom.js';
+import { getQrCode, pollQrStatus } from '../channel/adapters/weixin-api.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('channel-webhook');
@@ -100,6 +101,38 @@ export function createChannelRoutes(channelManager: ChannelManager): Hono {
     }
 
     return c.json({ success: true });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 微信 QR 码登录代理 (避免前端 CORS)
+  // ---------------------------------------------------------------------------
+
+  /** GET /weixin/qrcode — 获取微信登录二维码 */
+  app.get('/weixin/qrcode', async (c) => {
+    try {
+      const data = await getQrCode();
+      return c.json(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error('获取微信二维码失败', err);
+      return c.json({ error: message }, 500);
+    }
+  });
+
+  /** GET /weixin/qrcode-status — 轮询二维码扫描状态 */
+  app.get('/weixin/qrcode-status', async (c) => {
+    const qrcode = c.req.query('qrcode');
+    if (!qrcode) {
+      return c.json({ error: '缺少 qrcode 参数' }, 400);
+    }
+    try {
+      const data = await pollQrStatus(undefined, qrcode);
+      return c.json(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error('轮询微信 QR 状态失败', err);
+      return c.json({ error: message }, 500);
+    }
   });
 
   return app;

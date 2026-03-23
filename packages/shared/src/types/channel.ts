@@ -1,5 +1,5 @@
 /** 通道类型 */
-export type ChannelType = 'local' | 'feishu' | 'wecom' | 'dingtalk' | 'qq';
+export type ChannelType = 'local' | 'feishu' | 'wecom' | 'dingtalk' | 'qq' | 'weixin';
 
 /** 通道消息 — 从 IM 平台收到的消息 */
 export interface ChannelMessage {
@@ -12,4 +12,8 @@ export interface ChannelMessage {
   content: string;
   messageId: string;
   timestamp: number;
+  /** 媒体文件本地路径 (CDN 下载解密后) */
+  mediaPath?: string;
+  /** 媒体 MIME 类型 */
+  mediaType?: string;
 }

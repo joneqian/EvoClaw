@@ -79,6 +79,36 @@ export function createChannelTools(
     });
   }
 
+  // 微信工具
+  if (currentChannel === 'weixin') {
+    tools.push({
+      name: 'weixin_send',
+      description: '通过微信发送文本消息',
+      channel: 'weixin',
+      execute: async (params) => {
+        const peerId = params['peerId'] as string;
+        const content = params['content'] as string;
+        if (!peerId || !content) return '错误：缺少 peerId 或 content';
+        await channelManager.sendMessage('weixin', peerId, content);
+        return `已发送到微信 ${peerId}`;
+      },
+    });
+
+    tools.push({
+      name: 'weixin_send_media',
+      description: '通过微信发送媒体文件（图片/视频/文件），支持本地路径或远程 URL',
+      channel: 'weixin',
+      execute: async (params) => {
+        const peerId = params['peerId'] as string;
+        const filePath = params['filePath'] as string;
+        const text = params['text'] as string | undefined;
+        if (!peerId || !filePath) return '错误：缺少 peerId 或 filePath';
+        await channelManager.sendMediaMessage('weixin', peerId, filePath, text);
+        return `已发送媒体文件到微信 ${peerId}: ${filePath}`;
+      },
+    });
+  }
+
   return tools;
 }
 
@@ -92,6 +122,8 @@ export function getChannelToolNames(channel: ChannelType): string[] {
       return [...base, 'feishu_send', 'feishu_card'];
     case 'wecom':
       return [...base, 'wecom_send'];
+    case 'weixin':
+      return [...base, 'weixin_send', 'weixin_send_media'];
     default:
       return base;
   }

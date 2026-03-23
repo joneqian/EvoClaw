@@ -26,6 +26,8 @@ import { CronRunner } from './scheduler/cron-runner.js';
 import { LaneQueue } from './agent/lane-queue.js';
 import { ChannelManager } from './channel/channel-manager.js';
 import { DesktopAdapter } from './channel/adapters/desktop.js';
+import { WeixinAdapter } from './channel/adapters/weixin.js';
+import { ChannelStateRepo } from './channel/channel-state-repo.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { createDoctorRoutes } from './routes/doctor.js';
@@ -402,11 +404,16 @@ async function main() {
   cronRunner.start();
   log.info('CronRunner 已启动');
 
-  // 初始化 ChannelManager + Desktop 适配器
+  // 初始化 ChannelManager + 适配器
   const channelManager = new ChannelManager();
   const desktopAdapter = new DesktopAdapter();
   channelManager.registerAdapter(desktopAdapter);
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
+
+  const channelStateRepo = new ChannelStateRepo(db);
+  const weixinAdapter = new WeixinAdapter(channelStateRepo);
+  channelManager.registerAdapter(weixinAdapter);
+
   log.info('ChannelManager 已初始化');
 
   // 内存监控

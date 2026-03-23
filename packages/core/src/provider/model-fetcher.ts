@@ -114,7 +114,7 @@ export async function fetchModelsFromApi(
     if (Array.isArray(json.data)) {
       rawModels = json.data as ApiModel[];
     } else if (
-      Array.isArray((json as ModelsResponse & { models?: unknown }).models)
+      Array.isArray((json as unknown as ModelsResponse & { models?: unknown }).models)
     ) {
       rawModels = (json as unknown as { models: ApiModel[] }).models;
     } else if (

@@ -31,6 +31,7 @@ import { createToolRegistryPlugin } from '../context/plugins/tool-registry.js';
 import { createGapDetectionPlugin } from '../context/plugins/gap-detection.js';
 import { SecurityExtension } from '../bridge/security-extension.js';
 import { createPermissionPlugin } from '../context/plugins/permission.js';
+import { createSecurityPlugin } from '../context/plugins/security.js';
 import { PermissionInterceptor } from '../tools/permission-interceptor.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
@@ -299,6 +300,10 @@ export function createChatRoutes(
 
     // 创建 ContextEngine 并注册插件
     const contextEngine = new ContextEngine();
+
+    // 安全检测插件（最高优先级，priority=5）
+    contextEngine.register(createSecurityPlugin(store));
+
     contextEngine.register(sessionRouterPlugin);
     contextEngine.register(contextAssemblerPlugin);
 

@@ -19,8 +19,9 @@ const LAYER_RULES: Record<string, string[]> = {
   channel: ['infrastructure'],
   scheduler: ['agent', 'infrastructure'],
   agent: ['memory', 'provider', 'bridge', 'infrastructure'],
-  context: ['agent', 'memory', 'provider', 'bridge', 'routing', 'evolution', 'skill', 'infrastructure'],
+  context: ['agent', 'memory', 'provider', 'bridge', 'routing', 'evolution', 'skill', 'security', 'infrastructure'],
   evolution: ['infrastructure'],
+  security: [],
   // routes/ and bridge/ are unrestricted (they wire everything together)
 };
 

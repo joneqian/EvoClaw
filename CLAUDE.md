@@ -101,4 +101,4 @@ better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/in
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/PRD.md` (v5.0), `docs/Architecture.md` (v5.0), `docs/AgentSystemDesign.md`, `docs/MemorySystemDesign.md`, `docs/IterationPlan.md` (v4.0)
-- **当前冲刺**: Sprint 10C — Agent 能力急行军（3 天，03-17~03-19，03-20 客户演示）
+- **当前冲刺**: Sprint 12 ✅ 已完成 — 安全检测引擎（Prompt 注入 17 模式 + Unicode 混淆检测 + SecurityPlugin + 55 测试）

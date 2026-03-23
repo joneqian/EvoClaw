@@ -11,6 +11,12 @@ export function createMemoryExtractPlugin(extractor: MemoryExtractor): ContextPl
     priority: 90,
 
     async afterTurn(ctx: TurnContext) {
+      // 安全检测：medium/high 注入时跳过记忆提取，防止记忆污染
+      if (ctx.securityFlags?.injectionDetected && ctx.securityFlags.injectionSeverity !== 'low') {
+        log.warn(`检测到注入 (${ctx.securityFlags.injectionSeverity})，跳过记忆提取`);
+        return;
+      }
+
       const msgCount = ctx.messages.length;
       const lastMsg = ctx.messages[msgCount - 1];
       // 统计有效内容

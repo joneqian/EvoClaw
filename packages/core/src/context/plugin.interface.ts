@@ -7,6 +7,15 @@ export interface BootstrapContext {
   workspacePath: string;
 }
 
+/** 安全检测标志 */
+export interface SecurityFlags {
+  injectionDetected: boolean;
+  injectionPatterns: string[];
+  injectionSeverity: 'low' | 'medium' | 'high';
+  unicodeDetected: boolean;
+  unicodeIssues: string[];
+}
+
 /** 每轮对话上下文 */
 export interface TurnContext {
   agentId: string;
@@ -19,6 +28,8 @@ export interface TurnContext {
   estimatedTokens: number;
   /** token 上限 */
   tokenLimit: number;
+  /** 安全检测标志（由 SecurityPlugin 设置） */
+  securityFlags?: SecurityFlags;
 }
 
 /** 压缩阶段上下文 */

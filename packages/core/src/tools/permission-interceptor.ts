@@ -1,5 +1,6 @@
 import type { SecurityExtension, PermissionResult } from '../bridge/security-extension.js';
 import type { PermissionCategory } from '@evoclaw/shared';
+import { detectUnicodeConfusion } from '../security/unicode-detector.js';
 
 /** 危险命令模式 */
 const DANGEROUS_PATTERNS = [
@@ -14,6 +15,15 @@ const DANGEROUS_PATTERNS = [
   />\s*\/dev\//i,
   /chmod\s+777/i,
   /sudo\s+/i,
+  // Sprint 12: 编码攻击 + 链式注入
+  /echo\s+.*\|\s*base64\s+-d\s*\|\s*(?:sh|bash)/i,          // Base64 解码执行
+  /[;&|]\s*(?:rm\s+-rf|mkfs|dd\s+if=)/i,                     // 管道/链式注入
+  /export\s+(?:PATH|LD_PRELOAD|DYLD_\w+)\s*=/i,              // 环境变量篡改
+  /(?:curl|wget)\s+.*\|\s*(?:sh|bash|python)/i,              // 远程代码执行
+  /(?:python|node|ruby)\s+-[ce]\s/i,                          // 解释器 eval
+  /(?:rm\s+-rf|mkfs|dd\s+if=|chmod\s+777).*&\s*$/i,          // 后台执行危险命令
+  /[><]\(.*(?:rm\s+-rf|mkfs|dd\s+if=)/i,                     // 进程替换
+  /crontab\s+-[re]/i,                                         // 定时任务篡改
 ];
 
 /** 消息发送类工具（需要强制确认） */
@@ -99,7 +109,21 @@ export class PermissionInterceptor {
       }
     }
 
-    // 3. 消息发送类工具强制确认
+    // 3. Unicode 混淆检测（命令/路径参数）
+    const textToCheck = (params['command'] ?? params['path'] ?? params['file_path'] ?? '') as string;
+    if (textToCheck) {
+      const unicode = detectUnicodeConfusion(textToCheck);
+      if (unicode.detected) {
+        return {
+          allowed: false,
+          reason: `检测到 Unicode 混淆: ${unicode.issues.join(', ')}`,
+          requiresConfirmation: true,
+          permissionCategory: category,
+        };
+      }
+    }
+
+    // 4. 消息发送类工具强制确认
     if (MESSAGE_TOOLS.has(toolName)) {
       const result = this.security.checkPermission(agentId, 'network', toolName);
       if (result === 'ask') {
@@ -113,7 +137,7 @@ export class PermissionInterceptor {
       return { allowed: result === 'allow' };
     }
 
-    // 4. 文件系统路径检查
+    // 5. 文件系统路径检查
     if (category === 'file_read' || category === 'file_write') {
       const filePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
       if (this.isRestrictedPath(filePath)) {
@@ -126,7 +150,7 @@ export class PermissionInterceptor {
       }
     }
 
-    // 5. 常规权限检查（先查具体资源，再查通配符 — SecurityExtension 内部处理）
+    // 6. 常规权限检查（先查具体资源，再查通配符 — SecurityExtension 内部处理）
     const resource = (params['command'] as string) ?? (params['path'] as string) ?? (params['file_path'] as string) ?? (params['url'] as string) ?? (params['query'] as string) ?? '*';
     const result = this.security.checkPermission(agentId, category, resource);
     if (result === 'deny') {

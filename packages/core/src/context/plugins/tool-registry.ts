@@ -37,11 +37,28 @@ const DEFAULT_PATHS: SkillPaths = {
   agentDirTemplate: path.join(os.homedir(), DEFAULT_DATA_DIR, 'agents', '{agentId}', 'workspace', 'skills'),
 };
 
+/** 禁用技能查询函数（返回该 Agent 禁用的技能名称集合） */
+export type DisabledSkillsFn = (agentId: string) => Set<string>;
+
+/** ToolRegistry 插件选项 */
+export interface ToolRegistryOptions {
+  paths?: Partial<SkillPaths>;
+  /** 查询 Agent 禁用的技能 */
+  getDisabledSkills?: DisabledSkillsFn;
+}
+
 /** 创建 ToolRegistry 插件 */
-export function createToolRegistryPlugin(paths?: Partial<SkillPaths>): ContextPlugin {
+export function createToolRegistryPlugin(options?: ToolRegistryOptions): ContextPlugin;
+/** @deprecated 使用 options 对象形式 */
+export function createToolRegistryPlugin(paths?: Partial<SkillPaths>): ContextPlugin;
+export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistryOptions): ContextPlugin {
+  // 兼容旧签名：直接传 paths 对象
+  const isOptions = arg && ('getDisabledSkills' in arg || 'paths' in arg);
+  const opts: ToolRegistryOptions = isOptions ? (arg as ToolRegistryOptions) : { paths: arg as Partial<SkillPaths> | undefined };
+
   const skillPaths: SkillPaths = {
-    userDir: paths?.userDir ?? DEFAULT_PATHS.userDir,
-    agentDirTemplate: paths?.agentDirTemplate ?? DEFAULT_PATHS.agentDirTemplate,
+    userDir: opts.paths?.userDir ?? DEFAULT_PATHS.userDir,
+    agentDirTemplate: opts.paths?.agentDirTemplate ?? DEFAULT_PATHS.agentDirTemplate,
   };
 
   return {
@@ -62,8 +79,11 @@ export function createToolRegistryPlugin(paths?: Partial<SkillPaths>): ContextPl
         skillCache.set(ctx.agentId, skills);
       }
 
-      // 过滤：仅包含门控通过 + 非 disableModelInvocation 的 Skill
-      const activeSkills = skills.filter(s => s.gatesPassed && !s.disableModelInvocation);
+      // 查询该 Agent 禁用的技能
+      const disabledSet = opts.getDisabledSkills?.(ctx.agentId) ?? new Set<string>();
+
+      // 过滤：仅包含门控通过 + 非 disableModelInvocation + 未被 Agent 禁用的 Skill
+      const activeSkills = skills.filter(s => s.gatesPassed && !s.disableModelInvocation && !disabledSet.has(s.name));
 
       if (activeSkills.length === 0) return;
 

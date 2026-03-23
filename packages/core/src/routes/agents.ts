@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { AgentManager } from '../agent/agent-manager.js';
 import { AgentBuilder, type BuilderState, type LLMGenerateFn } from '../agent/agent-builder.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import { SkillDiscoverer } from '../skill/skill-discoverer.js';
 
 /** 创建 Agent CRUD 路由 */
 export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMGenerateFn, db?: SqliteStore) {
@@ -163,6 +164,67 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
     }
 
     return c.json({ sessionId: sid, response });
+  });
+
+  // --- Agent 技能启用/禁用 ---
+  const skillDiscoverer = new SkillDiscoverer();
+
+  /** GET /:id/skills — 获取 Agent 的技能列表（全部已安装 + 启用状态） */
+  app.get('/:id/skills', (c) => {
+    const agentId = c.req.param('id');
+    const agent = agentManager.getAgent(agentId);
+    if (!agent) {
+      return c.json({ error: 'Agent 不存在' }, 404);
+    }
+
+    // 获取所有已安装技能
+    const installed = skillDiscoverer.listLocal();
+
+    // 查询该 Agent 显式禁用的技能
+    const disabledRows = db
+      ? db.all<{ skill_name: string }>(
+          'SELECT skill_name FROM agent_skills WHERE agent_id = ? AND enabled = 0',
+          agentId,
+        )
+      : [];
+    const disabledSet = new Set(disabledRows.map(r => r.skill_name));
+
+    // 合并：默认启用，除非显式禁用
+    const skills = installed.map(s => ({
+      name: s.name,
+      slug: s.slug,
+      description: s.description,
+      enabled: !disabledSet.has(s.name),
+    }));
+
+    return c.json({ skills });
+  });
+
+  /** PUT /:id/skills/:skillName — 启用/禁用某个技能 */
+  app.put('/:id/skills/:skillName', async (c) => {
+    const agentId = c.req.param('id');
+    const skillName = c.req.param('skillName');
+    const agent = agentManager.getAgent(agentId);
+    if (!agent) {
+      return c.json({ error: 'Agent 不存在' }, 404);
+    }
+
+    if (!db) {
+      return c.json({ error: '数据库不可用' }, 500);
+    }
+
+    const { enabled } = await c.req.json<{ enabled: boolean }>();
+    const enabledInt = enabled ? 1 : 0;
+
+    db.run(
+      `INSERT INTO agent_skills (agent_id, skill_name, enabled, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT (agent_id, skill_name)
+       DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+      agentId, skillName, enabledInt,
+    );
+
+    return c.json({ success: true });
   });
 
   return app;

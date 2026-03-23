@@ -354,9 +354,19 @@ async function runWithPI(
   const effectiveWorkspace = config.workspacePath ?? prevCwd;
   try { process.chdir(effectiveWorkspace); } catch { /* 目录不存在时保持原 cwd */ }
 
+  // 创建 ResourceLoader，禁止 PI 自动扫描外部技能目录 (~/.agents/skills/ 等)
+  // EvoClaw 通过自己的 tool-registry 系统管理技能注入
+  const resourceLoader = new piCoding.DefaultResourceLoader({
+    cwd: effectiveWorkspace,
+    settingsManager,
+    noSkills: true,
+  } as any);
+  await resourceLoader.reload();
+
   // 通过 createAgentSession 创建完整会话（对标 OpenClaw，启用 compaction/retry）
   const { session } = await piCoding.createAgentSession({
     cwd: effectiveWorkspace,
+    resourceLoader,
     authStorage,
     modelRegistry,
     sessionManager,

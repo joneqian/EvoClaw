@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAgentStore } from '../stores/agent-store';
-import { get, post } from '../lib/api';
+import { get, post, put } from '../lib/api';
 import AgentAvatar from './AgentAvatar';
 
 /** 面板标签页 */
@@ -149,9 +149,55 @@ function ChannelsTab({ agentId }: { agentId: string }) {
 
 // ─── 技能标签页 ───
 
+/** Agent 技能项（含启用状态） */
+interface AgentSkillItem {
+  name: string;
+  slug?: string;
+  description: string;
+  enabled: boolean;
+}
+
 function SkillsTab({ agentId }: { agentId: string }) {
-  // 技能列表（暂时为空态）
-  const [skills] = useState<{ name: string; description: string }[]>([]);
+  const [skills, setSkills] = useState<AgentSkillItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  const fetchSkills = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await get<{ skills: AgentSkillItem[] }>(`/agents/${agentId}/skills`);
+      setSkills(res.skills);
+    } catch {
+      // 容错
+    } finally {
+      setLoading(false);
+    }
+  }, [agentId]);
+
+  useEffect(() => {
+    fetchSkills();
+  }, [fetchSkills]);
+
+  const toggleSkill = useCallback(async (skillName: string, enabled: boolean) => {
+    setToggling(skillName);
+    try {
+      await put(`/agents/${agentId}/skills/${encodeURIComponent(skillName)}`, { enabled });
+      // 乐观更新本地状态
+      setSkills(prev => prev.map(s => s.name === skillName ? { ...s, enabled } : s));
+    } catch (err) {
+      console.error('技能切换失败:', err);
+    } finally {
+      setToggling(null);
+    }
+  }, [agentId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <span className="w-5 h-5 border-2 border-slate-300 border-t-brand rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -170,20 +216,45 @@ function SkillsTab({ agentId }: { agentId: string }) {
           </button>
         </div>
       ) : (
-        <div className="space-y-2">
-          {skills.map((skill) => (
-            <div key={skill.name} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">{skill.name}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{skill.description}</p>
+        <>
+          <p className="text-sm text-slate-500">
+            管理当前专家可使用的技能，关闭后该专家将不会调用对应技能。
+          </p>
+          <div className="space-y-2">
+            {skills.map((skill) => (
+              <div key={skill.name} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800">{skill.name}</p>
+                  {skill.description && (
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">{skill.description}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => toggleSkill(skill.name, !skill.enabled)}
+                  disabled={toggling === skill.name}
+                  className={`w-10 h-6 rounded-full transition-colors relative shrink-0 ${
+                    skill.enabled ? 'bg-brand' : 'bg-slate-200'
+                  } ${toggling === skill.name ? 'opacity-50' : ''}`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    skill.enabled ? 'left-[18px]' : 'left-0.5'
+                  }`} />
+                </button>
               </div>
-              <button className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
-                rounded-lg hover:bg-red-50 transition-colors">
-                卸载
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+          <div className="pt-2">
+            <button className="w-full px-4 py-2.5 text-sm font-medium text-brand border border-brand/30
+              rounded-lg hover:bg-brand/5 transition-colors">
+              去技能商店
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

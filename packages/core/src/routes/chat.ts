@@ -323,8 +323,16 @@ export function createChatRoutes(
       contextEngine.register(createMemoryExtractPlugin(memoryExtractor));
     }
 
-    // Skill 系统插件
-    contextEngine.register(createToolRegistryPlugin());                  // Tier 1: <available_skills> 目录注入
+    // Skill 系统插件（含 Agent 级启用/禁用过滤）
+    contextEngine.register(createToolRegistryPlugin({
+      getDisabledSkills: (aId) => {
+        const rows = store.all<{ skill_name: string }>(
+          'SELECT skill_name FROM agent_skills WHERE agent_id = ? AND enabled = 0',
+          aId,
+        );
+        return new Set(rows.map(r => r.skill_name));
+      },
+    }));                  // Tier 1: <available_skills> 目录注入
     contextEngine.register(createGapDetectionPlugin(skillDiscoverer));   // afterTurn: 能力缺口检测 + Skill 推荐
 
     // 加载消息历史

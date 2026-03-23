@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from '../components/AgentAvatar';
 import AgentCreationModal from '../components/AgentCreationModal';
+import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
 import { parseUtcDate } from '../lib/date';
 
 export default function AgentsPage() {
@@ -16,6 +17,7 @@ export default function AgentsPage() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [initialMessage, setInitialMessage] = useState<string | undefined>(undefined);
+  const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
@@ -239,7 +241,7 @@ export default function AgentsPage() {
                           hover:bg-brand/10 hover:border-brand/40 transition-all">
                         对话
                       </button>
-                      <button onClick={() => navigate(`/agents/${agent.id}/edit`)}
+                      <button onClick={() => setSettingsAgentId(agent.id)}
                         className="flex-1 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg
                           hover:text-brand hover:border-brand/30 transition-colors">
                         编辑
@@ -260,6 +262,15 @@ export default function AgentsPage() {
         onCreated={handleGoChat}
         initialMessage={initialMessage}
       />
+
+      {/* 专家设置面板 */}
+      {settingsAgentId && (
+        <ExpertSettingsPanel
+          agentId={settingsAgentId}
+          isOpen={!!settingsAgentId}
+          onClose={() => setSettingsAgentId(null)}
+        />
+      )}
     </div>
   );
 }

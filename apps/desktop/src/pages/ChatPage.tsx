@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import { patch } from '../lib/api';
 import ModelSelector from '../components/ModelSelector';
+import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
 import { useAppStore } from '../stores/app-store';
 import PermissionDialog from '../components/PermissionDialog';
 import { invoke } from '@tauri-apps/api/core';
@@ -27,6 +29,7 @@ function parseSSELine(line: string): { event?: string; data?: string } | null {
 // ─── 对话视图 ───
 
 function ChatView() {
+  const navigate = useNavigate();
   const {
     messages,
     isStreaming,
@@ -49,6 +52,7 @@ function ChatView() {
   // 模型选择：初始化为当前专家绑定的模型
   const currentAgent = agents.find((a) => a.id === currentAgentId);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(currentAgent?.modelId ?? null);
+  const [showSettings, setShowSettings] = useState(false);
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
     toolName: string;
@@ -423,10 +427,22 @@ function ChatView() {
 
   return (
     <div className="flex-1 flex flex-col bg-white h-full relative">
-      {/* Sidecar 未连接提示 */}
-      {!sidecarConnected && (
-        <div className="absolute top-2 right-4 z-10">
-          <span className="text-xs text-red-400">Sidecar 未连接</span>
+      {/* 右上角：专家设置 */}
+      {currentAgent && (
+        <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
+          {!sidecarConnected && (
+            <span className="text-xs text-red-400">Sidecar 未连接</span>
+          )}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 rounded-lg
+              hover:bg-slate-50 transition-colors text-slate-600"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+            </svg>
+            专家设置
+          </button>
         </div>
       )}
 
@@ -502,6 +518,15 @@ function ChatView() {
         onDecision={handlePermissionDecision}
         onClose={() => setPermissionRequest(null)}
       />
+
+      {/* 专家设置面板 */}
+      {currentAgentId && (
+        <ExpertSettingsPanel
+          agentId={currentAgentId}
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }

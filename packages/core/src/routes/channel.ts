@@ -1,11 +1,12 @@
 /**
- * Channel 管理路由 — 连接/断开/状态 + Webhook 接收
+ * Channel 管理路由 — 连接/断开/状态 + Webhook 接收 + Binding 联动
  */
 
 import { Hono } from 'hono';
 import type { ChannelManager } from '../channel/channel-manager.js';
 import type { ChannelConfig } from '../channel/channel-adapter.js';
 import type { ChannelType } from '@evoclaw/shared';
+import type { BindingRouter } from '../routing/binding-router.js';
 import type { FeishuAdapter } from '../channel/adapters/feishu.js';
 import type { WecomAdapter } from '../channel/adapters/wecom.js';
 import { getQrCode, pollQrStatus } from '../channel/adapters/weixin-api.js';
@@ -14,14 +15,34 @@ import { createLogger } from '../infrastructure/logger.js';
 const log = createLogger('channel-webhook');
 
 /** 创建 Channel 路由 */
-export function createChannelRoutes(channelManager: ChannelManager): Hono {
+export function createChannelRoutes(channelManager: ChannelManager, bindingRouter?: BindingRouter): Hono {
   const app = new Hono();
 
-  /** POST /connect — 连接 Channel */
+  /** POST /connect — 连接 Channel（可选绑定 agentId） */
   app.post('/connect', async (c) => {
-    const body = await c.req.json<ChannelConfig>();
+    const body = await c.req.json<ChannelConfig & { agentId?: string }>();
     try {
       await channelManager.connect(body);
+
+      // 如果提供了 agentId，创建 Channel → Agent 绑定
+      if (body.agentId && bindingRouter) {
+        // 移除该 Channel 类型已有的绑定（一个 Channel 对应一个 Agent）
+        const existing = bindingRouter.listBindings().filter(b => b.channel === body.type);
+        for (const b of existing) {
+          bindingRouter.removeBinding(b.id);
+        }
+        // 创建新绑定
+        bindingRouter.addBinding({
+          agentId: body.agentId,
+          channel: body.type,
+          accountId: null,
+          peerId: null,
+          priority: 0,
+          isDefault: false,
+        });
+        log.info(`Channel ${body.type} 已绑定 Agent ${body.agentId}`);
+      }
+
       return c.json({ success: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -29,10 +50,22 @@ export function createChannelRoutes(channelManager: ChannelManager): Hono {
     }
   });
 
-  /** POST /disconnect — 断开 Channel */
+  /** POST /disconnect — 断开 Channel 并移除关联绑定 */
   app.post('/disconnect', async (c) => {
     const body = await c.req.json<{ type: ChannelType }>();
     await channelManager.disconnect(body.type);
+
+    // 移除该 Channel 类型的绑定
+    if (bindingRouter) {
+      const bindings = bindingRouter.listBindings().filter(b => b.channel === body.type);
+      for (const b of bindings) {
+        bindingRouter.removeBinding(b.id);
+      }
+      if (bindings.length > 0) {
+        log.info(`Channel ${body.type} 断开，已移除 ${bindings.length} 条绑定`);
+      }
+    }
+
     return c.json({ success: true });
   });
 
@@ -50,6 +83,12 @@ export function createChannelRoutes(channelManager: ChannelManager): Hono {
       return c.json({ error: 'Channel not found' }, 404);
     }
     return c.json({ channel: status });
+  });
+
+  /** GET /bindings — 当前所有 Channel-Agent 绑定 */
+  app.get('/bindings', (c) => {
+    const bindings = bindingRouter ? bindingRouter.listBindings() : [];
+    return c.json({ bindings });
   });
 
   /** POST /webhook/feishu — 飞书 Webhook 接收 */

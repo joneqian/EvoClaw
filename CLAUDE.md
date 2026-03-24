@@ -101,5 +101,5 @@ better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/in
 - **不使用本地模型**：所有 LLM 调用（含记忆提取、LCM 摘要）统一走 ModelRouter
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
-- 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.1), `docs/architecture/Architecture_2026-03-20.md` (v6.1), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.1)
-- **当前冲刺**: Sprint 13 ✅ 已完成 — 微信个人号渠道（iLink Bot 长轮询 + QR 扫码 + CDN AES-128-ECB 媒体管线 + Markdown 转换 + Slash 命令 + Debug 追踪 + 918 测试）
+- 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.2), `docs/architecture/Architecture_2026-03-20.md` (v6.2), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.2)
+- **当前冲刺**: Sprint 14 ✅ 已完成 — 工具系统优化（Memory Flush + MCP 集成 + Read 自适应分页 + Schema 适配 + safeBins + Tool Profile + browser/image_generate/tts/LSP + 工具 Hook + 968 测试）

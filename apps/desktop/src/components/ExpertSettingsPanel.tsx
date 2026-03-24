@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useAgentStore } from '../stores/agent-store';
 import { get, post, put } from '../lib/api';
 import AgentAvatar from './AgentAvatar';
@@ -23,6 +24,13 @@ interface ChannelStatus {
   name: string;
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
   error?: string;
+}
+
+/** Channel 绑定信息 */
+interface ChannelBinding {
+  channelType: string;
+  agentId: string;
+  agentName?: string;
 }
 
 /** 可连接平台定义 */
@@ -54,17 +62,280 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'settings', label: '设置' },
 ];
 
+// ─── 微信 QR 扫码连接（内联） ───
+
+function InlineWeixinConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
+  const [step, setStep] = useState<'idle' | 'loading' | 'scanning' | 'scanned' | 'error'>('idle');
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrcode, setQrcode] = useState('');
+  const [error, setError] = useState('');
+  const [refreshCount, setRefreshCount] = useState(0);
+  const pollingRef = useRef(false);
+
+  const MAX_REFRESH = 3;
+
+  const fetchQrCode = useCallback(async () => {
+    setStep('loading');
+    setError('');
+    try {
+      const data = await get<{ qrcode: string; qrcode_img_content: string }>('/channel/weixin/qrcode');
+      // qrcode_img_content 是网页 URL，需要本地生成 QR 码图片
+      const QRCode = await import('qrcode');
+      const dataUrl = await QRCode.toDataURL(data.qrcode_img_content, { width: 300, margin: 2 });
+      setQrDataUrl(dataUrl);
+      setQrcode(data.qrcode);
+      setStep('scanning');
+      pollingRef.current = true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '获取二维码失败');
+      setStep('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'scanning' && step !== 'scanned') return;
+    if (!qrcode) return;
+
+    pollingRef.current = true;
+
+    const poll = async () => {
+      while (pollingRef.current) {
+        try {
+          const data = await get<{
+            status: string;
+            bot_token?: string;
+            ilink_bot_id?: string;
+            baseurl?: string;
+          }>(`/channel/weixin/qrcode-status?qrcode=${encodeURIComponent(qrcode)}`);
+
+          if (!pollingRef.current) break;
+
+          switch (data.status) {
+            case 'scaned':
+              setStep('scanned');
+              break;
+            case 'confirmed': {
+              pollingRef.current = false;
+              if (data.bot_token) {
+                try {
+                  await invoke('credential_set', {
+                    service: 'weixin',
+                    account: 'bot_token',
+                    value: data.bot_token,
+                  });
+                } catch {
+                  // Keychain 存储失败时继续
+                }
+              }
+              await post('/channel/connect', {
+                type: 'weixin',
+                name: '微信',
+                credentials: {
+                  botToken: data.bot_token ?? '',
+                  ilinkBotId: data.ilink_bot_id ?? '',
+                  baseUrl: data.baseurl ?? '',
+                },
+                agentId,
+              });
+              onConnect();
+              return;
+            }
+            case 'expired': {
+              if (refreshCount < MAX_REFRESH) {
+                setRefreshCount(prev => prev + 1);
+                pollingRef.current = false;
+                await fetchQrCode();
+                return;
+              }
+              pollingRef.current = false;
+              setError('二维码多次过期，请重新开始');
+              setStep('error');
+              return;
+            }
+          }
+        } catch {
+          // 网络错误，继续重试
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    };
+
+    void poll();
+    return () => { pollingRef.current = false; };
+  }, [step, qrcode, refreshCount, fetchQrCode, onConnect, agentId]);
+
+  useEffect(() => {
+    fetchQrCode();
+    return () => { pollingRef.current = false; };
+  }, [fetchQrCode]);
+
+  return (
+    <div className="space-y-3 text-center p-3 bg-slate-50 rounded-xl">
+      {step === 'loading' && (
+        <p className="text-xs text-slate-400">正在获取二维码...</p>
+      )}
+      {(step === 'scanning' || step === 'scanned') && qrDataUrl && (
+        <>
+          <img
+            src={qrDataUrl}
+            alt="微信扫码登录"
+            className="w-40 h-40 mx-auto rounded-xl border border-slate-200"
+          />
+          <p className="text-xs text-slate-500">
+            {step === 'scanned' ? '已扫描，请在手机上确认...' : '请使用微信扫描二维码'}
+          </p>
+        </>
+      )}
+      {step === 'error' && (
+        <>
+          <p className="text-xs text-red-500">{error}</p>
+          <button
+            onClick={() => { setRefreshCount(0); fetchQrCode(); }}
+            className="px-4 py-1.5 text-sm font-medium text-brand border border-brand/30 rounded-lg hover:bg-brand/5"
+          >
+            重新获取
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── 飞书连接表单（内联） ───
+
+function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
+  const [appId, setAppId] = useState('');
+  const [appSecret, setAppSecret] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleConnect = useCallback(async () => {
+    if (!appId.trim() || !appSecret.trim()) return;
+    setConnecting(true);
+    setError('');
+    try {
+      await post('/channel/connect', {
+        type: 'feishu',
+        name: '飞书',
+        credentials: { appId: appId.trim(), appSecret: appSecret.trim() },
+        agentId,
+      });
+      onConnect();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '连接失败');
+    } finally {
+      setConnecting(false);
+    }
+  }, [appId, appSecret, agentId, onConnect]);
+
+  return (
+    <div className="space-y-2 p-3 bg-slate-50 rounded-xl">
+      <input
+        type="text"
+        value={appId}
+        onChange={(e) => setAppId(e.target.value)}
+        placeholder="App ID"
+        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+      />
+      <input
+        type="password"
+        value={appSecret}
+        onChange={(e) => setAppSecret(e.target.value)}
+        placeholder="App Secret"
+        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+      />
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <button
+        onClick={handleConnect}
+        disabled={connecting || !appId.trim() || !appSecret.trim()}
+        className="px-4 py-1.5 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-active disabled:opacity-50 transition-colors"
+      >
+        {connecting ? '连接中...' : '连接'}
+      </button>
+    </div>
+  );
+}
+
+// ─── 企微连接表单（内联） ───
+
+function InlineWecomConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
+  const [corpId, setCorpId] = useState('');
+  const [wecomAgentId, setWecomAgentId] = useState('');
+  const [secret, setSecret] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleConnect = useCallback(async () => {
+    if (!corpId.trim() || !secret.trim()) return;
+    setConnecting(true);
+    setError('');
+    try {
+      await post('/channel/connect', {
+        type: 'wecom',
+        name: '企业微信',
+        credentials: { corpId: corpId.trim(), agentId: wecomAgentId.trim(), secret: secret.trim() },
+        agentId,
+      });
+      onConnect();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '连接失败');
+    } finally {
+      setConnecting(false);
+    }
+  }, [corpId, wecomAgentId, secret, agentId, onConnect]);
+
+  return (
+    <div className="space-y-2 p-3 bg-slate-50 rounded-xl">
+      <input
+        type="text"
+        value={corpId}
+        onChange={(e) => setCorpId(e.target.value)}
+        placeholder="Corp ID"
+        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+      />
+      <input
+        type="text"
+        value={wecomAgentId}
+        onChange={(e) => setWecomAgentId(e.target.value)}
+        placeholder="Agent ID"
+        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+      />
+      <input
+        type="password"
+        value={secret}
+        onChange={(e) => setSecret(e.target.value)}
+        placeholder="Secret"
+        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+      />
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <button
+        onClick={handleConnect}
+        disabled={connecting || !corpId.trim() || !secret.trim()}
+        className="px-4 py-1.5 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-active disabled:opacity-50 transition-colors"
+      >
+        {connecting ? '连接中...' : '连接'}
+      </button>
+    </div>
+  );
+}
+
 // ─── 连接标签页 ───
 
 function ChannelsTab({ agentId }: { agentId: string }) {
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
+  const [bindings, setBindings] = useState<ChannelBinding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [connectingChannel, setConnectingChannel] = useState<string | null>(null);
 
-  const fetchChannels = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await get<{ channels: ChannelStatus[] }>('/channel/status');
-      setChannels(res.channels);
+      const [statusRes, bindingsRes] = await Promise.all([
+        get<{ channels: ChannelStatus[] }>('/channel/status'),
+        get<{ bindings: ChannelBinding[] }>('/channel/bindings').catch(() => ({ bindings: [] as ChannelBinding[] })),
+      ]);
+      setChannels(statusRes.channels);
+      setBindings(bindingsRes.bindings);
     } catch {
       // 容错
     } finally {
@@ -73,17 +344,30 @@ function ChannelsTab({ agentId }: { agentId: string }) {
   }, []);
 
   useEffect(() => {
-    fetchChannels();
-  }, [fetchChannels]);
+    fetchData();
+  }, [fetchData]);
 
   const connectedCount = channels.filter((ch) => ch.status === 'connected').length;
 
   const getChannelStatus = (type: string) => channels.find((ch) => ch.type === type);
+  const getBinding = (type: string) => bindings.find((b) => b.channelType === type);
 
   const handleDisconnect = useCallback(async (type: string) => {
     await post('/channel/disconnect', { type });
-    fetchChannels();
-  }, [fetchChannels]);
+    setConnectingChannel(null);
+    fetchData();
+  }, [fetchData]);
+
+  const handleUnbind = useCallback(async (type: string) => {
+    await post('/channel/disconnect', { type });
+    setConnectingChannel(null);
+    fetchData();
+  }, [fetchData]);
+
+  const handleConnectSuccess = useCallback(() => {
+    setConnectingChannel(null);
+    fetchData();
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -97,7 +381,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
     <div className="space-y-4">
       <div>
         <p className="text-sm text-slate-500">
-          通过连接以下渠道，可以与当前专家直接建立通信。
+          连接渠道并绑定到当前专家，实现跨平台通信。
         </p>
         <p className="text-xs text-slate-400 mt-1">已连接: {connectedCount}</p>
       </div>
@@ -105,39 +389,92 @@ function ChannelsTab({ agentId }: { agentId: string }) {
       <div className="space-y-2">
         {PLATFORMS.map((p) => {
           const status = getChannelStatus(p.type);
+          const binding = getBinding(p.type);
           const isConnected = status?.status === 'connected';
+          const isBoundToMe = binding?.agentId === agentId;
+          const isBoundToOther = isConnected && binding != null && binding.agentId !== agentId;
+          const isShowingForm = connectingChannel === p.type;
 
           return (
-            <div
-              key={p.type}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
-                isConnected
-                  ? 'border-green-200 bg-green-50/50'
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <img src={p.logo} alt={p.name} className="w-8 h-8 object-contain shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">{p.name}</p>
-                {isConnected && (
-                  <p className="text-xs text-green-600">已连接</p>
-                )}
+            <div key={p.type} className="rounded-xl border transition-colors overflow-hidden">
+              {/* 平台行 */}
+              <div
+                className={`flex items-center gap-3 px-4 py-3 ${
+                  isBoundToMe
+                    ? 'border-green-200 bg-green-50/50'
+                    : isBoundToOther
+                      ? 'border-orange-200 bg-orange-50/30'
+                      : 'border-slate-200'
+                }`}
+              >
+                <img src={p.logo} alt={p.name} className="w-8 h-8 object-contain shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-slate-800">{p.name}</p>
+                    {isBoundToMe && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700 rounded-full">
+                        已绑定到此专家
+                      </span>
+                    )}
+                    {isBoundToOther && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 rounded-full">
+                        已绑定到 {binding.agentName ?? '其他专家'}
+                      </span>
+                    )}
+                  </div>
+                  {isConnected && !isBoundToMe && !isBoundToOther && (
+                    <p className="text-xs text-green-600">已连接</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {isBoundToMe ? (
+                    <button
+                      onClick={() => handleUnbind(p.type)}
+                      className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
+                        rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      解绑
+                    </button>
+                  ) : isConnected && isBoundToOther ? (
+                    <span className="text-xs text-slate-400">已占用</span>
+                  ) : isConnected ? (
+                    <button
+                      onClick={() => handleDisconnect(p.type)}
+                      className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
+                        rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      断开
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setConnectingChannel(isShowingForm ? null : p.type)}
+                      className="px-3 py-1.5 text-xs font-medium text-brand border border-brand/30
+                        rounded-lg hover:bg-brand/5 transition-colors"
+                    >
+                      {isShowingForm ? '取消' : '连接'}
+                    </button>
+                  )}
+                </div>
               </div>
-              {isConnected ? (
-                <button
-                  onClick={() => handleDisconnect(p.type)}
-                  className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
-                    rounded-lg hover:bg-red-50 transition-colors"
-                >
-                  断开
-                </button>
-              ) : (
-                <button
-                  className="px-3 py-1.5 text-xs font-medium text-brand border border-brand/30
-                    rounded-lg hover:bg-brand/5 transition-colors"
-                >
-                  连接
-                </button>
+
+              {/* 内联连接表单 */}
+              {isShowingForm && (
+                <div className="px-4 pb-3">
+                  {p.type === 'weixin' && (
+                    <InlineWeixinConnect agentId={agentId} onConnect={handleConnectSuccess} />
+                  )}
+                  {p.type === 'feishu' && (
+                    <InlineFeishuConnect agentId={agentId} onConnect={handleConnectSuccess} />
+                  )}
+                  {p.type === 'wecom' && (
+                    <InlineWecomConnect agentId={agentId} onConnect={handleConnectSuccess} />
+                  )}
+                  {(p.type === 'dingtalk' || p.type === 'qq') && (
+                    <div className="p-3 bg-slate-50 rounded-xl">
+                      <p className="text-xs text-slate-400 text-center">即将支持，敬请期待</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           );

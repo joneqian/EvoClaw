@@ -30,6 +30,10 @@ import { WeixinAdapter } from './channel/adapters/weixin.js';
 import { ChannelStateRepo } from './channel/channel-state-repo.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
+import { BindingRouter } from './routing/binding-router.js';
+import { generateSessionKey } from './routing/session-key.js';
+import { handleChannelMessage } from './routes/channel-message-handler.js';
+import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
 import { createDoctorRoutes } from './routes/doctor.js';
 import { MemoryMonitor } from './infrastructure/memory-monitor.js';
 import {
@@ -101,6 +105,8 @@ export interface CreateAppOptions {
   skillDiscoverer?: SkillDiscoverer;
   /** 内存监控 */
   memoryMonitor?: MemoryMonitor;
+  /** Binding 路由器 — Channel → Agent 绑定匹配 */
+  bindingRouter?: BindingRouter;
 }
 
 /** 创建 Hono 应用实例 */
@@ -123,6 +129,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     userMdRenderer,
     skillDiscoverer,
     memoryMonitor,
+    bindingRouter,
   } = options;
 
   const app = new Hono();
@@ -262,7 +269,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     }
     app.route('/binding', createBindingRoutes(store));
     if (channelManager) {
-      app.route('/channel', createChannelRoutes(channelManager));
+      app.route('/channel', createChannelRoutes(channelManager, bindingRouter));
     }
   }
 
@@ -414,6 +421,60 @@ async function main() {
   const weixinAdapter = new WeixinAdapter(channelStateRepo);
   channelManager.registerAdapter(weixinAdapter);
 
+  // 初始化 BindingRouter — Channel → Agent 绑定匹配
+  const bindingRouter = new BindingRouter(db);
+
+  // 渠道消息处理依赖
+  const channelMsgDeps: ChannelMessageDeps = {
+    store: db,
+    agentManager,
+    channelManager,
+    configManager,
+    vectorStore,
+    hybridSearcher,
+    memoryExtractor,
+    userMdRenderer,
+    skillDiscoverer,
+    laneQueue,
+  };
+
+  // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理
+  channelManager.onMessage(async (msg) => {
+    // 1. 通过 BindingRouter 匹配目标 Agent
+    const targetAgentId = bindingRouter.resolveAgent({
+      channel: msg.channel,
+      accountId: msg.accountId,
+      peerId: msg.peerId,
+    });
+    if (!targetAgentId) {
+      log.warn(`渠道消息无路由: channel=${msg.channel} peer=${msg.peerId}`);
+      return;
+    }
+
+    // 2. 生成 Session Key（'private' → 'direct' 映射）
+    const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
+    const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId);
+
+    // 3. 通过消息处理器处理
+    try {
+      await handleChannelMessage(
+        {
+          agentId: targetAgentId,
+          sessionKey,
+          message: msg.content,
+          channel: msg.channel,
+          peerId: msg.peerId,
+          chatType: msg.chatType,
+          mediaPath: msg.mediaPath,
+          mediaType: msg.mediaType,
+        },
+        channelMsgDeps,
+      );
+    } catch (err) {
+      log.error(`渠道消息处理失败: ${err}`);
+    }
+  });
+
   log.info('ChannelManager 已初始化');
 
   // 内存监控
@@ -435,6 +496,7 @@ async function main() {
     userMdRenderer,
     skillDiscoverer,
     memoryMonitor,
+    bindingRouter,
   });
 
   // 进程退出时清理

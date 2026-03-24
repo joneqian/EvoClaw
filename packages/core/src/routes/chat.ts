@@ -21,6 +21,9 @@ import { createImageTool } from '../tools/image-tool.js';
 import { createPdfTool } from '../tools/pdf-tool.js';
 import { createApplyPatchTool } from '../tools/apply-patch.js';
 import { createSubAgentTools } from '../tools/sub-agent-tools.js';
+import { createBrowserTool } from '../tools/browser-tool.js';
+import { createImageGenerateTool } from '../tools/image-generate-tool.js';
+import { filterToolsByProfile, type ToolProfileId } from '../agent/tool-catalog.js';
 import { createExecBackgroundTool, createProcessTool } from '../tools/background-process.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
@@ -36,9 +39,37 @@ import { PermissionInterceptor } from '../tools/permission-interceptor.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
+import { parseSessionKey } from '../routing/session-key.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('chat');
+
+/** apply_patch 仅在 OpenAI 模型时创建（其他模型 diff 格式不兼容） */
+const APPLY_PATCH_ALLOWED_PROVIDERS = new Set(['openai', 'openai-completions']);
+const APPLY_PATCH_ALLOWED_MODELS = new Set([
+  'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4-turbo-preview',
+  'gpt-4', 'gpt-4-0125-preview', 'gpt-4-1106-preview',
+  'o1', 'o1-mini', 'o1-preview', 'o3', 'o3-mini',
+]);
+
+/** 通道特定的工具禁止规则 */
+const CHANNEL_TOOL_DENY: Record<string, string[]> = {
+  // 语音通道禁止 TTS（避免循环反馈）
+  voice: ['tts'],
+};
+
+/** 检测工具名称冲突 */
+function detectToolNameConflicts(toolList: { name: string }[]): void {
+  const seen = new Map<string, number>();
+  for (const tool of toolList) {
+    seen.set(tool.name, (seen.get(tool.name) ?? 0) + 1);
+  }
+  for (const [name, count] of seen) {
+    if (count > 1) {
+      log.warn(`工具名称冲突: "${name}" 出现 ${count} 次，后注册的将覆盖先注册的`);
+    }
+  }
+}
 
 /** 从 conversation_log 加载最近消息历史 */
 function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
@@ -427,8 +458,23 @@ export function createChatRoutes(
     enhancedTools.push(createImageTool(providerConfig));
     enhancedTools.push(createPdfTool(providerConfig));
 
-    // 高级编辑工具
-    enhancedTools.push(createApplyPatchTool());
+    // 高级编辑工具（仅 OpenAI 模型支持 apply_patch diff 格式）
+    if (APPLY_PATCH_ALLOWED_PROVIDERS.has(provider) &&
+        (APPLY_PATCH_ALLOWED_MODELS.has(modelId) || modelId.startsWith('gpt-4') || modelId.startsWith('o1') || modelId.startsWith('o3'))) {
+      enhancedTools.push(createApplyPatchTool());
+    }
+
+    // 浏览器工具
+    enhancedTools.push(createBrowserTool());
+
+    // 图片生成工具（需要 API Key）
+    if (apiKey) {
+      enhancedTools.push(createImageGenerateTool({
+        apiKey,
+        baseUrl: baseUrl || undefined,
+        provider,
+      }));
+    }
 
     // 进程管理工具
     enhancedTools.push(createExecBackgroundTool());
@@ -466,9 +512,43 @@ export function createChatRoutes(
       enhancedTools.push(...createSubAgentTools(spawner));
     }
 
+    // ─── P2-1: Tool Profile 过滤 ───
+    const agentProfile = agent.toolProfile as ToolProfileId | undefined;
+    if (agentProfile && agentProfile !== 'full') {
+      const filtered = filterToolsByProfile(enhancedTools, agentProfile);
+      enhancedTools.length = 0;
+      enhancedTools.push(...filtered);
+    }
+
+    // ─── P2-2: Provider 特定工具禁止列表 ───
+    const PROVIDER_TOOL_DENY: Record<string, string[]> = {
+      // xAI 模型有原生 web_search → 移除 EvoClaw 的
+      'xai': ['web_search'],
+    };
+    const providerDeny = PROVIDER_TOOL_DENY[provider] ?? [];
+    if (providerDeny.length > 0) {
+      const denySet = new Set(providerDeny);
+      const afterDeny = enhancedTools.filter(t => !denySet.has(t.name));
+      enhancedTools.length = 0;
+      enhancedTools.push(...afterDeny);
+    }
+
+    // ─── P2-7: 通道特定工具禁止 ───
+    const channelType = parseSessionKey(sessionKey)?.channel;
+    const channelDeny = channelType ? (CHANNEL_TOOL_DENY[channelType] ?? []) : [];
+    if (channelDeny.length > 0) {
+      const denySet = new Set(channelDeny);
+      const afterChannelDeny = enhancedTools.filter(t => !denySet.has(t.name));
+      enhancedTools.length = 0;
+      enhancedTools.push(...afterChannelDeny);
+    }
+
     // 配置工具注入
     setToolInjectorConfig({ agentId, evoClawTools: enhancedTools });
     const tools = getInjectedTools();
+
+    // ─── P3-4: 工具名称冲突检测 ───
+    detectToolNameConflicts(tools);
 
     // 权限拦截器 — 通过 permissionInterceptFn 传入 embedded-runner，拦截所有工具（含 PI 内置）
     const interceptor = new PermissionInterceptor(

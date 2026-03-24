@@ -34,6 +34,29 @@ const MESSAGE_TOOLS = new Set([
   'slack_send', 'telegram_send', 'wechat_send',
 ]);
 
+/** 安全二进制白名单 — 这些命令免授权执行 */
+const SAFE_BINS = new Set([
+  // 版本控制
+  'git',
+  // Node.js 生态
+  'node', 'npm', 'pnpm', 'npx', 'yarn', 'bun',
+  // Python 生态
+  'python', 'python3', 'pip', 'pip3',
+  // 文件操作（只读/安全）
+  'ls', 'cat', 'head', 'tail', 'wc', 'file', 'stat',
+  'find', 'grep', 'rg', 'ag',
+  'sort', 'uniq', 'diff', 'tr', 'cut', 'awk', 'sed',
+  // 目录操作
+  'mkdir', 'cp', 'mv', 'touch',
+  // 网络（只读）
+  'curl', 'wget', 'ping', 'dig', 'nslookup',
+  // 其他安全工具
+  'echo', 'printf', 'date', 'whoami', 'pwd', 'env',
+  'which', 'type', 'man',
+  'tar', 'gzip', 'gunzip', 'zip', 'unzip',
+  'jq', 'yq',
+]);
+
 /** 自动放行的只读工具 — 不需要权限确认 */
 const AUTO_ALLOW_TOOLS = new Set([
   'read', 'ls', 'find', 'grep',       // 文件只读
@@ -112,6 +135,14 @@ export class PermissionInterceptor {
           requiresConfirmation: true,
           permissionCategory: 'shell',
         };
+      }
+    }
+
+    // 2.5 safeBins 白名单：安全二进制命令免授权执行
+    if (category === 'shell') {
+      const command = (params['command'] as string) ?? '';
+      if (isSafeBinCommand(command)) {
+        return { allowed: true };
       }
     }
 
@@ -208,4 +239,20 @@ export class PermissionInterceptor {
   private resolveCategory(toolName: string): PermissionCategory {
     return TOOL_CATEGORY_MAP[toolName] ?? 'skill';
   }
+}
+
+/**
+ * 检查命令是否以安全二进制开头
+ * 注意：危险命令检查（DANGEROUS_PATTERNS）应先于此检查执行，
+ * 防止 `curl xxx | sh` 等伪装安全的危险命令通过
+ */
+export function isSafeBinCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (!trimmed) return false;
+  // 提取第一个命令（处理 cd xxx && 前缀）
+  const firstCmd = trimmed.replace(/^cd\s+[^\s;|&]+\s*[;&|]+\s*/, '');
+  const bin = firstCmd.split(/\s/)[0] ?? '';
+  // 去掉路径前缀（/usr/bin/git → git）
+  const baseBin = bin.split('/').pop() ?? bin;
+  return SAFE_BINS.has(baseBin);
 }

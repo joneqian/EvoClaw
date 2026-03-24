@@ -63,6 +63,11 @@ export function appendToTodayMemory(workspacePath: string, content: string): voi
   fs.writeFileSync(filePath, existing + separator + content, 'utf-8');
 }
 
+/** 修改 write 工具的描述，追加 Memory Flush 限制说明 */
+export function enhanceWriteDescriptionForFlush(originalDescription: string): string {
+  return `${originalDescription}\n[Memory Flush 模式] 当前只能追加写入 memory/YYYY-MM-DD.md，其他文件为只读。`;
+}
+
 /** Memory Flush 工具的路径限制 — 参考 OpenClaw wrapToolMemoryFlushAppendOnlyWrite */
 export const MEMORY_FLUSH_TOOL_NAMES = new Set(['read', 'write']);
 

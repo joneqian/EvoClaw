@@ -18,6 +18,8 @@ export interface AgentConfig {
   provider?: string;
   /** 系统提示模板 */
   systemPromptTemplate?: string;
+  /** 工具 Profile — 按场景预配置工具集 */
+  toolProfile?: 'minimal' | 'coding' | 'messaging' | 'full';
   /** 绑定关系 */
   bindings?: Binding[];
   /** 创建时间 ISO string */

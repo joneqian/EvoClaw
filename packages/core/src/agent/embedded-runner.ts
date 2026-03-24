@@ -5,7 +5,9 @@ import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
 import { ToolSafetyGuard } from './tool-safety.js';
-import { shouldTriggerFlush } from './memory-flush.js';
+import { shouldTriggerFlush, buildMemoryFlushPrompt } from './memory-flush.js';
+import { normalizeToolSchema } from './schema-adapter.js';
+import { createAdaptiveReadTool } from './adaptive-read.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('embedded-runner');
@@ -208,7 +210,14 @@ async function runWithPI(
     piCoding.findTool,
     piCoding.lsTool,
     createEnhancedExecTool(),
-  ].map(t => ({ ...t as any }));
+  ].map((t: any) => {
+    const tool = { ...t };
+    // Adaptive Read: 根据 context window 自适应调整读取上限
+    if (tool.name === 'read') {
+      return createAdaptiveReadTool(tool, model.contextWindow ?? 128_000);
+    }
+    return tool;
+  });
 
   // 工具安全守卫（循环检测 + 结果截断）
   const toolSafety = new ToolSafetyGuard();
@@ -338,7 +347,13 @@ async function runWithPI(
     ...piBuiltInTools.filter((t: any) => t.name !== 'bash').map(wrapPITool),
     ...piBuiltInTools.filter((t: any) => t.name === 'bash').map(wrapEvoclawTool), // createEnhancedExecTool 是 1 参数
     ...(config.tools ?? []).map(wrapEvoclawTool),
-  ];
+  ].map((tool: any) => ({
+    ...tool,
+    // Schema 适配：根据 provider 剥离不支持的 JSON Schema 关键字
+    parameters: tool.parameters
+      ? normalizeToolSchema(tool.parameters as Record<string, unknown>, config.provider)
+      : tool.parameters,
+  }));
   log.debug(
     `注入工具: ${allCustomTools.map((t: any) => t.name).join(', ')}`,
   );
@@ -605,12 +620,35 @@ async function runWithPI(
         ensureUsageOnAssistantMessages(session.agent as any);
 
         // 检查是否需要 Memory Flush（在 compaction 前保存记忆）
-        const usage = (session.agent as any)._lastUsage;
-        if (usage && shouldTriggerFlush(usage.total_tokens ?? 0, usage.max_context_tokens ?? 128000)) {
-          log.info('触发 Memory Flush: context 使用率超过阈值');
-          // Memory flush 在下次 compaction 前执行
-          // 当前实现：记录标记，在 post-compaction 指令中提示 Agent 保存记忆
-          // TODO: 完整实现需要在 PI session 内插入一个独立的 flush turn
+        // 1. 尝试从 PI session 获取 usage 信息
+        // 2. 兜底：从 agent messages 累加 usage
+        const lastUsage = (session.agent as any)._lastUsage;
+        const agentMessages: Array<Record<string, unknown>> = (session.agent as any).state?.messages ?? [];
+        const totalTokensFromMessages = agentMessages.reduce(
+          (sum: number, msg: Record<string, unknown>) => {
+            const u = msg.usage as Record<string, number> | undefined;
+            return sum + (u?.totalTokens ?? u?.total_tokens ?? 0);
+          },
+          0,
+        );
+        const flushTokens = lastUsage?.total_tokens ?? totalTokensFromMessages;
+        const contextLimit = model.contextWindow ?? 128_000;
+
+        if (shouldTriggerFlush(flushTokens, contextLimit)) {
+          log.warn(
+            `Memory Flush 触发: totalTokens=${flushTokens}, contextLimit=${contextLimit}, ` +
+            `使用率=${(flushTokens / contextLimit * 100).toFixed(1)}%`,
+          );
+          // 向 session 注入 flush 提示 — Agent 下一轮会优先执行记忆持久化
+          // 目前通过追加系统消息实现，未来可改为独立 flush turn + 工具限制
+          try {
+            const flushPrompt = buildMemoryFlushPrompt();
+            await session.prompt(flushPrompt);
+            ensureUsageOnAssistantMessages(session.agent as any);
+            log.info('Memory Flush turn 完成');
+          } catch (flushErr) {
+            log.warn('Memory Flush turn 失败，降级跳过:', flushErr);
+          }
         }
 
         // 检查 agent 状态中的错误

@@ -1,8 +1,8 @@
 # EvoClaw 技术架构设计文档
 
-> **文档版本**: v6.1
+> **文档版本**: v6.2
 > **创建日期**: 2026-03-11
-> **更新日期**: 2026-03-23
+> **更新日期**: 2026-03-24
 > **文档状态**: 已完成（10 个 Sprint 全部完成）
 > **定位**: 企业级 AI Agent 桌面平台，安全优先、稳定优先
 
@@ -771,6 +771,88 @@ MemoryExtractor.extract(messages)
 🔲 **image_generate 工具** (计划)
 - DALL-E / Stable Diffusion API 集成
 - 图片生成能力
+
+#### 3.5.4 工具系统优化路线图
+
+> 基于 EvoClaw vs OpenClaw 工具系统对比分析，按优先级分阶段实施。
+
+| 优先级 | 项目 | 描述 | 状态 |
+|--------|------|------|------|
+| **P0** | Memory Flush 工具集成 | 记忆 flush 基础设施已建，需接入 PI session 的 compaction 循环 | 🔲 计划中 |
+| **P1** | MCP 集成 | 支持外部 MCP server 工具扩展（StdioClientTransport + tool discovery） | 🔲 计划中 |
+| **P1** | Read 自适应分页 | 按 context window 动态调整读取量 + 多页自动拉取 | 🔲 计划中 |
+| **P1** | Schema Provider 适配 | Gemini/xAI 等模型的 JSON Schema 兼容层 | 🔲 计划中 |
+| **P1** | 工具目录规范化 | 统一工具 ID/Section/Profile 定义（tool-catalog.ts） | 🔲 计划中 |
+| **P1** | 子代理工具禁止列表 | 显式化各层级子代理禁止的工具清单 | 🔲 计划中 |
+| **P1** | Exec safeBins 安全 profile | 受信二进制白名单机制 | 🔲 计划中 |
+| **P2** | Tool Profile 系统 | 按场景预配置工具集（minimal/coding/messaging/full） | 🔲 计划中 |
+| **P2** | Provider 工具过滤 | 按 LLM provider 过滤不兼容工具 | 🔲 计划中 |
+| **P2** | browser/image_generate | 浏览器自动化 + AI 图片生成工具 | 🔲 计划中 |
+| **P2** | LSP 集成 | 代码智能（hover/definition/references） | 🔲 计划中 |
+| **P2** | apply_patch 条件创建 | 仅在 OpenAI + 白名单模型时创建 | 🔲 计划中 |
+| **P2** | 消息通道工具过滤 | 按通道类型禁止特定工具 | 🔲 计划中 |
+| **P2** | 工具 Hook 包装 | beforeToolCall/afterToolCall 插件扩展点 | 🔲 计划中 |
+| **P3** | tts/canvas/gateway/nodes | 语音合成/画布/网关/节点工具 | 🔲 远期 |
+| **P3** | 工具 description 动态修改 | 运行时按场景调整工具描述 | 🔲 远期 |
+| **P3** | 插件工具名称冲突检测 | 注册时检测重名工具并告警 | 🔲 远期 |
+| **P3** | Union Schema 扁平化 | 复杂 union 类型 schema 展开为扁平结构 | 🔲 远期 |
+
+**EvoClaw 已有优势**（无需追赶）:
+- Unicode 混淆检测（17 种模式）
+- 循环检测（4 模式 + 断路器）
+- 审计日志（tool_audit_log）
+- 权限持久化（SQLite 7 类别 × 4 作用域）
+- 知识图谱工具
+- Workspace 安全区自动放行
+- 通道工具多样性（飞书/企微/微信）
+
+##### MCP 集成架构
+
+```
+用户配置 (evo_claw.json)
+  └── mcp_servers: [{ name, command, args, env }]
+
+启动流程:
+  1. McpManager 读取配置
+  2. 为每个 server 创建 StdioClientTransport
+  3. 调用 listTools() 获取工具清单
+  4. 转换为 PI Tool 格式注入阶段 3
+
+运行时:
+  Agent 调用 MCP 工具 → McpManager.callTool(server, name, args)
+    → StdioClientTransport 转发 → MCP Server 执行 → 返回结果
+
+生命周期:
+  - 启动时按需连接（lazy init）
+  - 会话结束时断开
+  - 异常自动重连（3 次重试 + 指数退避）
+```
+
+##### Read 自适应分页机制
+
+```
+Read 工具增强:
+  1. 获取当前 context window 剩余容量
+  2. 计算安全读取量: min(文件大小, 剩余容量 × 30%)
+  3. 超过安全量 → 自动分页:
+     - 首次返回前 N 行 + "[共 M 行，已显示 1-N]"
+     - 模型可请求后续页（自动拉取）
+  4. 小文件（< 安全量）→ 一次性返回全部内容
+```
+
+##### Schema Provider 适配层
+
+```
+SchemaAdapter 接口:
+  adaptToolSchema(tool: Tool, provider: string): Tool
+
+适配规则:
+  - Gemini: 不支持 additionalProperties → 移除
+  - xAI: anyOf/oneOf → 展开为独立参数
+  - 通用: 移除 $ref → 内联展开
+
+注入位置: 阶段 2 权限拦截层之后、阶段 3 之前
+```
 
 ### 3.6 Skill 系统
 
@@ -2017,4 +2099,6 @@ AGENT_WORKSPACE_FILES = [                 // 8 个工作区文件
 
 ---
 
+> **文档版本**: v6.2 -- 新增 3.5.4 工具系统优化路线图（P0/P1/P2/P3 共 18 项），MCP 集成架构设计、Read 自适应分页机制、Schema Provider 适配层。基于 EvoClaw vs OpenClaw 工具系统对比分析
+>
 > **文档维护**: 本文档随代码同步更新。如有架构变更，请在对应章节标注 ✅ (已实现) 或 🔲 (计划中) 状态。

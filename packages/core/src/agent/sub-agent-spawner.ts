@@ -35,20 +35,23 @@ export const DEFAULT_SUBAGENT_TIMEOUT_MS = 300_000;
 const UNTRUSTED_BEGIN = '<<<BEGIN_UNTRUSTED_CHILD_RESULT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_CHILD_RESULT>>>';
 
-/** 子 Agent 不应获得的工具（安全降权） */
+/** 所有子代理始终禁止的工具（安全降权 + 防泄露） */
 const DENIED_TOOLS_FOR_ALL_CHILDREN = new Set([
-  'memory_search',    // 信息应在 spawn prompt 中传递
-  'memory_get',       // 同上
-  'knowledge_query',  // 同上
+  'memory_search',    // 记忆访问（防泄露）— 信息应在 spawn prompt 中传递
+  'memory_get',       // 记忆访问
+  'knowledge_query',  // 知识图谱
+  'desktop_notify',   // 用户通知 — 子代理不应直接通知用户
+  // 通道工具 — 子代理不应直接发送消息
+  'feishu_send', 'feishu_card', 'wecom_send', 'weixin_send', 'weixin_send_media',
 ]);
 
-/** leaf 子 Agent 额外拒绝的工具（不能再生成/管理子代） */
+/** 叶子节点子代理额外禁止的工具（不能再生成/管理子代） */
 const DENIED_TOOLS_FOR_LEAF = new Set([
-  'spawn_agent',
-  'list_agents',
-  'kill_agent',
-  'steer_agent',
-  'yield_agents',
+  'spawn_agent',   // 只有 orchestrator 可以派生
+  'list_agents',   // 不需要查询
+  'kill_agent',    // 不需要终止
+  'steer_agent',   // 不需要纠偏
+  'yield_agents',  // 不需要等待
 ]);
 
 /** 子 Agent 状态 */

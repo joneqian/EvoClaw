@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 import { HTTPException } from 'hono/http-exception';
+import { streamSSE } from 'hono/streaming';
 import crypto from 'node:crypto';
 import { PORT_RANGE, TOKEN_BYTES } from '@evoclaw/shared';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
@@ -107,6 +108,8 @@ export interface CreateAppOptions {
   memoryMonitor?: MemoryMonitor;
   /** Binding 路由器 — Channel → Agent 绑定匹配 */
   bindingRouter?: BindingRouter;
+  /** Channel 状态持久化 */
+  channelStateRepo?: ChannelStateRepo;
 }
 
 /** 创建 Hono 应用实例 */
@@ -130,6 +133,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     skillDiscoverer,
     memoryMonitor,
     bindingRouter,
+    channelStateRepo,
   } = options;
 
   const app = new Hono();
@@ -227,9 +231,15 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     });
   });
 
-  // Bearer Token 认证 — 跳过 /health 路径
+  // Bearer Token 认证 — 跳过 /health 和 /events（SSE 用 query param 验证）
   app.use('/*', async (c, next) => {
     if (c.req.path === '/health') return next();
+    if (c.req.path === '/events') {
+      // SSE 端点：EventSource 不支持 Authorization header，用 query param 验证
+      const queryToken = c.req.query('token');
+      if (queryToken === token) return next();
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
     return bearerAuth({ token })(c, next);
   });
 
@@ -269,12 +279,37 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     }
     app.route('/binding', createBindingRoutes(store));
     if (channelManager) {
-      app.route('/channel', createChannelRoutes(channelManager, bindingRouter));
+      app.route('/channel', createChannelRoutes(channelManager, bindingRouter, channelStateRepo));
     }
   }
 
   // Doctor 自诊断 — 无需 store/agent，始终可用
   app.route('/doctor', createDoctorRoutes(store, configManager, laneQueue, memoryMonitor));
+
+  // SSE 事件推送 — 前端通过 EventSource 监听实时事件
+  app.get('/events', (c) => {
+    return streamSSE(c, async (stream) => {
+      const { serverEventBus } = await import('./infrastructure/event-bus.js');
+
+      const handler = (event: { type: string; data?: Record<string, unknown> }) => {
+        stream.writeSSE({ event: event.type, data: JSON.stringify(event.data ?? {}) })
+          .catch(() => { /* 连接已关闭 */ });
+      };
+
+      serverEventBus.on('server-event', handler);
+
+      // 保持连接直到客户端断开
+      try {
+        // 发送心跳防止连接超时
+        while (true) {
+          await stream.writeSSE({ event: 'ping', data: '' });
+          await stream.sleep(30_000);
+        }
+      } finally {
+        serverEventBus.off('server-event', handler);
+      }
+    });
+  });
 
   // 全局错误处理
   app.onError((err, c) => {
@@ -421,6 +456,29 @@ async function main() {
   const weixinAdapter = new WeixinAdapter(channelStateRepo);
   channelManager.registerAdapter(weixinAdapter);
 
+  // 自动恢复渠道连接 — 从 channel_state 读取上次保存的凭证
+  const channelTypes = ['weixin', 'feishu', 'wecom'] as const;
+  for (const chType of channelTypes) {
+    const savedCreds = channelStateRepo.getState(chType as any, 'credentials');
+    const savedName = channelStateRepo.getState(chType as any, 'name');
+    if (savedCreds) {
+      try {
+        const credentials = JSON.parse(savedCreds);
+        await channelManager.connect({
+          type: chType as any,
+          name: savedName ?? chType,
+          credentials,
+        });
+        log.info(`渠道 ${chType} 已自动恢复连接`);
+      } catch (err) {
+        log.warn(`渠道 ${chType} 自动恢复失败: ${err instanceof Error ? err.message : String(err)}`);
+        // 清除无效凭证
+        channelStateRepo.deleteState(chType as any, 'credentials');
+        channelStateRepo.deleteState(chType as any, 'name');
+      }
+    }
+  }
+
   // 初始化 BindingRouter — Channel → Agent 绑定匹配
   const bindingRouter = new BindingRouter(db);
 
@@ -497,6 +555,7 @@ async function main() {
     skillDiscoverer,
     memoryMonitor,
     bindingRouter,
+    channelStateRepo,
   });
 
   // 进程退出时清理

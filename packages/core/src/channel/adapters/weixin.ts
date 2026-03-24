@@ -171,8 +171,9 @@ export class WeixinAdapter implements ChannelAdapter {
     }
 
     const contextToken = this.contextTokenCache.get(peerId);
+    log.info(`sendMessage: peerId=${peerId} hasContextToken=${!!contextToken} cacheSize=${this.contextTokenCache.size}`);
     if (!contextToken) {
-      log.warn(`发送消息缺少 context_token: peerId=${peerId}`);
+      log.warn(`发送消息缺少 context_token: peerId=${peerId}，消息可能无法投递`);
     }
 
     // Markdown → 纯文本 (微信不支持 Markdown 渲染)

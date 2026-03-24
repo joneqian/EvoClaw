@@ -22,6 +22,8 @@ import type {
 import {
   DEFAULT_WEIXIN_BASE_URL,
   DEFAULT_BOT_TYPE,
+  WeixinMessageType,
+  WeixinMessageState,
   WeixinItemType,
   WeixinTypingStatus,
 } from './weixin-types.js';
@@ -158,6 +160,10 @@ export async function sendMessage(opts: WeixinApiOpts & {
   const msg: WeixinMessage = {
     to_user_id: opts.toUserId,
     context_token: opts.contextToken,
+    // iLink 平台要求以下字段，缺失会导致消息不投递
+    message_type: WeixinMessageType.BOT,
+    message_state: WeixinMessageState.FINISH,
+    client_id: crypto.randomUUID(),
     item_list: opts.itemList,
   };
 

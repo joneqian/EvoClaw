@@ -50,6 +50,9 @@ interface ChatState {
   /** 加载 Agent 的会话列表 */
   fetchConversations: (agentId: string) => Promise<void>;
 
+  /** 刷新当前会话消息（不清空，无闪烁） */
+  reloadCurrentMessages: () => Promise<void>;
+
   addMessage: (msg: Message) => void;
   appendToLastMessage: (delta: string) => void;
   updateLastMessageToolCalls: (toolCalls: ToolCall[]) => void;
@@ -108,6 +111,26 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     } catch {
       set({ loadingMessages: false });
     }
+  },
+
+  reloadCurrentMessages: async () => {
+    const { currentAgentId, currentSessionKey, isStreaming } = getState();
+    if (!currentAgentId || !currentSessionKey || isStreaming) return;
+    try {
+      const res = await get<{ messages: { id: string; role: string; content: string; createdAt: string }[] }>(
+        `/chat/${currentAgentId}/messages?sessionKey=${encodeURIComponent(currentSessionKey)}&limit=50`,
+      );
+      const messages: Message[] = res.messages.map((m) => ({
+        id: m.id,
+        role: m.role as Message['role'],
+        content: m.content,
+        createdAt: m.createdAt,
+      }));
+      // 只在消息数量变化时更新（避免无意义渲染）
+      if (messages.length !== getState().messages.length) {
+        set({ messages });
+      }
+    } catch { /* ignore */ }
   },
 
   newConversation: (agentId) => {

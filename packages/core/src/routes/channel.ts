@@ -7,6 +7,7 @@ import type { ChannelManager } from '../channel/channel-manager.js';
 import type { ChannelConfig } from '../channel/channel-adapter.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { BindingRouter } from '../routing/binding-router.js';
+import type { ChannelStateRepo } from '../channel/channel-state-repo.js';
 import type { FeishuAdapter } from '../channel/adapters/feishu.js';
 import type { WecomAdapter } from '../channel/adapters/wecom.js';
 import { getQrCode, pollQrStatus } from '../channel/adapters/weixin-api.js';
@@ -15,7 +16,11 @@ import { createLogger } from '../infrastructure/logger.js';
 const log = createLogger('channel-webhook');
 
 /** 创建 Channel 路由 */
-export function createChannelRoutes(channelManager: ChannelManager, bindingRouter?: BindingRouter): Hono {
+export function createChannelRoutes(
+  channelManager: ChannelManager,
+  bindingRouter?: BindingRouter,
+  channelStateRepo?: ChannelStateRepo,
+): Hono {
   const app = new Hono();
 
   /** POST /connect — 连接 Channel（可选绑定 agentId） */
@@ -23,6 +28,12 @@ export function createChannelRoutes(channelManager: ChannelManager, bindingRoute
     const body = await c.req.json<ChannelConfig & { agentId?: string }>();
     try {
       await channelManager.connect(body);
+
+      // 持久化凭证到 channel_state（启动时自动恢复连接用）
+      if (channelStateRepo) {
+        channelStateRepo.setState(body.type as any, 'credentials', JSON.stringify(body.credentials));
+        channelStateRepo.setState(body.type as any, 'name', body.name);
+      }
 
       // 如果提供了 agentId，创建 Channel → Agent 绑定
       if (body.agentId && bindingRouter) {
@@ -54,6 +65,12 @@ export function createChannelRoutes(channelManager: ChannelManager, bindingRoute
   app.post('/disconnect', async (c) => {
     const body = await c.req.json<{ type: ChannelType }>();
     await channelManager.disconnect(body.type);
+
+    // 清除持久化的凭证
+    if (channelStateRepo) {
+      channelStateRepo.deleteState(body.type as any, 'credentials');
+      channelStateRepo.deleteState(body.type as any, 'name');
+    }
 
     // 移除该 Channel 类型的绑定
     if (bindingRouter) {

@@ -18,6 +18,7 @@ import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { AgentRunConfig } from '../agent/types.js';
+import { emitServerEvent } from '../infrastructure/event-bus.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
 import { resolveModel } from '../provider/model-resolver.js';
@@ -380,7 +381,10 @@ export async function handleChannelMessage(
     }
   }
 
-  // 11. afterTurn — 记忆提取（异步，不阻塞）
+  // 11. 通知前端有新会话/消息
+  emitServerEvent({ type: 'conversations-changed', data: { agentId, channel, peerId, sessionKey } });
+
+  // 12. afterTurn — 记忆提取（异步，不阻塞）
   const afterTurnCtx = {
     ...turnCtx,
     messages: [

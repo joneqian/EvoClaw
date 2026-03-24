@@ -73,6 +73,17 @@ function ChatView() {
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
+  // 渠道会话轮询 — 非本地会话每 3 秒检查新消息
+  useEffect(() => {
+    if (!currentSessionKey || !currentAgentId || isStreaming) return;
+    // 仅对渠道会话启用轮询（本地会话由流式推送驱动，无需轮询）
+    if (currentSessionKey.includes(':local:')) return;
+    const timer = setInterval(() => {
+      useChatStore.getState().reloadCurrentMessages();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [currentSessionKey, currentAgentId, isStreaming]);
+
   useEffect(() => {
     const el = textareaRef.current;
     if (el) {

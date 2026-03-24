@@ -311,6 +311,29 @@ export default function App() {
     return () => window.removeEventListener(`${BRAND_EVENT_PREFIX}:conversations-changed`, handler);
   }, [fetchRecents]);
 
+  // SSE 事件监听 — 渠道消息产生新会话时实时刷新
+  useEffect(() => {
+    if (initState !== 'connected') return;
+    const configStr = localStorage.getItem('sidecar-config');
+    if (!configStr) return;
+    const config = JSON.parse(configStr) as { port: number; token: string };
+
+    const es = new EventSource(
+      `http://127.0.0.1:${config.port}/events?token=${config.token}`,
+    );
+
+    es.addEventListener('conversations-changed', () => {
+      fetchRecents();
+      useChatStore.getState().reloadCurrentMessages();
+    });
+
+    es.onerror = () => {
+      // SSE 连接断开时自动重连（浏览器 EventSource 默认行为）
+    };
+
+    return () => es.close();
+  }, [initState, fetchRecents]);
+
   /** 定期健康检查 */
   const reconnectAttempts = useRef(0);
   useEffect(() => {

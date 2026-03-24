@@ -162,6 +162,8 @@ export interface WeixinMessage {
   message_id?: number;
   from_user_id?: string;
   to_user_id?: string;
+  /** 客户端消息 ID（发送时用于幂等性） */
+  client_id?: string;
   create_time_ms?: number;
   session_id?: string;
   /** 1=USER, 2=BOT */

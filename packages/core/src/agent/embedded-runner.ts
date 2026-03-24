@@ -375,6 +375,9 @@ async function runWithPI(
     agentDir,
     settingsManager,
     noSkills: true,
+    // 阻止 PI 从 cwd 向上扫描加载 CLAUDE.md/AGENTS.md 等项目上下文文件
+    // EvoClaw 通过 buildSystemPrompt 完全控制系统提示词内容
+    agentsFilesOverride: () => ({ agentsFiles: [] }),
   } as any);
   await resourceLoader.reload();
 
@@ -396,7 +399,15 @@ async function runWithPI(
   session.agent.streamFn = piAi.streamSimple;
 
   // 覆盖系统提示（createAgentSession 会设置默认的 PI 系统提示）
+  // 参考 OpenClaw: applySystemPromptOverrideToSession
+  // 1. setSystemPrompt 设置初始提示词
+  // 2. 覆盖 _rebuildSystemPrompt 防止 PI 在 compaction/工具调用时用上下文文件重建提示词
   session.agent.setSystemPrompt(systemPrompt);
+  const mutableSession = session as any;
+  if (mutableSession._rebuildSystemPrompt) {
+    mutableSession._baseSystemPrompt = systemPrompt;
+    mutableSession._rebuildSystemPrompt = () => systemPrompt;
+  }
 
   // 防御性处理：确保所有 assistant messages 都有 usage 字段
   // （参考 OpenClaw 的 clearStaleAssistantUsageOnSessionMessages，

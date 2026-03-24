@@ -334,7 +334,7 @@ export default function App() {
     return () => es.close();
   }, [initState, fetchRecents]);
 
-  /** 定期健康检查 */
+  /** 定期健康检查 + 会话列表轮询（SSE 在 WKWebView 中不可靠，用轮询兜底） */
   const reconnectAttempts = useRef(0);
   useEffect(() => {
     if (initState !== 'connected') return;
@@ -343,6 +343,8 @@ export default function App() {
       if (health) {
         setSidecarConnected(true);
         reconnectAttempts.current = 0;
+        // 轮询刷新会话列表（兼容 SSE 不可用场景）
+        fetchRecents();
       } else {
         setSidecarConnected(false);
         if (reconnectAttempts.current < 5) {
@@ -356,7 +358,7 @@ export default function App() {
       }
     }, 5_000);
     return () => clearInterval(timer);
-  }, [initState, setSidecarConnected]);
+  }, [initState, setSidecarConnected, fetchRecents]);
 
   /** 点击最近会话 */
   const handleRecentClick = useCallback((conv: RecentConversation) => {

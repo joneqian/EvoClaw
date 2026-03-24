@@ -67,6 +67,9 @@ function generateLocalSessionKey(agentId: string): string {
   return `agent:${agentId}:local:dm:local-user:${ts}${rand}`;
 }
 
+/** 防止 reloadCurrentMessages 并发重入 */
+let _reloading = false;
+
 export const useChatStore = create<ChatState>((set, getState) => ({
   messages: [],
   isStreaming: false,
@@ -114,8 +117,10 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   },
 
   reloadCurrentMessages: async () => {
+    if (_reloading) return;
     const { currentAgentId, currentSessionKey, isStreaming } = getState();
     if (!currentAgentId || !currentSessionKey || isStreaming) return;
+    _reloading = true;
     try {
       const res = await get<{ messages: { id: string; role: string; content: string; createdAt: string }[] }>(
         `/chat/${currentAgentId}/messages?sessionKey=${encodeURIComponent(currentSessionKey)}&limit=50`,
@@ -130,7 +135,9 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       if (messages.length !== getState().messages.length) {
         set({ messages });
       }
-    } catch { /* ignore */ }
+    } catch { /* ignore */ } finally {
+      _reloading = false;
+    }
   },
 
   newConversation: (agentId) => {

@@ -54,9 +54,8 @@ export function createSecurityPlugin(db: SqliteStore): ContextPlugin {
 
         try {
           db.run(
-            `INSERT INTO audit_log (id, agent_id, action, category, resource, result, details, created_at)
-             VALUES (?, ?, 'security_detection', 'input', ?, ?, ?, datetime('now'))`,
-            crypto.randomUUID(),
+            `INSERT INTO audit_log (agent_id, action, category, resource, result, details, created_at)
+             VALUES (?, 'security_detection', 'input', ?, ?, ?, datetime('now'))`,
             ctx.agentId,
             `message:${lastUserMsg.id ?? 'unknown'}`,
             injection.detected ? injection.severity : 'info',

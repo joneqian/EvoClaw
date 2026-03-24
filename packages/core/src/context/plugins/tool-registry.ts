@@ -8,6 +8,11 @@
  * - Tier 2: 模型用 Read 工具按需加载完整 SKILL.md
  *
  * Skill 不注册新工具 — 通过指令引导模型使用已有工具
+ *
+ * 参考 OpenClaw 技能系统设计:
+ * - 路径压缩 (~ 替代 home)
+ * - 完整/紧凑双模式 + 预算控制
+ * - 精准引导语 (mandatory scan → select → read → follow)
  */
 
 import type { ContextPlugin, TurnContext, BootstrapContext } from '../plugin.interface.js';
@@ -19,9 +24,26 @@ import path from 'node:path';
 import os from 'node:os';
 import { parseSkillMd } from '../../skill/skill-parser.js';
 import { checkGates, allGatesPassed } from '../../skill/skill-gate.js';
+import { createLogger } from '../../infrastructure/logger.js';
+
+const log = createLogger('tool-registry');
+
+// ---------------------------------------------------------------------------
+// 常量
+// ---------------------------------------------------------------------------
 
 /** 已加载的 Skill 缓存（agent 级别） */
 const skillCache = new Map<string, InstalledSkill[]>();
+
+/** 最大注入技能数 */
+const MAX_SKILLS_IN_PROMPT = 150;
+
+/** 最大 prompt 字符数（超过则降级为紧凑模式） */
+const MAX_SKILLS_PROMPT_CHARS = 30000;
+
+// ---------------------------------------------------------------------------
+// 类型
+// ---------------------------------------------------------------------------
 
 /** Skill 扫描路径配置 */
 interface SkillPaths {
@@ -47,6 +69,10 @@ export interface ToolRegistryOptions {
   getDisabledSkills?: DisabledSkillsFn;
 }
 
+// ---------------------------------------------------------------------------
+// 插件创建
+// ---------------------------------------------------------------------------
+
 /** 创建 ToolRegistry 插件 */
 export function createToolRegistryPlugin(options?: ToolRegistryOptions): ContextPlugin;
 /** @deprecated 使用 options 对象形式 */
@@ -69,6 +95,7 @@ export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistr
       // 扫描并缓存已安装的 Skills
       const skills = scanSkills(ctx.agentId, skillPaths);
       skillCache.set(ctx.agentId, skills);
+      log.info(`[${ctx.agentId}] 扫描到 ${skills.length} 个技能: ${skills.map(s => s.name).join(', ') || '(无)'}`);
     },
 
     async beforeTurn(ctx: TurnContext) {
@@ -83,12 +110,22 @@ export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistr
       const disabledSet = opts.getDisabledSkills?.(ctx.agentId) ?? new Set<string>();
 
       // 过滤：仅包含门控通过 + 非 disableModelInvocation + 未被 Agent 禁用的 Skill
-      const activeSkills = skills.filter(s => s.gatesPassed && !s.disableModelInvocation && !disabledSet.has(s.name));
+      let activeSkills = skills.filter(s => s.gatesPassed && !s.disableModelInvocation && !disabledSet.has(s.name));
 
-      if (activeSkills.length === 0) return;
+      if (activeSkills.length === 0) {
+        log.debug(`[${ctx.agentId}] 无活跃技能可注入`);
+        return;
+      }
 
-      // Tier 1: 生成 XML 目录
-      const catalog = formatSkillsCatalog(activeSkills);
+      log.info(`[${ctx.agentId}] 注入 ${activeSkills.length} 个技能: ${activeSkills.map(s => s.name).join(', ')}`);
+
+      // 截断到最大数量
+      if (activeSkills.length > MAX_SKILLS_IN_PROMPT) {
+        activeSkills = activeSkills.slice(0, MAX_SKILLS_IN_PROMPT);
+      }
+
+      // Tier 1: 生成 XML 目录（自动降级）
+      const catalog = buildSkillsPrompt(activeSkills);
       ctx.injectedContext.push(catalog);
 
       // 估算 token 消耗（~50-100 tokens/skill）
@@ -101,6 +138,10 @@ export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistr
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// 扫描
+// ---------------------------------------------------------------------------
 
 /** 扫描已安装的 Skills */
 function scanSkills(agentId: string, paths: SkillPaths): InstalledSkill[] {
@@ -167,6 +208,7 @@ function tryLoadSkill(filePath: string, installPath: string): InstalledSkill | n
       author: parsed.metadata.author,
       source: 'local',
       installPath,
+      skillMdPath: filePath,
       gatesPassed: allGatesPassed(gateResults),
       disableModelInvocation: parsed.metadata.disableModelInvocation ?? false,
     };
@@ -175,16 +217,90 @@ function tryLoadSkill(filePath: string, installPath: string): InstalledSkill | n
   }
 }
 
-/** 生成 <available_skills> XML 目录（Tier 1 注入） */
-function formatSkillsCatalog(skills: InstalledSkill[]): string {
+// ---------------------------------------------------------------------------
+// Prompt 格式化
+// ---------------------------------------------------------------------------
+
+/** 路径压缩：将 home 目录替换为 ~ */
+function compactPath(fullPath: string): string {
+  const home = os.homedir();
+  if (fullPath.startsWith(home)) {
+    return '~' + fullPath.slice(home.length);
+  }
+  return fullPath;
+}
+
+/** 获取 Skill 的 SKILL.md 路径（压缩后） */
+function getSkillLocation(s: InstalledSkill): string {
+  const rawPath = s.skillMdPath ?? path.join(s.installPath, 'SKILL.md');
+  return compactPath(rawPath);
+}
+
+/**
+ * 构建技能 prompt — 含引导语 + XML 目录
+ * 自动在完整模式和紧凑模式之间降级
+ */
+function buildSkillsPrompt(skills: InstalledSkill[]): string {
+  const header = `## Skills (mandatory)
+Before replying: scan <available_skills> entries.
+- If exactly one skill clearly applies: read its SKILL.md at <location> with \`read\`, then follow it.
+- If multiple could apply: choose the most specific one, then read/follow it.
+- If none clearly apply: do not read any SKILL.md.
+Constraints: never read more than one skill up front; only read after selecting.
+
+`;
+
+  // 先尝试完整模式（含 description）
+  const fullCatalog = formatSkillsFull(skills);
+  const fullPrompt = header + fullCatalog;
+
+  if (fullPrompt.length <= MAX_SKILLS_PROMPT_CHARS) {
+    log.debug(`技能 prompt 模式: 完整 (${fullPrompt.length} chars, ${skills.length} skills)`);
+    return fullPrompt;
+  }
+
+  // 超预算 → 降级为紧凑模式（无 description）
+  const compactCatalog = formatSkillsCompact(skills);
+  const compactPrompt = header + compactCatalog;
+
+  if (compactPrompt.length <= MAX_SKILLS_PROMPT_CHARS) {
+    log.info(`技能 prompt 降级为紧凑模式 (${compactPrompt.length} chars, ${skills.length} skills)`);
+    return compactPrompt;
+  }
+
+  // 紧凑模式仍然超预算 → 按比例截断技能数量
+  const ratio = MAX_SKILLS_PROMPT_CHARS / compactPrompt.length;
+  const truncatedCount = Math.max(1, Math.floor(skills.length * ratio * 0.9));
+  log.warn(`技能 prompt 截断: ${skills.length} → ${truncatedCount} skills`);
+  const truncatedCatalog = formatSkillsCompact(skills.slice(0, truncatedCount));
+  return header + truncatedCatalog;
+}
+
+/** 完整模式 — name + description + location（多行 XML） */
+function formatSkillsFull(skills: InstalledSkill[]): string {
   const entries = skills.map(s => {
-    const parts = [`  <skill name="${escapeXml(s.name)}" description="${escapeXml(s.description)}"`,];
-    if (s.version) parts.push(` version="${escapeXml(s.version)}"`);
-    parts.push(` location="${escapeXml(s.installPath)}" />`);
-    return parts.join('');
+    const loc = getSkillLocation(s);
+    return `  <skill>
+    <name>${escapeXml(s.name)}</name>
+    <description>${escapeXml(s.description)}</description>
+    <location>${escapeXml(loc)}</location>
+  </skill>`;
   });
 
-  return `<available_skills>\n${entries.join('\n')}\n</available_skills>\n\n提示: 如果某个 Skill 可能对当前任务有帮助，请使用 Read 工具加载其完整内容来获取详细指令。`;
+  return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
+}
+
+/** 紧凑模式 — 仅 name + location（省略 description，节省 token） */
+function formatSkillsCompact(skills: InstalledSkill[]): string {
+  const entries = skills.map(s => {
+    const loc = getSkillLocation(s);
+    return `  <skill>
+    <name>${escapeXml(s.name)}</name>
+    <location>${escapeXml(loc)}</location>
+  </skill>`;
+  });
+
+  return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
 }
 
 /** 转义 XML 特殊字符 */
@@ -195,6 +311,10 @@ function escapeXml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// ---------------------------------------------------------------------------
+// 公共 API
+// ---------------------------------------------------------------------------
 
 /** 刷新 Agent 的 Skill 缓存 */
 export function refreshSkillCache(agentId: string): void {

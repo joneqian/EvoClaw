@@ -99,6 +99,8 @@ export interface InstalledSkill {
   author?: string;
   source: SkillSource;
   installPath: string;
+  /** SKILL.md 文件的完整路径 */
+  skillMdPath?: string;
   /** 门控状态 */
   gatesPassed: boolean;
   /** 是否禁用模型自主调用 */

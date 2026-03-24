@@ -58,7 +58,6 @@ describe('SecurityPlugin', () => {
 
     expect(store.run).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO audit_log'),
-      expect.any(String),  // id
       'test-agent',        // agent_id
       expect.any(String),  // resource
       'high',              // result (severity)

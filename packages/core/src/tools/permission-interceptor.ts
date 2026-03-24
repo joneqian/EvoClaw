@@ -1,6 +1,8 @@
 import type { SecurityExtension, PermissionResult } from '../bridge/security-extension.js';
 import type { PermissionCategory } from '@evoclaw/shared';
 import { detectUnicodeConfusion } from '../security/unicode-detector.js';
+import path from 'node:path';
+import os from 'node:os';
 
 /** 危险命令模式 */
 const DANGEROUS_PATTERNS = [
@@ -72,7 +74,11 @@ export interface InterceptResult {
  * 检查工具执行的安全性和权限
  */
 export class PermissionInterceptor {
-  constructor(private security: SecurityExtension) {}
+  constructor(
+    private security: SecurityExtension,
+    /** 获取 Agent 工作区路径（用于安全区自动放行） */
+    private getWorkspacePath?: (agentId: string) => string,
+  ) {}
 
   /**
    * 拦截工具调用
@@ -137,6 +143,14 @@ export class PermissionInterceptor {
       return { allowed: result === 'allow' };
     }
 
+    // 4.5 Workspace 安全区：Agent 对自己工作区内的文件操作自动放行
+    if ((category === 'file_write' || category === 'file_read') && this.getWorkspacePath) {
+      const wsFilePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
+      if (wsFilePath && this.isInWorkspace(agentId, wsFilePath)) {
+        return { allowed: true };
+      }
+    }
+
     // 5. 文件系统路径检查
     if (category === 'file_read' || category === 'file_write') {
       const filePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
@@ -176,6 +190,18 @@ export class PermissionInterceptor {
   isRestrictedPath(filePath: string): boolean {
     const restricted = ['/etc/', '/usr/', '/bin/', '/sbin/', '/System/', '/Library/', '~/.ssh/', '~/.gnupg/'];
     return restricted.some(r => filePath.startsWith(r) || filePath.includes(r));
+  }
+
+  /** 检测路径是否在 Agent 工作区内（安全区自动放行） */
+  private isInWorkspace(agentId: string, filePath: string): boolean {
+    if (!this.getWorkspacePath) return false;
+    const wsPath = this.getWorkspacePath(agentId);
+    // 解析绝对路径（处理 ~ 开头和相对路径）
+    const resolved = filePath.startsWith('~/')
+      ? path.resolve(os.homedir(), filePath.slice(2))
+      : path.resolve(filePath);
+    // 路径穿越防护：规范化后比较前缀
+    return resolved.startsWith(path.resolve(wsPath));
   }
 
   /** 工具名 → 权限类别 */

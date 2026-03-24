@@ -16,7 +16,11 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
     const agents = status && validStatuses.includes(status as typeof validStatuses[number])
       ? agentManager.listAgents(status as typeof validStatuses[number])
       : agentManager.listAgents();
-    return c.json({ agents });
+    const agentsWithSetup = agents.map(agent => ({
+      ...agent,
+      setupCompleted: agentManager.isSetupCompleted(agent.id),
+    }));
+    return c.json({ agents: agentsWithSetup });
   });
 
   /** GET /:id — 获取单个 Agent */
@@ -26,7 +30,10 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
     if (!agent) {
       return c.json({ error: 'Agent 不存在' }, 404);
     }
-    return c.json({ agent });
+    return c.json({
+      agent,
+      setupCompleted: agentManager.isSetupCompleted(id),
+    });
   });
 
   /** POST / — 创建 Agent（简单模式，非引导式） */

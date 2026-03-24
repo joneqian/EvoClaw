@@ -11,6 +11,7 @@ import { AGENT_WORKSPACE_FILES } from '@evoclaw/shared';
 const migrationsDir = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
 const MIGRATION_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'), 'utf-8');
 const MIGRATION_CONVLOG_SQL = fs.readFileSync(path.join(migrationsDir, '004_conversation_log.sql'), 'utf-8');
+const MIGRATION_WORKSPACE_STATE_SQL = fs.readFileSync(path.join(migrationsDir, '014_workspace_state.sql'), 'utf-8');
 
 describe('AgentManager', () => {
   let store: SqliteStore;
@@ -27,6 +28,7 @@ describe('AgentManager', () => {
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_SQL);
     store.exec(MIGRATION_CONVLOG_SQL);
+    store.exec(MIGRATION_WORKSPACE_STATE_SQL);
     // 011: agents 表新增 last_chat_at 字段
     try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }
     manager = new AgentManager(store, agentsDir);
@@ -191,5 +193,60 @@ describe('AgentManager', () => {
     const content = manager.readWorkspaceFile(agent.id, 'IDENTITY.md');
     expect(content).toContain('小明');
     expect(content).toContain('😎');
+  });
+
+  // ─── 工作区状态 (workspace_state) ───
+
+  it('setWorkspaceState / getWorkspaceState 应该正确读写', async () => {
+    const agent = await manager.createAgent({ name: '状态测试' });
+    manager.setWorkspaceState(agent.id, 'test_key', 'test_value');
+
+    const value = manager.getWorkspaceState(agent.id, 'test_key');
+    expect(value).toBe('test_value');
+  });
+
+  it('getWorkspaceState 不存在的 key 返回 null', async () => {
+    const agent = await manager.createAgent({ name: '空状态测试' });
+    const value = manager.getWorkspaceState(agent.id, 'nonexistent');
+    expect(value).toBeNull();
+  });
+
+  it('setWorkspaceState 应该支持 upsert（覆盖更新）', async () => {
+    const agent = await manager.createAgent({ name: 'Upsert 测试' });
+    manager.setWorkspaceState(agent.id, 'my_key', 'first');
+    manager.setWorkspaceState(agent.id, 'my_key', 'second');
+
+    const value = manager.getWorkspaceState(agent.id, 'my_key');
+    expect(value).toBe('second');
+  });
+
+  it('createAgent 应该记录 bootstrap_seeded_at', async () => {
+    const agent = await manager.createAgent({ name: 'Bootstrap 测试' });
+    const seeded = manager.getWorkspaceState(agent.id, 'bootstrap_seeded_at');
+    expect(seeded).not.toBeNull();
+    // 应该是有效的 ISO 时间戳
+    expect(new Date(seeded!).toISOString()).toBe(seeded);
+  });
+
+  it('isSetupCompleted 默认返回 false', async () => {
+    const agent = await manager.createAgent({ name: 'Setup 未完成' });
+    expect(manager.isSetupCompleted(agent.id)).toBe(false);
+  });
+
+  it('isSetupCompleted 设置后返回 true', async () => {
+    const agent = await manager.createAgent({ name: 'Setup 完成' });
+    manager.setWorkspaceState(agent.id, 'setup_completed_at', new Date().toISOString());
+    expect(manager.isSetupCompleted(agent.id)).toBe(true);
+  });
+
+  it('deleteAgent 应该级联删除 workspace_state', async () => {
+    const agent = await manager.createAgent({ name: '级联删除测试' });
+    manager.setWorkspaceState(agent.id, 'test_key', 'test_value');
+
+    manager.deleteAgent(agent.id);
+
+    // workspace_state 应该被级联删除
+    const value = manager.getWorkspaceState(agent.id, 'test_key');
+    expect(value).toBeNull();
   });
 });

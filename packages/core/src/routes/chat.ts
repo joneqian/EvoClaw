@@ -385,11 +385,33 @@ export function createChatRoutes(
     // 组装最终 system prompt
     const systemPrompt = turnCtx.injectedContext.join('\n\n---\n\n');
 
-    // 加载工作区文件（用于 embedded-runner 的 buildSystemPrompt）
+    // 根据 session 类型选择加载的文件（参考 OpenClaw 的分层策略）
+    const ALL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+    const MINIMAL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md'];
+    const HEARTBEAT_FILES = ['HEARTBEAT.md'];
+
+    const isSubAgent = sessionKey.includes(':subagent:');
+    const isCron = sessionKey.includes(':cron:');
+    const isHeartbeat = sessionKey.includes(':heartbeat:');
+
+    const filesToLoad = isHeartbeat ? HEARTBEAT_FILES : (isSubAgent || isCron) ? MINIMAL_FILES : ALL_FILES;
+
     const workspaceFiles: Record<string, string> = {};
-    for (const file of ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md']) {
+    for (const file of filesToLoad) {
       const content = agentManager.readWorkspaceFile(agentId, file);
       if (content) workspaceFiles[file] = content;
+    }
+
+    // BOOTSTRAP.md 生命周期检测
+    const bootstrapSeeded = agentManager.getWorkspaceState(agentId, 'bootstrap_seeded_at');
+    const setupCompleted = agentManager.getWorkspaceState(agentId, 'setup_completed_at');
+
+    if (bootstrapSeeded && !setupCompleted) {
+      // 检查 BOOTSTRAP.md 是否已被 Agent 删除
+      const bootstrapExists = agentManager.readWorkspaceFile(agentId, 'BOOTSTRAP.md');
+      if (!bootstrapExists) {
+        agentManager.setWorkspaceState(agentId, 'setup_completed_at', new Date().toISOString());
+      }
     }
 
     // 构建增强工具集
@@ -419,7 +441,7 @@ export function createChatRoutes(
         agent,
         systemPrompt: '',
         workspaceFiles: {},
-        workspacePath: agentManager.getAgentCwd(),
+        workspacePath: agentManager.getAgentCwd(agentId),
         modelId,
         provider,
         apiKey,
@@ -449,7 +471,10 @@ export function createChatRoutes(
     const tools = getInjectedTools();
 
     // 权限拦截器 — 通过 permissionInterceptFn 传入 embedded-runner，拦截所有工具（含 PI 内置）
-    const interceptor = new PermissionInterceptor(security);
+    const interceptor = new PermissionInterceptor(
+      security,
+      (aId) => agentManager.getWorkspacePath(aId),
+    );
 
     // 记录本次对话中需要弹窗的权限请求（流结束后随最后一批 SSE 事件到达前端）
     const pendingPermissions: Array<{
@@ -486,7 +511,7 @@ export function createChatRoutes(
       agent,
       systemPrompt,
       workspaceFiles,
-      workspacePath: agentManager.getAgentCwd(),
+      workspacePath: agentManager.getAgentCwd(agentId),
       modelId,
       provider,
       apiKey,

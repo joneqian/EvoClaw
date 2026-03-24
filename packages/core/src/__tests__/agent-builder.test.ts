@@ -8,10 +8,9 @@ import { AgentManager } from '../agent/agent-manager.js';
 import { AgentBuilder, type BuilderState } from '../agent/agent-builder.js';
 
 /** 读取初始迁移 SQL */
-const MIGRATION_SQL = fs.readFileSync(
-  path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '001_initial.sql'),
-  'utf-8'
-);
+const migrationsDir = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
+const MIGRATION_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'), 'utf-8');
+const MIGRATION_WORKSPACE_STATE_SQL = fs.readFileSync(path.join(migrationsDir, '014_workspace_state.sql'), 'utf-8');
 
 describe('AgentBuilder', () => {
   let store: SqliteStore;
@@ -27,6 +26,7 @@ describe('AgentBuilder', () => {
 
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_SQL);
+    store.exec(MIGRATION_WORKSPACE_STATE_SQL);
     manager = new AgentManager(store, agentsDir);
     builder = new AgentBuilder(manager);
   });

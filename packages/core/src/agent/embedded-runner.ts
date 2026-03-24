@@ -5,6 +5,7 @@ import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
 import { ToolSafetyGuard } from './tool-safety.js';
+import { shouldTriggerFlush } from './memory-flush.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('embedded-runner');
@@ -405,8 +406,35 @@ async function runWithPI(
   session.agent.setSystemPrompt(systemPrompt);
   const mutableSession = session as any;
   if (mutableSession._rebuildSystemPrompt) {
+    // 追踪消息数量，检测 compaction
+    let lastKnownMessageCount = 0;
+
     mutableSession._baseSystemPrompt = systemPrompt;
-    mutableSession._rebuildSystemPrompt = () => systemPrompt;
+    mutableSession._rebuildSystemPrompt = () => {
+      const currentMessages = (session.agent as any).messages;
+      const currentCount = Array.isArray(currentMessages) ? currentMessages.length : 0;
+
+      // 检测 compaction: 消息数量突然减少超过一半
+      const wasCompacted = lastKnownMessageCount > 4 && currentCount < lastKnownMessageCount * 0.5;
+      lastKnownMessageCount = currentCount;
+
+      if (wasCompacted) {
+        const today = new Date().toISOString().slice(0, 10);
+        const postCompactionPrompt = `\n\n[Post-compaction context refresh]
+
+会话刚刚被压缩。上面的对话摘要只是提示，不能替代你的启动流程。
+
+请立即执行：
+1. 读取 AGENTS.md — 你的操作规程
+2. 读取 MEMORY.md — 你的长期记忆
+3. 读取今天的 memory/${today}.md — 今日笔记（如果存在）
+
+从最新的文件状态恢复上下文，然后继续对话。`;
+        return systemPrompt + postCompactionPrompt;
+      }
+
+      return systemPrompt;
+    };
   }
 
   // 防御性处理：确保所有 assistant messages 都有 usage 字段
@@ -575,6 +603,15 @@ async function runWithPI(
 
         // 防御性处理
         ensureUsageOnAssistantMessages(session.agent as any);
+
+        // 检查是否需要 Memory Flush（在 compaction 前保存记忆）
+        const usage = (session.agent as any)._lastUsage;
+        if (usage && shouldTriggerFlush(usage.total_tokens ?? 0, usage.max_context_tokens ?? 128000)) {
+          log.info('触发 Memory Flush: context 使用率超过阈值');
+          // Memory flush 在下次 compaction 前执行
+          // 当前实现：记录标记，在 post-compaction 指令中提示 Agent 保存记忆
+          // TODO: 完整实现需要在 PI session 内插入一个独立的 flush turn
+        }
 
         // 检查 agent 状态中的错误
         const state = session.state;
@@ -967,6 +1004,28 @@ ${lines.join('\n')}
 </available_tools>`;
 }
 
+/** Bootstrap 文件预算 — 参考 OpenClaw 设计 */
+const BOOTSTRAP_MAX_CHARS_PER_FILE = 20_000;
+const BOOTSTRAP_TOTAL_MAX_CHARS = 150_000;
+const BOOTSTRAP_MIN_BUDGET_CHARS = 64;
+
+/** 截断 workspace 文件内容到预算范围内 */
+function truncateBootstrapContent(files: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  let totalUsed = 0;
+  for (const [name, content] of Object.entries(files)) {
+    const remaining = BOOTSTRAP_TOTAL_MAX_CHARS - totalUsed;
+    if (remaining < BOOTSTRAP_MIN_BUDGET_CHARS) break;
+    const budget = Math.min(BOOTSTRAP_MAX_CHARS_PER_FILE, remaining);
+    const truncated = content.length > budget
+      ? content.slice(0, budget) + '\n\n[... 内容已截断]'
+      : content;
+    result[name] = truncated;
+    totalUsed += truncated.length;
+  }
+  return result;
+}
+
 /**
  * 模块化系统提示构建（参考 OpenClaw 22 段式架构）
  *
@@ -981,6 +1040,7 @@ ${lines.join('\n')}
  * 8. 自定义 — contextEngine 输出
  */
 export function buildSystemPrompt(config: AgentRunConfig): string {
+  const files = truncateBootstrapContent(config.workspaceFiles);
   const sections: string[] = [];
 
   // § 1 安全宪法
@@ -1001,30 +1061,32 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
     `Node.js: ${process.version}`,
     `模型: ${config.provider}/${config.modelId}`,
     `当前时间: ${new Date().toISOString()}`,
+    `个人笔记本目录: ${config.workspacePath ? config.workspacePath + '/memory/' : 'memory/'}`,
+    `日记写入路径: ${config.workspacePath ? config.workspacePath + '/memory/YYYY-MM-DD.md' : 'memory/YYYY-MM-DD.md'} (请使用绝对路径写入)`,
   ].join('\n');
   sections.push(`<runtime>\n${runtimeInfo}\n</runtime>`);
 
   // § 3 人格
-  if (config.workspaceFiles['SOUL.md']) {
-    sections.push(`<personality>\n${config.workspaceFiles['SOUL.md']}\n</personality>`);
+  if (files['SOUL.md']) {
+    sections.push(`<personality>\n${files['SOUL.md']}\n</personality>`);
   }
-  if (config.workspaceFiles['IDENTITY.md']) {
-    sections.push(`<identity>\n${config.workspaceFiles['IDENTITY.md']}\n</identity>`);
+  if (files['IDENTITY.md']) {
+    sections.push(`<identity>\n${files['IDENTITY.md']}\n</identity>`);
   }
 
   // § 3.5 用户画像（USER.md 动态渲染结果）
-  if (config.workspaceFiles['USER.md']) {
-    sections.push(`<user_profile>\n${config.workspaceFiles['USER.md']}\n</user_profile>`);
+  if (files['USER.md']) {
+    sections.push(`<user_profile>\n${files['USER.md']}\n</user_profile>`);
   }
 
   // § 4 操作规程
-  if (config.workspaceFiles['AGENTS.md']) {
-    sections.push(`<operating_procedures>\n${config.workspaceFiles['AGENTS.md']}\n</operating_procedures>`);
+  if (files['AGENTS.md']) {
+    sections.push(`<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`);
   }
 
   // § 4.5 BOOTSTRAP.md — 仅首轮对话注入（节省 ~400 token）
-  if (config.workspaceFiles['BOOTSTRAP.md'] && (!config.messages || config.messages.length === 0)) {
-    sections.push(`<bootstrap>\n${config.workspaceFiles['BOOTSTRAP.md']}\n</bootstrap>`);
+  if (files['BOOTSTRAP.md'] && (!config.messages || config.messages.length === 0)) {
+    sections.push(`<bootstrap>\n${files['BOOTSTRAP.md']}\n</bootstrap>`);
   }
 
   // § 5 记忆召回指令
@@ -1040,8 +1102,8 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
 </memory_recall>`);
 
   // § 5.1 Agent 笔记本（MEMORY.md 内容注入）
-  if (config.workspaceFiles['MEMORY.md']) {
-    sections.push(`<agent_notes>\n${config.workspaceFiles['MEMORY.md']}\n</agent_notes>`);
+  if (files['MEMORY.md']) {
+    sections.push(`<agent_notes>\n${files['MEMORY.md']}\n</agent_notes>`);
   }
 
   // § 5.5 工具目录（按优先级排序的一行摘要，参考 OpenClaw toolOrder 设计）

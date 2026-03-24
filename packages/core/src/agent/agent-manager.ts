@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { readFileWithCache, invalidateCache } from './workspace-cache.js';
 
 /**
  * Agent 生命周期管理器 — CRUD + 工作区目录管理
@@ -92,10 +93,10 @@ export class AgentManager {
   /** 删除 Agent */
   deleteAgent(id: string): void {
     this.store.run('DELETE FROM agents WHERE id = ?', id);
-    // 同时删除工作区目录
-    const wsPath = this.getWorkspacePath(id);
-    if (fs.existsSync(wsPath)) {
-      fs.rmSync(wsPath, { recursive: true, force: true });
+    // 删除整个 Agent 目录 (包含 workspace/ 和其他可能的子目录)
+    const agentDir = path.join(this.agentsBaseDir, id);
+    if (fs.existsSync(agentDir)) {
+      fs.rmSync(agentDir, { recursive: true, force: true });
     }
   }
 
@@ -105,34 +106,66 @@ export class AgentManager {
   }
 
   /**
-   * 获取 Agent 工作目录 (cwd) — 所有 Agent 共享
-   * 多 Agent 协作时在同一目录下操作，互相可见文件
-   * 路径: ~/.evoclaw/workspace (或 ~/.healthclaw/workspace 等，跟随品牌)
+   * 获取 Agent 工作目录 (cwd) — 指向 per-agent workspace
+   * cwd = workspace = bootstrap 文件所在目录，相对路径自然正确
+   * 路径: ~/.evoclaw/agents/{agentId}/workspace/
    */
-  getAgentCwd(): string {
-    const sharedDir = path.join(os.homedir(), DEFAULT_DATA_DIR, SHARED_WORKSPACE_DIR);
-    if (!fs.existsSync(sharedDir)) {
-      fs.mkdirSync(sharedDir, { recursive: true });
-    }
-    return sharedDir;
+  getAgentCwd(agentId: string): string {
+    return this.getWorkspacePath(agentId);
   }
 
   /** 读取工作区文件 */
   readWorkspaceFile(agentId: string, file: string): string | undefined {
-    const filePath = path.join(this.getWorkspacePath(agentId), file);
-    if (!fs.existsSync(filePath)) return undefined;
-    return fs.readFileSync(filePath, 'utf-8');
+    const wsPath = this.getWorkspacePath(agentId);
+    const filePath = path.join(wsPath, file);
+
+    // 路径安全验证：防止路径穿越
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(wsPath))) {
+      return undefined;
+    }
+
+    if (!fs.existsSync(resolved)) return undefined;
+    return readFileWithCache(resolved);
   }
 
   /** 写入工作区文件 */
   writeWorkspaceFile(agentId: string, file: string, content: string): void {
     const filePath = path.join(this.getWorkspacePath(agentId), file);
     fs.writeFileSync(filePath, content, 'utf-8');
+    invalidateCache(path.resolve(filePath));
+  }
+
+  /** 设置工作区状态 */
+  setWorkspaceState(agentId: string, key: string, value: string): void {
+    this.store.run(
+      `INSERT INTO workspace_state (agent_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT (agent_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      agentId, key, value, new Date().toISOString(),
+    );
+  }
+
+  /** 获取工作区状态 */
+  getWorkspaceState(agentId: string, key: string): string | null {
+    const row = this.store.get<{ value: string }>(
+      'SELECT value FROM workspace_state WHERE agent_id = ? AND key = ?',
+      agentId, key,
+    );
+    return row?.value ?? null;
+  }
+
+  /** 检查 Agent 引导是否完成 */
+  isSetupCompleted(agentId: string): boolean {
+    return this.getWorkspaceState(agentId, 'setup_completed_at') !== null;
   }
 
   private initWorkspace(id: string, config: AgentConfig): void {
     const wsPath = this.getWorkspacePath(id);
     fs.mkdirSync(wsPath, { recursive: true });
+
+    // 创建 memory/ 日记子目录
+    const memoryDir = path.join(wsPath, 'memory');
+    fs.mkdirSync(memoryDir, { recursive: true });
 
     // 创建默认模板文件
     this.writeWorkspaceFile(id, 'SOUL.md', DEFAULT_SOUL_MD);
@@ -143,6 +176,9 @@ export class AgentManager {
     this.writeWorkspaceFile(id, 'USER.md', '');
     this.writeWorkspaceFile(id, 'MEMORY.md', '');
     this.writeWorkspaceFile(id, 'BOOTSTRAP.md', generateBootstrapMd(config));
+
+    // 记录 BOOTSTRAP.md 创建时间
+    this.setWorkspaceState(id, 'bootstrap_seeded_at', new Date().toISOString());
   }
 
   private rowToConfig(row: any): AgentConfig {
@@ -212,18 +248,36 @@ export const AGENTS_BASE = `# 操作规程
 
 不需要请求许可。直接读。
 
-## 记忆系统
+## 记忆系统（双写策略）
 
-你的记忆通过数据库自动管理：
-- **USER.md** — 从记忆数据中动态渲染用户画像
-- **MEMORY.md** — 从记忆数据中动态渲染长期记忆快照
-- 你对用户说过的重要内容、学到的教训，系统会自动提取和存储
+你的记忆有两层保护：
+1. **你自己写的** — 当场用 write/edit 工具写入文件（快、可靠）
+2. **系统自动提取的** — 后台分析对话，写入数据库（深、可搜索）
 
-### 写下来，别用脑子记！
+### 即时记忆 — 重要信息当场就写！
 
-- 如果你想记住什么，明确告诉用户你记住了——系统会自动存储
-- "脑子里记一下"在会话重启后就消失了，只有写下的才会保留
-- 当你犯了错误，记录下来，让未来的你不再重蹈覆辙
+**不要等系统替你记。** 以下情况你应该**立即**写入：
+
+- 用户说"记住这个"或告诉你重要信息（名字、偏好、习惯等）→ 写入当天日记 memory/YYYY-MM-DD.md
+- 你发现了重要的环境信息 → 用 edit 更新 TOOLS.md
+- 你犯了错误并学到教训 → 用 edit 更新 AGENTS.md
+
+**注意：USER.md 和 MEMORY.md 由系统自动渲染，不要直接编辑。** 你写入日记的内容会被系统自动提取并反映到这两个文件中。
+
+**写文件时使用 runtime 信息中提供的绝对路径。**
+
+### 背景记忆 — 系统自动管理
+
+系统会在后台自动：
+- 分析对话内容，提取值得记住的信息存入数据库
+- 下次会话前将提取结果渲染到 USER.md 和 MEMORY.md
+- 你写入日记的内容也会被自动提取
+
+### "脑子里记一下" = 不存在
+
+- "心里记住"在会话重启后就没了
+- 只有写进文件的才会保留
+- **文件 > 大脑**
 
 ## 安全准则
 
@@ -260,9 +314,24 @@ export const AGENTS_BASE = `# 操作规程
 
 空闲时可以主动做：整理记忆文件、检查项目状态、更新文档。但尊重安静时段（23:00-08:00）。
 
+### 日记文件
+
+除了系统自动管理的记忆外，你还有一个个人笔记本目录：
+- **日记路径:** 见 runtime 信息中的"个人笔记本目录"和"日记写入路径"，**必须使用绝对路径写入**
+- 当你发现值得记录但不是对话核心的信息时，写入日记
+- 用户说"记住这个" → 优先写入当天的日记文件
+- 定期回顾近几天的日记，将重要内容提炼到 MEMORY.md
+
 ---
 
 _这是起点。在你摸索出什么管用之后，添加你自己的规则和习惯。_
+
+## 自我进化
+
+你可以修改自己的操作规程：
+- 从错误中学到教训 → 在本文件添加新规则
+- 发现更好的工作方式 → 更新现有规则
+- 环境特定信息 → 记在 \`TOOLS.md\`
 `;
 
 /** TOOLS.md — 环境笔记本 */

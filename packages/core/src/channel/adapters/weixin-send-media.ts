@@ -25,6 +25,14 @@ const log = createLogger('weixin-send-media');
 // 媒体消息构建
 // ---------------------------------------------------------------------------
 
+/**
+ * aes_key 编码：openclaw-weixin 的做法是把 hex 字符串的 ASCII 字节直接 base64 编码
+ * （不是先 hex decode 为 16 字节再 base64），iLink 服务端/微信客户端也按此方式解码
+ */
+function encodeAesKeyForMessage(aesKeyHex: string): string {
+  return Buffer.from(aesKeyHex).toString('base64');
+}
+
 /** 构建图片消息项 */
 function buildImageItem(uploaded: UploadedMediaInfo): WeixinMessageItem {
   return {
@@ -32,7 +40,7 @@ function buildImageItem(uploaded: UploadedMediaInfo): WeixinMessageItem {
     image_item: {
       media: {
         encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-        aes_key: Buffer.from(uploaded.aesKey, 'hex').toString('base64'),
+        aes_key: encodeAesKeyForMessage(uploaded.aesKey),
         encrypt_type: 1,
       },
       mid_size: uploaded.cipherSize,
@@ -47,7 +55,7 @@ function buildVideoItem(uploaded: UploadedMediaInfo): WeixinMessageItem {
     video_item: {
       media: {
         encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-        aes_key: Buffer.from(uploaded.aesKey, 'hex').toString('base64'),
+        aes_key: encodeAesKeyForMessage(uploaded.aesKey),
         encrypt_type: 1,
       },
       video_size: uploaded.cipherSize,
@@ -62,11 +70,11 @@ function buildFileItem(uploaded: UploadedMediaInfo, fileName: string): WeixinMes
     file_item: {
       media: {
         encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-        aes_key: Buffer.from(uploaded.aesKey, 'hex').toString('base64'),
+        aes_key: encodeAesKeyForMessage(uploaded.aesKey),
         encrypt_type: 1,
       },
       file_name: fileName,
-      len: uploaded.cipherSize,
+      len: String(uploaded.rawSize),
     },
   };
 }

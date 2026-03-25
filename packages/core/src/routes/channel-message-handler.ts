@@ -423,7 +423,7 @@ export async function handleChannelMessage(
       if (!thinkingHintSent) {
         thinkingHintSent = true;
         channelManager.sendMessage(channel as any, peerId, '让我看看，稍等一下~', chatType === 'group' ? 'group' : 'private')
-          .catch(() => { /* 提示发送失败不影响主流程 */ });
+          .catch((err) => { log.warn(`思考提示发送失败: ${err instanceof Error ? err.message : String(err)}`); });
       }
     }
     if (event.type === 'tool_end') {

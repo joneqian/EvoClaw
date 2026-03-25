@@ -119,7 +119,8 @@ export interface WeixinFileItem {
   media?: CDNMedia;
   file_name?: string;
   md5?: string;
-  len?: number;
+  /** 明文文件大小（iLink 要求字符串格式） */
+  len?: string | number;
 }
 
 /** 视频消息项 */

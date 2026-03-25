@@ -158,6 +158,7 @@ export async function sendMessage(opts: WeixinApiOpts & {
   itemList: WeixinMessageItem[];
 }): Promise<void> {
   const msg: WeixinMessage = {
+    from_user_id: '',
     to_user_id: opts.toUserId,
     context_token: opts.contextToken,
     // iLink 平台要求以下字段，缺失会导致消息不投递
@@ -167,14 +168,28 @@ export async function sendMessage(opts: WeixinApiOpts & {
     item_list: opts.itemList,
   };
 
-  await apiFetch({
+  const rawText = await apiFetch({
     baseUrl: opts.baseUrl,
     endpoint: 'ilink/bot/sendmessage',
-    body: JSON.stringify({ msg }),
+    body: JSON.stringify({ msg, base_info: { channel_version: '2.0.1' } }),
     token: opts.token,
     timeoutMs: API_TIMEOUT_MS,
     label: 'sendMessage',
   });
+
+  // 检查 iLink 业务错误码（HTTP 200 但 ret 非 0 表示投递失败）
+  if (rawText) {
+    try {
+      const resp = JSON.parse(rawText) as { ret?: number; errmsg?: string };
+      if (resp.ret !== undefined && resp.ret !== 0) {
+        log.warn(`sendMessage 业务错误: ret=${resp.ret} errmsg=${resp.errmsg ?? '未知'} toUserId=${opts.toUserId}`);
+        throw new Error(`iLink sendMessage 失败: ret=${resp.ret} ${resp.errmsg ?? ''}`);
+      }
+    } catch (e) {
+      // JSON 解析失败时仅当 e 是我们自己抛的才重新抛出
+      if (e instanceof Error && e.message.startsWith('iLink sendMessage')) throw e;
+    }
+  }
 }
 
 /** 发送文本消息 (便捷方法) */
@@ -250,6 +265,7 @@ export async function getUploadUrl(opts: WeixinApiOpts & {
       filesize: opts.cipherSize,
       no_need_thumb: true,
       aeskey: opts.aesKeyHex,
+      base_info: { channel_version: '2.0.1' },
     }),
     token: opts.token,
     timeoutMs: API_TIMEOUT_MS,

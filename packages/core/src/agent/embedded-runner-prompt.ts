@@ -145,10 +145,14 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
     sections.push(`<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`);
   }
 
-  // § 4.5 BOOTSTRAP.md — 仅首轮对话注入（历史消息为空 = 新会话的第一条）
-  // 注意: config.messages 包含当前用户消息，所以判断 <= 1（仅有当前消息，无历史）
-  if (files['BOOTSTRAP.md'] && (!config.messages || config.messages.length <= 1)) {
-    sections.push(`<bootstrap>\n${files['BOOTSTRAP.md']}\n</bootstrap>`);
+  // § 4.5 BOOTSTRAP.md — 由上层（chat.ts）根据 setupCompleted 控制是否传入
+  // 传入即注入，无需在此重复判断
+  if (files['BOOTSTRAP.md']) {
+    sections.push(`<bootstrap>
+**重要：这是你的首次对话。你必须优先执行下面的出生仪式引导流程，暂时搁置你的专业角色。先认识用户、建立关系，完成引导后再进入正常工作模式。**
+
+${files['BOOTSTRAP.md']}
+</bootstrap>`);
   }
 
   // § 5 记忆召回指令

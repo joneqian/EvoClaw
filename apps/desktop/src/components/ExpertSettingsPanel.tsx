@@ -54,7 +54,7 @@ const FILE_LABELS: Record<string, { icon: string; label: string; desc: string; e
   'SOUL.md': { icon: '💎', label: '行为哲学', desc: '核心真理 + 角色人格', editable: true },
   'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、气质、标志', editable: true },
   'AGENTS.md': { icon: '📋', label: '操作规程', desc: '通用准则 + 工作规范', editable: true },
-  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: '专家的"出生仪式"', editable: true },
+  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: '专家的"出生仪式"', editable: false },
   'TOOLS.md': { icon: '🔧', label: '环境笔记', desc: '环境特有的备忘信息', editable: true },
   'HEARTBEAT.md': { icon: '💓', label: '定时检查', desc: '周期性自动检查清单', editable: true },
   'USER.md': { icon: '👤', label: '用户画像', desc: '运行时动态渲染', editable: false },
@@ -760,7 +760,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
                     </div>
                     <p className="text-xs text-slate-400 mt-0.5 truncate">
                       {charCount > 0 ? `${meta.desc} · ${charCount} 字` : meta.desc}
-                      {mtimes[filename] && <span className="ml-1.5 text-slate-300">· {formatDateTime(mtimes[filename])}</span>}
+                      {mtimes[filename] && <span className="ml-1.5 text-slate-500">· {formatDateTime(mtimes[filename])}</span>}
                     </p>
                   </div>
                   {/* 编辑/查看图标 */}
@@ -795,28 +795,28 @@ function SettingsTab({ agentId }: { agentId: string }) {
             {/* 弹窗 */}
             <div className="relative w-[90vw] max-w-3xl h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col">
               {/* 头部 */}
-              <div className="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{meta.icon}</span>
-                  <h3 className="text-sm font-bold text-slate-800">{meta.label}</h3>
-                  <span className="text-xs text-slate-400">{modalFile}</span>
+              <div className="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-slate-200 gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg shrink-0">{meta.icon}</span>
+                  <h3 className="text-sm font-bold text-slate-800 whitespace-nowrap">{meta.label}</h3>
+                  <span className="text-xs text-slate-400 whitespace-nowrap">{modalFile}</span>
                   {!meta.editable && (
-                    <span className="text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded-full">只读</span>
+                    <span className="text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded-full whitespace-nowrap">只读</span>
                   )}
                   {mtimes[modalFile] && (
-                    <span className="text-[10px] text-slate-400">修改于 {formatDateTime(mtimes[modalFile])}</span>
+                    <span className="text-[10px] text-slate-500 whitespace-nowrap">{formatDateTime(mtimes[modalFile])}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {meta.editable && (
                     <button
                       onClick={handleModalSave}
                       disabled={modalSaving || !isDirty}
-                      className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-40 ${
+                      className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                         isDirty
                           ? 'text-white bg-brand hover:bg-brand-hover'
-                          : 'text-slate-400 bg-slate-100'
-                      }`}
+                          : 'text-slate-500 bg-slate-200'
+                      } disabled:opacity-60`}
                     >
                       {modalSaving ? '保存中...' : isDirty ? '保存' : '未修改'}
                     </button>

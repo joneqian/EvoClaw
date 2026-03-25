@@ -446,11 +446,19 @@ export function createChatRoutes(
     const setupCompleted = agentManager.getWorkspaceState(agentId, 'setup_completed_at');
 
     if (bootstrapSeeded && !setupCompleted) {
-      // 检查 BOOTSTRAP.md 是否已被 Agent 删除
-      const bootstrapExists = agentManager.readWorkspaceFile(agentId, 'BOOTSTRAP.md');
-      if (!bootstrapExists) {
+      // 检查 BOOTSTRAP.md 是否已被 Agent 删除或清空
+      const bootstrapContent = agentManager.readWorkspaceFile(agentId, 'BOOTSTRAP.md');
+      const bootstrapDone = !bootstrapContent || bootstrapContent.trim().length === 0 || history.length >= 12;
+      if (bootstrapDone) {
         agentManager.setWorkspaceState(agentId, 'setup_completed_at', new Date().toISOString());
+        // 清空磁盘上的 BOOTSTRAP.md（无论是 Agent 主动清空还是兜底触发）
+        agentManager.writeWorkspaceFile(agentId, 'BOOTSTRAP.md', '');
       }
+    }
+
+    // setup 已完成 → 不再注入 BOOTSTRAP.md（出生只有一次）
+    if (setupCompleted) {
+      delete workspaceFiles['BOOTSTRAP.md'];
     }
 
     // 构建增强工具集

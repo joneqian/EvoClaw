@@ -514,16 +514,7 @@ function ChatView() {
               {messages.map((msg) => (
                 <MessageBubble key={msg.id} message={msg} agentName={currentAgent?.name} />
               ))}
-              {isStreaming && (
-                <div className="flex items-center gap-2 text-slate-400 text-xs pl-2 py-3">
-                  <span className="flex gap-0.5">
-                    <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
-                    <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:300ms]" />
-                  </span>
-                  正在思考...
-                </div>
-              )}
+              {/* 思考指示器由 MessageBubble 的空消息状态显示，无需额外重复 */}
               <div ref={messagesEndRef} />
             </div>
           </div>
@@ -698,10 +689,13 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
   return (
     <div className="group border-t border-slate-100 first:border-t-0 py-4">
       {isEmpty ? (
-        <div className="flex items-center gap-1 py-1">
-          <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse" />
-          <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse [animation-delay:150ms]" />
-          <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-pulse [animation-delay:300ms]" />
+        <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
+          <span className="flex gap-0.5">
+            <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
+            <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
+            <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:300ms]" />
+          </span>
+          正在思考...
         </div>
       ) : (
         <>

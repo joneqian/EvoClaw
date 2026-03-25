@@ -98,7 +98,7 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
     const agent = agentManager.getAgent(id);
     if (!agent) return c.json({ error: 'Agent 不存在' }, 404);
 
-    const allowedFiles = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+    const allowedFiles = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md'];
     if (!allowedFiles.includes(file)) {
       return c.json({ error: '该文件不允许手动编辑' }, 400);
     }

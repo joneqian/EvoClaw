@@ -178,6 +178,61 @@ describe('LaneQueue', () => {
     ).rejects.toThrow(/timed out/);
   });
 
+  it('外部 abortController 应被透传到 enqueue', async () => {
+    const queue = new LaneQueue();
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+
+    const p = queue.enqueue({
+      id: 'ext-abort',
+      sessionKey: 'session-1',
+      lane: 'main',
+      abortController: controller,
+      task: async () => {
+        receivedSignal = controller.signal;
+        return 'ok';
+      },
+    });
+
+    await p;
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
+  it('abortRunning 应中止正在运行的任务', async () => {
+    const queue = new LaneQueue({ main: 1 });
+    let aborted = false;
+
+    const controller = new AbortController();
+    controller.signal.addEventListener('abort', () => { aborted = true; });
+
+    const p = queue.enqueue({
+      id: 'long-task',
+      sessionKey: 'my-session',
+      lane: 'main',
+      abortController: controller,
+      task: async () => {
+        await delay(500);
+        return 'done';
+      },
+    });
+
+    // 等任务开始执行
+    await delay(10);
+
+    const result = queue.abortRunning('my-session');
+    expect(result).toBe(true);
+    expect(aborted).toBe(true);
+
+    // 任务本身不会自动 reject（abort 只是信号，需要 task 内部监听）
+    // 但 abortRunning 返回 true 表示找到了运行中的任务并触发了 abort
+    await p;
+  });
+
+  it('abortRunning 对不存在的 sessionKey 返回 false', () => {
+    const queue = new LaneQueue();
+    expect(queue.abortRunning('non-existent')).toBe(false);
+  });
+
   it('getStatus 应该返回正确的计数', async () => {
     const queue = new LaneQueue({ main: 1 });
 

@@ -298,6 +298,24 @@ export async function handleChannelMessage(
     if (content) workspaceFiles[file] = content;
   }
 
+  // BOOTSTRAP.md 生命周期检测
+  const bootstrapSeeded = agentManager.getWorkspaceState(agentId, 'bootstrap_seeded_at');
+  const setupCompleted = agentManager.getWorkspaceState(agentId, 'setup_completed_at');
+
+  if (bootstrapSeeded && !setupCompleted) {
+    const bootstrapContent = agentManager.readWorkspaceFile(agentId, 'BOOTSTRAP.md');
+    const bootstrapDone = !bootstrapContent || bootstrapContent.trim().length === 0 || history.length >= 12;
+    if (bootstrapDone) {
+      agentManager.setWorkspaceState(agentId, 'setup_completed_at', new Date().toISOString());
+      agentManager.writeWorkspaceFile(agentId, 'BOOTSTRAP.md', '');
+    }
+  }
+
+  // setup 已完成 → 不再注入 BOOTSTRAP.md（出生只有一次）
+  if (setupCompleted || agentManager.getWorkspaceState(agentId, 'setup_completed_at')) {
+    delete workspaceFiles['BOOTSTRAP.md'];
+  }
+
   // 6. 构建增强工具集
   const braveApiKey = configManager?.getBraveApiKey() ?? '';
   const providerConfig = { apiKey, provider, modelId, baseUrl, apiProtocol };

@@ -63,7 +63,8 @@ export const contextAssemblerPlugin: ContextPlugin = {
 
     // 组装 system prompt
     const parts: string[] = [];
-    const fullOrder = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'USER.md', 'MEMORY.md', 'TOOLS.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+    // BOOTSTRAP.md 由 buildSystemPrompt 单独处理（含首轮判断），此处不重复注入
+    const fullOrder = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'USER.md', 'MEMORY.md', 'TOOLS.md', 'HEARTBEAT.md'];
 
     // 群聊模式：跳过 USER.md 和 MEMORY.md（隐私隔离）
     const groupExcluded = new Set(['USER.md', 'MEMORY.md']);

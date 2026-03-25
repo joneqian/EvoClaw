@@ -145,8 +145,9 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
     sections.push(`<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`);
   }
 
-  // § 4.5 BOOTSTRAP.md — 仅首轮对话注入
-  if (files['BOOTSTRAP.md'] && (!config.messages || config.messages.length === 0)) {
+  // § 4.5 BOOTSTRAP.md — 仅首轮对话注入（历史消息为空 = 新会话的第一条）
+  // 注意: config.messages 包含当前用户消息，所以判断 <= 1（仅有当前消息，无历史）
+  if (files['BOOTSTRAP.md'] && (!config.messages || config.messages.length <= 1)) {
     sections.push(`<bootstrap>\n${files['BOOTSTRAP.md']}\n</bootstrap>`);
   }
 

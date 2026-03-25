@@ -22,6 +22,7 @@ export class LaneQueue {
   private queues: Map<LaneName, QueueItem<any>[]> = new Map();
   private running: Map<LaneName, Set<string>> = new Map();
   private runningKeys: Map<string, string> = new Map(); // sessionKey -> itemId（串行保障）
+  private runningItems: Map<string, QueueItem<any>> = new Map(); // sessionKey -> 运行中的 item（用于 abortRunning）
   private concurrency: Record<LaneName, number>;
 
   constructor(concurrency?: Partial<Record<LaneName, number>>) {
@@ -43,6 +44,8 @@ export class LaneQueue {
     lane: LaneName;
     task: () => Promise<T>;
     timeoutMs?: number;
+    /** 外部 AbortController — 调用方可通过它取消运行中的任务 */
+    abortController?: AbortController;
   }): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const item: QueueItem<T> = {
@@ -52,7 +55,7 @@ export class LaneQueue {
         task: options.task,
         resolve,
         reject,
-        abortController: new AbortController(),
+        abortController: options.abortController ?? new AbortController(),
         enqueuedAt: Date.now(),
         timeoutMs: options.timeoutMs ?? 600_000,
       };
@@ -73,6 +76,14 @@ export class LaneQueue {
       }
     }
     return false;
+  }
+
+  /** 中止正在运行的任务（按 sessionKey） */
+  abortRunning(sessionKey: string): boolean {
+    const item = this.runningItems.get(sessionKey);
+    if (!item) return false;
+    item.abortController.abort();
+    return true;
   }
 
   /** 获取队列状态 */
@@ -100,6 +111,7 @@ export class LaneQueue {
       const [item] = queue.splice(idx, 1);
       runningSet.add(item.id);
       this.runningKeys.set(item.sessionKey, item.id);
+      this.runningItems.set(item.sessionKey, item);
 
       // 设置超时
       const timer = setTimeout(() => {
@@ -120,6 +132,7 @@ export class LaneQueue {
         .finally(() => {
           runningSet.delete(item.id);
           this.runningKeys.delete(item.sessionKey);
+          this.runningItems.delete(item.sessionKey);
           this.drain(lane);
         });
     }

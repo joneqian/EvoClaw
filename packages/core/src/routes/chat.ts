@@ -631,12 +631,39 @@ export function createChatRoutes(
     return streamSSE(c, async (stream) => {
       let fullResponse = '';
 
-      await runEmbeddedAgent(runConfig, message, async (event) => {
-        if (event.type === 'text_delta' && event.delta) {
-          fullResponse += event.delta;
-        }
-        await stream.writeSSE({ data: JSON.stringify(event) });
-      });
+      const runAgent = async (abortSignal?: AbortSignal) => {
+        await runEmbeddedAgent(runConfig, message, async (event) => {
+          if (event.type === 'text_delta' && event.delta) {
+            fullResponse += event.delta;
+          }
+          await stream.writeSSE({ data: JSON.stringify(event) });
+        }, abortSignal);
+      };
+
+      if (laneQueue) {
+        const runId = `chat-${crypto.randomUUID()}`;
+        const abortController = new AbortController();
+
+        // SSE 连接关闭时，取消排队/中止运行
+        stream.onAbort(() => {
+          abortController.abort();
+          laneQueue.cancel(runId);
+        });
+
+        // 通知前端已入队
+        await stream.writeSSE({ data: JSON.stringify({ type: 'queued', timestamp: Date.now() }) });
+
+        await laneQueue.enqueue({
+          id: runId,
+          sessionKey,
+          lane: 'main',
+          abortController,
+          task: () => runAgent(abortController.signal),
+          timeoutMs: 600_000,
+        });
+      } else {
+        await runAgent();
+      }
 
       // 批量写入审计日志（Agent 完成后一次性写入，避免逐条同步 I/O）
       auditQueue.flush();
@@ -683,6 +710,22 @@ export function createChatRoutes(
         log.error('afterTurn 失败:', err);
       });
     });
+  });
+
+  /** POST /:agentId/cancel — 取消正在运行或排队中的 Agent 任务 */
+  app.post('/:agentId/cancel', async (c) => {
+    if (!laneQueue) {
+      return c.json({ cancelled: false, reason: 'LaneQueue 未启用' });
+    }
+
+    const body = await c.req.json<{ sessionKey?: string }>().catch(() => ({ sessionKey: undefined }));
+    const sk = body.sessionKey;
+    if (!sk) {
+      return c.json({ error: '缺少 sessionKey' }, 400);
+    }
+
+    const cancelled = laneQueue.abortRunning(sk);
+    return c.json({ cancelled });
   });
 
   return app;

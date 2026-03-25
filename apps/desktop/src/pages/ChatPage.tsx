@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
-import { patch } from '../lib/api';
+import { patch, post } from '../lib/api';
 import ModelSelector from '../components/ModelSelector';
 import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
 import { useAppStore } from '../stores/app-store';
@@ -232,6 +232,9 @@ function ChatView() {
                     reason: payload.reason,
                   });
                   break;
+                case 'queued':
+                  // 已入队等待处理，保持 streaming 状态
+                  break;
                 case 'agent_done':
                   setStreaming(false);
                   break;
@@ -259,6 +262,16 @@ function ChatView() {
     addMessage, appendToLastMessage, updateLastMessageToolCalls,
     setStreaming, fetchConversations,
   ]);
+
+  /** 取消正在运行的 Agent 任务 */
+  const cancelRun = useCallback(async () => {
+    if (!currentAgentId || !currentSessionKey) return;
+    try {
+      await post(`/chat/${currentAgentId}/cancel`, { sessionKey: currentSessionKey });
+    } catch {
+      // 忽略取消失败（可能任务已完成）
+    }
+  }, [currentAgentId, currentSessionKey]);
 
   // 检查 pending message（从 AgentDetailPage 带过来的初始消息）
   useEffect(() => {
@@ -407,20 +420,32 @@ function ChatView() {
               disabled={isStreaming}
             />
 
-            {/* 发送按钮 — 保持原样 */}
-            <button
-              onClick={() => sendMessage()}
-              disabled={isStreaming || (!input.trim() && attachments.length === 0)}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
-                isStreaming || (!input.trim() && attachments.length === 0)
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-brand text-white hover:bg-brand-hover'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-              </svg>
-            </button>
+            {/* 发送/停止按钮 */}
+            {isStreaming ? (
+              <button
+                onClick={cancelRun}
+                className="w-8 h-8 flex items-center justify-center rounded-full transition-colors bg-red-500 text-white hover:bg-red-600"
+                title="停止"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={() => sendMessage()}
+                disabled={!input.trim() && attachments.length === 0}
+                className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
+                  !input.trim() && attachments.length === 0
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-brand text-white hover:bg-brand-hover'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>

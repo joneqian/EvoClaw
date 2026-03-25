@@ -80,6 +80,7 @@ export interface AttemptResult {
 
 /** Agent 事件类型 */
 export type RuntimeEventType =
+  | 'queued'
   | 'agent_start'
   | 'text_delta'
   | 'text_done'

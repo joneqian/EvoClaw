@@ -410,28 +410,45 @@ export async function handleChannelMessage(
   let thinkingHintSent = false;
   const collectedToolCalls: ToolCallRecord[] = [];
 
-  await runEmbeddedAgent(runConfig, message, (event) => {
-    if (event.type === 'text_delta' && event.delta) {
-      fullResponse += event.delta;
-    }
-    // 收集工具调用信息（与前端 streaming 逻辑对齐）
-    if (event.type === 'tool_start') {
-      const toolName = (event as any).toolName ?? '未知工具';
-      const args = (event as any).toolArgs;
-      collectedToolCalls.push({ name: toolName, status: 'running', summary: formatToolSummary(toolName, args) });
-      // 首次工具调用时，发送"思考中"提示
-      if (!thinkingHintSent) {
-        thinkingHintSent = true;
-        channelManager.sendMessage(channel as any, peerId, '让我看看，稍等一下~', chatType === 'group' ? 'group' : 'private')
-          .catch((err) => { log.warn(`思考提示发送失败: ${err instanceof Error ? err.message : String(err)}`); });
+  const runAgent = async (abortSignal?: AbortSignal) => {
+    await runEmbeddedAgent(runConfig, message, (event) => {
+      if (event.type === 'text_delta' && event.delta) {
+        fullResponse += event.delta;
       }
-    }
-    if (event.type === 'tool_end') {
-      const endName = (event as any).toolName;
-      const tc = collectedToolCalls.find(t => t.name === endName && t.status === 'running');
-      if (tc) tc.status = (event as any).isError ? 'error' : 'done';
-    }
-  });
+      // 收集工具调用信息（与前端 streaming 逻辑对齐）
+      if (event.type === 'tool_start') {
+        const toolName = (event as any).toolName ?? '未知工具';
+        const args = (event as any).toolArgs;
+        collectedToolCalls.push({ name: toolName, status: 'running', summary: formatToolSummary(toolName, args) });
+        // 首次工具调用时，发送"思考中"提示
+        if (!thinkingHintSent) {
+          thinkingHintSent = true;
+          channelManager.sendMessage(channel as any, peerId, '让我看看，稍等一下~', chatType === 'group' ? 'group' : 'private')
+            .catch((err) => { log.warn(`思考提示发送失败: ${err instanceof Error ? err.message : String(err)}`); });
+        }
+      }
+      if (event.type === 'tool_end') {
+        const endName = (event as any).toolName;
+        const tc = collectedToolCalls.find(t => t.name === endName && t.status === 'running');
+        if (tc) tc.status = (event as any).isError ? 'error' : 'done';
+      }
+    }, abortSignal);
+  };
+
+  if (laneQueue) {
+    const runId = `channel-${crypto.randomUUID()}`;
+    const abortController = new AbortController();
+    await laneQueue.enqueue({
+      id: runId,
+      sessionKey,
+      lane: 'main',
+      abortController,
+      task: () => runAgent(abortController.signal),
+      timeoutMs: 600_000,
+    });
+  } else {
+    await runAgent();
+  }
 
   // 批量写入审计日志
   auditQueue.flush();

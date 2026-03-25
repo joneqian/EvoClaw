@@ -66,7 +66,7 @@ function buildFileItem(uploaded: UploadedMediaInfo, fileName: string): WeixinMes
         encrypt_type: 1,
       },
       file_name: fileName,
-      len: String(uploaded.rawSize),
+      len: uploaded.cipherSize,
     },
   };
 }

@@ -119,7 +119,7 @@ export interface WeixinFileItem {
   media?: CDNMedia;
   file_name?: string;
   md5?: string;
-  len?: string;
+  len?: number;
 }
 
 /** 视频消息项 */

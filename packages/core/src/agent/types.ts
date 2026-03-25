@@ -1,5 +1,19 @@
 import type { AgentConfig, ChatMessage } from '@evoclaw/shared';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
+import type { ErrorType } from './embedded-runner-errors.js';
+
+// ─── Provider Failover 配置 ───
+
+/** 单个 Provider 配置（用于 failover 链路） */
+export interface ProviderConfig {
+  provider: string;
+  modelId: string;
+  apiKey: string;
+  baseUrl: string;
+  apiProtocol?: AgentRunConfig['apiProtocol'];
+}
+
+// ─── Agent 运行配置 ───
 
 /** Agent 运行配置 */
 export interface AgentRunConfig {
@@ -22,6 +36,46 @@ export interface AgentRunConfig {
   permissionInterceptFn?: (toolName: string, args: Record<string, unknown>) => Promise<string | null>;
   /** 审计日志回调 — 工具执行后调用 */
   auditLogFn?: (entry: { toolName: string; args: Record<string, unknown>; result: string; status: 'success' | 'error' | 'denied'; durationMs: number }) => void;
+  /** Fallback provider 列表（按优先级排序），用于 billing/auth/overload 错误时自动切换 */
+  fallbackProviders?: ProviderConfig[];
+}
+
+// ─── 单次执行结果 ───
+
+/** 轻量消息快照（跨 provider failover 传递上下文） */
+export interface MessageSnapshot {
+  role: string;
+  content: string;
+}
+
+/** 工具调用记录（用于消息快照传递） */
+export interface ToolCallRecord {
+  toolName: string;
+  args: Record<string, unknown>;
+  result: string;
+  isError: boolean;
+}
+
+/** 单次 attempt 的执行结果 — 外层循环根据此结果决定恢复策略 */
+export interface AttemptResult {
+  /** 是否成功完成 */
+  success: boolean;
+  /** 错误类型（成功时为 undefined） */
+  errorType?: ErrorType;
+  /** 错误信息 */
+  error?: string;
+  /** 是否超时 */
+  timedOut: boolean;
+  /** 超时是否发生在 compaction 期间 */
+  timedOutDuringCompaction: boolean;
+  /** 是否被外部中止 */
+  aborted: boolean;
+  /** 消息快照（供 failover/重试使用） */
+  messagesSnapshot?: MessageSnapshot[];
+  /** 收集的完整文本 */
+  fullResponse: string;
+  /** 收集的工具调用记录 */
+  toolCalls: ToolCallRecord[];
 }
 
 /** Agent 事件类型 */

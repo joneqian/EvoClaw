@@ -14,7 +14,7 @@ const DANGEROUS_PATTERNS = [
   /format\s+[a-z]:/i,
   /mkfs\./i,
   /dd\s+if=/i,
-  />\s*\/dev\//i,
+  />\s*\/dev\/(?!null\b)/i,         // 写 /dev/sda 等设备，但排除安全的 /dev/null
   /chmod\s+777/i,
   /sudo\s+/i,
   // Sprint 12: 编码攻击 + 链式注入

@@ -78,9 +78,10 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     session_key: string;
     role: string;
     content: string;
+    tool_calls_json: string | null;
     created_at: string;
   }>(
-    `SELECT id, session_key, role, content, created_at
+    `SELECT id, session_key, role, content, tool_calls_json, created_at
      FROM conversation_log
      WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
      ORDER BY created_at DESC, rowid DESC
@@ -89,13 +90,19 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
   );
 
   // 反转为时间正序
-  return rows.reverse().map(row => ({
-    id: row.id,
-    conversationId: row.session_key,
-    role: row.role as ChatMessage['role'],
-    content: row.content,
-    createdAt: row.created_at,
-  }));
+  return rows.reverse().map(row => {
+    const msg: ChatMessage = {
+      id: row.id,
+      conversationId: row.session_key,
+      role: row.role as ChatMessage['role'],
+      content: row.content,
+      createdAt: row.created_at,
+    };
+    if (row.tool_calls_json) {
+      try { (msg as any).toolCalls = JSON.parse(row.tool_calls_json); } catch { /* ignore */ }
+    }
+    return msg;
+  });
 }
 
 /** 存储消息到 conversation_log (使用 ISO 格式时间戳，确保前端时区正确) */
@@ -632,9 +639,14 @@ export function createChatRoutes(
         await stream.writeSSE({ data: JSON.stringify(event) });
       });
 
-      // 存储 assistant 响应
-      if (fullResponse) {
-        saveMessage(store, agentId, sessionKey, 'assistant', fullResponse);
+      // 存储 assistant 响应（剥离 PI 框架内部的工具调用/响应 XML 标记）
+      const cleanResponse = fullResponse
+        .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
+        .replace(/<function_response>[\s\S]*?<\/function_response>/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      if (cleanResponse) {
+        saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse);
       }
 
       // 发送待处理的权限弹窗请求（流结束前，确保前端收到）
@@ -654,7 +666,7 @@ export function createChatRoutes(
             id: crypto.randomUUID(),
             conversationId: sessionKey,
             role: 'assistant' as const,
-            content: fullResponse,
+            content: cleanResponse,
             createdAt: new Date().toISOString(),
           },
         ],

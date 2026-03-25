@@ -101,13 +101,14 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   enterConversation: async (agentId, sessionKey) => {
     set({ currentAgentId: agentId, currentSessionKey: sessionKey, messages: [], loadingMessages: true });
     try {
-      const res = await get<{ messages: { id: string; role: string; content: string; createdAt: string }[] }>(
+      const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; createdAt: string }[] }>(
         `/chat/${agentId}/messages?sessionKey=${encodeURIComponent(sessionKey)}&limit=50`,
       );
       const messages: Message[] = res.messages.map((m) => ({
         id: m.id,
         role: m.role as Message['role'],
         content: m.content,
+        toolCalls: m.toolCalls,
         createdAt: m.createdAt,
       }));
       set({ messages, loadingMessages: false });
@@ -122,13 +123,14 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     if (!currentAgentId || !currentSessionKey || isStreaming) return;
     _reloading = true;
     try {
-      const res = await get<{ messages: { id: string; role: string; content: string; createdAt: string }[] }>(
+      const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; createdAt: string }[] }>(
         `/chat/${currentAgentId}/messages?sessionKey=${encodeURIComponent(currentSessionKey)}&limit=50`,
       );
       const messages: Message[] = res.messages.map((m) => ({
         id: m.id,
         role: m.role as Message['role'],
         content: m.content,
+        toolCalls: m.toolCalls,
         createdAt: m.createdAt,
       }));
       // 只在消息数量变化时更新（避免无意义渲染）

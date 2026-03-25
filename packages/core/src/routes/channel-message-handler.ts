@@ -41,6 +41,8 @@ import { createPdfTool } from '../tools/pdf-tool.js';
 import { createBrowserTool } from '../tools/browser-tool.js';
 import { createImageGenerateTool } from '../tools/image-generate-tool.js';
 import { createExecBackgroundTool, createProcessTool } from '../tools/background-process.js';
+import { createChannelTools } from '../tools/channel-tools.js';
+import type { ChannelType } from '@evoclaw/shared';
 import { parseSessionKey } from '../routing/session-key.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -103,12 +105,42 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
   }));
 }
 
+/** 工具调用摘要（与前端 ToolCall 一致） */
+interface ToolCallRecord {
+  name: string;
+  status: 'running' | 'done' | 'error';
+  summary?: string;
+}
+
+/** 生成工具调用摘要（与前端 formatToolSummary 对齐） */
+function formatToolSummary(name: string, args: unknown): string {
+  if (!args || typeof args !== 'object') return '';
+  const a = args as Record<string, unknown>;
+  switch (name) {
+    case 'bash': return a.command ? `$ ${String(a.command).slice(0, 80)}` : '';
+    case 'read': return a.file_path ? String(a.file_path) : (a.path ? String(a.path) : '');
+    case 'write':
+    case 'edit': return a.file_path ? String(a.file_path) : '';
+    case 'find': return a.pattern ? `${a.pattern}` : '';
+    case 'grep': return a.pattern ? `/${a.pattern}/` : '';
+    case 'web_search': return a.query ? `"${String(a.query).slice(0, 60)}"` : '';
+    case 'web_fetch': return a.url ? String(a.url).slice(0, 80) : '';
+    case 'image': return a.path ? String(a.path).split('/').pop() ?? '' : '';
+    case 'pdf': return a.path ? String(a.path).split('/').pop() ?? '' : '';
+    default: return '';
+  }
+}
+
 /** 存储消息到 conversation_log */
-function saveMessage(db: SqliteStore, agentId: string, sessionKey: string, role: string, content: string): void {
+function saveMessage(
+  db: SqliteStore, agentId: string, sessionKey: string,
+  role: string, content: string, toolCalls?: ToolCallRecord[],
+): void {
+  const toolCallsJson = toolCalls && toolCalls.length > 0 ? JSON.stringify(toolCalls) : null;
   db.run(
-    `INSERT INTO conversation_log (id, agent_id, session_key, role, content, compaction_status, created_at)
-     VALUES (?, ?, ?, ?, ?, 'raw', ?)`,
-    crypto.randomUUID(), agentId, sessionKey, role, content, new Date().toISOString(),
+    `INSERT INTO conversation_log (id, agent_id, session_key, role, content, tool_calls_json, compaction_status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'raw', ?)`,
+    crypto.randomUUID(), agentId, sessionKey, role, content, toolCallsJson, new Date().toISOString(),
   );
 }
 
@@ -288,6 +320,23 @@ export async function handleChannelMessage(
   enhancedTools.push(createExecBackgroundTool());
   enhancedTools.push(createProcessTool());
 
+  // 注入渠道专属工具 — peerId 自动绑定当前对话用户，Agent 无需填写
+  const channelTools = createChannelTools(channelManager, channel as ChannelType);
+  for (const ct of channelTools) {
+    if (ct.name === 'desktop_notify') continue; // 渠道模式不需要桌面通知
+    const isMedia = ct.name.endsWith('_send_media');
+    enhancedTools.push({
+      name: ct.name,
+      description: isMedia
+        ? '发送文件给用户（图片/视频/文档），需提供本地文件路径'
+        : '发送文本消息给用户',
+      parameters: isMedia
+        ? { type: 'object', properties: { filePath: { type: 'string', description: '本地文件绝对路径' }, text: { type: 'string', description: '附带说明文字（可选）' } }, required: ['filePath'] }
+        : { type: 'object', properties: { content: { type: 'string', description: '消息内容' } }, required: ['content'] },
+      execute: async (args) => ct.execute({ ...args, peerId }),  // 自动注入 peerId
+    });
+  }
+
   // 通道特定工具禁止
   const channelType = parseSessionKey(sessionKey)?.channel;
   const channelDeny = channelType ? (CHANNEL_TOOL_DENY[channelType] ?? []) : [];
@@ -311,7 +360,14 @@ export async function handleChannelMessage(
   const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
     const result = interceptor.intercept(agentId, toolName, args);
     if (!result.allowed) {
-      return result.reason ?? '操作被拒绝（渠道消息模式不支持交互式权限确认）';
+      // 渠道模式没有 UI 弹框，区分处理：
+      // - 需要确认的（requiresConfirmation）→ 自动放行（用户已绑定 Agent，隐式信任）
+      // - 硬性拒绝的（危险命令/受限路径）→ 仍然阻止
+      if (result.requiresConfirmation) {
+        log.debug(`渠道模式自动放行: tool=${toolName} category=${result.permissionCategory ?? 'unknown'}`);
+        return null;
+      }
+      return result.reason ?? '操作被拒绝';
     }
     return null;
   };
@@ -353,27 +409,51 @@ export async function handleChannelMessage(
   // 7. 存储用户消息
   saveMessage(store, agentId, sessionKey, 'user', message);
 
-  // 8. 运行 Agent（收集 text_delta 事件为完整响应）
+  // 8. 运行 Agent（收集 text_delta + 工具调用事件）
   let fullResponse = '';
+  let thinkingHintSent = false;
+  const collectedToolCalls: ToolCallRecord[] = [];
 
   await runEmbeddedAgent(runConfig, message, (event) => {
     if (event.type === 'text_delta' && event.delta) {
       fullResponse += event.delta;
     }
+    // 收集工具调用信息（与前端 streaming 逻辑对齐）
+    if (event.type === 'tool_start') {
+      const toolName = (event as any).toolName ?? '未知工具';
+      const args = (event as any).toolArgs;
+      collectedToolCalls.push({ name: toolName, status: 'running', summary: formatToolSummary(toolName, args) });
+      // 首次工具调用时，发送"思考中"提示
+      if (!thinkingHintSent) {
+        thinkingHintSent = true;
+        channelManager.sendMessage(channel as any, peerId, '让我看看，稍等一下~', chatType === 'group' ? 'group' : 'private')
+          .catch(() => { /* 提示发送失败不影响主流程 */ });
+      }
+    }
+    if (event.type === 'tool_end') {
+      const endName = (event as any).toolName;
+      const tc = collectedToolCalls.find(t => t.name === endName && t.status === 'running');
+      if (tc) tc.status = (event as any).isError ? 'error' : 'done';
+    }
   });
 
-  // 9. 存储 assistant 响应
-  if (fullResponse) {
-    saveMessage(store, agentId, sessionKey, 'assistant', fullResponse);
+  // 9. 存储 assistant 响应（剥离 PI 框架内部的工具调用/响应 XML 标记）
+  const cleanResponse = fullResponse
+    .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
+    .replace(/<function_response>[\s\S]*?<\/function_response>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (cleanResponse) {
+    saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse, collectedToolCalls);
   }
 
   // 10. 通过 Channel 发送回复（跳过 NO_REPLY 和空响应）
-  if (fullResponse && fullResponse.trim() !== NO_REPLY_TOKEN) {
+  if (cleanResponse && cleanResponse !== NO_REPLY_TOKEN) {
     try {
       await channelManager.sendMessage(
         channel as any,
         peerId,
-        fullResponse,
+        cleanResponse,
         chatType === 'group' ? 'group' : 'private',
       );
     } catch (sendErr) {
@@ -393,7 +473,7 @@ export async function handleChannelMessage(
         id: crypto.randomUUID(),
         conversationId: sessionKey,
         role: 'assistant' as const,
-        content: fullResponse,
+        content: cleanResponse,
         createdAt: new Date().toISOString(),
       },
     ],
@@ -402,5 +482,5 @@ export async function handleChannelMessage(
     log.error('afterTurn 失败:', err);
   });
 
-  return fullResponse;
+  return cleanResponse;
 }

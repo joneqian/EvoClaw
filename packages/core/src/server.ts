@@ -457,11 +457,22 @@ async function main() {
   channelManager.registerAdapter(weixinAdapter);
 
   // 自动恢复渠道连接 — 从 channel_state 读取上次保存的凭证
+  // 按需轮询：仅当渠道有 Agent 绑定时才启动轮询，避免无绑定时空耗资源
   const channelTypes = ['weixin', 'feishu', 'wecom'] as const;
   for (const chType of channelTypes) {
     const savedCreds = channelStateRepo.getState(chType as any, 'credentials');
     const savedName = channelStateRepo.getState(chType as any, 'name');
     if (savedCreds) {
+      // 检查该渠道是否有 Agent 绑定（含 channel 级 + peer 级 + 默认 Agent）
+      const hasBinding = db.get<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM bindings WHERE channel = ? OR is_default = 1`,
+        chType,
+      );
+      if (!hasBinding || hasBinding.cnt === 0) {
+        log.info(`渠道 ${chType} 无 Agent 绑定，跳过轮询（凭证已保留，绑定后可手动连接）`);
+        continue;
+      }
+
       try {
         const credentials = JSON.parse(savedCreds);
         await channelManager.connect({

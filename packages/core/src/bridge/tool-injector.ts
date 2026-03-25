@@ -22,7 +22,7 @@ export interface ToolAuditEntry {
 export class ToolAuditor {
   constructor(private db: SqliteStore) {}
 
-  /** 记录工具执行 */
+  /** 记录工具执行（同步写入，适用于低频场景） */
   log(entry: {
     agentId: string;
     sessionKey: string;
@@ -78,6 +78,97 @@ export class ToolAuditor {
       sessionKey,
       limit,
     );
+  }
+}
+
+/** 审计队列条目（内存中缓存，等待批量写入） */
+interface AuditQueueEntry {
+  id: string;
+  agentId: string;
+  sessionKey: string;
+  toolName: string;
+  inputJson: string | null;
+  outputJson: string | null;
+  status: string;
+  durationMs: number | null;
+  permissionId: string | null;
+}
+
+/**
+ * 审计日志异步队列 — 内存缓存 + 批量写入
+ *
+ * 性能优化：将同步 DB INSERT（5-50ms/次）替换为内存 push（0.01ms/次），
+ * 在 flush() 时用单个事务批量写入。
+ *
+ * 使用方式：
+ *   const queue = new ToolAuditQueue(store);
+ *   queue.push({ agentId, sessionKey, toolName, ... }); // 每次工具调用
+ *   queue.flush(); // Agent 完成后调用
+ */
+export class ToolAuditQueue {
+  private queue: AuditQueueEntry[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(
+    private db: SqliteStore,
+    /** 自动 flush 间隔（毫秒），0 表示不自动 flush */
+    private autoFlushMs: number = 2000,
+  ) {}
+
+  /** 将审计条目加入队列（O(1)，无磁盘 I/O） */
+  push(entry: {
+    agentId: string;
+    sessionKey: string;
+    toolName: string;
+    inputJson?: string;
+    outputJson?: string;
+    status: 'success' | 'error' | 'denied' | 'timeout';
+    durationMs?: number;
+    permissionId?: string;
+  }): void {
+    this.queue.push({
+      id: crypto.randomUUID(),
+      agentId: entry.agentId,
+      sessionKey: entry.sessionKey,
+      toolName: entry.toolName,
+      inputJson: entry.inputJson ?? null,
+      outputJson: entry.outputJson ?? null,
+      status: entry.status,
+      durationMs: entry.durationMs ?? null,
+      permissionId: entry.permissionId ?? null,
+    });
+
+    // 启动自动 flush 定时器（首次 push 时）
+    if (this.autoFlushMs > 0 && !this.flushTimer) {
+      this.flushTimer = setTimeout(() => this.flush(), this.autoFlushMs);
+    }
+  }
+
+  /** 批量写入所有缓存的审计条目（单个事务） */
+  flush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = undefined;
+    }
+    if (this.queue.length === 0) return;
+
+    const batch = this.queue.splice(0);
+    try {
+      this.db.transaction(() => {
+        const stmt = `INSERT INTO tool_audit_log (id, agent_id, session_key, tool_name, input_json, output_json, status, duration_ms, permission_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        for (const e of batch) {
+          this.db.run(stmt, e.id, e.agentId, e.sessionKey, e.toolName, e.inputJson, e.outputJson, e.status, e.durationMs, e.permissionId);
+        }
+      });
+    } catch {
+      // 审计日志写入失败不应影响 Agent 运行
+    }
+  }
+
+  /** 队列中的待写入条目数 */
+  get pending(): number {
+    return this.queue.length;
   }
 }
 

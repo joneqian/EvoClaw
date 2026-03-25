@@ -33,7 +33,7 @@ import { createToolRegistryPlugin } from '../context/plugins/tool-registry.js';
 import { createGapDetectionPlugin } from '../context/plugins/gap-detection.js';
 import { SecurityExtension } from '../bridge/security-extension.js';
 import { PermissionInterceptor } from '../tools/permission-interceptor.js';
-import { setToolInjectorConfig, getInjectedTools, ToolAuditor } from '../bridge/tool-injector.js';
+import { setToolInjectorConfig, getInjectedTools, ToolAuditQueue } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
 import { createImageTool } from '../tools/image-tool.js';
@@ -372,22 +372,18 @@ export async function handleChannelMessage(
     return null;
   };
 
-  // 审计日志
+  // 审计日志异步队列
+  const auditQueue = new ToolAuditQueue(store);
   const auditLogFn = (entry: { toolName: string; args: Record<string, unknown>; result: string; status: 'success' | 'error' | 'denied'; durationMs: number }) => {
-    try {
-      const auditor = new ToolAuditor(store);
-      auditor.log({
-        agentId,
-        sessionKey,
-        toolName: entry.toolName,
-        inputJson: JSON.stringify(entry.args),
-        outputJson: entry.result.slice(0, 5000),
-        status: entry.status,
-        durationMs: entry.durationMs,
-      });
-    } catch (err) {
-      log.warn('审计日志写入失败:', err);
-    }
+    auditQueue.push({
+      agentId,
+      sessionKey,
+      toolName: entry.toolName,
+      inputJson: JSON.stringify(entry.args),
+      outputJson: entry.result.slice(0, 5000),
+      status: entry.status,
+      durationMs: entry.durationMs,
+    });
   };
 
   const runConfig: AgentRunConfig = {
@@ -436,6 +432,9 @@ export async function handleChannelMessage(
       if (tc) tc.status = (event as any).isError ? 'error' : 'done';
     }
   });
+
+  // 批量写入审计日志
+  auditQueue.flush();
 
   // 9. 存储 assistant 响应（剥离 PI 框架内部的工具调用/响应 XML 标记）
   const cleanResponse = fullResponse

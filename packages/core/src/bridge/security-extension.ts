@@ -28,10 +28,10 @@ export class SecurityExtension {
     this.loadCache();
   }
 
-  /** 从数据库加载所有 always/deny 类型的权限到缓存 */
+  /** 从数据库加载 always/deny/session 类型的权限到缓存 */
   private loadCache(): void {
     const rows = this.db.all<Record<string, unknown>>(
-      `SELECT * FROM permissions WHERE scope IN ('always', 'deny')`
+      `SELECT * FROM permissions WHERE scope IN ('always', 'deny', 'session')`,
     );
     for (const row of rows) {
       const record = rowToRecord(row);
@@ -87,12 +87,28 @@ export class SecurityExtension {
       }
     }
 
-    // 检查 session 级权限（不缓存）
+    // 检查 session 级权限（缓存优先，降低 DB 查询）
+    if (agentCache) {
+      for (const [key, record] of agentCache) {
+        if (key.startsWith(`${category}:`) && record.scope === 'session') {
+          if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
+            this.revokePermission(record.id);
+            continue;
+          }
+          return 'allow';
+        }
+      }
+    }
+    // Fallback: 查 DB（缓存中可能没有——极端情况如进程重启后未加载）
     const session = this.db.get<Record<string, unknown>>(
       `SELECT * FROM permissions WHERE agent_id = ? AND category = ? AND (resource = ? OR resource = '*') AND scope = 'session' ORDER BY granted_at DESC LIMIT 1`,
       agentId, category, resource,
     );
-    if (session) return 'allow';
+    if (session) {
+      // 写入缓存供后续快速查找
+      this.setCacheEntry(rowToRecord(session));
+      return 'allow';
+    }
 
     // 检查 once 级权限
     const once = this.db.get<Record<string, unknown>>(
@@ -117,8 +133,8 @@ export class SecurityExtension {
       id, agentId, category, scope, resource, expiresAt ?? null,
     );
 
-    // 持久化权限加入缓存
-    if (scope === 'always' || scope === 'deny') {
+    // 非 once 权限加入缓存（always/deny/session）
+    if (scope !== 'once') {
       this.setCacheEntry({
         id, agentId, category, scope, resource,
         grantedAt: new Date().toISOString(),

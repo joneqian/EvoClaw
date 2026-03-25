@@ -122,6 +122,15 @@ export class PermissionInterceptor {
       return { allowed: true };
     }
 
+    // 0.5 Workspace 安全区快速路径（提前检查，跳过后续所有检查）
+    // write/edit/bash 等工具在 Agent 工作区内操作时，无需 DB 权限查询
+    if (this.getWorkspacePath) {
+      const wsFilePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
+      if (wsFilePath && this.isInWorkspace(agentId, wsFilePath)) {
+        return { allowed: true };
+      }
+    }
+
     // 1. 确定权限类别
     const category = this.resolveCategory(toolName);
 
@@ -174,13 +183,7 @@ export class PermissionInterceptor {
       return { allowed: result === 'allow' };
     }
 
-    // 4.5 Workspace 安全区：Agent 对自己工作区内的文件操作自动放行
-    if ((category === 'file_write' || category === 'file_read') && this.getWorkspacePath) {
-      const wsFilePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
-      if (wsFilePath && this.isInWorkspace(agentId, wsFilePath)) {
-        return { allowed: true };
-      }
-    }
+    // 4.5 (已提前到步骤 0.5)
 
     // 5. 文件系统路径检查
     if (category === 'file_read' || category === 'file_write') {

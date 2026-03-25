@@ -13,7 +13,7 @@ import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js'
 import { sessionRouterPlugin } from '../context/plugins/session-router.js';
 import { resolveModel } from '../provider/model-resolver.js';
 import { generateSessionKey } from '../routing/session-key.js';
-import { setToolInjectorConfig, getInjectedTools, ToolAuditor } from '../bridge/tool-injector.js';
+import { setToolInjectorConfig, getInjectedTools, ToolAuditQueue } from '../bridge/tool-injector.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
@@ -608,22 +608,20 @@ export function createChatRoutes(
       messages,
       permissionInterceptFn,
       auditLogFn: (entry) => {
-        try {
-          const auditor = new ToolAuditor(store);
-          auditor.log({
-            agentId,
-            sessionKey,
-            toolName: entry.toolName,
-            inputJson: JSON.stringify(entry.args),
-            outputJson: entry.result.slice(0, 5000),
-            status: entry.status,
-            durationMs: entry.durationMs,
-          });
-        } catch (err) {
-          log.warn('审计日志写入失败:', err);
-        }
+        auditQueue.push({
+          agentId,
+          sessionKey,
+          toolName: entry.toolName,
+          inputJson: JSON.stringify(entry.args),
+          outputJson: entry.result.slice(0, 5000),
+          status: entry.status,
+          durationMs: entry.durationMs,
+        });
       },
     };
+
+    // 审计日志异步队列（内存缓存 + Agent 结束后批量写入）
+    const auditQueue = new ToolAuditQueue(store);
 
     // 存储用户消息
     saveMessage(store, agentId, sessionKey, 'user', message);
@@ -638,6 +636,9 @@ export function createChatRoutes(
         }
         await stream.writeSSE({ data: JSON.stringify(event) });
       });
+
+      // 批量写入审计日志（Agent 完成后一次性写入，避免逐条同步 I/O）
+      auditQueue.flush();
 
       // 存储 assistant 响应（剥离 PI 框架内部的工具调用/响应 XML 标记）
       const cleanResponse = fullResponse

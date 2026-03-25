@@ -71,19 +71,24 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
     return c.json({ agent: updated });
   });
 
-  /** GET /:id/workspace — 列出工作区所有文件 */
+  /** GET /:id/workspace — 列出工作区所有文件（含内容 + 最后修改时间） */
   app.get('/:id/workspace', (c) => {
     const id = c.req.param('id');
     const agent = agentManager.getAgent(id);
     if (!agent) return c.json({ error: 'Agent 不存在' }, 404);
 
     const files: Record<string, string> = {};
+    const mtimes: Record<string, string> = {};
     const fileNames = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md', 'MEMORY.md', 'BOOTSTRAP.md'];
     for (const name of fileNames) {
       const content = agentManager.readWorkspaceFile(id, name);
-      if (content !== undefined) files[name] = content;
+      if (content !== undefined) {
+        files[name] = content;
+        const mtime = agentManager.getWorkspaceFileMtime(id, name);
+        if (mtime) mtimes[name] = mtime;
+      }
     }
-    return c.json({ files });
+    return c.json({ files, mtimes });
   });
 
   /** PUT /:id/workspace/:file — 更新工作区文件 */

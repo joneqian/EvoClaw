@@ -3,6 +3,13 @@
  * 包含三个标签页：连接、技能、设置
  */
 
+/** 格式化完整时间 — yyyy-MM-dd HH:mm */
+function formatDateTime(isoStr: string): string {
+  const d = new Date(isoStr);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAgentStore } from '../stores/agent-store';
@@ -600,7 +607,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
 // ─── 设置标签页 ───
 
 function SettingsTab({ agentId }: { agentId: string }) {
-  const { agents, updateAgent, fetchWorkspaceFiles } = useAgentStore();
+  const { agents, updateAgent, fetchWorkspaceFiles, updateWorkspaceFile } = useAgentStore();
   const agent = agents.find((a) => a.id === agentId);
 
   const [editName, setEditName] = useState(agent?.name ?? '');
@@ -608,8 +615,12 @@ function SettingsTab({ agentId }: { agentId: string }) {
   const [saving, setSaving] = useState(false);
   const [savedHint, setSavedHint] = useState<string | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
+  const [mtimes, setMtimes] = useState<Record<string, string>>({});
   const [filesLoading, setFilesLoading] = useState(true);
-  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  // Modal 编辑器状态
+  const [modalFile, setModalFile] = useState<string | null>(null);
+  const [modalContent, setModalContent] = useState('');
+  const [modalSaving, setModalSaving] = useState(false);
 
   // 同步 agent 变更
   useEffect(() => {
@@ -623,7 +634,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
   useEffect(() => {
     setFilesLoading(true);
     fetchWorkspaceFiles(agentId)
-      .then((ws) => setFiles(ws))
+      .then((ws) => { setFiles(ws.files); setMtimes(ws.mtimes); })
       .catch(() => {})
       .finally(() => setFilesLoading(false));
   }, [agentId, fetchWorkspaceFiles]);
@@ -643,6 +654,25 @@ function SettingsTab({ agentId }: { agentId: string }) {
     }
     setSaving(false);
   }, [agentId, editName, editEmoji, updateAgent, showSaved]);
+
+  const openFileModal = useCallback((filename: string) => {
+    setModalFile(filename);
+    setModalContent(files[filename] ?? '');
+  }, [files]);
+
+  const handleModalSave = useCallback(async () => {
+    if (!modalFile) return;
+    setModalSaving(true);
+    try {
+      await updateWorkspaceFile(agentId, modalFile, modalContent);
+      setFiles((prev) => ({ ...prev, [modalFile]: modalContent }));
+      showSaved(`${FILE_LABELS[modalFile]?.label ?? modalFile} 已保存`);
+      setModalFile(null);
+    } catch (err) {
+      console.error(`保存 ${modalFile} 失败:`, err);
+    }
+    setModalSaving(false);
+  }, [agentId, modalFile, modalContent, updateWorkspaceFile, showSaved]);
 
   const hasChanges = agent && (editName !== agent.name || editEmoji !== agent.emoji);
 
@@ -709,15 +739,14 @@ function SettingsTab({ agentId }: { agentId: string }) {
               const content = files[filename];
               if (content === undefined) return null;
               const meta = FILE_LABELS[filename] ?? { icon: '📄', label: filename, desc: '', editable: false };
-              const isExpanded = expandedFile === filename;
-              const hasContent = content.trim().length > 0;
+              const charCount = content.trim().length;
 
               return (
                 <button
                   key={filename}
-                  onClick={() => setExpandedFile(isExpanded ? null : filename)}
+                  onClick={() => openFileModal(filename)}
                   className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl
-                    bg-slate-50 hover:bg-slate-100 transition-colors"
+                    bg-slate-50 hover:bg-slate-100 transition-colors group"
                 >
                   <span className="text-sm">{meta.icon}</span>
                   <div className="flex-1 min-w-0">
@@ -729,23 +758,102 @@ function SettingsTab({ agentId }: { agentId: string }) {
                         </span>
                       )}
                     </div>
-                    {isExpanded && hasContent ? (
-                      <p className="text-xs text-slate-400 mt-1 whitespace-pre-wrap line-clamp-4 font-mono">
-                        {content.slice(0, 200)}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-slate-400 mt-0.5">{meta.desc}</p>
-                    )}
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">
+                      {charCount > 0 ? `${meta.desc} · ${charCount} 字` : meta.desc}
+                      {mtimes[filename] && <span className="ml-1.5 text-slate-300">· {formatDateTime(mtimes[filename])}</span>}
+                    </p>
                   </div>
-                  <span className={`text-slate-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
-                    ▶
+                  {/* 编辑/查看图标 */}
+                  <span className="text-slate-300 group-hover:text-slate-500 transition-colors shrink-0">
+                    {meta.editable ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                      </svg>
+                    )}
                   </span>
                 </button>
               );
             })}
           </div>
+
         )}
       </div>
+
+      {/* 文件编辑弹窗 — 独立于 filesLoading 条件 */}
+      {modalFile && (() => {
+        const meta = FILE_LABELS[modalFile] ?? { icon: '📄', label: modalFile, desc: '', editable: false };
+        const isDirty = modalContent !== (files[modalFile] ?? '');
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center">
+            {/* 遮罩 */}
+            <div className="absolute inset-0 bg-black/40" onClick={() => !modalSaving && setModalFile(null)} />
+            {/* 弹窗 */}
+            <div className="relative w-[90vw] max-w-3xl h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col">
+              {/* 头部 */}
+              <div className="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{meta.icon}</span>
+                  <h3 className="text-sm font-bold text-slate-800">{meta.label}</h3>
+                  <span className="text-xs text-slate-400">{modalFile}</span>
+                  {!meta.editable && (
+                    <span className="text-[10px] text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded-full">只读</span>
+                  )}
+                  {mtimes[modalFile] && (
+                    <span className="text-[10px] text-slate-400">修改于 {formatDateTime(mtimes[modalFile])}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {meta.editable && (
+                    <button
+                      onClick={handleModalSave}
+                      disabled={modalSaving || !isDirty}
+                      className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-40 ${
+                        isDirty
+                          ? 'text-white bg-brand hover:bg-brand-hover'
+                          : 'text-slate-400 bg-slate-100'
+                      }`}
+                    >
+                      {modalSaving ? '保存中...' : isDirty ? '保存' : '未修改'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => !modalSaving && setModalFile(null)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg
+                      hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* 内容 */}
+              <div className="flex-1 overflow-hidden p-4">
+                {meta.editable ? (
+                  <textarea
+                    value={modalContent}
+                    onChange={(e) => setModalContent(e.target.value)}
+                    className="w-full h-full px-4 py-3 text-sm font-mono text-slate-700 bg-slate-50 border border-slate-200
+                      rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                      leading-relaxed"
+                    autoFocus
+                  />
+                ) : (
+                  <pre className="w-full h-full px-4 py-3 text-sm font-mono text-slate-500 bg-slate-50 border border-slate-200
+                    rounded-xl overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                    {files[modalFile] || '（空）'}
+                  </pre>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

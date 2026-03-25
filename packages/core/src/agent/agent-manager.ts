@@ -129,6 +129,16 @@ export class AgentManager {
     return readFileWithCache(resolved);
   }
 
+  /** 获取工作区文件最后修改时间 */
+  getWorkspaceFileMtime(agentId: string, file: string): string | undefined {
+    const wsPath = this.getWorkspacePath(agentId);
+    const filePath = path.join(wsPath, file);
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(wsPath))) return undefined;
+    if (!fs.existsSync(resolved)) return undefined;
+    return fs.statSync(resolved).mtime.toISOString();
+  }
+
   /** 写入工作区文件 */
   writeWorkspaceFile(agentId: string, file: string, content: string): void {
     const filePath = path.join(this.getWorkspacePath(agentId), file);

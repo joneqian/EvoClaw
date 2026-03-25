@@ -42,7 +42,7 @@ export default function AgentEditPage() {
       await fetchAgents();
       try {
         const ws = await fetchWorkspaceFiles(id);
-        setFiles(ws);
+        setFiles(ws.files);
       } catch (err) {
         console.error('加载工作区文件失败:', err);
       }

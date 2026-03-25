@@ -46,7 +46,7 @@ export default function AgentDetailPage() {
       .finally(() => setLoadingConvs(false));
     // 加载工作区文件
     fetchWorkspaceFiles(id)
-      .then((files) => setWorkspaceFiles(files))
+      .then((ws) => setWorkspaceFiles(ws.files))
       .catch(() => {});
   }, [id, fetchWorkspaceFiles]);
 

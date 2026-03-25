@@ -60,8 +60,8 @@ interface AgentState {
   deleteAgent: (id: string) => Promise<void>;
   /** 更新 Agent 基本信息 */
   updateAgent: (id: string, updates: { name?: string; emoji?: string }) => Promise<void>;
-  /** 获取工作区文件 */
-  fetchWorkspaceFiles: (id: string) => Promise<Record<string, string>>;
+  /** 获取工作区文件（含内容 + 修改时间） */
+  fetchWorkspaceFiles: (id: string) => Promise<{ files: Record<string, string>; mtimes: Record<string, string> }>;
   /** 更新工作区文件 */
   updateWorkspaceFile: (id: string, file: string, content: string) => Promise<void>;
 
@@ -137,8 +137,8 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
   },
 
   fetchWorkspaceFiles: async (id: string) => {
-    const data = await get<{ files: Record<string, string> }>(`/agents/${id}/workspace`);
-    return data.files;
+    const data = await get<{ files: Record<string, string>; mtimes: Record<string, string> }>(`/agents/${id}/workspace`);
+    return { files: data.files, mtimes: data.mtimes ?? {} };
   },
 
   updateWorkspaceFile: async (id: string, file: string, content: string) => {

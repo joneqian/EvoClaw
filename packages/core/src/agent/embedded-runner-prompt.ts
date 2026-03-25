@@ -187,13 +187,27 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
 - read 工具输出会截断到约 50KB，大文件请用 offset/limit 分段读取
 - grep 最多返回 100 条匹配，find 最多返回 1000 个文件
 - bash 命令的输出会被截断，长输出请重定向到文件再 read
-- 文件搜索限定在用户主目录 ~ 下，禁止搜索根目录 /，find 加 -maxdepth 3
 - bash 执行的命令应加超时控制（如 timeout 30 command），避免长时间阻塞
 - 长时间运行的命令（dev server、watch、构建）使用 exec_background 在后台执行
 - 当存在专用工具时，直接使用工具而非要求用户手动运行等效命令
 - 工具执行失败时，分析原因并尝试替代方案，而非简单重试相同参数
 - 搜索记忆和知识图谱是低成本操作，在不确定时应主动使用
 - 对于可拆分的独立子任务，使用 spawn_agent 并行处理
+
+## 文件搜索策略
+当用户要求查找文件时，遵循以下策略快速定位：
+1. **首选 mdfind（macOS Spotlight 索引）**：通过 bash 执行 mdfind，毫秒级返回结果
+   - 按文件名搜索: \`mdfind -name '关键词'\`（模糊匹配文件名）
+   - 按内容搜索: \`mdfind '关键词'\`（全文索引搜索）
+   - 限定目录: \`mdfind -onlyin ~/Documents -name '关键词'\`
+   - 限定文件类型: \`mdfind 'kMDItemFSName == "*.pdf" && kMDItemDisplayName == "*报告*"'\`
+2. **mdfind 不可用时用 find 工具**：
+   - 优先搜索高价值目录: ~/Downloads、~/Documents、~/Desktop
+   - 模糊匹配: \`-iname '*关键词*'\`（不区分大小写）
+   - 限制深度: \`-maxdepth 4\`（避免全盘扫描）
+   - 限制类型: \`-name '*.pdf' -o -name '*.docx'\`（按扩展名缩小范围）
+3. **禁止搜索根目录 /**，限定在用户主目录 ~ 下
+4. 如果第一次搜索没有结果，扩大搜索范围（去掉目录限制或降低关键词精度）
 </tool_call_style>`);
 
   // § 7 沉默回复

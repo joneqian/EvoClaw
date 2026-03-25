@@ -21,4 +21,9 @@ serverEventBus.setMaxListeners(50); // 支持多个 SSE 连接
 /** 发布事件 */
 export function emitServerEvent(event: ServerEvent): void {
   serverEventBus.emit('server-event', event);
+  // Tauri IPC 通道：Rust host 读取 stdout 后通过 app_handle.emit() 转发给前端
+  // 协议：含 __event 字段的 JSON 行 = 事件（首行 {port,token} 无此字段，不冲突）
+  try {
+    process.stdout.write(JSON.stringify({ __event: event.type, ...event.data }) + '\n');
+  } catch { /* stdout 不可写时静默忽略（如管道断开） */ }
 }

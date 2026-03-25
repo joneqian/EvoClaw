@@ -279,6 +279,20 @@ export class MemoryStore {
     this.vectorStore?.removeEmbedding(id);
   }
 
+  /** 批量永久删除记忆 */
+  deleteMany(ids: string[]): number {
+    if (ids.length === 0) return 0;
+    let deleted = 0;
+    this.db.transaction(() => {
+      for (const id of ids) {
+        this.db.run('DELETE FROM memory_units WHERE id = ?', id);
+        this.vectorStore?.removeEmbedding(id);
+        deleted++;
+      }
+    });
+    return deleted;
+  }
+
   /** 异步队列索引 embedding */
   private queueEmbeddingIndex(id: string, text: string): void {
     if (!this.vectorStore) return;

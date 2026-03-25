@@ -55,13 +55,26 @@ export function createMemoryRoutes(db: SqliteStore, vectorStore?: VectorStore): 
     return c.json({ success: true });
   });
 
-  /** DELETE /:agentId/units/:id — 删除记忆 */
+  /** DELETE /:agentId/units/:id — 删除单条记忆 */
   app.delete('/:agentId/units/:id', (c) => {
     const id = c.req.param('id');
     memoryStore.delete(id);
-    // 同步删除全文索引
     ftsStore.removeIndex(id);
     return c.json({ success: true });
+  });
+
+  /** POST /:agentId/units/batch-delete — 批量删除记忆 */
+  app.post('/:agentId/units/batch-delete', async (c) => {
+    const body = await c.req.json<{ ids: string[] }>();
+    if (!Array.isArray(body.ids) || body.ids.length === 0) {
+      return c.json({ error: 'ids 不能为空' }, 400);
+    }
+    const deleted = memoryStore.deleteMany(body.ids);
+    // 同步删除全文索引
+    for (const id of body.ids) {
+      ftsStore.removeIndex(id);
+    }
+    return c.json({ success: true, deleted });
   });
 
   return app;

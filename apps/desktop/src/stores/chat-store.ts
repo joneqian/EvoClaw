@@ -52,6 +52,8 @@ interface ChatState {
 
   /** 刷新当前会话消息（不清空，无闪烁） */
   reloadCurrentMessages: () => Promise<void>;
+  /** SSE 事件驱动：会话变更时增量更新（渠道消息 + 本地会话完成） */
+  handleConversationChanged: (data: { sessionKey?: string; agentId?: string }) => void;
 
   addMessage: (msg: Message) => void;
   appendToLastMessage: (delta: string) => void;
@@ -139,6 +141,18 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       }
     } catch { /* ignore */ } finally {
       _reloading = false;
+    }
+  },
+
+  handleConversationChanged: (data) => {
+    const state = getState();
+    // 如果是当前打开的会话，重新加载消息
+    if (data.sessionKey && data.sessionKey === state.currentSessionKey && !state.isStreaming) {
+      state.reloadCurrentMessages();
+    }
+    // 如果是当前 Agent 的会话，刷新会话列表
+    if (data.agentId && data.agentId === state.currentAgentId) {
+      state.fetchConversations(data.agentId);
     }
   },
 

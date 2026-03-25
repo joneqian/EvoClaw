@@ -46,6 +46,7 @@ interface MemoryState {
   pinMemory: (agentId: string, id: string) => Promise<void>;
   unpinMemory: (agentId: string, id: string) => Promise<void>;
   deleteMemory: (agentId: string, id: string) => Promise<void>;
+  deleteMemories: (agentId: string, ids: string[]) => Promise<void>;
   selectUnit: (unit: MemoryUnit | null) => void;
   clearSearch: () => void;
 }
@@ -98,6 +99,13 @@ export const useMemoryStore = create<MemoryState>((set) => ({
   deleteMemory: async (agentId, id) => {
     await del(`/memory/${agentId}/units/${id}`);
     set((state) => ({ units: state.units.filter((u) => u.id !== id) }));
+  },
+
+  deleteMemories: async (agentId, ids) => {
+    if (ids.length === 0) return;
+    await post(`/memory/${agentId}/units/batch-delete`, { ids });
+    const idSet = new Set(ids);
+    set((state) => ({ units: state.units.filter((u) => !idSet.has(u.id)) }));
   },
 
   selectUnit: (unit) => set({ selectedUnit: unit }),

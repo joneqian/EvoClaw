@@ -460,8 +460,19 @@ export async function handleChannelMessage(
     }
   }
 
-  // 11. 通知前端有新会话/消息
-  emitServerEvent({ type: 'conversations-changed', data: { agentId, channel, peerId, sessionKey } });
+  // 11. 通知前端有新会话/消息（携带新消息数据，前端无需二次请求）
+  emitServerEvent({
+    type: 'conversations-changed',
+    data: {
+      agentId, channel, peerId, sessionKey,
+      newMessage: cleanResponse ? {
+        role: 'assistant',
+        content: cleanResponse.slice(0, 2000),
+        toolCalls: collectedToolCalls,
+        createdAt: new Date().toISOString(),
+      } : undefined,
+    },
+  });
 
   // 12. afterTurn — 记忆提取（异步，不阻塞）
   const afterTurnCtx = {

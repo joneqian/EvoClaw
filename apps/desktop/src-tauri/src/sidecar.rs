@@ -163,7 +163,17 @@ fn do_spawn_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
                             }
                         }
                     } else if !trimmed.is_empty() {
-                        println!("[sidecar:stdout] {}", trimmed);
+                        // 检查是否为 Sidecar 事件（含 __event 字段的 JSON 行）
+                        // 协议：{ "__event": "conversations-changed", ...data }
+                        if trimmed.starts_with('{') && trimmed.contains("\"__event\"") {
+                            if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                                if let Some(event_type) = value.get("__event").and_then(|v| v.as_str()) {
+                                    let _ = app_handle.emit(event_type, &value);
+                                }
+                            }
+                        } else {
+                            println!("[sidecar:stdout] {}", trimmed);
+                        }
                     }
                 }
                 CommandEvent::Stderr(line) => {

@@ -41,6 +41,7 @@ import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import { parseSessionKey } from '../routing/session-key.js';
 import { createLogger } from '../infrastructure/logger.js';
+import { emitServerEvent } from '../infrastructure/event-bus.js';
 
 const log = createLogger('chat');
 
@@ -649,6 +650,12 @@ export function createChatRoutes(
       if (cleanResponse) {
         saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse);
       }
+
+      // 通知其他 SSE 监听者（其他页面/窗口）会话已更新
+      emitServerEvent({
+        type: 'conversations-changed',
+        data: { agentId, sessionKey },
+      });
 
       // 发送待处理的权限弹窗请求（流结束前，确保前端收到）
       for (const perm of pendingPermissions) {

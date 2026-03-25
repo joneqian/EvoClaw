@@ -18,6 +18,7 @@ import AgentEditPage from './pages/AgentEditPage';
 import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen } from '@tauri-apps/api/event';
 import { useAppStore } from './stores/app-store';
 import { initSidecar, healthCheck, get, del, syncPermissionsToRust } from './lib/api';
 import { useChatStore } from './stores/chat-store';
@@ -311,30 +312,19 @@ export default function App() {
     return () => window.removeEventListener(`${BRAND_EVENT_PREFIX}:conversations-changed`, handler);
   }, [fetchRecents]);
 
-  // SSE 事件监听 — 渠道消息产生新会话时实时刷新
+  // Tauri IPC 事件监听 — 通过原生通道接收 Sidecar 事件（绕过 WKWebView HTTP 限制）
   useEffect(() => {
     if (initState !== 'connected') return;
-    const configStr = localStorage.getItem('sidecar-config');
-    if (!configStr) return;
-    const config = JSON.parse(configStr) as { port: number; token: string };
 
-    const es = new EventSource(
-      `http://127.0.0.1:${config.port}/events?token=${config.token}`,
-    );
-
-    es.addEventListener('conversations-changed', () => {
+    const unlisten = listen<Record<string, unknown>>('conversations-changed', (e) => {
       fetchRecents();
-      useChatStore.getState().reloadCurrentMessages();
+      useChatStore.getState().handleConversationChanged(e.payload as any);
     });
 
-    es.onerror = () => {
-      // SSE 连接断开时自动重连（浏览器 EventSource 默认行为）
-    };
-
-    return () => es.close();
+    return () => { unlisten.then(fn => fn()); };
   }, [initState, fetchRecents]);
 
-  /** 定期健康检查 + 会话列表轮询（SSE 在 WKWebView 中不可靠，用轮询兜底） */
+  /** 健康检查（30s 周期，仅检测 Sidecar 存活 + 自动重连） */
   const reconnectAttempts = useRef(0);
   useEffect(() => {
     if (initState !== 'connected') return;
@@ -343,8 +333,6 @@ export default function App() {
       if (health) {
         setSidecarConnected(true);
         reconnectAttempts.current = 0;
-        // 轮询刷新会话列表（兼容 SSE 不可用场景）
-        fetchRecents();
       } else {
         setSidecarConnected(false);
         if (reconnectAttempts.current < 5) {
@@ -356,7 +344,7 @@ export default function App() {
           }
         }
       }
-    }, 5_000);
+    }, 30_000); // 从 5s 放宽到 30s（SSE 是主通道，轮询仅兜底）
     return () => clearInterval(timer);
   }, [initState, setSidecarConnected, fetchRecents]);
 

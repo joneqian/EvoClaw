@@ -72,7 +72,7 @@ describe('E2E: Agent 引导式创建', () => {
     expect(constraintsBody.response.preview).toBeTruthy();
     // 验证 8 个工作区文件
     const preview = constraintsBody.response.preview!;
-    expect(preview['SOUL.md']).toContain('行为哲学');
+    expect(preview['SOUL.md']).toContain('Philosophy');
     expect(preview['SOUL.md']).toContain('资深程序员');
     expect(preview['IDENTITY.md']).toBeTruthy();
     expect(preview['AGENTS.md']).toContain('简洁高效');

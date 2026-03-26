@@ -116,7 +116,7 @@ describe('buildSystemPrompt', () => {
       baseUrl: '',
     });
     expect(result).toContain('<safety>');
-    expect(result).toContain('安全');
+    expect(result).toContain('AI assistant governed');
   });
 
   it('应该包含运行时信息', () => {
@@ -195,7 +195,7 @@ describe('buildSystemPrompt', () => {
       baseUrl: '',
     });
     expect(result).toContain('<tool_call_style>');
-    expect(result).toContain('不叙述常规');
+    expect(result).toContain('do not narrate routine');
   });
 
   it('应该包含沉默回复 token', () => {

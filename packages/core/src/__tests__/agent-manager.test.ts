@@ -171,7 +171,7 @@ describe('AgentManager', () => {
     const agent = await manager.createAgent({ name: '读取测试' });
     const content = manager.readWorkspaceFile(agent.id, 'SOUL.md');
     expect(content).toBeDefined();
-    expect(content).toContain('行为哲学');
+    expect(content).toContain('Philosophy');
   });
 
   it('readWorkspaceFile 不存在的文件返回 undefined', async () => {

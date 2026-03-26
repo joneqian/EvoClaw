@@ -183,7 +183,7 @@ describe('AgentBuilder', () => {
     const preview = state.preview;
     expect(preview['SOUL.md']).toContain('数据分析师');
     expect(preview['SOUL.md']).toContain('附带数据来源');
-    expect(preview['SOUL.md']).toContain('行为哲学');
+    expect(preview['SOUL.md']).toContain('Philosophy');
     expect(preview['AGENTS.md']).toContain('严谨专业');
     expect(preview['AGENTS.md']).toContain('Python 数据科学');
     expect(preview['IDENTITY.md']).toContain('数据分析师');
@@ -209,7 +209,7 @@ describe('AgentBuilder', () => {
     // 验证工作区文件内容包含通用底层 + 角色内容
     const soulContent = manager.readWorkspaceFile(r.agentId!, 'SOUL.md');
     expect(soulContent).toContain('写作助手');
-    expect(soulContent).toContain('核心真理');  // 通用底层
+    expect(soulContent).toContain('Core Truths');  // 通用底层
 
     const agentsContent = manager.readWorkspaceFile(r.agentId!, 'AGENTS.md');
     expect(agentsContent).toContain('幽默风趣');

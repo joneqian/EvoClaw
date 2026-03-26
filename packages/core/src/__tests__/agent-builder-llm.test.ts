@@ -54,11 +54,11 @@ describe('AgentBuilder LLM 生成', () => {
     expect(mockLLM).toHaveBeenCalledTimes(2);
 
     // SOUL.md = 通用底层 + LLM 个性化
-    expect(result.preview!['SOUL.md']).toContain('核心真理');          // 通用底层
+    expect(result.preview!['SOUL.md']).toContain('Core Truths');       // 通用底层
     expect(result.preview!['SOUL.md']).toContain('TypeScript 工程师'); // LLM 生成
 
     // AGENTS.md = 通用操作规程 + LLM 个性化
-    expect(result.preview!['AGENTS.md']).toContain('每次会话');        // 通用底层
+    expect(result.preview!['AGENTS.md']).toContain('Every Session');   // 通用底层
     expect(result.preview!['AGENTS.md']).toContain('代码优先');        // LLM 生成
 
     // IDENTITY.md 仍由模板生成
@@ -66,12 +66,12 @@ describe('AgentBuilder LLM 生成', () => {
     expect(result.preview!['IDENTITY.md']).toContain('emoji:');
 
     // 静态文件
-    expect(result.preview!['TOOLS.md']).toContain('环境笔记');
+    expect(result.preview!['TOOLS.md']).toContain('Local Notes');
     expect(result.preview!['USER.md']).toBe('');
     expect(result.preview!['MEMORY.md']).toBe('');
 
     // BOOTSTRAP.md 由模板生成，包含出生仪式和角色信息
-    expect(result.preview!['BOOTSTRAP.md']).toContain('出生仪式');
+    expect(result.preview!['BOOTSTRAP.md']).toContain('Hello, World');
   });
 
   it('LLM 调用失败时 fallback 到模板', async () => {
@@ -89,7 +89,7 @@ describe('AgentBuilder LLM 生成', () => {
     expect(result.preview).toBeTruthy();
 
     // SOUL.md = 通用底层 + fallback 模板
-    expect(result.preview!['SOUL.md']).toContain('核心真理');   // 通用底层
+    expect(result.preview!['SOUL.md']).toContain('Core Truths');  // 通用底层
     expect(result.preview!['SOUL.md']).toContain('英语老师');    // fallback 角色内容
     expect(result.preview!['AGENTS.md']).toContain('耐心教学');  // fallback 风格
   });

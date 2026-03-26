@@ -18,7 +18,7 @@ import type { ThinkLevel } from '@evoclaw/shared';
 import type { AgentRunConfig, AttemptResult, ProviderConfig, ToolCallRecord, MessageSnapshot, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
 import { ToolSafetyGuard } from './tool-safety.js';
-import { shouldTriggerFlush, buildMemoryFlushPrompt } from './memory-flush.js';
+import { shouldTriggerFlush, buildMemoryFlushPrompt, createFlushPermissionInterceptor } from './memory-flush.js';
 import { buildPIBuiltInTools, wrapToolsForPI, createToolXmlFilter } from './embedded-runner-tools.js';
 import { buildSystemPrompt } from './embedded-runner-prompt.js';
 import { classifyError, isAbortError } from './embedded-runner-errors.js';
@@ -176,8 +176,21 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   // 工具
   const piBuiltInTools = buildPIBuiltInTools(piCoding, model.contextWindow ?? 128_000);
   const toolSafety = new ToolSafetyGuard();
+
+  // Memory Flush 权限代理：正常模式用 config 权限函数，flush 模式切换到 flush 拦截器
+  let flushPermissionOverride: ((toolName: string, args: Record<string, unknown>) => Promise<string | null>) | null = null;
+  const permissionProxy = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
+    // flush 模式：先检查 flush 拦截器
+    if (flushPermissionOverride) {
+      const flushResult = await flushPermissionOverride(toolName, args);
+      if (flushResult !== null) return flushResult;
+    }
+    // 正常模式或 flush 通过：走原始权限检查
+    return config.permissionInterceptFn?.(toolName, args) ?? null;
+  };
+
   const allCustomTools = wrapToolsForPI(piBuiltInTools, {
-    permissionFn: config.permissionInterceptFn,
+    permissionFn: permissionProxy,
     toolSafety,
     onEvent,
     auditFn: config.auditLogFn,
@@ -398,12 +411,17 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
         `使用率=${(flushTokens / contextLimit * 100).toFixed(1)}%`,
       );
       try {
+        // 激活 flush 权限拦截器（Layer 1 + Layer 2）
+        flushPermissionOverride = createFlushPermissionInterceptor();
         const flushPrompt = buildMemoryFlushPrompt();
         await abortable(session.prompt(flushPrompt), mergedSignal);
         ensureUsageOnAssistantMessages(session.agent as any);
         log.info('Memory Flush turn 完成');
       } catch (flushErr) {
         log.warn('Memory Flush turn 失败，降级跳过:', flushErr);
+      } finally {
+        // 恢复正常权限模式
+        flushPermissionOverride = null;
       }
     }
 

@@ -122,8 +122,9 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
     `Node.js: ${process.version}`,
     `模型: ${config.provider}/${config.modelId}`,
     `当前时间: ${new Date().toISOString()}`,
-    `个人笔记本目录: ${config.workspacePath ? config.workspacePath + '/memory/' : 'memory/'}`,
-    `日记写入路径: ${config.workspacePath ? config.workspacePath + '/memory/YYYY-MM-DD.md' : 'memory/YYYY-MM-DD.md'} (请使用绝对路径写入)`,
+    `日记目录: memory/（仅用于 .md 格式的每日记忆日记，禁止存放其他文件）`,
+    `日记写入路径: memory/YYYY-MM-DD.md（append-only，不要覆盖已有内容）`,
+    `工作产物目录: 用户要求生成的文件（HTML/PDF/图片等）请写到工作区根目录，不要放入 memory/`,
   ].join('\n');
   sections.push(`<runtime>\n${runtimeInfo}\n</runtime>`);
 

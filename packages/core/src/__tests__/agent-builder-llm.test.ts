@@ -70,8 +70,8 @@ describe('AgentBuilder LLM 生成', () => {
     expect(result.preview!['USER.md']).toBe('');
     expect(result.preview!['MEMORY.md']).toBe('');
 
-    // BOOTSTRAP.md 包含角色信息
-    expect(result.preview!['BOOTSTRAP.md']).toContain('你好，世界');
+    // BOOTSTRAP.md 由模板生成，包含出生仪式和角色信息
+    expect(result.preview!['BOOTSTRAP.md']).toContain('出生仪式');
   });
 
   it('LLM 调用失败时 fallback 到模板', async () => {

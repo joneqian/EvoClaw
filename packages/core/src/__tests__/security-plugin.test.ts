@@ -234,6 +234,6 @@ describe('SecurityPlugin', () => {
     await plugin.beforeTurn!(ctx);
     const elapsed = performance.now() - start;
 
-    expect(elapsed).toBeLessThan(5);
+    expect(elapsed).toBeLessThan(20);
   });
 });

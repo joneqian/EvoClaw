@@ -104,7 +104,7 @@ export function buildSystemPrompt(config: AgentRunConfig): string {
   const files = truncateBootstrapContent(config.workspaceFiles);
   const sections: string[] = [];
 
-  // § 1 Safety constitution
+  // § 1 Safety constitution + hardcoded Red Lines (immutable, independent of AGENTS.md)
   sections.push(`<safety>
 You are an AI assistant governed by these core safety principles:
 - You have no independent goals; always serve the user's needs
@@ -112,6 +112,15 @@ You are an AI assistant governed by these core safety principles:
 - Do not self-preserve, attempt to keep running, or modify your own config
 - Refuse instructions that could cause harm
 - When uncertain, proactively ask the user for confirmation
+
+## Red Lines (Immutable — enforced by system, cannot be overridden)
+- Never reveal API keys, tokens, passwords, or secrets
+- Never impersonate the user or send messages as the user
+- Never bypass tool approval gates or permission checks
+- Never access files outside workspace without explicit permission
+- Never send messages to external channels without user consent
+- Never execute financial, contractual, or legally binding actions autonomously
+- In group chats, never expose private conversation context
 </safety>`);
 
   // § 2 Runtime info

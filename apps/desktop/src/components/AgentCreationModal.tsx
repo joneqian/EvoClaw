@@ -1,13 +1,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAgentStore, type BuilderStage } from '../stores/agent-store';
 
-/** 每个阶段的快捷建议 */
-const STAGE_SUGGESTIONS: Partial<Record<BuilderStage, string[]>> = {
-  role: ['资深程序员', '英语老师', '数据分析师', '创意写手', '产品经理', '日语学习伙伴'],
-  expertise: ['编程与软件开发', '英语口语与写作', '数据可视化与统计', '文案创作与营销', '项目管理', '日语 N1 考试辅导'],
-  style: ['专业严谨', '轻松幽默', '简洁高效', '耐心教学', '苏格拉底式引导', '温暖鼓励'],
-  constraints: ['不要使用英文术语', '回答控制在 200 字以内', '必须附带参考来源', '无'],
-};
+/** role 阶段的默认快捷建议（后续阶段由后端动态生成） */
+const DEFAULT_ROLE_SUGGESTIONS = ['资深程序员', '英语老师', '数据分析师', '创意写手', '产品经理', '日语学习伙伴'];
+
+/**
+ * 从后端返回的 message 中提取动态建议
+ * 格式: "...比如：建议A、建议B、建议C..."
+ */
+function extractSuggestionsFromMessage(message: string): string[] | null {
+  const match = message.match(/比如[：:]\s*(.+?)\.{2,}/);
+  if (!match) return null;
+  const items = match[1]!.split(/[、,，]/).map(s => s.trim()).filter(Boolean);
+  return items.length > 0 ? items : null;
+}
 
 /** 阶段进度指示器配置 */
 const STAGE_STEPS: { key: BuilderStage; label: string }[] = [
@@ -123,8 +129,18 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
 
   if (!isOpen) return null;
 
-  // 当前阶段的建议
-  const suggestions = builderStage ? STAGE_SUGGESTIONS[builderStage] : undefined;
+  // 当前阶段的建议：role 用默认列表，其他阶段从后端 message 动态提取
+  const lastSystemMessage = [...builderMessages].reverse().find(m => m.role === 'system');
+  const dynamicSuggestions = lastSystemMessage ? extractSuggestionsFromMessage(lastSystemMessage.content) : null;
+  const baseSuggestions = builderStage === 'role'
+    ? DEFAULT_ROLE_SUGGESTIONS
+    : builderStage === 'preview' || builderStage === 'done'
+      ? undefined
+      : dynamicSuggestions ?? undefined;
+  // constraints 阶段末尾追加"无"选项
+  const suggestions = baseSuggestions && builderStage === 'constraints'
+    ? [...baseSuggestions, '无']
+    : baseSuggestions;
 
   return (
     <div

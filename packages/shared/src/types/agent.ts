@@ -1,5 +1,18 @@
 import type { ChannelType } from './channel.js';
 
+/** Thinking 级别（渐进降级: high → medium → low → off） */
+export type ThinkLevel = 'off' | 'low' | 'medium' | 'high';
+
+/** ThinkLevel 降级顺序 */
+export const THINK_LEVEL_ORDER: readonly ThinkLevel[] = ['high', 'medium', 'low', 'off'] as const;
+
+/** 降一级 ThinkLevel，已经 off 则返回 off */
+export function degradeThinkLevel(level: ThinkLevel): ThinkLevel {
+  const idx = THINK_LEVEL_ORDER.indexOf(level);
+  if (idx < 0 || idx >= THINK_LEVEL_ORDER.length - 1) return 'off';
+  return THINK_LEVEL_ORDER[idx + 1]!;
+}
+
 /** Agent 状态枚举 */
 export type AgentStatus = 'draft' | 'active' | 'paused' | 'archived';
 

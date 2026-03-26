@@ -1,4 +1,4 @@
-import type { AgentConfig, ChatMessage } from '@evoclaw/shared';
+import type { AgentConfig, ChatMessage, ThinkLevel } from '@evoclaw/shared';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { ErrorType } from './embedded-runner-errors.js';
 
@@ -89,7 +89,11 @@ export type RuntimeEventType =
   | 'tool_update'
   | 'tool_end'
   | 'agent_done'
-  | 'error';
+  | 'error'
+  | 'message_start'
+  | 'message_end'
+  | 'compaction_start'
+  | 'compaction_end';
 
 /** Agent 运行时事件 */
 export interface RuntimeEvent {

@@ -43,6 +43,9 @@ export const LANE_CONCURRENCY = {
   cron: 2,
 } as const;
 
+/** 子 Agent 默认最大嵌套深度（main=0, orchestrator=1, leaf=2） */
+export const DEFAULT_MAX_SPAWN_DEPTH = 2;
+
 /** Agent 工作区 8 文件 */
 export const AGENT_WORKSPACE_FILES = [
   'SOUL.md',

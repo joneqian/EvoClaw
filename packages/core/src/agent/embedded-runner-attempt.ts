@@ -14,6 +14,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import type { ThinkLevel } from '@evoclaw/shared';
 import type { AgentRunConfig, AttemptResult, ProviderConfig, ToolCallRecord, MessageSnapshot, RuntimeEvent } from './types.js';
 import { toPIProvider } from '../provider/pi-provider-map.js';
 import { ToolSafetyGuard } from './tool-safety.js';
@@ -69,8 +70,8 @@ export interface AttemptParams {
   config: AgentRunConfig;
   /** 当前 provider 配置（failover 时由外层循环切换） */
   providerOverride?: ProviderConfig;
-  /** 是否启用 reasoning（thinking 降级时由外层循环关闭） */
-  reasoning: boolean;
+  /** Thinking 级别（渐进降级: high → medium → low → off） */
+  thinkLevel: ThinkLevel;
   /** 外部消息历史（failover 时由外层循环传入快照） */
   messagesOverride?: MessageSnapshot[];
   /** 用户消息 */
@@ -92,7 +93,8 @@ export interface AttemptParams {
  * 5. 返回结构化 AttemptResult
  */
 export async function runSingleAttempt(params: AttemptParams): Promise<AttemptResult> {
-  const { config, providerOverride, reasoning, messagesOverride, message, onEvent, abortSignal } = params;
+  const { config, providerOverride, thinkLevel, messagesOverride, message, onEvent, abortSignal } = params;
+  const reasoning = thinkLevel !== 'off';
 
   // 结果收集器
   let fullResponse = '';
@@ -289,20 +291,27 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   // ─── 事件订阅 ───
   const unsubscribe = session.subscribe((event: Record<string, unknown>) => {
     try {
+      if (event.type === 'message_start') {
+        emit(onEvent, { type: 'message_start' });
+      }
+
       if (event.type === 'message_end') {
         const msg = event.message as Record<string, unknown> | undefined;
         if (msg?.role === 'assistant' && !msg.usage) {
           msg.usage = { ...ZERO_USAGE, cost: { ...ZERO_USAGE.cost } };
         }
         flushTextBuffer();
+        emit(onEvent, { type: 'message_end' });
       }
 
       if (event.type === 'auto_compaction_start') {
         isCompacting = true;
+        emit(onEvent, { type: 'compaction_start' });
       }
       if (event.type === 'auto_compaction_end') {
         isCompacting = false;
         ensureUsageOnAssistantMessages(session.agent as any);
+        emit(onEvent, { type: 'compaction_end' });
       }
 
       switch (event.type) {

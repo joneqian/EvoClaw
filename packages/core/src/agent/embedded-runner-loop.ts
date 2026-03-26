@@ -12,6 +12,7 @@
  */
 
 import type { AgentRunConfig, ProviderConfig, MessageSnapshot, RuntimeEvent } from './types.js';
+import { type ThinkLevel, degradeThinkLevel } from '@evoclaw/shared';
 import { runSingleAttempt } from './embedded-runner-attempt.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -23,8 +24,13 @@ function emit(cb: EventCallback, event: Omit<RuntimeEvent, 'timestamp'>): void {
   cb({ ...event, timestamp: Date.now() } as RuntimeEvent);
 }
 
-/** 最大重试迭代次数 */
-const MAX_LOOP_ITERATIONS = 20;
+/** 最大重试迭代次数上限 */
+const MAX_LOOP_ITERATIONS_CAP = 30;
+
+/** 根据 provider 链长度计算动态重试上限 */
+function calculateMaxIterations(providerCount: number): number {
+  return Math.min(5 + providerCount * 5, MAX_LOOP_ITERATIONS_CAP);
+}
 
 /** Provider 冷却期（60 秒内不回切到刚失败的 provider） */
 const PROVIDER_COOLDOWN_MS = 60_000;
@@ -111,33 +117,36 @@ export async function runEmbeddedLoop(
   let providerIndex = 0;
   let currentProvider = providerChain[0];
 
+  // 动态重试上限（基于 provider 数量）
+  const maxIterations = calculateMaxIterations(providerChain.length);
+
   // Provider 冷却期追踪
   const providerCooldowns = new Map<string, number>();
 
-  // 状态
-  let reasoning = false; // 默认关闭 reasoning（大多数国产模型不支持）
+  // 状态 — ThinkLevel 渐进降级替代 boolean reasoning
+  let thinkLevel: ThinkLevel = 'off'; // 默认关闭（大多数国产模型不支持）
   let messages: MessageSnapshot[] | undefined;
   let overloadAttempts = 0;
   let overflowCompactionAttempts = 0;
 
   log.info(
     `开始循环: providers=[${providerChain.map(p => `${p.provider}/${p.modelId}`).join(', ')}], ` +
-    `maxIterations=${MAX_LOOP_ITERATIONS}`,
+    `maxIterations=${maxIterations}`,
   );
 
-  for (let iteration = 0; iteration < MAX_LOOP_ITERATIONS; iteration++) {
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
     // 检查外部中止
     if (abortSignal?.aborted) {
       log.warn('外部中止，退出循环');
       return;
     }
 
-    log.info(`iteration ${iteration}/${MAX_LOOP_ITERATIONS}: provider=${currentProvider.provider}/${currentProvider.modelId}, reasoning=${reasoning}`);
+    log.info(`iteration ${iteration}/${maxIterations}: provider=${currentProvider.provider}/${currentProvider.modelId}, thinkLevel=${thinkLevel}`);
 
     const result = await runSingleAttempt({
       config,
       providerOverride: providerIndex > 0 ? currentProvider : undefined,
-      reasoning,
+      thinkLevel,
       messagesOverride: messages,
       message,
       onEvent,
@@ -184,7 +193,7 @@ export async function runEmbeddedLoop(
       }
 
       const delay = calculateBackoff(overloadAttempts, { maxDelayMs: 5000 });
-      log.warn(`overload，${delay.toFixed(0)}ms 后重试 (${iteration}/${MAX_LOOP_ITERATIONS})`);
+      log.warn(`overload，${delay.toFixed(0)}ms 后重试 (${iteration}/${maxIterations})`);
       await sleep(delay);
       continue;
     }
@@ -209,10 +218,11 @@ export async function runEmbeddedLoop(
       return;
     }
 
-    // Thinking 不支持 → 降级 reasoning=false
+    // Thinking 不支持 → 渐进降级 ThinkLevel
     if (result.errorType === 'thinking') {
-      reasoning = false;
-      log.warn('thinking 不支持，降级 reasoning=false');
+      const prevLevel = thinkLevel;
+      thinkLevel = degradeThinkLevel(thinkLevel);
+      log.warn(`thinking 错误，降级 ${prevLevel} → ${thinkLevel}`);
       continue;
     }
 
@@ -242,8 +252,8 @@ export async function runEmbeddedLoop(
     return;
   }
 
-  log.error(`已达最大重试次数 (${MAX_LOOP_ITERATIONS})`);
-  emit(onEvent, { type: 'error', error: `Agent 执行失败: 已达最大重试次数 (${MAX_LOOP_ITERATIONS})` });
+  log.error(`已达最大重试次数 (${maxIterations})`);
+  emit(onEvent, { type: 'error', error: `Agent 执行失败: 已达最大重试次数 (${maxIterations})` });
 }
 
 /**

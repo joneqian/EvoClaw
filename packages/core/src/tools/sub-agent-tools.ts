@@ -19,6 +19,7 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
           task: { type: 'string', description: '子 Agent 要完成的任务描述（要详细，子 Agent 无法访问你的记忆和对话历史）' },
           context: { type: 'string', description: '补充上下文信息（可选，将所需信息直接传入）' },
           timeout: { type: 'number', description: '超时秒数（默认 300，最大 3600）' },
+          mode: { type: 'string', enum: ['run', 'session'], description: 'Spawn 模式: run（一次性，默认）或 session（持久化，可 resume）' },
           agentId: { type: 'string', description: '跨 Agent 生成：目标 Agent ID（可选，默认使用当前 Agent）' },
           attachments: {
             type: 'array',
@@ -39,6 +40,7 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
         const task = args['task'] as string;
         const context = args['context'] as string | undefined;
         const timeoutSec = args['timeout'] as number | undefined;
+        const mode = (args['mode'] as 'run' | 'session') ?? 'run';
         const agentId = args['agentId'] as string | undefined;
         const attachments = args['attachments'] as Array<{ name: string; content: string }> | undefined;
 
@@ -53,6 +55,7 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
           const taskId = spawner.spawn(task, context, timeoutMs, {
             agentId,
             attachments,
+            mode,
           });
           const lines = [
             `子 Agent 已启动。`,
@@ -162,6 +165,32 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
           return `子 Agent 已纠偏。\n原 Task ID: ${taskId}（已终止）\n新 Task ID: ${newTaskId}\n纠正指令: ${correction}`;
         } catch (err) {
           return `纠偏失败: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      },
+    },
+    {
+      name: 'resume_agent',
+      description: '恢复一个 idle 状态的 session 模式子 Agent。仅适用于以 mode:"session" 创建的子 Agent，完成后进入 idle 状态可被 resume。',
+      parameters: {
+        type: 'object',
+        properties: {
+          taskId: { type: 'string', description: '要恢复的子 Agent 的 Task ID' },
+          followUp: { type: 'string', description: '后续指令（新的任务或补充说明）' },
+        },
+        required: ['taskId', 'followUp'],
+      },
+      execute: async (args) => {
+        const taskId = args['taskId'] as string;
+        const followUp = args['followUp'] as string;
+
+        if (!taskId) return '错误：缺少 taskId 参数';
+        if (!followUp) return '错误：缺少 followUp 参数';
+
+        try {
+          spawner.resume(taskId, followUp);
+          return `子 Agent ${taskId} 已恢复执行。\n后续指令: ${followUp}`;
+        } catch (err) {
+          return `恢复失败: ${err instanceof Error ? err.message : String(err)}`;
         }
       },
     },

@@ -36,6 +36,12 @@ describe('AgentBuilder LLM 生成', () => {
 
   it('有 LLM 时调用 LLM 生成 SOUL.md 和 AGENTS.md', async () => {
     const mockLLM = vi.fn()
+      // 默认返回值（用于 contextual hints）
+      .mockResolvedValue('建议A、建议B、建议C')
+      // SOUL.md 个性化（第 4 次调用 = role hint + expertise hint + style hint 后）
+      .mockResolvedValueOnce('建议A、建议B') // role → expertise hint
+      .mockResolvedValueOnce('建议C、建议D') // expertise → style hint
+      .mockResolvedValueOnce('建议E')        // style → constraints hint
       .mockResolvedValueOnce('## 我的角色\n\n我是一位资深 TypeScript 工程师...')
       .mockResolvedValueOnce('## 角色对话规范\n\n- 代码优先，简洁回答...');
 
@@ -50,8 +56,8 @@ describe('AgentBuilder LLM 生成', () => {
     expect(result.stage).toBe('preview');
     expect(result.preview).toBeTruthy();
 
-    // 验证 LLM 被调用了 2 次（SOUL.md 个性化 + AGENTS.md 个性化）
-    expect(mockLLM).toHaveBeenCalledTimes(2);
+    // LLM 被调用了 5 次（3 次 contextual hints + 2 次文件生成）
+    expect(mockLLM).toHaveBeenCalledTimes(5);
 
     // SOUL.md = 通用底层 + LLM 个性化
     expect(result.preview!['SOUL.md']).toContain('Core Truths');       // 通用底层
@@ -110,8 +116,15 @@ describe('AgentBuilder LLM 生成', () => {
 
   it('LLM 生成的 prompt 包含用户所有输入', async () => {
     const mockLLM = vi.fn()
-      .mockResolvedValueOnce('# SOUL')
-      .mockResolvedValueOnce('# AGENTS');
+      .mockResolvedValue('建议A、建议B'); // default for hints
+
+    // Override for SOUL + AGENTS generation (calls 3 and 4, after 3 hint calls)
+    mockLLM
+      .mockResolvedValueOnce('建议1')   // hint: role → expertise
+      .mockResolvedValueOnce('建议2')   // hint: expertise → style
+      .mockResolvedValueOnce('建议3')   // hint: style → constraints
+      .mockResolvedValueOnce('# SOUL')  // SOUL.md generation
+      .mockResolvedValueOnce('# AGENTS'); // AGENTS.md generation
 
     const builder = new AgentBuilder(agentManager, mockLLM);
     const session = builder.createSession();
@@ -121,16 +134,20 @@ describe('AgentBuilder LLM 生成', () => {
     await builder.advance(session, '轻松幽默');
     await builder.advance(session, '代码必须有注释');
 
-    // 验证 LLM 调用包含所有用户输入
-    const soulCall = mockLLM.mock.calls[0];
-    expect(soulCall[0]).toContain('SOUL.md');          // system prompt 提到 SOUL.md
-    expect(soulCall[1]).toContain('全栈开发');           // role
-    expect(soulCall[1]).toContain('React + Node.js');   // expertise
-    expect(soulCall[1]).toContain('轻松幽默');           // style
-    expect(soulCall[1]).toContain('代码必须有注释');      // constraints
+    // 验证 LLM 调用：3 次 hints + 2 次文件生成 = 5 次
+    expect(mockLLM).toHaveBeenCalledTimes(5);
 
-    const agentsCall = mockLLM.mock.calls[1];
-    expect(agentsCall[0]).toContain('AGENTS.md');       // system prompt 提到 AGENTS.md
+    // SOUL.md 生成调用（第 4 次，index 3）
+    const soulCall = mockLLM.mock.calls[3];
+    expect(soulCall[0]).toContain('SOUL.md');
+    expect(soulCall[1]).toContain('全栈开发');
+    expect(soulCall[1]).toContain('React + Node.js');
+    expect(soulCall[1]).toContain('轻松幽默');
+    expect(soulCall[1]).toContain('代码必须有注释');
+
+    // AGENTS.md 生成调用（第 5 次，index 4）
+    const agentsCall = mockLLM.mock.calls[4];
+    expect(agentsCall[0]).toContain('AGENTS.md');
     expect(agentsCall[1]).toContain('全栈开发');
   });
 });

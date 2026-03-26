@@ -64,32 +64,47 @@ export class AgentBuilder {
   /** 处理用户输入，推进到下一阶段 */
   async advance(state: BuilderState, userInput: string): Promise<BuilderResponse> {
     switch (state.stage) {
-      case 'role':
+      case 'role': {
         state.inputs.role = userInput;
         state.stage = 'expertise';
+        const expertiseHint = await this.generateContextualHint(
+          `用户要创建一个"${userInput}"角色的 Agent。请给出 3-4 个与该角色最相关的专长领域建议，用顿号分隔，不要解释。`,
+          '编程、写作、数据分析、日语学习',
+        );
         return {
           stage: 'expertise',
-          message: '很好！你希望它擅长什么领域？比如：编程、写作、数据分析、日语学习...',
+          message: `很好！你希望它擅长什么领域？比如：${expertiseHint}...`,
           done: false,
         };
+      }
 
-      case 'expertise':
+      case 'expertise': {
         state.inputs.expertise = userInput;
         state.stage = 'style';
+        const styleHint = await this.generateContextualHint(
+          `用户要创建一个"${state.inputs.role}"角色、擅长"${userInput}"的 Agent。请给出 3-4 个适合该角色的沟通风格建议，用顿号分隔，不要解释。`,
+          '专业严谨、轻松幽默、简洁高效、耐心教学',
+        );
         return {
           stage: 'style',
-          message: '它的沟通风格应该是怎样的？比如：专业严谨、轻松幽默、简洁高效、耐心教学...',
+          message: `它的沟通风格应该是怎样的？比如：${styleHint}...`,
           done: false,
         };
+      }
 
-      case 'style':
+      case 'style': {
         state.inputs.style = userInput;
         state.stage = 'constraints';
+        const constraintHint = await this.generateContextualHint(
+          `用户要创建一个"${state.inputs.role}"角色、风格"${userInput}"的 Agent。请给出 2-3 个该角色可能需要的特殊限制建议，用顿号分隔，不要解释。`,
+          '不要使用英文术语、回答控制在 200 字以内、必须附带参考来源',
+        );
         return {
           stage: 'constraints',
-          message: '有什么特殊限制或注意事项吗？比如：不要使用英文术语、回答控制在 200 字以内、必须附带参考来源... (输入"无"跳过)',
+          message: `有什么特殊限制或注意事项吗？比如：${constraintHint}... (输入"无"跳过)`,
           done: false,
         };
+      }
 
       case 'constraints': {
         state.inputs.constraints = userInput === '无' ? undefined : userInput;
@@ -427,6 +442,25 @@ After clearing, you're officially "born" — this script won't appear again.
 
 _Good luck. Make every conversation count._
 `;
+  }
+
+  // ─── 上下文相关建议生成 ───
+
+  /** 使用 LLM 生成上下文相关的建议，无 LLM 时 fallback 到默认值 */
+  private async generateContextualHint(prompt: string, fallback: string): Promise<string> {
+    if (!this.llmGenerate) return fallback;
+    try {
+      const result = await this.llmGenerate(
+        '你是一个 Agent 创建助手。根据用户描述给出简短的建议选项。只输出建议内容，不要解释。',
+        prompt,
+      );
+      const trimmed = result.trim();
+      // 如果 LLM 返回太长或为空，fallback
+      if (!trimmed || trimmed.length > 100) return fallback;
+      return trimmed;
+    } catch {
+      return fallback;
+    }
   }
 
   // ─── 名称 / Emoji 生成 ───

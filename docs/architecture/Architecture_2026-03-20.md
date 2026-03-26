@@ -426,15 +426,18 @@ session.agent.streamFn = piAi.streamSimple;  // 必须设置
 **多级错误恢复**:
 
 ```
-错误类型           │ 恢复策略                    │ 最大重试
-─────────────────┼────────────────────────────┼────────
-overload (429)    │ 指数退避 (250ms→1.5s, x2)  │ 3 次
-thinking 不支持   │ 降级 reasoning=false         │ 1 次
-context overflow  │ 裁剪保留最近 3 轮 (6 条消息)  │ 1 次
-其他错误          │ 不重试，回退 fetch            │ 0 次
-PI 完全失败       │ 回退 runWithFetch()          │ 1 次
-PI 超时           │ 120 秒 Promise.race          │ 0 次
+错误类型           │ 恢复策略                         │ 最大重试
+─────────────────┼─────────────────────────────────┼────────
+overload (429)    │ 指数退避 (250ms→1.5s, x2)       │ 3 次后切 provider
+thinking 不支持   │ ThinkLevel 渐进降级 high→med→low→off │ 3 次（逐级）
+context overflow  │ 保留后 12 条 → 截断工具结果 10K    │ 3 次
+auth/billing      │ 切换下一个 provider（冷却 60s）    │ 按 provider 数
+其他错误          │ 不重试，返回错误                   │ 0 次
+PI 超时           │ Compaction 感知 grace period      │ 0 次
+重试上限          │ 动态: 5 + providerChain.length × 5 │ max 30
 ```
+
+> 详细设计见 [`docs/architecture/SubAgent-ReAct-Optimization.md`](./SubAgent-ReAct-Optimization.md)
 
 **模块化系统提示** (参考 OpenClaw 22 段式):
 

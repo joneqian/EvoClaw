@@ -888,16 +888,26 @@ PI 内置的门控系统，安装/加载前自动检查：
 
 | 工具 | 功能 |
 |------|------|
-| `sessions_spawn` | 创建子 Agent，指定任务和约束 |
-| `sessions_list` | 列出当前活跃的子 Agent 会话 |
-| `sessions_history` | 获取子 Agent 的对话记录 |
-| `sessions_send` | 向子 Agent 发送消息 |
+| `spawn_agent` | 创建子 Agent，指定任务、约束、模式（run/session） |
+| `list_agents` | 列出当前活跃的子 Agent 会话及结果 |
+| `kill_agent` | 终止运行中的子 Agent（支持级联终止所有后代） |
+| `steer_agent` | 纠偏：停止当前执行 + 注入修正指令重新运行 |
+| `yield_agents` | 等待/手动收集子 Agent 结果（结果也会自动推送） |
+| `resume_agent` | 向 session 模式的子 Agent 发送后续指令（计划中） |
 
 **安全约束**：
-- 派生深度限制：`maxSpawnDepth` 默认 1（最多 2 层嵌套）
-- 并发限制：`maxConcurrent` 默认 4
-- 子 Agent 在独立会话中运行，完成后回传结果给父 Agent
-- 子 Agent 不继承父 Agent 的私密记忆
+- 派生深度限制：`maxSpawnDepth` 可配置，默认 2（main→orchestrator→leaf）
+- 并发限制：每 Agent 最多 5 个活跃子代 + subagent lane 8 并发
+- 子 Agent 在独立会话中运行，完成后结果自动推送给父 Agent（Push-based）
+- 子 Agent 不继承父 Agent 的私密记忆和 channel 工具
+- 子代结果用 `<<<UNTRUSTED>>>` 标记包裹，防止 prompt 注入
+- 级联 Kill：终止某个子代时递归终止其所有后代
+
+**Spawn 模式**（计划中）：
+- `run`（默认）：一次性执行，完成即销毁
+- `session`：持久化子代 session，可多次交互（resume），idle 30 分钟自动清理
+
+> 详细设计见 [`SubAgent-ReAct-Optimization.md`](./SubAgent-ReAct-Optimization.md)
 
 ### 7.3 Agent 间通信
 

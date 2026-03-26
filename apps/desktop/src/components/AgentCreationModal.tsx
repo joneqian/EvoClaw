@@ -51,10 +51,12 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
   } = useAgentStore();
 
   const [inputValue, setInputValue] = useState('');
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const initialMessageSentRef = useRef(false);
+  const prevStageRef = useRef<BuilderStage | null>(null);
 
   // 当 isOpen 变为 true 时，启动引导式创建
   useEffect(() => {
@@ -73,6 +75,14 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
       setTimeout(() => sendBuilderMessage(initialMessage), 300);
     }
   }, [isOpen, initialMessage, builderStage, builderLoading, sendBuilderMessage]);
+
+  // 阶段变化时清空已选建议
+  useEffect(() => {
+    if (builderStage !== prevStageRef.current) {
+      setSelectedSuggestions(new Set());
+      prevStageRef.current = builderStage;
+    }
+  }, [builderStage]);
 
   // 自动滚动到最新消息
   useEffect(() => {
@@ -101,20 +111,42 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
     onClose();
   }, [resetBuilder, onClose]);
 
-  /** 发送消息 */
-  const handleSend = useCallback(() => {
-    const msg = inputValue.trim();
-    if (!msg || builderLoading) return;
-    setInputValue('');
-    sendBuilderMessage(msg);
-  }, [inputValue, builderLoading, sendBuilderMessage]);
+  /** 是否为单选阶段（role 只能选一个角色） */
+  const isSingleSelectStage = builderStage === 'role';
 
-  /** 点击建议标签 */
+  /** 发送消息：合并已选建议 + 输入框内容 */
+  const handleSend = useCallback(() => {
+    const parts: string[] = [...selectedSuggestions];
+    const extra = inputValue.trim();
+    if (extra) parts.push(extra);
+    if (parts.length === 0 || builderLoading) return;
+    const msg = parts.join('、');
+    setInputValue('');
+    setSelectedSuggestions(new Set());
+    sendBuilderMessage(msg);
+  }, [inputValue, selectedSuggestions, builderLoading, sendBuilderMessage]);
+
+  /** 点击建议标签：单选阶段直接发送，多选阶段 toggle 选中状态 */
   const handleSuggestion = useCallback((text: string) => {
     if (builderLoading) return;
-    setInputValue('');
-    sendBuilderMessage(text);
-  }, [builderLoading, sendBuilderMessage]);
+    if (isSingleSelectStage) {
+      // 单选阶段：直接发送
+      setInputValue('');
+      setSelectedSuggestions(new Set());
+      sendBuilderMessage(text);
+      return;
+    }
+    // 多选阶段：toggle 选中状态
+    setSelectedSuggestions(prev => {
+      const next = new Set(prev);
+      if (next.has(text)) {
+        next.delete(text);
+      } else {
+        next.add(text);
+      }
+      return next;
+    });
+  }, [builderLoading, isSingleSelectStage, sendBuilderMessage]);
 
   /** 切换文件展开/编辑 */
   const toggleFile = useCallback((filename: string) => {
@@ -250,20 +282,37 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
             {suggestions && !builderCreatedAgentId && (
               <div className="px-4 pb-2 shrink-0">
                 <div className="flex flex-wrap gap-1.5">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => handleSuggestion(s)}
-                      disabled={builderLoading}
-                      className="px-2.5 py-1 text-xs bg-slate-50 text-slate-600
-                        border border-slate-200 rounded-full
-                        hover:bg-brand/5 hover:border-brand/30 hover:text-brand
-                        disabled:opacity-50 transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
+                  {suggestions.map((s) => {
+                    const isSelected = selectedSuggestions.has(s);
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => handleSuggestion(s)}
+                        disabled={builderLoading}
+                        className={`px-2.5 py-1 text-xs rounded-full border transition-colors
+                          disabled:opacity-50
+                          ${isSelected
+                            ? 'bg-brand/10 text-brand border-brand/40 font-medium'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-brand/5 hover:border-brand/30 hover:text-brand'
+                          }`}
+                      >
+                        {isSelected ? `✓ ${s}` : s}
+                      </button>
+                    );
+                  })}
                 </div>
+                {/* 多选模式下显示确认按钮 */}
+                {!isSingleSelectStage && selectedSuggestions.size > 0 && (
+                  <button
+                    onClick={handleSend}
+                    disabled={builderLoading}
+                    className="mt-2 px-3 py-1 text-xs font-medium text-white bg-brand
+                      rounded-full hover:bg-brand-hover transition-colors
+                      disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    确认选择 ({selectedSuggestions.size})
+                  </button>
+                )}
               </div>
             )}
 
@@ -297,7 +346,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     type="text"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (inputValue.trim() || selectedSuggestions.size > 0)) handleSend(); }}
                     placeholder="输入你的回答..."
                     disabled={builderLoading}
                     className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg
@@ -308,7 +357,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!inputValue.trim() || builderLoading}
+                    disabled={(!inputValue.trim() && selectedSuggestions.size === 0) || builderLoading}
                     className="px-4 py-2 text-sm font-medium text-white bg-brand
                       rounded-lg hover:bg-brand-hover transition-colors
                       disabled:opacity-50 disabled:cursor-not-allowed"

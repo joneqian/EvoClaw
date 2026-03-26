@@ -301,18 +301,6 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     );
                   })}
                 </div>
-                {/* 多选模式下显示确认按钮 */}
-                {!isSingleSelectStage && selectedSuggestions.size > 0 && (
-                  <button
-                    onClick={handleSend}
-                    disabled={builderLoading}
-                    className="mt-2 px-3 py-1 text-xs font-medium text-white bg-brand
-                      rounded-full hover:bg-brand-hover transition-colors
-                      disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    确认选择 ({selectedSuggestions.size})
-                  </button>
-                )}
               </div>
             )}
 

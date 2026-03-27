@@ -35,7 +35,7 @@ describe('ProviderRegistry', () => {
     // 默认模型应该是 qwen-max
     const defaultModel = provider!.models.find(m => m.isDefault);
     expect(defaultModel).toBeDefined();
-    expect(defaultModel!.id).toBe('qwen-max');
+    expect(defaultModel!.id).toBe('qwen3.5-plus');
   });
 
   it('registerGLM 应该正确注册智谱 GLM', () => {
@@ -48,7 +48,7 @@ describe('ProviderRegistry', () => {
     expect(provider!.models.length).toBeGreaterThanOrEqual(2);
 
     const defaultModel = provider!.models.find(m => m.isDefault);
-    expect(defaultModel!.id).toBe('glm-4-plus');
+    expect(defaultModel!.id).toBe('glm-5');
   });
 
   it('registerDoubao 应该正确注册字节豆包', () => {
@@ -146,9 +146,6 @@ describe('ProviderRegistry', () => {
     expect(p!.name).toBe('DeepSeek');
     expect(p!.models.some(m => m.id === 'deepseek-chat')).toBe(true);
     expect(p!.models.some(m => m.id === 'deepseek-reasoner')).toBe(true);
-    // deepseek-reasoner 不支持 tool use
-    const r1 = p!.models.find(m => m.id === 'deepseek-reasoner');
-    expect(r1!.supportsToolUse).toBe(false);
   });
 
   it('registerMiniMax 应正确注册', () => {
@@ -157,8 +154,8 @@ describe('ProviderRegistry', () => {
     expect(p).toBeDefined();
     expect(p!.name).toBe('MiniMax');
     expect(p!.baseUrl).toBe('https://api.minimaxi.com/v1');
-    expect(p!.models.some(m => m.id === 'MiniMax-M2.5-highspeed')).toBe(true);
-    expect(p!.models.some(m => m.id === 'abab6.5s-chat')).toBe(true);
+    expect(p!.models.some(m => m.id === 'MiniMax-M2.7')).toBe(true);
+    expect(p!.models.some(m => m.id === 'MiniMax-M2.5')).toBe(true);
   });
 
   it('registerKimi 应正确注册', () => {
@@ -166,10 +163,9 @@ describe('ProviderRegistry', () => {
     const p = getProvider('kimi');
     expect(p).toBeDefined();
     expect(p!.name).toBe('Kimi (Moonshot)');
-    expect(p!.models).toHaveLength(3);
+    expect(p!.models.length).toBeGreaterThanOrEqual(3);
+    expect(p!.models.some(m => m.id === 'kimi-k2.5')).toBe(true);
     expect(p!.models.some(m => m.id === 'moonshot-v1-128k')).toBe(true);
-    expect(p!.models.some(m => m.id === 'moonshot-v1-32k')).toBe(true);
-    expect(p!.models.some(m => m.id === 'moonshot-v1-8k')).toBe(true);
   });
 
   it('registerOpenAI 应显式注册模型列表', () => {

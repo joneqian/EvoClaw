@@ -150,8 +150,8 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     reasoning,
     input: ['text'] as ('text' | 'image')[],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128_000,
-    maxTokens: 8192,
+    contextWindow: providerOverride?.contextWindow ?? config.contextWindow ?? 128_000,
+    maxTokens: providerOverride?.maxTokens ?? config.maxTokens ?? 8192,
   };
 
   log.info(

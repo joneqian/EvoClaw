@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { AgentManager } from '../agent/agent-manager.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
+import { lookupModelDefinition } from '../provider/extensions/index.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
@@ -496,6 +497,9 @@ export function createChatRoutes(
     enhancedTools.push(createExecBackgroundTool());
     enhancedTools.push(createProcessTool());
 
+    // 查 extension 获取模型参数（用于 contextWindow/maxTokens）
+    const modelDef = lookupModelDefinition(provider, modelId);
+
     // 子 Agent 工具（需 laneQueue）
     let spawner: SubAgentSpawner | undefined;
     if (laneQueue) {
@@ -510,6 +514,8 @@ export function createChatRoutes(
         baseUrl,
         apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
         tools: enhancedTools,  // 子 Agent 继承增强工具（不含子 Agent 工具本身）
+        contextWindow: modelDef?.contextWindow,
+        maxTokens: modelDef?.maxTokens,
       };
       // 跨 Agent 解析器：根据 agentId 查找目标 Agent 配置 + 工作区文件
       const agentResolver = (targetId: string) => {
@@ -615,6 +621,8 @@ export function createChatRoutes(
       apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
       tools,
       messages,
+      contextWindow: modelDef?.contextWindow,
+      maxTokens: modelDef?.maxTokens,
       permissionInterceptFn,
       auditLogFn: (entry) => {
         auditQueue.push({

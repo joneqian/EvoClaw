@@ -11,6 +11,8 @@ export interface ProviderConfig {
   apiKey: string;
   baseUrl: string;
   apiProtocol?: AgentRunConfig['apiProtocol'];
+  contextWindow?: number;
+  maxTokens?: number;
 }
 
 // ─── Agent 运行配置 ───
@@ -38,6 +40,10 @@ export interface AgentRunConfig {
   auditLogFn?: (entry: { toolName: string; args: Record<string, unknown>; result: string; status: 'success' | 'error' | 'denied'; durationMs: number }) => void;
   /** Fallback provider 列表（按优先级排序），用于 billing/auth/overload 错误时自动切换 */
   fallbackProviders?: ProviderConfig[];
+  /** 模型上下文窗口大小 (tokens) — 从 extension 预设或用户配置获取 */
+  contextWindow?: number;
+  /** 模型最大输出 tokens — 从 extension 预设或用户配置获取 */
+  maxTokens?: number;
 }
 
 // ─── 单次执行结果 ───

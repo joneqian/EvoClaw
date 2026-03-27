@@ -27,6 +27,8 @@ export interface ModelDefinition {
   toolUse?: boolean;
   /** 是否为该 provider 的默认推荐模型 */
   isDefault?: boolean;
+  /** Embedding 向量维度（仅 embedding 模型，有此字段即为 embedding 模型） */
+  dimension?: number;
 }
 
 /** Provider 定义（预设） */

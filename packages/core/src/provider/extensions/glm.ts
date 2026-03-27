@@ -21,5 +21,7 @@ export const GLM_PROVIDER: ProviderDefinition = {
     { id: 'glm-4.5-air', name: 'GLM-4.5 Air', contextWindow: 131072, maxTokens: 98304, input: ['text'], reasoning: true },
     { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash', contextWindow: 131072, maxTokens: 98304, input: ['text'], reasoning: true },
     { id: 'glm-4.5v', name: 'GLM-4.5V', contextWindow: 64000, maxTokens: 16384, input: ['text', 'image'], reasoning: true },
+    // Embedding
+    { id: 'embedding-3', name: 'Embedding 3', contextWindow: 8192, maxTokens: 0, input: ['text'], toolUse: false, dimension: 2048 },
   ],
 };

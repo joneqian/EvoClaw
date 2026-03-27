@@ -21,5 +21,8 @@ export const OPENAI_PROVIDER: ProviderDefinition = {
     // GPT-4o 系列（旧版）
     { id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000, maxTokens: 16384, input: ['text', 'image'] },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000, maxTokens: 16384, input: ['text', 'image'] },
+    // Embedding
+    { id: 'text-embedding-3-small', name: 'Text Embedding 3 Small', contextWindow: 8191, maxTokens: 0, input: ['text'], toolUse: false, dimension: 1536 },
+    { id: 'text-embedding-3-large', name: 'Text Embedding 3 Large', contextWindow: 8191, maxTokens: 0, input: ['text'], toolUse: false, dimension: 3072 },
   ],
 };

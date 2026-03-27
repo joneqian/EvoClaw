@@ -241,6 +241,7 @@ export function createProviderRoutes(
         supportsVision: m.input.includes('image'),
         supportsToolUse: m.toolUse !== false,
         isDefault: m.isDefault ?? i === 0,
+        ...(m.dimension ? { dimension: m.dimension } : {}),
       }));
       return c.json({ models: [...presetModels, ...customModels], source: 'extension' });
     }

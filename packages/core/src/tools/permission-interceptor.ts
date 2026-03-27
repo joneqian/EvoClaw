@@ -44,7 +44,7 @@ const SAFE_BINS = new Set([
   'python', 'python3', 'pip', 'pip3',
   // 文件操作（只读/安全）
   'ls', 'cat', 'head', 'tail', 'wc', 'file', 'stat',
-  'find', 'grep', 'rg', 'ag',
+  'find', 'mdfind', 'grep', 'rg', 'ag',
   'sort', 'uniq', 'diff', 'tr', 'cut', 'awk', 'sed',
   // 目录操作
   'mkdir', 'cp', 'mv', 'touch',

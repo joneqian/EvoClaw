@@ -59,12 +59,12 @@ describe('ModelResolver', () => {
     registerQwen('qwen-key');
 
     const result = resolveModel({
-      agentModelId: 'qwen-plus',
+      agentModelId: 'qwen3-max',
       agentProvider: 'qwen',
     });
 
     expect(result.provider).toBe('qwen');
-    expect(result.modelId).toBe('qwen-plus');
+    expect(result.modelId).toBe('qwen3-max');
     expect(result.apiKeyRef).toBe('qwen-key');
     expect(result.baseUrl).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1');
   });

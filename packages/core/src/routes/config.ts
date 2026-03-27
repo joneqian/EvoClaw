@@ -114,5 +114,35 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     return c.json({ success: true });
   });
 
+  /** GET /services — 获取外部服务配置（API Key 脱敏） */
+  app.get('/services', (c) => {
+    const config = configManager.getConfig();
+    const braveKey = config.services?.brave?.apiKey ?? '';
+    return c.json({
+      services: {
+        brave: {
+          configured: !!braveKey,
+          maskedApiKey: braveKey ? braveKey.slice(0, 6) + '***' + braveKey.slice(-4) : '',
+        },
+      },
+    });
+  });
+
+  /** PUT /services/:service — 更新外部服务 API Key */
+  app.put('/services/:service', async (c) => {
+    const service = c.req.param('service');
+    const body = await c.req.json<{ apiKey: string }>();
+
+    if (service === 'brave') {
+      const config = configManager.getConfig();
+      const services = config.services ?? {};
+      services.brave = { apiKey: body.apiKey };
+      configManager.updateConfig({ ...config, services });
+      return c.json({ success: true });
+    }
+
+    return c.json({ error: `未知服务: ${service}` }, 400);
+  });
+
   return app;
 }

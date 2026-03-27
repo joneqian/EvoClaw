@@ -7,6 +7,6 @@ export const MINIMAX_PROVIDER: ProviderDefinition = {
   api: 'openai-completions',
   models: [
     { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], reasoning: true, isDefault: true },
-    { id: 'MiniMax-M2.5', name: 'MiniMax M2.5', contextWindow: 196608, maxTokens: 65536, input: ['text'], reasoning: true },
+    { id: 'MiniMax-M2.7-highspeed', name: 'MiniMax M2.7 Highspeed', contextWindow: 204800, maxTokens: 131072, input: ['text'], reasoning: true },
   ],
 };

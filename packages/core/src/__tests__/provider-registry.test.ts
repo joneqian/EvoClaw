@@ -155,7 +155,7 @@ describe('ProviderRegistry', () => {
     expect(p!.name).toBe('MiniMax');
     expect(p!.baseUrl).toBe('https://api.minimaxi.com/v1');
     expect(p!.models.some(m => m.id === 'MiniMax-M2.7')).toBe(true);
-    expect(p!.models.some(m => m.id === 'MiniMax-M2.5')).toBe(true);
+    expect(p!.models.some(m => m.id === 'MiniMax-M2.7-highspeed')).toBe(true);
   });
 
   it('registerKimi 应正确注册', () => {

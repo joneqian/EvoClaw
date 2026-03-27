@@ -112,6 +112,23 @@ interface ToolCallRecord {
   summary?: string;
 }
 
+/** 生成渠道消息中的工具调用简化提示 */
+function formatToolHintForChannel(toolName: string): string {
+  const hints: Record<string, string> = {
+    web_search: '🔍 正在搜索...',
+    web_fetch: '🌐 正在获取网页...',
+    read: '📄 正在读取文件...',
+    write: '✏️ 正在写入文件...',
+    edit: '✏️ 正在编辑文件...',
+    bash: '⚙️ 正在执行命令...',
+    image: '🖼️ 正在分析图片...',
+    pdf: '📑 正在读取 PDF...',
+    memory_search: '🧠 正在搜索记忆...',
+    spawn_agent: '🤖 正在创建子任务...',
+  };
+  return hints[toolName] ?? '🔧 正在处理...';
+}
+
 /** 生成工具调用摘要（与前端 formatToolSummary 对齐） */
 function formatToolSummary(name: string, args: unknown): string {
   if (!args || typeof args !== 'object') return '';
@@ -438,11 +455,12 @@ export async function handleChannelMessage(
         const toolName = (event as any).toolName ?? '未知工具';
         const args = (event as any).toolArgs;
         collectedToolCalls.push({ name: toolName, status: 'running', summary: formatToolSummary(toolName, args) });
-        // 首次工具调用时，发送"思考中"提示
+        // 首次工具调用时，发送简化摘要提示
         if (!thinkingHintSent) {
           thinkingHintSent = true;
-          channelManager.sendMessage(channel as any, peerId, '让我看看，稍等一下~', chatType === 'group' ? 'group' : 'private')
-            .catch((err) => { log.warn(`思考提示发送失败: ${err instanceof Error ? err.message : String(err)}`); });
+          const toolHint = formatToolHintForChannel(toolName);
+          channelManager.sendMessage(channel as any, peerId, toolHint, chatType === 'group' ? 'group' : 'private')
+            .catch((err) => { log.warn(`工具提示发送失败: ${err instanceof Error ? err.message : String(err)}`); });
         }
       }
       if (event.type === 'tool_end') {

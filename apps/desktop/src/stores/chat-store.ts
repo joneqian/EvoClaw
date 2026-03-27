@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { get } from '../lib/api';
 
-/** 工具调用信息 */
+/** 工具调用信息（向后兼容） */
 export interface ToolCall {
   name: string;
   status: 'running' | 'done' | 'error';
@@ -9,11 +9,34 @@ export interface ToolCall {
   summary?: string;
 }
 
+/** 消息段：文本 */
+export interface TextSegment {
+  type: 'text';
+  content: string;
+}
+
+/** 消息段：工具调用 */
+export interface ToolSegment {
+  type: 'tool';
+  name: string;
+  displayName: string;
+  summary?: string;
+  result?: string;
+  isError?: boolean;
+  status: 'running' | 'done' | 'error';
+}
+
+/** 消息段联合类型 */
+export type MessageSegment = TextSegment | ToolSegment;
+
 /** 聊天消息 */
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /** 分段数据（桌面端交错渲染用） */
+  segments?: MessageSegment[];
+  /** 工具调用列表（向后兼容） */
   toolCalls?: ToolCall[];
   createdAt: string;
 }
@@ -58,6 +81,12 @@ interface ChatState {
   addMessage: (msg: Message) => void;
   appendToLastMessage: (delta: string) => void;
   updateLastMessageToolCalls: (toolCalls: ToolCall[]) => void;
+  /** 追加文本到最后一个 text segment（没有则新建） */
+  appendTextSegment: (delta: string) => void;
+  /** 新增一个 tool segment */
+  addToolSegment: (seg: ToolSegment) => void;
+  /** 更新最后一个匹配的 tool segment */
+  updateToolSegment: (name: string, update: { status: ToolSegment['status']; result?: string; isError?: boolean }) => void;
   setStreaming: (streaming: boolean) => void;
   clearMessages: () => void;
 }
@@ -185,6 +214,59 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       if (last && last.role === 'assistant') {
         msgs[msgs.length - 1] = { ...last, toolCalls };
       }
+      return { messages: msgs };
+    }),
+
+  appendTextSegment: (delta) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant') return { messages: msgs };
+      const segments = [...(last.segments ?? [])];
+      const lastSeg = segments[segments.length - 1];
+      if (lastSeg && lastSeg.type === 'text') {
+        // 追加到现有 text segment
+        segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + delta };
+      } else {
+        // 新建 text segment（工具调用之后的新文本段）
+        segments.push({ type: 'text', content: delta });
+      }
+      msgs[msgs.length - 1] = { ...last, content: last.content + delta, segments };
+      return { messages: msgs };
+    }),
+
+  addToolSegment: (seg) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant') return { messages: msgs };
+      const segments = [...(last.segments ?? [])];
+      segments.push(seg);
+      // 同步 toolCalls（向后兼容）
+      const toolCalls = [...(last.toolCalls ?? []), { name: seg.name, status: seg.status, summary: seg.summary }];
+      msgs[msgs.length - 1] = { ...last, segments, toolCalls };
+      return { messages: msgs };
+    }),
+
+  updateToolSegment: (name, update) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant') return { messages: msgs };
+      const segments = [...(last.segments ?? [])];
+      // 找到最后一个匹配的 running tool segment
+      for (let i = segments.length - 1; i >= 0; i--) {
+        const seg = segments[i]!;
+        if (seg.type === 'tool' && seg.name === name && seg.status === 'running') {
+          segments[i] = { ...seg, ...update };
+          break;
+        }
+      }
+      // 同步 toolCalls（向后兼容）
+      const toolCalls = [...(last.toolCalls ?? [])];
+      const tc = toolCalls.find(t => t.name === name && t.status === 'running');
+      if (tc) tc.status = update.status;
+      msgs[msgs.length - 1] = { ...last, segments, toolCalls };
       return { messages: msgs };
     }),
 

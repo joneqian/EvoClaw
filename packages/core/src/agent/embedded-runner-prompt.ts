@@ -191,8 +191,8 @@ Before answering the user, you should:
   // § 6 Tool call style
   sections.push(`<tool_call_style>
 ## Tool Call Style
-Default: do not narrate routine, low-risk tool calls — just call the tool.
-Narrate only when it helps: multi-step work, complex problems, sensitive actions (e.g., deletions), or when the user explicitly asks.
+Default: do not narrate routine, low-risk tool calls (just call the tool).
+Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.
 Keep narration brief and value-dense; avoid repeating obvious steps.
 
 ## Tool Selection Guide

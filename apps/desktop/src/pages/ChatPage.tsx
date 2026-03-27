@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
-import { useChatStore, type Message, type ToolCall } from '../stores/chat-store';
+import { useChatStore, type Message, type ToolCall, type ToolSegment } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import { patch, post } from '../lib/api';
 import ModelSelector from '../components/ModelSelector';
@@ -39,6 +39,9 @@ function ChatView() {
     addMessage,
     appendToLastMessage,
     updateLastMessageToolCalls,
+    appendTextSegment,
+    addToolSegment,
+    updateToolSegment,
     setStreaming,
     fetchConversations,
     newConversation,
@@ -138,7 +141,7 @@ function ChatView() {
     try {
       const configStr = localStorage.getItem('sidecar-config');
       if (!configStr) {
-        appendToLastMessage('Sidecar 未连接，无法发送消息。');
+        appendTextSegment('Sidecar 未连接，无法发送消息。');
         setStreaming(false);
         return;
       }
@@ -165,14 +168,14 @@ function ChatView() {
       if (!response.ok) {
         const errBody = await response.json().catch(() => null) as { error?: string } | null;
         const errMsg = errBody?.error || `HTTP ${response.status}`;
-        appendToLastMessage(`请求失败: ${errMsg}`);
+        appendTextSegment(`请求失败: ${errMsg}`);
         setStreaming(false);
         return;
       }
 
       const reader = response.body?.getReader();
       if (!reader) {
-        appendToLastMessage('无法读取响应流');
+        appendTextSegment('无法读取响应流');
         setStreaming(false);
         return;
       }
@@ -180,7 +183,6 @@ function ChatView() {
       const decoder = new TextDecoder();
       let buffer = '';
       let currentEvent = '';
-      const toolCalls: ToolCall[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -203,24 +205,27 @@ function ChatView() {
             try {
               const payload = JSON.parse(parsed.data);
               switch (currentEvent || payload.type) {
-                case 'text_delta':
-                  appendToLastMessage(payload.delta ?? payload.text ?? '');
+                case 'text_delta': {
+                  const delta = payload.delta ?? payload.text ?? '';
+                  appendTextSegment(delta);
                   break;
+                }
                 case 'tool_start': {
                   const toolName = payload.toolName ?? payload.name ?? '未知工具';
                   const args = payload.toolArgs ?? payload.args;
                   const summary = formatToolSummary(toolName, args);
-                  toolCalls.push({ name: toolName, status: 'running', summary });
-                  updateLastMessageToolCalls([...toolCalls]);
+                  const displayName = TOOL_DISPLAY_NAMES[toolName] ?? toolName;
+                  addToolSegment({ type: 'tool', name: toolName, displayName, summary, status: 'running' });
                   break;
                 }
                 case 'tool_end': {
                   const endName = payload.toolName ?? payload.name;
-                  const tc = toolCalls.find((t) => t.name === endName && t.status === 'running');
-                  if (tc) {
-                    tc.status = payload.isError ? 'error' : 'done';
-                    updateLastMessageToolCalls([...toolCalls]);
-                  }
+                  const toolResult = payload.toolResult ?? payload.result;
+                  updateToolSegment(endName, {
+                    status: payload.isError ? 'error' : 'done',
+                    result: typeof toolResult === 'string' ? toolResult : undefined,
+                    isError: payload.isError,
+                  });
                   break;
                 }
                 case 'permission_required':
@@ -233,24 +238,23 @@ function ChatView() {
                   });
                   break;
                 case 'queued':
-                  // 已入队等待处理，保持 streaming 状态
                   break;
                 case 'agent_done':
                   setStreaming(false);
                   break;
                 case 'error':
-                  appendToLastMessage(`\n[错误] ${payload.message ?? '未知错误'}`);
+                  appendTextSegment(`\n[错误] ${payload.message ?? '未知错误'}`);
                   setStreaming(false);
                   break;
               }
             } catch {
-              appendToLastMessage(parsed.data);
+              appendTextSegment(parsed.data);
             }
           }
         }
       }
     } catch (err) {
-      appendToLastMessage(`\n[连接错误] ${err instanceof Error ? err.message : '未知错误'}`);
+      appendTextSegment(`\n[连接错误] ${err instanceof Error ? err.message : '未知错误'}`);
     } finally {
       setStreaming(false);
       if (currentAgentId) fetchConversations(currentAgentId);
@@ -259,7 +263,7 @@ function ChatView() {
     }
   }, [
     currentAgentId, currentSessionKey, input, attachments, isStreaming, selectedModelId,
-    addMessage, appendToLastMessage, updateLastMessageToolCalls,
+    addMessage, appendTextSegment, addToolSegment, updateToolSegment,
     setStreaming, fetchConversations,
   ]);
 
@@ -512,7 +516,7 @@ function ChatView() {
           <div className="flex-1 overflow-y-auto px-4 py-2">
             <div className="mx-auto px-6 space-y-0">
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} agentName={currentAgent?.name} />
+                <MessageBubble key={msg.id} message={msg} />
               ))}
               {/* 思考指示器由 MessageBubble 的空消息状态显示，无需额外重复 */}
               <div ref={messagesEndRef} />
@@ -608,7 +612,7 @@ function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasCon
   return (
     <div className={hasContent ? 'mb-2 space-y-1' : 'space-y-1'}>
       {visible.map((tc, i) => (
-        <ToolCallItem key={i} tc={tc} />
+        <ToolCallItemLegacy key={i} tc={tc} />
       ))}
       {!showAll && hiddenCount > 0 && (
         <button
@@ -641,7 +645,54 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   spawn_agent: 'Spawn', list_agents: 'Agents', kill_agent: 'Kill',
 };
 
-function ToolCallItem({ tc }: { tc: ToolCall }) {
+/** 工具调用卡片（支持展开结果） */
+function ToolCallCard({ seg }: { seg: ToolSegment }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasResult = !!seg.result;
+  const statusIcon = seg.status === 'running'
+    ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+    : seg.status === 'error'
+      ? <span className="text-red-500 text-xs font-bold">!</span>
+      : <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
+
+  return (
+    <div
+      className={`rounded-lg border bg-slate-50/70 overflow-hidden my-1.5 ${
+        hasResult ? 'cursor-pointer' : ''
+      } ${seg.isError ? 'border-red-200' : 'border-slate-200'}`}
+      onClick={() => hasResult && setExpanded(!expanded)}
+    >
+      {/* 标题行 */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span className="text-xs font-semibold text-slate-700">{seg.displayName}</span>
+        {seg.summary && (
+          <span className="text-xs text-slate-400 truncate flex-1">{seg.summary}</span>
+        )}
+        <span className="shrink-0">{statusIcon}</span>
+        {hasResult && (
+          <svg className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+        )}
+      </div>
+      {/* 可展开的结果区域 */}
+      {expanded && seg.result && (
+        <div className="px-3 pb-2 border-t border-slate-100">
+          <pre className="text-xs text-slate-500 font-mono whitespace-pre-wrap break-all leading-relaxed mt-1.5 max-h-48 overflow-y-auto">
+            {seg.result.length > 2000 ? seg.result.slice(0, 2000) + '\n... (truncated)' : seg.result}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 旧版工具调用项（向后兼容无 segments 的消息） */
+function ToolCallItemLegacy({ tc }: { tc: ToolCall }) {
   const displayName = TOOL_DISPLAY_NAMES[tc.name] ?? tc.name;
   const statusIcon = tc.status === 'running'
     ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
@@ -652,29 +703,55 @@ function ToolCallItem({ tc }: { tc: ToolCall }) {
   return (
     <div className="rounded-lg border border-slate-100 bg-slate-50/50 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z" />
-        </svg>
         <span className="text-xs font-semibold text-slate-700 flex-1">{displayName}</span>
+        {tc.summary && <span className="text-xs text-slate-400 truncate">{tc.summary}</span>}
         <span className="shrink-0">{statusIcon}</span>
       </div>
-      {tc.summary && (
-        <div className="px-3 pb-2">
-          <code className="text-xs text-slate-500 font-mono break-all leading-relaxed">
-            {tc.summary}
-          </code>
-        </div>
-      )}
+    </div>
+  );
+}
+
+/** Markdown 文本样式类 */
+const MARKDOWN_CLASSES = `max-w-none break-words text-sm leading-relaxed text-slate-900
+  [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5
+  [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1.5
+  [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1
+  [&_h4]:text-sm [&_h4]:font-semibold [&_h4]:mt-2 [&_h4]:mb-1
+  [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5
+  [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto
+  [&_code]:text-pink-600 [&_code]:text-sm
+  [&_pre_code]:text-slate-100 [&_pre_code]:text-xs
+  [&_a]:text-brand [&_a]:no-underline hover:[&_a]:underline
+  [&_strong]:font-semibold [&_strong]:text-slate-900
+  [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600
+  [&_table]:text-xs [&_th]:px-2 [&_td]:px-2 [&_hr]:my-3`;
+
+/** 消息操作栏 */
+function MessageActions({ content }: { content: string }) {
+  return (
+    <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button
+        onClick={() => navigator.clipboard.writeText(content)}
+        className="flex items-center gap-1 px-2 py-0.5 text-xs text-slate-400
+          hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+        title="复制"
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+        </svg>
+        复制
+      </button>
     </div>
   );
 }
 
 /** 单条消息气泡组件 */
-function MessageBubble({ message, agentName }: { message: Message; agentName?: string }) {
+function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
+  const hasSegments = message.segments && message.segments.length > 0;
   const hasContent = !!message.content;
   const hasTools = message.toolCalls && message.toolCalls.length > 0;
-  const isEmpty = !isUser && !hasContent && !hasTools;
+  const isEmpty = !isUser && !hasContent && !hasTools && !hasSegments;
 
   if (isUser) {
     return (
@@ -697,62 +774,34 @@ function MessageBubble({ message, agentName }: { message: Message; agentName?: s
           </span>
           正在思考...
         </div>
+      ) : hasSegments ? (
+        /* 新渲染：segments 交错显示 */
+        <>
+          {message.segments!.map((seg, i) =>
+            seg.type === 'text' ? (
+              seg.content.trim() ? (
+                <div key={i} className={MARKDOWN_CLASSES}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{seg.content}</ReactMarkdown>
+                </div>
+              ) : null
+            ) : (
+              <ToolCallCard key={i} seg={seg} />
+            )
+          )}
+          {hasContent && <MessageActions content={message.content} />}
+        </>
       ) : (
+        /* 旧渲染：向后兼容无 segments 的历史消息 */
         <>
           {hasTools && (
             <ToolCallList toolCalls={message.toolCalls!} hasContent={hasContent} />
           )}
           {hasContent && (
-            <div className="max-w-none break-words text-sm leading-relaxed
-                text-slate-900
-                [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5
-                [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1.5
-                [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1
-                [&_h4]:text-sm [&_h4]:font-semibold [&_h4]:mt-2 [&_h4]:mb-1
-                [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5
-                [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto
-                [&_code]:text-pink-600 [&_code]:text-sm
-                [&_pre_code]:text-slate-100 [&_pre_code]:text-xs
-                [&_a]:text-brand [&_a]:no-underline hover:[&_a]:underline
-                [&_strong]:font-semibold [&_strong]:text-slate-900
-                [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600
-                [&_table]:text-xs [&_th]:px-2 [&_td]:px-2 [&_hr]:my-3">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+            <div className={MARKDOWN_CLASSES}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
             </div>
           )}
-
-          {/* 消息操作栏 */}
-          {hasContent && (
-            <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={() => navigator.clipboard.writeText(message.content)}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs text-slate-400
-                  hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
-                title="复制"
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                </svg>
-                复制
-              </button>
-              <button
-                className="p-1 text-slate-400 hover:text-emerald-500 hover:bg-slate-100 rounded transition-colors"
-                title="有用"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.633 10.5c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 012.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 00.322-1.672V3.75a.75.75 0 01.75-.75A2.25 2.25 0 0116.5 5.25c0 .032-.002.064-.004.096l-.048.576a5.624 5.624 0 01-.88 2.46l-.3.45a1.048 1.048 0 00.21 1.34l.497.39c.486.386.816.948.888 1.57l.14 1.213c.074.646-.16 1.291-.632 1.757l-.64.633a3 3 0 01-2.345.826l-3.083-.211a3 3 0 01-1.536-.527l-1.32-.88A3.75 3.75 0 006 14.25v-3.75z" />
-                </svg>
-              </button>
-              <button
-                className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded transition-colors"
-                title="无用"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.367 13.5c-.806 0-1.533.446-2.031 1.08a9.041 9.041 0 01-2.861 2.4c-.723.384-1.35.956-1.653 1.715a4.498 4.498 0 00-.322 1.672v.633a.75.75 0 01-.75.75A2.25 2.25 0 017.5 18.75c0-.032.002-.064.004-.096l.048-.576a5.624 5.624 0 01.88-2.46l.3-.45a1.048 1.048 0 00-.21-1.34l-.497-.39a2.622 2.622 0 01-.888-1.57l-.14-1.213a2.25 2.25 0 01.632-1.757l.64-.633a3 3 0 012.345-.826l3.083.211c.546.037 1.07.228 1.536.527l1.32.88A3.75 3.75 0 0018 9.75v3.75z" />
-                </svg>
-              </button>
-            </div>
-          )}
+          {hasContent && <MessageActions content={message.content} />}
         </>
       )}
     </div>

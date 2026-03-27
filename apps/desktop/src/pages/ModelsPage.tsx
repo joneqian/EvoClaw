@@ -157,13 +157,13 @@ function ProviderCard({
         {},
       );
       if (result.success) {
-        showToast(`已同步 ${result.count} 个模型`);
+        showToast(`已加载 ${result.count} 个预设模型`);
         onRefresh();
       } else {
-        showToast(result.error || '同步失败', 'error');
+        showToast(result.error || '加载失败', 'error');
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '同步失败', 'error');
+      showToast(err instanceof Error ? err.message : '加载失败', 'error');
     } finally {
       setSyncing(false);
     }
@@ -409,7 +409,7 @@ function ProviderCard({
                   text-blue-500 hover:bg-blue-50
                   disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                {syncing ? '同步中...' : '同步模型'}
+                {syncing ? '加载中...' : '刷新预设'}
               </button>
               <button
                 onClick={() => onDelete(provider.id)}

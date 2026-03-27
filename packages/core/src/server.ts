@@ -389,16 +389,30 @@ function syncProvidersFromConfig(configManager: ConfigManager): void {
   }
 }
 
-/** 从 evo_claw.json 同步外部服务配置到 process.env（供 Skill/工具读取） */
-function syncServicesToEnv(configManager: ConfigManager): void {
+/** 从 evo_claw.json 同步环境变量到 process.env（供 Skill/工具读取） */
+function syncEnvVarsFromConfig(configManager: ConfigManager): void {
   const log = createLogger('server');
   const config = configManager.getConfig();
-  const services = config.services;
-  if (!services) return;
+  let count = 0;
 
-  if (services.brave?.apiKey) {
-    process.env.BRAVE_API_KEY = services.brave.apiKey;
-    log.info('环境变量已注入: BRAVE_API_KEY');
+  // 新格式: envVars
+  if (config.envVars) {
+    for (const [key, value] of Object.entries(config.envVars)) {
+      if (value) {
+        process.env[key] = value;
+        count++;
+      }
+    }
+  }
+
+  // 向后兼容: 旧 services.brave.apiKey
+  if (config.services?.brave?.apiKey && !process.env.BRAVE_API_KEY) {
+    process.env.BRAVE_API_KEY = config.services.brave.apiKey;
+    count++;
+  }
+
+  if (count > 0) {
+    log.info(`环境变量已注入: ${count} 个`);
   }
 }
 
@@ -441,8 +455,8 @@ async function main() {
   // 从 evo_claw.json 同步 Provider 到内存注册表
   syncProvidersFromConfig(configManager);
 
-  // 从 evo_claw.json 同步外部服务到 process.env
-  syncServicesToEnv(configManager);
+  // 从 evo_claw.json 同步环境变量到 process.env
+  syncEnvVarsFromConfig(configManager);
 
   // 初始化数据库
   const db = new SqliteStore();

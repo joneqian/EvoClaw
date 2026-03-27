@@ -114,36 +114,42 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     return c.json({ success: true });
   });
 
-  /** GET /services — 获取外部服务配置（API Key 脱敏） */
-  app.get('/services', (c) => {
+  /** GET /env-vars — 获取环境变量列表（值脱敏） */
+  app.get('/env-vars', (c) => {
     const config = configManager.getConfig();
-    const braveKey = config.services?.brave?.apiKey ?? '';
-    return c.json({
-      services: {
-        brave: {
-          configured: !!braveKey,
-          maskedApiKey: braveKey ? braveKey.slice(0, 6) + '***' + braveKey.slice(-4) : '',
-        },
-      },
-    });
+    const envVars = config.envVars ?? {};
+    // 向后兼容：合并旧 services.brave.apiKey
+    if (config.services?.brave?.apiKey && !envVars['BRAVE_API_KEY']) {
+      envVars['BRAVE_API_KEY'] = config.services.brave.apiKey;
+    }
+    const masked = Object.entries(envVars).map(([key, value]) => ({
+      key,
+      maskedValue: value ? value.slice(0, 4) + '***' + value.slice(-4) : '',
+      configured: !!value,
+    }));
+    return c.json({ envVars: masked });
   });
 
-  /** PUT /services/:service — 更新外部服务 API Key */
-  app.put('/services/:service', async (c) => {
-    const service = c.req.param('service');
-    const body = await c.req.json<{ apiKey: string }>();
-
-    if (service === 'brave') {
-      const config = configManager.getConfig();
-      const services = config.services ?? {};
-      services.brave = { apiKey: body.apiKey };
-      configManager.updateConfig({ ...config, services });
-      // 立即注入到 process.env（无需重启）
-      process.env.BRAVE_API_KEY = body.apiKey;
-      return c.json({ success: true });
+  /** PUT /env-vars — 批量更新环境变量 */
+  app.put('/env-vars', async (c) => {
+    const body = await c.req.json<{ envVars: Record<string, string> }>();
+    const config = configManager.getConfig();
+    config.envVars = body.envVars;
+    // 向后兼容：同步 BRAVE_API_KEY 到旧 services 结构
+    if (body.envVars['BRAVE_API_KEY'] !== undefined) {
+      config.services = config.services ?? {};
+      config.services.brave = { apiKey: body.envVars['BRAVE_API_KEY'] };
     }
-
-    return c.json({ error: `未知服务: ${service}` }, 400);
+    configManager.updateConfig(config);
+    // 立即注入到 process.env
+    for (const [key, value] of Object.entries(body.envVars)) {
+      if (value) {
+        process.env[key] = value;
+      } else {
+        delete process.env[key];
+      }
+    }
+    return c.json({ success: true });
   });
 
   return app;

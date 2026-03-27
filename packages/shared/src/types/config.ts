@@ -1,11 +1,13 @@
 /** evo_claw.json 配置文件结构 */
 export interface EvoClawConfig {
   models?: ModelsConfig;
-  /** 外部服务配置 */
+  /** 外部服务配置（向后兼容） */
   services?: {
     /** Brave Search API */
     brave?: { apiKey: string };
   };
+  /** 环境变量（注入到 process.env，供 Skill/工具读取） */
+  envVars?: Record<string, string>;
 }
 
 /** 模型配置 */

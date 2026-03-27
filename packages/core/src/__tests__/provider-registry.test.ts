@@ -163,9 +163,9 @@ describe('ProviderRegistry', () => {
     const p = getProvider('kimi');
     expect(p).toBeDefined();
     expect(p!.name).toBe('Kimi (Moonshot)');
-    expect(p!.models.length).toBeGreaterThanOrEqual(3);
+    expect(p!.models.length).toBeGreaterThanOrEqual(4);
     expect(p!.models.some(m => m.id === 'kimi-k2.5')).toBe(true);
-    expect(p!.models.some(m => m.id === 'moonshot-v1-128k')).toBe(true);
+    expect(p!.models.some(m => m.id === 'kimi-k2-thinking')).toBe(true);
   });
 
   it('registerOpenAI 应显式注册模型列表', () => {

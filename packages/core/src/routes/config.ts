@@ -138,6 +138,8 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
       const services = config.services ?? {};
       services.brave = { apiKey: body.apiKey };
       configManager.updateConfig({ ...config, services });
+      // 立即注入到 process.env（无需重启）
+      process.env.BRAVE_API_KEY = body.apiKey;
       return c.json({ success: true });
     }
 

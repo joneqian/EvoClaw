@@ -258,10 +258,32 @@ export function createProviderRoutes(
       return c.json({ success: false, error: `未找到 ${id} 的模型预设` });
     }
 
-    // 重新注册（会用 extension 预设覆盖）
+    // 重新注册内存注册表
     const provider = getProvider(id);
     if (provider) {
       registerFromExtension(id, provider.apiKeyRef);
+    }
+
+    // 持久化到 evo_claw.json
+    if (configManager) {
+      const configEntry = configManager.getProvider(id);
+      if (configEntry) {
+        // 保留用户自定义模型（不在预设中的，如手动添加的 embedding）
+        const presetIds = new Set(ext.models.map(m => m.id));
+        const preserved = configEntry.models.filter(m => !presetIds.has(m.id));
+        configEntry.models = [
+          ...ext.models.map(m => ({
+            id: m.id,
+            name: m.name,
+            contextWindow: m.contextWindow,
+            maxTokens: m.maxTokens,
+            input: m.input as string[],
+            ...(m.dimension ? { dimension: m.dimension } : {}),
+          })),
+          ...preserved,
+        ];
+        configManager.setProvider(id, configEntry);
+      }
     }
 
     return c.json({

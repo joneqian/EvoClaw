@@ -43,7 +43,8 @@ import {
   LOG_PATH,
 } from './infrastructure/logger.js';
 import { callLLM } from './agent/llm-client.js';
-import { registerProvider } from './provider/provider-registry.js';
+import { registerProvider, registerFromExtension } from './provider/provider-registry.js';
+import { getProviderExtension } from './provider/extensions/index.js';
 import { HybridSearcher } from './memory/hybrid-searcher.js';
 import { MemoryExtractor } from './memory/memory-extractor.js';
 import { UserMdRenderer } from './memory/user-md-renderer.js';
@@ -348,23 +349,43 @@ function syncProvidersFromConfig(configManager: ConfigManager): void {
   const log = createLogger('server');
 
   for (const [id, entry] of Object.entries(providers)) {
-    registerProvider({
-      id,
-      name: PROVIDER_DISPLAY_NAMES[id] ?? id,
-      baseUrl: entry.baseUrl,
-      apiKeyRef: entry.apiKey,
-      models: entry.models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        provider: id,
-        maxContextLength: m.contextWindow ?? 128000,
-        maxOutputTokens: m.maxTokens ?? 4096,
-        supportsVision: m.input?.includes('image') ?? false,
-        supportsToolUse: true,
-        isDefault: false,
-      })),
-    });
-    log.info(`Provider 已注册: ${id}`);
+    // 优先从 extension 预设加载模型（确保参数准确）
+    const ext = getProviderExtension(id);
+    if (ext) {
+      registerFromExtension(id, entry.apiKey, entry.baseUrl);
+
+      // 如果 config 中的模型列表为空，从 extension 持久化回 config
+      if (!entry.models || entry.models.length === 0) {
+        entry.models = ext.models.map(m => ({
+          id: m.id,
+          name: m.name,
+          contextWindow: m.contextWindow,
+          maxTokens: m.maxTokens,
+          input: m.input as string[],
+          ...(m.dimension ? { dimension: m.dimension } : {}),
+        }));
+        configManager.setProvider(id, entry);
+      }
+    } else {
+      // 无预设的自定义 provider，从 config 加载
+      registerProvider({
+        id,
+        name: PROVIDER_DISPLAY_NAMES[id] ?? id,
+        baseUrl: entry.baseUrl,
+        apiKeyRef: entry.apiKey,
+        models: entry.models.map((m) => ({
+          id: m.id,
+          name: m.name,
+          provider: id,
+          maxContextLength: m.contextWindow ?? 128000,
+          maxOutputTokens: m.maxTokens ?? 4096,
+          supportsVision: m.input?.includes('image') ?? false,
+          supportsToolUse: true,
+          isDefault: false,
+        })),
+      });
+    }
+    log.info(`Provider 已注册: ${id} (${ext ? 'extension' : 'config'})`);
   }
 }
 

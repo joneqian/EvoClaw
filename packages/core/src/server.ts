@@ -414,6 +414,28 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
     count++;
   }
 
+  // 自动同步 LLM provider API Key 到 process.env（供 Skill 读取）
+  const providerEnvMap: Record<string, string> = {
+    openai: 'OPENAI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    google: 'GOOGLE_API_KEY',
+    deepseek: 'DEEPSEEK_API_KEY',
+    minimax: 'MINIMAX_API_KEY',
+    kimi: 'MOONSHOT_API_KEY',
+    qwen: 'DASHSCOPE_API_KEY',
+    glm: 'ZHIPU_API_KEY',
+  };
+  const providers = config.models?.providers;
+  if (providers) {
+    for (const [id, entry] of Object.entries(providers)) {
+      const envName = providerEnvMap[id];
+      if (envName && entry.apiKey && !process.env[envName]) {
+        process.env[envName] = entry.apiKey;
+        count++;
+      }
+    }
+  }
+
   if (count > 0) {
     log.info(`环境变量已注入: ${count} 个`);
   }
@@ -424,14 +446,35 @@ function seedBundledSkills(): void {
   const log = createLogger('server');
 
   const skillsDir = path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
-  // bundled 目录在编译产物旁边
-  const bundledDir = path.resolve(
-    import.meta.dirname ?? __dirname,
-    'skill', 'bundled',
-  );
+  // bundled 目录查找：向上遍历找项目根（含 pnpm-workspace.yaml），再定位 packages/core/src/skill/bundled
+  let searchDir = typeof import.meta.dirname === 'string'
+    ? import.meta.dirname
+    : path.dirname(new URL(import.meta.url).pathname);
+  let bundledDir: string | undefined;
 
-  if (!fs.existsSync(bundledDir)) {
-    log.debug(`Bundled skills 目录不存在: ${bundledDir}`);
+  // 先检查同级 skill/bundled（build 产物）
+  const distBundled = path.join(searchDir, 'skill', 'bundled');
+  if (fs.existsSync(distBundled)) {
+    bundledDir = distBundled;
+  } else {
+    // 向上找项目根目录（包含 pnpm-workspace.yaml 的目录）
+    let dir = searchDir;
+    for (let i = 0; i < 20; i++) {
+      if (fs.existsSync(path.join(dir, 'pnpm-workspace.yaml'))) {
+        const srcBundled = path.join(dir, 'packages', 'core', 'src', 'skill', 'bundled');
+        if (fs.existsSync(srcBundled)) {
+          bundledDir = srcBundled;
+        }
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+
+  if (!bundledDir) {
+    log.warn(`Bundled skills 目录未找到（从 ${searchDir} 向上查找）`);
     return;
   }
 

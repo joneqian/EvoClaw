@@ -26,6 +26,7 @@ const ENV_PRESET_GROUPS: PresetGroup[] = [
     label: '搜索与网络',
     items: [
       { key: 'BRAVE_API_KEY', label: 'Brave Search', hint: '网络搜索' },
+      { key: 'BAIDU_API_KEY', label: '百度搜索', hint: '国内搜索引擎' },
       { key: 'TAVILY_API_KEY', label: 'Tavily Search', hint: '替代搜索引擎' },
       { key: 'EXA_API_KEY', label: 'Exa Search', hint: 'AI 语义搜索' },
       { key: 'FIRECRAWL_API_KEY', label: 'Firecrawl', hint: '网页抓取' },

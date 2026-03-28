@@ -139,6 +139,17 @@ function copyDirRecursive(src: string, dest: string) {
   }
 }
 
+// 复制 bundled skills 到 dist
+const srcBundled = 'src/skill/bundled';
+const destBundled = 'dist/skill/bundled';
+if (fs.existsSync(srcBundled)) {
+  copyDirRecursive(srcBundled, destBundled);
+  const count = fs.readdirSync(destBundled).filter(d =>
+    fs.statSync(path.join(destBundled, d)).isDirectory()
+  ).length;
+  console.log(`Copied ${count} bundled skills`);
+}
+
 // 生成最小 package.json — PI 框架的 getPackageDir() 从 __dirname 向上查找 package.json，
 // 如果找不到会导致 PI 加载失败，回退到无工具的 fetch 模式
 fs.writeFileSync(

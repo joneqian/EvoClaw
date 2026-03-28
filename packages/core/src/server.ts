@@ -5,7 +5,10 @@ import { bearerAuth } from 'hono/bearer-auth';
 import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
 import crypto from 'node:crypto';
-import { PORT_RANGE, TOKEN_BYTES } from '@evoclaw/shared';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { PORT_RANGE, TOKEN_BYTES, DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
 import { ConfigManager } from './infrastructure/config-manager.js';
@@ -416,6 +419,45 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
   }
 }
 
+/** 预装 Bundled Skills — 首次启动时复制到 skills 目录 */
+function seedBundledSkills(): void {
+  const log = createLogger('server');
+
+  const skillsDir = path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+  // bundled 目录在编译产物旁边
+  const bundledDir = path.resolve(
+    import.meta.dirname ?? __dirname,
+    'skill', 'bundled',
+  );
+
+  if (!fs.existsSync(bundledDir)) {
+    log.debug(`Bundled skills 目录不存在: ${bundledDir}`);
+    return;
+  }
+
+  // 确保 skills 目录存在
+  if (!fs.existsSync(skillsDir)) {
+    fs.mkdirSync(skillsDir, { recursive: true });
+  }
+
+  let seeded = 0;
+  for (const skillName of fs.readdirSync(bundledDir)) {
+    const srcDir = path.join(bundledDir, skillName);
+    if (!fs.statSync(srcDir).isDirectory()) continue;
+
+    const targetDir = path.join(skillsDir, skillName);
+    // 已存在则跳过（用户可能修改过或已手动安装）
+    if (fs.existsSync(targetDir)) continue;
+
+    fs.cpSync(srcDir, targetDir, { recursive: true });
+    seeded++;
+  }
+
+  if (seeded > 0) {
+    log.info(`已预装 ${seeded} 个 Bundled Skills`);
+  }
+}
+
 /** 根据 ConfigManager 初始化 VectorStore */
 function initVectorStore(
   db: SqliteStore,
@@ -457,6 +499,9 @@ async function main() {
 
   // 从 evo_claw.json 同步环境变量到 process.env
   syncEnvVarsFromConfig(configManager);
+
+  // 预装 Bundled Skills（首次启动时复制到 skills 目录）
+  seedBundledSkills();
 
   // 初始化数据库
   const db = new SqliteStore();

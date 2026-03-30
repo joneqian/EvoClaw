@@ -15,6 +15,7 @@ const log = createLogger('heartbeat');
  */
 export class HeartbeatRunner {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private lastExecutedAt = 0;
 
   constructor(
     private db: SqliteStore,
@@ -56,7 +57,13 @@ export class HeartbeatRunner {
       return 'skipped';
     }
 
-    // 2. 读取 HEARTBEAT.md
+    // 2. 间隔门控 — 距上次执行够久才触发
+    const minIntervalMs = (this.config.minIntervalMinutes ?? 5) * 60_000;
+    if (Date.now() - this.lastExecutedAt < minIntervalMs) {
+      return 'skipped';
+    }
+
+    // 3. 读取 HEARTBEAT.md
     const heartbeatContent = this.db.get<{ workspace_path: string }>(
       'SELECT workspace_path FROM agents WHERE id = ?',
       this.agentId,
@@ -77,22 +84,15 @@ export class HeartbeatRunner {
         timeoutMs: 300_000, // 5 分钟超时
       });
 
-      // 4. 检查响应
-      if (typeof result === 'string' && result.includes('HEARTBEAT_OK')) {
+      this.lastExecutedAt = Date.now();
+
+      // 5. 检查响应
+      // 零污染回滚：HEARTBEAT_OK / NO_REPLY → 返回 'ok'，chat.ts 不保存任何消息
+      if (typeof result === 'string' && (result.includes('HEARTBEAT_OK') || result.includes('NO_REPLY'))) {
         return 'ok';
       }
 
-      // 非 OK 响应 → 存入 conversation_log
-      this.db.run(
-        `INSERT INTO conversation_log (id, agent_id, session_key, role, content, created_at)
-         VALUES (?, ?, ?, 'assistant', ?, ?)`,
-        crypto.randomUUID(),
-        this.agentId,
-        sessionKey,
-        typeof result === 'string' ? result : JSON.stringify(result),
-        new Date().toISOString(),
-      );
-
+      // 有实际工作内容 → chat.ts 管道已负责持久化，这里只返回状态
       return 'active';
     } catch (err) {
       log.error(`agent ${this.agentId} 心跳失败`, err);

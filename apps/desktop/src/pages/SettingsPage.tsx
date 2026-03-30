@@ -139,11 +139,16 @@ function EnvVarsTab() {
     setNewValue('');
   };
 
-  // 过滤出每组中未添加的预设
+  // 计算每组预设的配置状态
   const existingKeys = new Set(envVars.map(e => e.key));
-  const unusedGroups = ENV_PRESET_GROUPS
-    .map(g => ({ ...g, items: g.items.filter(p => !existingKeys.has(p.key)) }))
-    .filter(g => g.items.length > 0);
+  const configuredKeys = new Set(envVars.filter(e => e.configured).map(e => e.key));
+
+  /** 预设分组及配置进度 */
+  const presetGroupsWithStatus = ENV_PRESET_GROUPS.map(g => {
+    const configuredCount = g.items.filter(p => configuredKeys.has(p.key)).length;
+    const unconfiguredItems = g.items.filter(p => !existingKeys.has(p.key));
+    return { ...g, configuredCount, unconfiguredItems };
+  });
 
   return (
     <>
@@ -168,8 +173,9 @@ function EnvVarsTab() {
           )}
 
           {envVars.map((item) => (
-            <div key={item.key} className="px-4 py-2.5 flex items-center gap-3 group">
-              <code className="text-xs font-mono font-semibold text-slate-700 bg-slate-50 px-2 py-0.5 rounded min-w-[160px] shrink-0">
+            <div key={item.key} className="px-4 py-2 flex items-center gap-2 group">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.configured ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+              <code className="text-xs font-mono font-semibold text-slate-700 bg-slate-50 px-2 py-0.5 rounded min-w-[140px] shrink-0">
                 {item.key}
               </code>
               {editingKey === item.key ? (
@@ -255,12 +261,18 @@ function EnvVarsTab() {
           )}
         </div>
 
-        {unusedGroups.length > 0 && (
+        {presetGroupsWithStatus.some(g => g.unconfiguredItems.length > 0) && (
           <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
-            {unusedGroups.map((group) => (
+            {presetGroupsWithStatus.map((group) => (
               <div key={group.label} className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs text-slate-400 shrink-0">{group.icon} {group.label}:</span>
-                {group.items.map((p) => (
+                <span className="text-xs text-slate-400 shrink-0">
+                  {group.icon} {group.label}
+                  <span className={`ml-1 ${group.configuredCount === group.items.length ? 'text-emerald-500' : group.configuredCount > 0 ? 'text-amber-500' : 'text-slate-300'}`}>
+                    ({group.configuredCount}/{group.items.length})
+                  </span>
+                  :
+                </span>
+                {group.unconfiguredItems.map((p) => (
                   <button
                     key={p.key}
                     onClick={() => handleAddPreset(p.key)}

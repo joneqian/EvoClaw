@@ -38,6 +38,8 @@ export interface HeartbeatConfig {
   intervalMinutes: number;
   activeHours: { start: string; end: string };
   enabled: boolean;
+  /** 最小执行间隔（分钟），防止频繁触发浪费 token（默认 5） */
+  minIntervalMinutes?: number;
 }
 
 /** Cron 任务配置 */

@@ -38,6 +38,7 @@ export const CORE_TOOLS: readonly CoreToolMeta[] = [
   { id: 'kill_agent', section: 'agent', label: '终止', description: '终止子 Agent' },
   { id: 'steer_agent', section: 'agent', label: '纠偏', description: '纠偏运行中的子 Agent' },
   { id: 'yield_agents', section: 'agent', label: '等待', description: '等待子 Agent 完成' },
+  { id: 'todo_write', section: 'agent', label: '任务', description: '更新结构化任务列表（最多20项，同时仅1个进行中）' },
   // media
   { id: 'image', section: 'media', label: '图片', description: '分析图片内容（vision）' },
   { id: 'pdf', section: 'media', label: 'PDF', description: '阅读和分析 PDF 文档' },
@@ -83,10 +84,12 @@ export const TOOL_PROFILES: Record<ToolProfileId, readonly string[] | null> = {
     'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',
     'image', 'pdf',
     'browser', 'image_generate',
+    'todo_write',
   ],
   messaging: [
     'read', 'memory_search', 'memory_get',
     'web_search', 'web_fetch',
+    'todo_write',
     // channel 工具是动态的，运行时添加
   ],
   full: null, // null = 允许所有工具

@@ -451,6 +451,7 @@ PI 超时           │ Compaction 感知 grace period      │ 0 次
 §4.5 <bootstrap>    — BOOTSTRAP.md (仅首轮)
 §5  <memory_recall> — 记忆召回指令
 §5.1 <agent_notes>  — MEMORY.md 笔记内容
+§5.2 <current_tasks> — 任务状态注入: 从 TODO.json 解析并渲染（进行中/待办/已完成）
 §5.5 <available_tools> — 工具目录 (优先级排序)
 §6  <tool_call_style> — 工具调用风格 + 选择指南
 §7  <silent_reply>  — 沉默回复 (NO_REPLY token)
@@ -701,7 +702,7 @@ MemoryExtractor.extract(messages)
 阶段 2: 权限拦截层
   └── PermissionInterceptor — 审计包装
 
-阶段 3: EvoClaw 特定工具 (11 个)
+阶段 3: EvoClaw 特定工具 (12 个)
   ├── web_search       — Brave Search API
   ├── web_fetch        — URL → Markdown
   ├── image            — 图片分析 (vision)
@@ -712,7 +713,8 @@ MemoryExtractor.extract(messages)
   ├── memory_search    — 记忆搜索
   ├── memory_get       — 记忆详情
   ├── knowledge_query  — 知识图谱查询
-  └── provider_direct  — 直连 Provider
+  ├── provider_direct  — 直连 Provider
+  └── todo_write       — 结构化任务追踪（max 20, 1 in_progress）
 
 阶段 4: Channel 工具
   ├── feishu_send      — 飞书消息发送
@@ -766,12 +768,12 @@ MemoryExtractor.extract(messages)
 - 超时提示: 引导使用 exec_background
 ```
 
-🔲 **LSP 工具集成** (计划)
+✅ **LSP 工具集成**
 - 语言服务器协议集成
 - 代码补全、诊断、重构工具
 - 企业编码 Agent 增强
 
-🔲 **image_generate 工具** (计划)
+✅ **image_generate 工具**
 - DALL-E / Stable Diffusion API 集成
 - 图片生成能力
 
@@ -781,20 +783,21 @@ MemoryExtractor.extract(messages)
 
 | 优先级 | 项目 | 描述 | 状态 |
 |--------|------|------|------|
-| **P0** | Memory Flush 工具集成 | 记忆 flush 基础设施已建，需接入 PI session 的 compaction 循环 | 🔲 计划中 |
-| **P1** | MCP 集成 | 支持外部 MCP server 工具扩展（StdioClientTransport + tool discovery） | 🔲 计划中 |
-| **P1** | Read 自适应分页 | 按 context window 动态调整读取量 + 多页自动拉取 | 🔲 计划中 |
-| **P1** | Schema Provider 适配 | Gemini/xAI 等模型的 JSON Schema 兼容层 | 🔲 计划中 |
-| **P1** | 工具目录规范化 | 统一工具 ID/Section/Profile 定义（tool-catalog.ts） | 🔲 计划中 |
-| **P1** | 子代理工具禁止列表 | 显式化各层级子代理禁止的工具清单 | 🔲 计划中 |
-| **P1** | Exec safeBins 安全 profile | 受信二进制白名单机制 | 🔲 计划中 |
-| **P2** | Tool Profile 系统 | 按场景预配置工具集（minimal/coding/messaging/full） | 🔲 计划中 |
-| **P2** | Provider 工具过滤 | 按 LLM provider 过滤不兼容工具 | 🔲 计划中 |
-| **P2** | browser/image_generate | 浏览器自动化 + AI 图片生成工具 | 🔲 计划中 |
-| **P2** | LSP 集成 | 代码智能（hover/definition/references） | 🔲 计划中 |
-| **P2** | apply_patch 条件创建 | 仅在 OpenAI + 白名单模型时创建 | 🔲 计划中 |
-| **P2** | 消息通道工具过滤 | 按通道类型禁止特定工具 | 🔲 计划中 |
-| **P2** | 工具 Hook 包装 | beforeToolCall/afterToolCall 插件扩展点 | 🔲 计划中 |
+| **P0** | Memory Flush 工具集成 | 记忆 flush 基础设施已建，需接入 PI session 的 compaction 循环 | ✅ 已完成 |
+| **P1** | MCP 集成 | 支持外部 MCP server 工具扩展（StdioClientTransport + tool discovery） | ✅ 已完成 |
+| **P1** | Read 自适应分页 | 按 context window 动态调整读取量 + 多页自动拉取 | ✅ 已完成 |
+| **P1** | Schema Provider 适配 | Gemini/xAI 等模型的 JSON Schema 兼容层 | ✅ 已完成 |
+| **P1** | 工具目录规范化 | 统一工具 ID/Section/Profile 定义（tool-catalog.ts） | ✅ 已完成 |
+| **P1** | 子代理工具禁止列表 | 显式化各层级子代理禁止的工具清单 | ✅ 已完成 |
+| **P1** | Exec safeBins 安全 profile | 受信二进制白名单机制 | ✅ 已完成 |
+| **P1** | TodoWrite 约束工具 | 结构化任务追踪（max 20, 1 in_progress, prompt 注入, 3 轮提醒） | ✅ 已完成 |
+| **P2** | Tool Profile 系统 | 按场景预配置工具集（minimal/coding/messaging/full） | ✅ 已完成 |
+| **P2** | Provider 工具过滤 | 按 LLM provider 过滤不兼容工具 | ✅ 已完成 |
+| **P2** | browser/image_generate | 浏览器自动化 + AI 图片生成工具 | ✅ 已完成 |
+| **P2** | LSP 集成 | 代码智能（hover/definition/references） | ✅ 已完成 |
+| **P2** | apply_patch 条件创建 | 仅在 OpenAI + 白名单模型时创建 | ✅ 已完成 |
+| **P2** | 消息通道工具过滤 | 按通道类型禁止特定工具 | ✅ 已完成 |
+| **P2** | 工具 Hook 包装 | beforeToolCall/afterToolCall 插件扩展点 | ✅ 已完成 |
 | **P3** | tts/canvas/gateway/nodes | 语音合成/画布/网关/节点工具 | 🔲 远期 |
 | **P3** | 工具 description 动态修改 | 运行时按场景调整工具描述 | 🔲 远期 |
 | **P3** | 插件工具名称冲突检测 | 注册时检测重名工具并告警 | 🔲 远期 |
@@ -1228,6 +1231,18 @@ Heartbeat 特点 (vs Cron):
   - 批量检查场景
   - 遵守安静时段 (23:00-08:00)
   - 无事可做时回复 HEARTBEAT_OK
+
+零污染回滚:
+  Agent 返回 HEARTBEAT_OK / NO_REPLY / 空响应时：
+  - 不保存 user/assistant 消息到 conversation_log
+  - 不触发 conversations-changed 事件
+  - 等同于这轮心跳从未发生过
+
+间隔门控 (4 道检查):
+  1. HEARTBEAT.md 存在？
+  2. 文件非空？
+  3. 距上次执行 >= minIntervalMinutes（默认 5 分钟）？
+  4. 在活跃时段内（默认 08:00-22:00）？
 ```
 
 ### 3.11 RAG 系统

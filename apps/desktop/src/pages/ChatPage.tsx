@@ -650,43 +650,41 @@ function ToolCallCard({ seg }: { seg: ToolSegment }) {
   const [expanded, setExpanded] = useState(false);
   const hasResult = !!seg.result;
   const statusIcon = seg.status === 'running'
-    ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+    ? <span className="w-2.5 h-2.5 border-[1.5px] border-amber-400 border-t-transparent rounded-full animate-spin" />
     : seg.status === 'error'
-      ? <span className="text-red-500 text-xs font-bold">!</span>
-      : <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
+      ? <span className="w-2 h-2 rounded-full bg-red-400" />
+      : <span className="w-2 h-2 rounded-full bg-emerald-400" />;
 
   return (
     <div
-      className={`rounded-lg border bg-slate-50/70 overflow-hidden my-1.5 ${
+      className={`rounded-md border overflow-hidden my-1 ${
         hasResult ? 'cursor-pointer' : ''
-      } ${seg.isError ? 'border-red-200' : 'border-slate-200'}`}
+      } ${seg.isError ? 'border-red-100 bg-red-50/30' : 'border-slate-100 bg-slate-50/40'}`}
       onClick={() => hasResult && setExpanded(!expanded)}
     >
       {/* 标题行 */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-        <span className="text-xs font-semibold text-slate-700">{seg.displayName}</span>
-        {seg.summary && (
-          <span className="text-xs text-slate-400 truncate flex-1">{seg.summary}</span>
-        )}
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5">
         <span className="shrink-0">{statusIcon}</span>
+        <span className="text-xs font-medium text-slate-600 font-mono">{seg.displayName}</span>
+        {seg.summary && (
+          <span className="text-xs text-slate-400 truncate flex-1 min-w-0">{seg.summary}</span>
+        )}
         {hasResult && (
-          <svg className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className={`w-3 h-3 text-slate-300 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
           </svg>
         )}
       </div>
-      {/* 可展开的结果区域 */}
-      {expanded && seg.result && (
-        <div className="px-3 pb-2 border-t border-slate-100">
-          <pre className="text-xs text-slate-500 font-mono whitespace-pre-wrap break-all leading-relaxed mt-1.5 max-h-48 overflow-y-auto">
-            {seg.result.length > 2000 ? seg.result.slice(0, 2000) + '\n... (truncated)' : seg.result}
+      {/* 可展开的结果区域（带动画） */}
+      <div className={`overflow-hidden transition-all duration-200 ease-in-out ${
+        expanded && seg.result ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
+      }`}>
+        <div className="px-2.5 pb-2 border-t border-slate-100/80">
+          <pre className="text-[11px] text-slate-500 font-mono whitespace-pre-wrap break-all leading-relaxed mt-1.5 max-h-48 overflow-y-auto">
+            {seg.result && seg.result.length > 2000 ? seg.result.slice(0, 2000) + '\n... (truncated)' : seg.result}
           </pre>
         </div>
-      )}
+      </div>
     </div>
   );
 }

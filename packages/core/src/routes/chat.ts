@@ -26,6 +26,7 @@ import { createBrowserTool } from '../tools/browser-tool.js';
 import { createImageGenerateTool } from '../tools/image-generate-tool.js';
 import { filterToolsByProfile, type ToolProfileId } from '../agent/tool-catalog.js';
 import { createExecBackgroundTool, createProcessTool } from '../tools/background-process.js';
+import { createTodoWriteTool } from '../tools/todo-tool.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryExtractor } from '../memory/memory-extractor.js';
@@ -422,17 +423,35 @@ export function createChatRoutes(
     };
     await contextEngine.beforeTurn(turnCtx);
 
+    // TodoWrite 3 轮提醒 — 若连续 3 轮未调用 todo_write 且有未完成任务，注入提醒
+    const todoTurnsSinceUpdate = parseInt(
+      agentManager.getWorkspaceState(agentId, 'todo_turns_since_update') ?? '0',
+    );
+    if (todoTurnsSinceUpdate >= 3) {
+      try {
+        const todoRaw = agentManager.readWorkspaceFile(agentId, 'TODO.json');
+        if (todoRaw) {
+          const todoTasks = JSON.parse(todoRaw) as Array<{ status: string }>;
+          if (Array.isArray(todoTasks) && todoTasks.some(t => t.status !== 'done')) {
+            turnCtx.injectedContext.push(
+              '[System] 你已经 3 轮没有更新任务列表了。请用 todo_write 工具检查并更新你的任务进度。',
+            );
+          }
+        }
+      } catch { /* malformed TODO.json, skip reminder */ }
+    }
+
     // 组装最终 system prompt
     const systemPrompt = turnCtx.injectedContext.join('\n\n---\n\n');
 
     // 根据 session 类型选择加载的文件（参考 OpenClaw 的分层策略）
-    const ALL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
+    const ALL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md', 'TODO.json'];
     const MINIMAL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md'];
     const HEARTBEAT_FILES = ['HEARTBEAT.md'];
 
     const isSubAgent = sessionKey.includes(':subagent:');
     const isCron = sessionKey.includes(':cron:');
-    const isHeartbeat = sessionKey.includes(':heartbeat:');
+    const isHeartbeat = sessionKey.endsWith(':heartbeat');
 
     const filesToLoad = isHeartbeat ? HEARTBEAT_FILES : (isSubAgent || isCron) ? MINIMAL_FILES : ALL_FILES;
 
@@ -496,6 +515,12 @@ export function createChatRoutes(
     // 进程管理工具
     enhancedTools.push(createExecBackgroundTool());
     enhancedTools.push(createProcessTool());
+
+    // TodoWrite 约束工具 — 结构化任务追踪
+    enhancedTools.push(createTodoWriteTool({
+      readFile: () => agentManager.readWorkspaceFile(agentId, 'TODO.json'),
+      writeFile: (c) => agentManager.writeWorkspaceFile(agentId, 'TODO.json', c),
+    }));
 
     // 查 extension 获取模型参数（用于 contextWindow/maxTokens）
     const modelDef = lookupModelDefinition(provider, modelId);
@@ -640,8 +665,10 @@ export function createChatRoutes(
     // 审计日志异步队列（内存缓存 + Agent 结束后批量写入）
     const auditQueue = new ToolAuditQueue(store);
 
-    // 存储用户消息
-    saveMessage(store, agentId, sessionKey, 'user', message);
+    // 存储用户消息（heartbeat 会话延迟到响应后判断，避免零污染回滚时残留）
+    if (!isHeartbeat) {
+      saveMessage(store, agentId, sessionKey, 'user', message);
+    }
 
     // 返回 SSE 流
     return streamSSE(c, async (stream) => {
@@ -681,6 +708,14 @@ export function createChatRoutes(
         await runAgent();
       }
 
+      // TodoWrite 轮次计数器更新（在 flush 前检测，flush 会清空队列）
+      if (auditQueue.hasToolCall('todo_write')) {
+        agentManager.setWorkspaceState(agentId, 'todo_turns_since_update', '0');
+      } else {
+        const prev = parseInt(agentManager.getWorkspaceState(agentId, 'todo_turns_since_update') ?? '0');
+        agentManager.setWorkspaceState(agentId, 'todo_turns_since_update', String(prev + 1));
+      }
+
       // 批量写入审计日志（Agent 完成后一次性写入，避免逐条同步 I/O）
       auditQueue.flush();
 
@@ -690,15 +725,28 @@ export function createChatRoutes(
         .replace(/<function_response>[\s\S]*?<\/function_response>/g, '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-      if (cleanResponse) {
-        saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse);
-      }
 
-      // 通知其他 SSE 监听者（其他页面/窗口）会话已更新
-      emitServerEvent({
-        type: 'conversations-changed',
-        data: { agentId, sessionKey },
-      });
+      // Heartbeat 零污染回滚：HEARTBEAT_OK / NO_REPLY / 空响应 → 不存任何消息、不触发事件
+      const isHeartbeatNoOp = isHeartbeat && (
+        !cleanResponse ||
+        cleanResponse.includes('HEARTBEAT_OK') ||
+        cleanResponse === 'NO_REPLY'
+      );
+
+      if (!isHeartbeatNoOp) {
+        // heartbeat 会话的 user 消息延迟到这里保存（非 heartbeat 已在上方保存）
+        if (isHeartbeat) {
+          saveMessage(store, agentId, sessionKey, 'user', message);
+        }
+        if (cleanResponse) {
+          saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse);
+        }
+        // 通知其他 SSE 监听者（其他页面/窗口）会话已更新
+        emitServerEvent({
+          type: 'conversations-changed',
+          data: { agentId, sessionKey },
+        });
+      }
 
       // 发送待处理的权限弹窗请求（流结束前，确保前端收到）
       for (const perm of pendingPermissions) {

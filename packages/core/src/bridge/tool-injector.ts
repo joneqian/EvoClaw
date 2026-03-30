@@ -166,6 +166,11 @@ export class ToolAuditQueue {
     }
   }
 
+  /** 检查队列中是否包含指定工具的调用记录 */
+  hasToolCall(toolName: string): boolean {
+    return this.queue.some(e => e.toolName === toolName);
+  }
+
   /** 队列中的待写入条目数 */
   get pending(): number {
     return this.queue.length;

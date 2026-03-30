@@ -39,6 +39,7 @@ const TOOL_SUMMARIES: Record<string, string> = {
   kill_agent: '终止运行中的子 Agent',
   steer_agent: '纠偏运行中的子 Agent（终止并用纠正指令重启）',
   yield_agents: '让出当前轮次等待子 Agent 完成结果',
+  todo_write: '更新结构化任务列表（tasks: [{id, description, status}]，最多20项）',
 };
 
 /** 按优先级排序的工具顺序 */
@@ -50,6 +51,7 @@ const TOOL_ORDER = [
   'image', 'pdf',
   'memory_search', 'memory_get', 'knowledge_query',
   'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',
+  'todo_write',
 ];
 
 function buildToolCatalog(availableTools: string[]): string {
@@ -179,6 +181,23 @@ Before answering the user, you should:
   // § 5.1 Agent 笔记本
   if (files['MEMORY.md']) {
     sections.push(`<agent_notes>\n${files['MEMORY.md']}\n</agent_notes>`);
+  }
+
+  // § 5.2 任务状态注入（TodoWrite）
+  if (files['TODO.json']) {
+    try {
+      const tasks = JSON.parse(files['TODO.json']) as Array<{ id: string; description: string; status: string }>;
+      if (Array.isArray(tasks) && tasks.length > 0) {
+        const inProgress = tasks.filter(t => t.status === 'in_progress');
+        const todo = tasks.filter(t => t.status === 'todo');
+        const done = tasks.filter(t => t.status === 'done');
+        sections.push(`<current_tasks>
+进行中: ${inProgress.map(t => `[${t.id}] ${t.description}`).join(', ') || '无'}
+待办: ${todo.map(t => `[${t.id}] ${t.description}`).join(', ') || '无'}
+已完成: ${done.length} 项
+</current_tasks>`);
+      }
+    } catch { /* malformed TODO.json, skip */ }
   }
 
   // § 5.5 工具目录

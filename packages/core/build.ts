@@ -21,6 +21,8 @@ await build({
       'const __realFile = __realpathSync(__fileURLToPath(import.meta.url));',
       'const __realDir = __dirname_(__realFile);',
       'const require = __createRequire(__realFile);',
+      // 注入 import.meta.dirname 以供 seedBundledSkills 等运行时路径查找使用
+      'try { Object.defineProperty(import.meta, "dirname", { value: __realDir, writable: true }); } catch {}',
       // 为 ESM import() 设置 NODE_PATH
       'const __nodePaths = [__resolve(__realDir, "../node_modules"), __resolve(__realDir, "../../node_modules"), __resolve(__realDir, "../../../node_modules")];',
       'process.env.NODE_PATH = [...__nodePaths, process.env.NODE_PATH].filter(Boolean).join(":");',

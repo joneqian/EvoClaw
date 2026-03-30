@@ -15,7 +15,6 @@ import SetupPage from './pages/SetupPage';
 import CronPage from './pages/CronPage';
 import AlertPage from './pages/AlertPage';
 import AgentEditPage from './pages/AgentEditPage';
-import AgentDetailPage from './pages/AgentDetailPage';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
@@ -552,7 +551,6 @@ export default function App() {
               <Route path="/" element={<ChatPage />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/agents" element={<AgentsPage />} />
-              <Route path="/agents/:id" element={<AgentDetailPage />} />
               <Route path="/agents/:id/edit" element={<AgentEditPage />} />
               <Route path="/memory" element={<MemoryPage />} />
               <Route path="/knowledge" element={<KnowledgePage />} />

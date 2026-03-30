@@ -86,12 +86,7 @@ export class HeartbeatRunner {
 
     // 3. 构建 heartbeat prompt 并通过 executeFn 执行
     const sessionKey = `agent:${this.agentId}:heartbeat`;
-    const prompt = [
-      `[Heartbeat] 当前时间: ${new Date().toISOString()}。`,
-      '1. 读取 HEARTBEAT.md 清单并严格执行，不要从历史对话推断旧任务',
-      '2. 检查 AGENTS.md 中的 Standing Orders，执行 trigger=heartbeat 的程序',
-      '3. 如果没有需要注意的事项，回复 HEARTBEAT_OK',
-    ].join('\n');
+    const prompt = `[Heartbeat] 当前时间: ${new Date().toISOString()}。读取 HEARTBEAT.md（工作区文件）并严格执行。不要从历史对话推断旧任务。如果没有需要注意的事项，回复 HEARTBEAT_OK。`;
 
     try {
       const result = await this.executeFn(this.agentId, prompt, sessionKey);

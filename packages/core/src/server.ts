@@ -269,7 +269,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));

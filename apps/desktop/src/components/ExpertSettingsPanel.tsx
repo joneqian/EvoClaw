@@ -14,10 +14,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAgentStore } from '../stores/agent-store';
 import { get, post, put } from '../lib/api';
+import { parseUtcDate } from '../lib/date';
 import AgentAvatar from './AgentAvatar';
+import type { HeartbeatConfig, CronJobConfig } from '@evoclaw/shared';
 
 /** 面板标签页 */
-type TabId = 'channels' | 'skills' | 'settings';
+type TabId = 'channels' | 'skills' | 'automation' | 'settings';
 
 interface ExpertSettingsPanelProps {
   agentId: string;
@@ -66,6 +68,7 @@ const FILE_ORDER = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'BOOTSTRAP.md', 'TOOL
 const TABS: { id: TabId; label: string }[] = [
   { id: 'channels', label: '连接' },
   { id: 'skills', label: '技能' },
+  { id: 'automation', label: '自动化' },
   { id: 'settings', label: '设置' },
 ];
 
@@ -604,6 +607,98 @@ function SkillsTab({ agentId }: { agentId: string }) {
   );
 }
 
+// ─── 自动化标签页（只读状态面板） ───
+
+function AutomationTab({ agentId }: { agentId: string }) {
+  const [heartbeat, setHeartbeat] = useState<HeartbeatConfig>({
+    intervalMinutes: 30,
+    activeHours: { start: '08:00', end: '22:00' },
+    enabled: true,
+  });
+  const [cronJobs, setCronJobs] = useState<CronJobConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [hbRes, cronRes] = await Promise.all([
+        get<{ config: HeartbeatConfig }>(`/evolution/${agentId}/heartbeat`),
+        get<{ jobs: CronJobConfig[] }>(`/cron?agentId=${agentId}`),
+      ]);
+      setHeartbeat(hbRes.config);
+      setCronJobs(cronRes.jobs);
+    } catch { /* 容错 */ }
+    finally { setLoading(false); }
+  }, [agentId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  if (loading) {
+    return <div className="text-center text-slate-400 mt-10"><p className="text-sm">加载中...</p></div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* 心跳状态 */}
+      <div>
+        <h3 className="text-sm font-medium text-slate-900 mb-2">💓 心跳巡检</h3>
+        <div className="p-3 bg-slate-50 rounded-lg space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">状态</span>
+            <span className="text-xs font-medium text-green-600">运行中</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">巡检间隔</span>
+            <span className="text-xs text-slate-700">每 {heartbeat.intervalMinutes} 分钟</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">活跃时段</span>
+            <span className="text-xs text-slate-700">{heartbeat.activeHours.start} - {heartbeat.activeHours.end}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">告警投递</span>
+            <span className="text-xs text-slate-700">
+              {heartbeat.target === 'last' ? '最近渠道' : heartbeat.target === 'none' || !heartbeat.target ? '不投递' : heartbeat.target}
+            </span>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 mt-2">
+          在对话中告诉专家你想定期检查什么，它会自动更新 HEARTBEAT.md
+        </p>
+      </div>
+
+      <div className="border-t border-slate-100" />
+
+      {/* 定时任务列表 */}
+      <div>
+        <h3 className="text-sm font-medium text-slate-900 mb-2">⏰ 定时任务</h3>
+        {cronJobs.length === 0 ? (
+          <div className="p-3 bg-slate-50 rounded-lg">
+            <p className="text-xs text-slate-400 text-center">暂无定时任务</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {cronJobs.map((job) => (
+              <div key={job.id} className="px-3 py-2 rounded-lg bg-slate-50">
+                <p className="text-sm font-medium text-slate-700 truncate">{job.name}</p>
+                <p className="text-xs text-slate-400 truncate">
+                  <span className="font-mono">{job.cronExpression}</span>
+                  {' · '}{job.actionType === 'event' ? '事件注入' : '独立执行'}
+                  {' · '}{job.enabled ? '启用' : '已暂停'}
+                  {job.nextRunAt && ` · 下次: ${parseUtcDate(job.nextRunAt).toLocaleString('zh-CN')}`}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-slate-400 mt-2">
+          在对话中说 "5 分钟后提醒我喝水" 或 "每天 9 点汇报天气" 来创建任务
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── 设置标签页 ───
 
 function SettingsTab({ agentId }: { agentId: string }) {
@@ -1003,6 +1098,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {activeTab === 'channels' && <ChannelsTab agentId={agentId} />}
             {activeTab === 'skills' && <SkillsTab agentId={agentId} />}
+            {activeTab === 'automation' && <AutomationTab agentId={agentId} />}
             {activeTab === 'settings' && <SettingsTab agentId={agentId} />}
           </div>
         </div>

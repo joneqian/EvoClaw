@@ -277,7 +277,7 @@ function ChatView() {
     }
   }, [currentAgentId, currentSessionKey]);
 
-  // 检查 pending message（从 AgentDetailPage 带过来的初始消息）
+  // 检查 pending message（从专家页面带过来的初始消息）
   useEffect(() => {
     if (hasSentPending.current) return;
     const pending = sessionStorage.getItem('pending-message');

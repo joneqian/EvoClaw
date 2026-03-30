@@ -15,7 +15,7 @@ const log = createLogger('heartbeat-execute');
  */
 export function createHeartbeatExecuteFn(port: number, token: string): HeartbeatExecuteFn {
   return async (agentId: string, message: string, sessionKey: string): Promise<string> => {
-    const url = `http://127.0.0.1:${port}/agents/${agentId}/send`;
+    const url = `http://127.0.0.1:${port}/chat/${agentId}/send`;
 
     const res = await fetch(url, {
       method: 'POST',

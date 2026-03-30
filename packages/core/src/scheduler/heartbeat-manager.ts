@@ -9,7 +9,7 @@ const log = createLogger('heartbeat-manager');
 const DEFAULT_HEARTBEAT_CONFIG: HeartbeatConfig = {
   intervalMinutes: 30,
   activeHours: { start: '08:00', end: '22:00' },
-  enabled: false,
+  enabled: true,
 };
 
 /**

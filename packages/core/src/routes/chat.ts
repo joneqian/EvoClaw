@@ -27,6 +27,7 @@ import { createImageGenerateTool } from '../tools/image-generate-tool.js';
 import { filterToolsByProfile, type ToolProfileId } from '../agent/tool-catalog.js';
 import { createExecBackgroundTool, createProcessTool } from '../tools/background-process.js';
 import { createTodoWriteTool } from '../tools/todo-tool.js';
+import { createScheduleTool } from '../tools/schedule-tool.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryExtractor } from '../memory/memory-extractor.js';
@@ -129,6 +130,7 @@ export function createChatRoutes(
   memoryExtractor?: MemoryExtractor,
   userMdRenderer?: UserMdRenderer,
   skillDiscoverer?: SkillDiscoverer,
+  cronRunner?: import('../scheduler/cron-runner.js').CronRunner,
 ) {
   const app = new Hono();
 
@@ -448,7 +450,7 @@ export function createChatRoutes(
     // 根据 session 类型选择加载的文件（参考 OpenClaw 的分层策略）
     const ALL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md', 'TODO.json'];
     const MINIMAL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md'];
-    const HEARTBEAT_FILES = ['HEARTBEAT.md'];
+    const HEARTBEAT_FILES = ['HEARTBEAT.md', 'AGENTS.md'];
 
     const isSubAgent = sessionKey.includes(':subagent:');
     const isCron = sessionKey.includes(':cron:');
@@ -522,6 +524,11 @@ export function createChatRoutes(
       readFile: () => agentManager.readWorkspaceFile(agentId, 'TODO.json'),
       writeFile: (c) => agentManager.writeWorkspaceFile(agentId, 'TODO.json', c),
     }));
+
+    // 定时调度工具 — 一次性提醒 + 周期性任务
+    if (cronRunner) {
+      enhancedTools.push(...createScheduleTool({ cronRunner, agentId, sessionKey }));
+    }
 
     // 查 extension 获取模型参数（用于 contextWindow/maxTokens）
     const modelDef = lookupModelDefinition(provider, modelId);
@@ -609,12 +616,20 @@ export function createChatRoutes(
       requestId: string; toolName: string; category: string; resource: string; reason?: string;
     }> = [];
 
+    // 自主执行会话标记（heartbeat/cron/boot）— 无人值守，权限策略不同
+    const isAutonomousSession = isHeartbeat || isCron || sessionKey.includes(':boot');
+
     const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
       const result = interceptor.intercept(agentId, toolName, args);
 
       if (!result.allowed && result.requiresConfirmation) {
-        // 记录待弹窗的权限请求（Tauri WKWebView 不支持 fetch streaming，
-        // SSE 事件在流结束后才到达前端，无法阻塞等待用户决策）
+        if (isAutonomousSession) {
+          // 自主执行会话：无人值守，静默跳过需授权的工具（不弹窗）
+          const category = result.permissionCategory ?? 'skill';
+          log.info(`[自主执行] 跳过需授权工具 ${toolName}(${category}), session=${sessionKey}`);
+          return `[自主执行模式] 工具 "${toolName}" 需要「${category}」权限，当前为无人值守会话，已跳过。如需使用此工具，请在对话中手动执行。`;
+        }
+        // 普通会话：记录待弹窗的权限请求
         const category = result.permissionCategory ?? 'skill';
         const resource = (args['path'] as string) ?? (args['file_path'] as string) ?? (args['command'] as string) ?? '*';
         pendingPermissions.push({
@@ -624,7 +639,6 @@ export function createChatRoutes(
           resource,
           reason: result.reason,
         });
-        // 立即拒绝，提示用户授权后重试
         return `需要「${category}」权限才能执行此操作。请在弹出的权限对话框中授权后重新发送消息。`;
       }
 

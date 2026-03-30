@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAgentStore } from '../stores/agent-store';
+import { useChatStore } from '../stores/chat-store';
 import AgentAvatar from '../components/AgentAvatar';
 import AgentCreationModal from '../components/AgentCreationModal';
 import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
@@ -27,10 +28,13 @@ export default function AgentsPage() {
     setShowBuilder(true);
   }, []);
 
-  /** 进入 Agent 主页 */
+  const { newConversation } = useChatStore();
+
+  /** 进入对话 */
   const openAgent = useCallback((agentId: string) => {
-    navigate(`/agents/${agentId}`);
-  }, [navigate]);
+    newConversation(agentId);
+    navigate('/chat');
+  }, [newConversation, navigate]);
 
   /** 删除 Agent */
   const handleDelete = useCallback(async (id: string) => {
@@ -38,11 +42,12 @@ export default function AgentsPage() {
     setDeleteConfirmId(null);
   }, [deleteAgent]);
 
-  /** 创建完成，跳转 Agent 主页 */
+  /** 创建完成，进入对话 */
   const handleGoChat = useCallback((agentId: string) => {
     setShowBuilder(false);
-    navigate(`/agents/${agentId}`);
-  }, [navigate]);
+    newConversation(agentId);
+    navigate('/chat');
+  }, [newConversation, navigate]);
 
   const [activeTab, setActiveTab] = useState<'store' | 'mine'>('store');
 

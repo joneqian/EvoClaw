@@ -53,7 +53,7 @@ export function createEvolutionRoutes(deps: EvolutionRouteDeps): Hono {
     );
     const config: HeartbeatConfig = row
       ? JSON.parse(row.config_json)
-      : { intervalMinutes: 30, activeHours: { start: '08:00', end: '22:00' }, enabled: false };
+      : { intervalMinutes: 30, activeHours: { start: '08:00', end: '22:00' }, enabled: true };
     return c.json({ config });
   });
 

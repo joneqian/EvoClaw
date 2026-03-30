@@ -86,7 +86,7 @@ describe('HeartbeatRunner', () => {
     const call = (executeFn as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(call[0]).toBe(agentId);
     expect(call[1]).toContain('HEARTBEAT.md');
-    expect(call[1]).toContain('Standing Orders');
+    expect(call[1]).toContain('HEARTBEAT_OK');
     expect(call[2]).toBe(`agent:${agentId}:heartbeat`);
   });
 

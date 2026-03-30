@@ -33,12 +33,15 @@ docs/                  — PRD, Architecture, AgentSystemDesign, MemorySystemDes
 - **ContextPlugin 生命周期**: 5 hooks (bootstrap → beforeTurn → compact → afterTurn → shutdown)，10 个插件替代旧 12 层中间件链
 - **5 阶段工具注入**: PI base tools → EvoClaw replacements → EvoClaw-specific → Channel tools → MCP + Skills
 - **ModelRouter**: Agent 配置 → 用户偏好 → 系统默认 → 硬编码 fallback (gpt-4o-mini)
-- **Agent 工作区**: 8 文件系统 (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, USER.md, MEMORY.md, BOOTSTRAP.md)，按场景选择性加载
+- **Agent 工作区**: 9 文件系统 (SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, USER.md, MEMORY.md, BOOT.md, BOOTSTRAP.md)，按场景选择性加载
 - **L0/L1/L2 三层记忆**: L0 一行摘要(向量索引) → L1 结构化概览(排序用) → L2 完整内容(按需加载)，80%+ token 压缩
 - **三阶段渐进检索**: Phase 1 FTS5+sqlite-vec 宽搜索 → Phase 2 L1 排序+热度加权 → Phase 3 L2 按需深加载
 - **Session Key 路由**: `agent:<agentId>:<channel>:dm:<peerId>` / `agent:<agentId>:<channel>:group:<groupId>`
 - **Binding Router**: 最具体优先匹配，Channel → Agent 绑定
-- **Heartbeat + Cron**: Heartbeat 共享主会话上下文，Cron 隔离会话运行
+- **Heartbeat + Cron**: Heartbeat 共享主会话上下文，Cron 隔离会话运行。HeartbeatManager 管理多 Agent runner 生命周期，executeFn 通过内部 HTTP 复用 /send 管道
+- **System Events**: 内存 per-session 事件队列（enqueueSystemEvent → chat.ts drainSystemEvents → message 前缀注入），Cron actionType='event' 注入主 session
+- **Standing Orders**: AGENTS.md 中结构化 Program（Scope/Trigger/Approval/Escalation），系统 prompt <standing_orders> 意识注入，Heartbeat 检查 trigger=heartbeat 程序
+- **BOOT.md**: 每次 sidecar 启动执行（区别于一次性 BOOTSTRAP.md），空内容跳过，执行失败不阻塞
 - **Lane Queue**: main(4) / subagent(8) / cron(可配置) 并发车道，每 session key 串行
 - **Skill 生态**: ClawHub API (clawhub.ai, `/api/v1/search` 向量搜索 + `/api/v1/download` ZIP 下载) + GitHub URL 直装 (兼容 skills.sh 生态)，遵循 AgentSkills 规范 (SKILL.md)。注意：skills.sh 无公开 REST API，仅有 CLI
 - **Skill 注入**: PI 渐进式两级注入 — Tier 1: `<available_skills>` XML 目录注入 system prompt (~50-100 tokens/skill)；Tier 2: 模型用 Read 工具按需加载完整 SKILL.md。没有独立 prompt.md 文件，SKILL.md body 就是指令。Skill 不注册新工具，通过指令引导模型使用已有工具
@@ -101,5 +104,5 @@ better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/in
 - **不使用本地模型**：所有 LLM 调用（含记忆提取、LCM 摘要）统一走 ModelRouter
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
-- 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.2), `docs/architecture/Architecture_2026-03-20.md` (v6.2), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.2)
-- **当前冲刺**: Sprint 14 ✅ 已完成 — 工具系统优化（Memory Flush + MCP 集成 + Read 自适应分页 + Schema 适配 + safeBins + Tool Profile + browser/image_generate/tts/LSP + 工具 Hook + 968 测试）
+- 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
+- **当前冲刺**: Sprint 15.6 ✅ 已完成 — 自主执行系统（HeartbeatManager 运行时接入 + System Events 事件队列 + Standing Orders 授权框架 + 渠道投递 + BOOT.md 启动执行 + 1057 测试）

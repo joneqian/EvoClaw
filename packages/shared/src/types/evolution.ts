@@ -40,6 +40,12 @@ export interface HeartbeatConfig {
   enabled: boolean;
   /** 最小执行间隔（分钟），防止频繁触发浪费 token（默认 5） */
   minIntervalMinutes?: number;
+  /** 投递目标：'none'（默认）= 不投递 | 'last' = 最近渠道 | 渠道 ID */
+  target?: 'none' | 'last' | string;
+  /** 是否投递 HEARTBEAT_OK 确认消息（默认 false） */
+  showOk?: boolean;
+  /** 是否投递告警内容（默认 true） */
+  showAlerts?: boolean;
 }
 
 /** Cron 任务配置 */
@@ -48,7 +54,7 @@ export interface CronJobConfig {
   agentId: string;
   name: string;
   cronExpression: string;
-  actionType: 'prompt' | 'tool' | 'pipeline';
+  actionType: 'prompt' | 'tool' | 'pipeline' | 'event';
   actionConfig: Record<string, unknown>;
   enabled: boolean;
   lastRunAt: string | null;

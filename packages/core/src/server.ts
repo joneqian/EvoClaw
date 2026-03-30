@@ -26,8 +26,11 @@ import { createEvolutionRoutes } from './routes/evolution.js';
 import { createProviderRoutes } from './routes/provider.js';
 import { createConfigRoutes } from './routes/config.js';
 import { createCronRoutes } from './routes/cron.js';
+import { createSystemEventRoutes } from './routes/system-events.js';
 import { CronRunner } from './scheduler/cron-runner.js';
 import { LaneQueue } from './agent/lane-queue.js';
+import { HeartbeatManager } from './scheduler/heartbeat-manager.js';
+import { createHeartbeatExecuteFn } from './scheduler/heartbeat-execute.js';
 import { ChannelManager } from './channel/channel-manager.js';
 import { DesktopAdapter } from './channel/adapters/desktop.js';
 import { WeixinAdapter } from './channel/adapters/weixin.js';
@@ -114,6 +117,8 @@ export interface CreateAppOptions {
   bindingRouter?: BindingRouter;
   /** Channel 状态持久化 */
   channelStateRepo?: ChannelStateRepo;
+  /** Heartbeat 管理器（延迟获取，因 HTTP 就绪后才初始化） */
+  getHeartbeatManager?: () => HeartbeatManager | undefined;
 }
 
 /** 创建 Hono 应用实例 */
@@ -276,11 +281,12 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }
     app.route('/skill', createSkillRoutes());
-    app.route('/evolution', createEvolutionRoutes(store));
+    app.route('/evolution', createEvolutionRoutes({ db: store, getHeartbeatManager: options.getHeartbeatManager }));
     app.route('/provider', createProviderRoutes(store, configManager));
     if (cronRunner) {
       app.route('/cron', createCronRoutes(cronRunner));
     }
+    app.route('/system-events', createSystemEventRoutes());
     app.route('/binding', createBindingRoutes(store));
     if (channelManager) {
       app.route('/channel', createChannelRoutes(channelManager, bindingRouter, channelStateRepo));
@@ -585,6 +591,9 @@ async function main() {
   cronRunner.start();
   log.info('CronRunner 已启动');
 
+  // HeartbeatManager — 延迟到 HTTP 服务就绪后初始化（需要实际 port）
+  let heartbeatManager: HeartbeatManager | null = null;
+
   // 初始化 ChannelManager + 适配器
   const channelManager = new ChannelManager();
   const desktopAdapter = new DesktopAdapter();
@@ -706,6 +715,7 @@ async function main() {
     memoryMonitor,
     bindingRouter,
     channelStateRepo,
+    getHeartbeatManager: () => heartbeatManager ?? undefined,
   });
 
   // 进程退出时清理
@@ -713,6 +723,7 @@ async function main() {
     log.info('正在关闭服务...');
     memoryMonitor.stop();
     cronRunner.stop();
+    heartbeatManager?.stopAll();
     channelManager.disconnectAll();
     closeLogger();
   };
@@ -723,6 +734,80 @@ async function main() {
     // 首行 JSON — Tauri sidecar.rs 解析此行获取连接信息，必须保持 console.log
     console.log(JSON.stringify({ port: info.port, token }));
     log.info(`服务已启动 port=${info.port}`);
+
+    // HTTP 服务就绪后初始化 HeartbeatManager（需要实际 port 构建 executeFn）
+    const executeFn = createHeartbeatExecuteFn(info.port, token);
+
+    // Heartbeat 结果回调 — 渠道投递
+    const onHeartbeatResult: import('./scheduler/heartbeat-runner.js').HeartbeatResultCallback = (
+      agentId, result, response, config,
+    ) => {
+      const target = config.target ?? 'none';
+      if (target === 'none') return;
+
+      const shouldDeliver =
+        (result === 'ok' && config.showOk) ||
+        (result === 'active' && (config.showAlerts ?? true));
+      if (!shouldDeliver || !response.trim()) return;
+
+      // 异步投递，不阻塞心跳
+      (async () => {
+        try {
+          if (target === 'last') {
+            // 查找 Agent 最近对话的外部渠道
+            const lastSession = db.get<{ session_key: string }>(
+              `SELECT session_key FROM conversation_log
+               WHERE agent_id = ? AND session_key NOT LIKE '%:local:%' AND session_key NOT LIKE '%:heartbeat%'
+               ORDER BY created_at DESC LIMIT 1`,
+              agentId,
+            );
+            if (!lastSession) return;
+            const parts = lastSession.session_key.split(':');
+            // session key: agent:{id}:{channel}:{type}:{peer}
+            if (parts.length >= 5) {
+              await channelManager.sendMessage(parts[2] as any, parts[4], response);
+            }
+          } else {
+            // target 是具体渠道 ID，尝试发送到该渠道最近的 peer
+            const lastPeer = db.get<{ session_key: string }>(
+              `SELECT session_key FROM conversation_log
+               WHERE agent_id = ? AND session_key LIKE ?
+               ORDER BY created_at DESC LIMIT 1`,
+              agentId, `%:${target}:%`,
+            );
+            if (lastPeer) {
+              const parts = lastPeer.session_key.split(':');
+              if (parts.length >= 5) {
+                await channelManager.sendMessage(target as any, parts[4], response);
+              }
+            }
+          }
+        } catch (err) {
+          log.error(`Heartbeat 渠道投递失败 agent=${agentId} target=${target}`, err);
+        }
+      })();
+    };
+
+    heartbeatManager = new HeartbeatManager(db, executeFn, onHeartbeatResult);
+    heartbeatManager.startAll();
+    log.info('HeartbeatManager 已启动');
+
+    // BOOT.md 启动执行 — 每次 sidecar 重启时为每个 Agent 执行 BOOT.md
+    const activeAgents = agentManager.listAgents('active');
+    for (const agent of activeAgents) {
+      const bootContent = agentManager.readWorkspaceFile(agent.id, 'BOOT.md');
+      // 跳过空内容（只有空行/注释/标题）
+      if (!bootContent || !bootContent.split('\n').some(l => {
+        const t = l.trim();
+        return t && !t.startsWith('#') && !t.startsWith('<!--');
+      })) continue;
+
+      const bootSessionKey = `agent:${agent.id}:boot`;
+      executeFn(agent.id, bootContent, bootSessionKey).catch(err => {
+        log.error(`Agent ${agent.id} BOOT.md 执行失败:`, err);
+      });
+      log.info(`Agent ${agent.id} BOOT.md 已触发执行`);
+    }
   });
 }
 

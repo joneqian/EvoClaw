@@ -4,6 +4,7 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { CronJobConfig } from '@evoclaw/shared';
 import { createLogger } from '../infrastructure/logger.js';
+import { enqueueSystemEvent } from '../infrastructure/system-events.js';
 
 const log = createLogger('cron');
 
@@ -91,9 +92,24 @@ export class CronRunner {
           job.id,
         );
 
+        const config = JSON.parse(job.action_config);
+
+        // event 模式：注入系统事件到主会话，不走隔离 session
+        if (job.action_type === 'event') {
+          const mainSessionKey = `agent:${job.agent_id}:local:direct:local-user`;
+          const text = config.prompt ?? `[Cron: ${job.name}] 请执行计划任务。`;
+          enqueueSystemEvent(text, mainSessionKey);
+          this.db.run(
+            `UPDATE cron_jobs SET last_run_at = ?, updated_at = ? WHERE id = ?`,
+            now, now, job.id,
+          );
+          executed++;
+          log.debug(`cron job ${job.name} → system event 已注入`);
+          continue;
+        }
+
         // 通过 LaneQueue cron 车道执行（隔离会话）
         const sessionKey = `agent:${job.agent_id}:cron:${job.id}`;
-        const config = JSON.parse(job.action_config);
 
         this.laneQueue.enqueue({
           id: `cron-${job.id}-${crypto.randomUUID()}`,

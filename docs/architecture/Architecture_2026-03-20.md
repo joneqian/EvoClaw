@@ -1,8 +1,8 @@
 # EvoClaw 技术架构设计文档
 
-> **文档版本**: v6.2
+> **文档版本**: v6.3
 > **创建日期**: 2026-03-11
-> **更新日期**: 2026-03-24
+> **更新日期**: 2026-03-30
 > **文档状态**: 已完成（10 个 Sprint 全部完成）
 > **定位**: 企业级 AI Agent 桌面平台，安全优先、稳定优先
 
@@ -1243,6 +1243,86 @@ Heartbeat 特点 (vs Cron):
   2. 文件非空？
   3. 距上次执行 >= minIntervalMinutes（默认 5 分钟）？
   4. 在活跃时段内（默认 08:00-22:00）？
+```
+
+#### 3.10.3 HeartbeatManager 架构
+
+```
+HeartbeatManager 单例管理 Map<agentId, HeartbeatRunner>
+
+初始化流程:
+  server.ts serve() 回调
+    → createHeartbeatExecuteFn(port, token)
+    → new HeartbeatManager(db, executeFn, onResult)
+    → startAll()
+
+executeFn 通过内部 HTTP 复用 chat /send 管道（SSE 流消费）
+
+onResult 回调实现渠道投递:
+  - target=none:    不投递，仅记录
+  - target=last:    投递到最近活跃渠道
+  - target=渠道ID:  投递到指定渠道
+
+Agent 生命周期联动:
+  - 创建 Agent → ensureRunner (自动启动心跳)
+  - 删除 Agent → removeRunner (停止心跳)
+
+cleanup:
+  - stopAll() 在 SIGINT/SIGTERM 时调用
+  - 确保所有 Runner 优雅关闭
+```
+
+#### 3.10.4 System Events 事件队列
+
+```
+纯内存 Map<sessionKey, SystemEvent[]>，最多 20 条/session
+
+事件流:
+  enqueueSystemEvent
+    → chat.ts drainSystemEvents
+    → message 前缀注入（随下一轮对话消费）
+
+Cron 联动:
+  - Cron actionType='event' → enqueueSystemEvent 到主 session
+  - 事件在主会话上下文中被消费，而非 Cron 隔离会话
+
+REST API 手动注入:
+  POST /system-events/:agentId/events
+  - 外部系统可通过 API 推送事件
+  - 事件排队等待 Agent 下一轮对话时处理
+```
+
+#### 3.10.5 Standing Orders
+
+```
+定义位置: AGENTS.md 的 "Standing Orders" section
+
+结构化 Program:
+  - Scope:      适用范围（全局 / 特定渠道 / 特定场景）
+  - Trigger:    触发条件（heartbeat / event / manual）
+  - Approval:   审批策略（auto / confirm / escalate）
+  - Escalation: 升级路径（超时 / 失败时的处理）
+
+注入方式:
+  - 系统 prompt § 7 <standing_orders> 注入意识
+  - Agent 在每轮对话中感知并评估 Standing Orders
+  - Heartbeat prompt 检查 trigger=heartbeat 的程序
+```
+
+#### 3.10.6 BOOT.md 启动执行
+
+```
+区别于 BOOTSTRAP.md（一次性出生仪式）:
+  - BOOTSTRAP.md: Agent 首次创建时执行，仅一次
+  - BOOT.md:      每次 sidecar 启动时执行
+
+执行条件:
+  - sidecar 启动时检测 BOOT.md
+  - 文件存在且非空时执行
+
+Session Key: agent:{id}:boot
+  - 独立的启动会话
+  - 不与主对话会话混淆
 ```
 
 ### 3.11 RAG 系统

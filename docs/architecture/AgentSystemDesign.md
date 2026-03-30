@@ -495,6 +495,7 @@ Agent 定时自检的清单：
 | USER.md | ✅ | ✅(缓存) | ❌(隐私) | ❌ | ❌ | ❌ |
 | MEMORY.md | ✅ | ✅(缓存) | ❌(隐私) | ❌ | ❌ | ❌ |
 | memory/*.md | ✅(今天+昨天) | ❌ | ❌ | ❌ | ❌ | ❌ |
+| BOOT.md | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (启动时) |
 
 **总字符上限**: 20,000 字符（与 OpenClaw 一致），超出时按优先级截断：
 1. SOUL.md（不截断）
@@ -1066,6 +1067,72 @@ const cronJobs: CronJob[] = [
 | 适用场景 | 持续监控、环境检查 | 定时报告、周期任务 |
 | 运行 Lane | main | cron |
 | 可感知对话历史 | ✅ | ❌ |
+
+### 9.4 System Events 事件驱动
+
+内存事件队列实现事件驱动的 prompt 注入：
+
+```
+┌──────────────┐    enqueue    ┌─────────────────┐    drain    ┌──────────┐
+│ Cron (event) │──────────────→│  System Events   │──────────→│ chat.ts  │
+│ Manual API   │               │ Map<session,[]>  │           │ message  │
+│ Channel Hook │               │ 最多 20 条/session │           │ 前缀注入  │
+└──────────────┘               └─────────────────┘           └──────────┘
+```
+
+- 连续重复去重
+- 无持久化（重启清空）
+- Cron actionType='event' → 注入主 session
+- REST API: `POST /system-events/:agentId/events`
+
+### 9.5 Standing Orders 授权框架
+
+Standing Orders 写在 AGENTS.md 中，定义结构化的"持续授权程序"：
+
+```markdown
+### Program: [Name]
+- **Scope**: 授权范围
+- **Trigger**: heartbeat / cron / event
+- **Approval**: 审批门槛
+- **Escalation**: 上报条件
+```
+
+- 系统 prompt 注入 `<standing_orders>` 段落使 Agent 具备 Standing Orders 意识
+- Heartbeat prompt 检查 trigger=heartbeat 的程序
+- Cron 强制执行 trigger=cron 的程序
+
+### 9.6 BOOT.md 启动脚本
+
+BOOT.md 与 BOOTSTRAP.md 的区别：
+
+| 维度 | BOOTSTRAP.md | BOOT.md |
+|------|-------------|---------|
+| 执行时机 | 首次 setup | 每次 sidecar 启动 |
+| 持久性 | 一次性（setup 完成后清空） | 持久（始终保留） |
+| 用途 | 出生仪式 | 启动初始化脚本 |
+
+- **执行条件**：内容非空（排除纯注释/标题）
+- **Session key**: `agent:{id}:boot`
+- 执行失败不阻塞启动
+
+### 9.7 渠道投递机制
+
+HeartbeatConfig.target 控制投递目标：
+
+| target 值 | 行为 |
+|-----------|------|
+| `'none'`（默认） | 不投递 |
+| `'last'` | 查询 conversation_log 最近外部渠道 |
+| 渠道 ID | 直接指定渠道 |
+
+**可见性控制**：
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| showOk | false | 是否投递 HEARTBEAT_OK |
+| showAlerts | true | 是否投递告警内容 |
+
+通过 HeartbeatResultCallback 异步投递，不阻塞心跳。
 
 ---
 

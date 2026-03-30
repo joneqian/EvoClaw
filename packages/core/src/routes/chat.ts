@@ -44,6 +44,7 @@ import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import { parseSessionKey } from '../routing/session-key.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
+import { drainSystemEvents } from '../infrastructure/system-events.js';
 
 const log = createLogger('chat');
 
@@ -670,12 +671,18 @@ export function createChatRoutes(
       saveMessage(store, agentId, sessionKey, 'user', message);
     }
 
+    // System Events 注入 — drain 待处理事件，前缀拼接到 LLM 输入消息
+    const pendingEvents = drainSystemEvents(sessionKey);
+    const effectiveMessage = pendingEvents.length > 0
+      ? `${pendingEvents.map(e => `[System Event] ${e}`).join('\n')}\n\n${message}`
+      : message;
+
     // 返回 SSE 流
     return streamSSE(c, async (stream) => {
       let fullResponse = '';
 
       const runAgent = async (abortSignal?: AbortSignal) => {
-        await runEmbeddedAgent(runConfig, message, async (event) => {
+        await runEmbeddedAgent(runConfig, effectiveMessage, async (event) => {
           if (event.type === 'text_delta' && event.delta) {
             fullResponse += event.delta;
           }

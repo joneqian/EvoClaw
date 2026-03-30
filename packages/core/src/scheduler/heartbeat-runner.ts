@@ -1,27 +1,48 @@
-import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
-import type { LaneQueue } from '../agent/lane-queue.js';
 import type { HeartbeatConfig } from '@evoclaw/shared';
 import { isInActiveHours, DEFAULT_ACTIVE_HOURS } from './active-hours.js';
-import crypto from 'node:crypto';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('heartbeat');
 
 /**
+ * Heartbeat 执行函数签名
+ *
+ * @param agentId   Agent ID
+ * @param message   Heartbeat prompt
+ * @param sessionKey  会话 key（如 agent:{id}:heartbeat）
+ * @returns LLM 响应文本
+ */
+export type HeartbeatExecuteFn = (
+  agentId: string,
+  message: string,
+  sessionKey: string,
+) => Promise<string>;
+
+/**
+ * Heartbeat 结果回调（用于渠道投递等后处理）
+ */
+export type HeartbeatResultCallback = (
+  agentId: string,
+  result: 'ok' | 'active',
+  response: string,
+  config: HeartbeatConfig,
+) => void;
+
+/**
  * Heartbeat 运行器 — Agent 定时心跳调度
  *
- * 参考 DecayScheduler 模式：setInterval + start/stop 生命周期
- * 复用 LaneQueue main 车道执行，共享主会话上下文
+ * 通过注入的 executeFn 调用 LLM，不直接依赖 db/laneQueue。
+ * executeFn 由上层（server.ts）提供，内部负责排队和 LLM 执行。
  */
 export class HeartbeatRunner {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastExecutedAt = 0;
 
   constructor(
-    private db: SqliteStore,
-    private laneQueue: LaneQueue,
     private agentId: string,
     private config: HeartbeatConfig,
+    private executeFn: HeartbeatExecuteFn,
+    private onResult?: HeartbeatResultCallback,
   ) {}
 
   /** 启动心跳 */
@@ -63,37 +84,31 @@ export class HeartbeatRunner {
       return 'skipped';
     }
 
-    // 3. 读取 HEARTBEAT.md
-    const heartbeatContent = this.db.get<{ workspace_path: string }>(
-      'SELECT workspace_path FROM agents WHERE id = ?',
-      this.agentId,
-    );
-
-    // 3. 通过 LaneQueue 执行
+    // 3. 构建 heartbeat prompt 并通过 executeFn 执行
     const sessionKey = `agent:${this.agentId}:heartbeat`;
-    try {
-      const result = await this.laneQueue.enqueue({
-        id: `heartbeat-${crypto.randomUUID()}`,
-        sessionKey,
-        lane: 'main',
-        task: async () => {
-          // 构建轻量 prompt
-          const prompt = `[Heartbeat] 当前时间: ${new Date().toISOString()}。请检查是否有需要主动执行的任务。如果没有，回复 HEARTBEAT_OK。`;
-          return prompt;
-        },
-        timeoutMs: 300_000, // 5 分钟超时
-      });
+    const prompt = [
+      `[Heartbeat] 当前时间: ${new Date().toISOString()}。`,
+      '1. 读取 HEARTBEAT.md 清单并严格执行，不要从历史对话推断旧任务',
+      '2. 检查 AGENTS.md 中的 Standing Orders，执行 trigger=heartbeat 的程序',
+      '3. 如果没有需要注意的事项，回复 HEARTBEAT_OK',
+    ].join('\n');
 
+    try {
+      const result = await this.executeFn(this.agentId, prompt, sessionKey);
       this.lastExecutedAt = Date.now();
 
-      // 5. 检查响应
       // 零污染回滚：HEARTBEAT_OK / NO_REPLY → 返回 'ok'，chat.ts 不保存任何消息
-      if (typeof result === 'string' && (result.includes('HEARTBEAT_OK') || result.includes('NO_REPLY'))) {
-        return 'ok';
+      const isOk = typeof result === 'string' && (result.includes('HEARTBEAT_OK') || result.includes('NO_REPLY'));
+      const status = isOk ? 'ok' as const : 'active' as const;
+
+      // 通知结果回调（渠道投递等后处理）
+      try {
+        this.onResult?.(this.agentId, status, result ?? '', this.config);
+      } catch (cbErr) {
+        log.error(`agent ${this.agentId} heartbeat onResult 回调失败`, cbErr);
       }
 
-      // 有实际工作内容 → chat.ts 管道已负责持久化，这里只返回状态
-      return 'active';
+      return status;
     } catch (err) {
       log.error(`agent ${this.agentId} 心跳失败`, err);
       return 'skipped';

@@ -242,13 +242,24 @@ When the user asks to find a file:
 4. If no results, broaden scope (remove dir constraint or reduce keyword precision)
 </tool_call_style>`);
 
-  // § 7 Silent reply
+  // § 7 Standing Orders awareness
+  sections.push(`<standing_orders>
+You may have Standing Orders defined in AGENTS.md (under the "Standing Orders" section).
+Standing Orders grant you permanent operating authority for defined programs:
+- Programs with trigger=heartbeat: execute during each heartbeat cycle
+- Programs with trigger=cron: enforced by scheduled cron jobs
+- Programs with trigger=event: execute when you receive a matching system event
+Follow each program's Scope, Approval gates, and Escalation rules strictly.
+If a program requires approval, stop and ask the user before acting.
+</standing_orders>`);
+
+  // § 8 Silent reply
   sections.push(`<silent_reply>
 If you determine the current message needs no reply (e.g., it's just an acknowledgment, emoji, or system notification),
 reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show anything to the user.
 </silent_reply>`);
 
-  // § 8 自定义
+  // § 9 自定义
   if (config.systemPrompt) {
     sections.push(config.systemPrompt);
   }

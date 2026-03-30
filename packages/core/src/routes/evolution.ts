@@ -7,9 +7,16 @@ import { CapabilityGraph } from '../evolution/capability-graph.js';
 import { GrowthTracker } from '../evolution/growth-tracker.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { HeartbeatConfig } from '@evoclaw/shared';
+import type { HeartbeatManager } from '../scheduler/heartbeat-manager.js';
+
+interface EvolutionRouteDeps {
+  db: SqliteStore;
+  getHeartbeatManager?: () => HeartbeatManager | undefined;
+}
 
 /** 创建进化路由 */
-export function createEvolutionRoutes(db: SqliteStore): Hono {
+export function createEvolutionRoutes(deps: EvolutionRouteDeps): Hono {
+  const { db, getHeartbeatManager } = deps;
   const app = new Hono();
   const capGraph = new CapabilityGraph(db);
   const tracker = new GrowthTracker(db);
@@ -63,6 +70,9 @@ export function createEvolutionRoutes(db: SqliteStore): Hono {
       JSON.stringify(config),
       new Date().toISOString(),
     );
+
+    // 同步到运行中的 HeartbeatManager
+    getHeartbeatManager?.()?.updateConfig(agentId, config);
 
     return c.json({ config });
   });

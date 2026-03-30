@@ -185,6 +185,7 @@ export class AgentManager {
     this.writeWorkspaceFile(id, 'HEARTBEAT.md', DEFAULT_HEARTBEAT_MD);
     this.writeWorkspaceFile(id, 'USER.md', '');
     this.writeWorkspaceFile(id, 'MEMORY.md', '');
+    this.writeWorkspaceFile(id, 'BOOT.md', DEFAULT_BOOT_MD);
     this.writeWorkspaceFile(id, 'BOOTSTRAP.md', generateBootstrapMd(config));
 
     // 记录 BOOTSTRAP.md 创建时间
@@ -378,6 +379,26 @@ You may modify your own operating procedures:
 - Environment-specific info → record in \`TOOLS.md\`
 
 **Exception:** The Red Lines section at the top is immutable — never modify or remove it.
+
+## Standing Orders
+
+<!-- Define your persistent programs here. Each program grants you ongoing authority
+     to act autonomously within defined boundaries.
+
+### Program: [Name]
+- **Scope**: What you are authorized to do
+- **Trigger**: When to execute (heartbeat / cron / event)
+- **Approval**: What requires human sign-off before acting
+- **Escalation**: When to stop and ask for help
+
+Example:
+
+### Program: Inbox Triage
+- **Scope**: Check inbox, categorize messages, summarize urgent items
+- **Trigger**: heartbeat
+- **Approval**: None for summaries; escalate before sending replies
+- **Escalation**: Unknown message types or suspicious content
+-->
 `;
 
 /** TOOLS.md — environment-specific notes */
@@ -425,6 +446,20 @@ No items configured yet. Discuss with the user to add periodic checks.
 - Do not re-check anything checked within the last 30 minutes
 - You may proactively organize memory files and docs during idle time
 - Track last-check timestamps in memory/heartbeat-state.json
+`;
+
+/** BOOT.md — sidecar startup script (runs on every restart, unlike BOOTSTRAP.md which is one-time) */
+const DEFAULT_BOOT_MD = `# Startup Script
+
+<!-- This file runs automatically each time the sidecar starts.
+     Keep it empty (or comments only) to skip startup execution.
+     Unlike BOOTSTRAP.md (one-time onboarding), BOOT.md runs on every restart.
+
+     Example tasks:
+     - Check system status
+     - Resume interrupted work
+     - Send a startup notification
+-->
 `;
 
 /** BOOTSTRAP.md — first conversation onboarding */

@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { PORT_RANGE, TOKEN_BYTES, DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { PORT_RANGE, TOKEN_BYTES, DEFAULT_DATA_DIR, BRAND } from '@evoclaw/shared';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
 import { ConfigManager } from './infrastructure/config-manager.js';
@@ -27,6 +27,7 @@ import { createProviderRoutes } from './routes/provider.js';
 import { createConfigRoutes } from './routes/config.js';
 import { createCronRoutes } from './routes/cron.js';
 import { createSystemEventRoutes } from './routes/system-events.js';
+import { createTaskRoutes } from './routes/tasks.js';
 import { CronRunner } from './scheduler/cron-runner.js';
 import { LaneQueue } from './agent/lane-queue.js';
 import { HeartbeatManager } from './scheduler/heartbeat-manager.js';
@@ -287,6 +288,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       app.route('/cron', createCronRoutes(cronRunner));
     }
     app.route('/system-events', createSystemEventRoutes());
+    app.route('/tasks', createTaskRoutes());
     app.route('/binding', createBindingRoutes(store));
     if (channelManager) {
       app.route('/channel', createChannelRoutes(channelManager, bindingRouter, channelStateRepo));
@@ -403,6 +405,16 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
   const log = createLogger('server');
   const config = configManager.getConfig();
   let count = 0;
+
+  // 品牌默认环境变量（优先级最低，不覆盖已有值）
+  if (BRAND.defaultEnv) {
+    for (const [key, value] of Object.entries(BRAND.defaultEnv)) {
+      if (value && !process.env[key]) {
+        process.env[key] = value;
+        count++;
+      }
+    }
+  }
 
   // 新格式: envVars
   if (config.envVars) {
@@ -788,7 +800,10 @@ async function main() {
       })();
     };
 
-    heartbeatManager = new HeartbeatManager(db, executeFn, onHeartbeatResult);
+    heartbeatManager = new HeartbeatManager(
+      db, executeFn, onHeartbeatResult,
+      (agentId, filename) => agentManager.readWorkspaceFile(agentId, filename) ?? null,
+    );
     heartbeatManager.startAll();
     log.info('HeartbeatManager 已启动');
 

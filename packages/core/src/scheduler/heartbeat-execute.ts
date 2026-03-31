@@ -1,5 +1,5 @@
 import { createLogger } from '../infrastructure/logger.js';
-import type { HeartbeatExecuteFn } from './heartbeat-runner.js';
+import type { HeartbeatExecuteFn, HeartbeatExecuteOpts } from './heartbeat-runner.js';
 
 const log = createLogger('heartbeat-execute');
 
@@ -14,7 +14,7 @@ const log = createLogger('heartbeat-execute');
  * @param token Bearer 认证 token
  */
 export function createHeartbeatExecuteFn(port: number, token: string): HeartbeatExecuteFn {
-  return async (agentId: string, message: string, sessionKey: string): Promise<string> => {
+  return async (agentId: string, message: string, sessionKey: string, opts?: HeartbeatExecuteOpts): Promise<string> => {
     const url = `http://127.0.0.1:${port}/chat/${agentId}/send`;
 
     const res = await fetch(url, {
@@ -23,7 +23,13 @@ export function createHeartbeatExecuteFn(port: number, token: string): Heartbeat
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ message, sessionKey }),
+      body: JSON.stringify({
+        message,
+        sessionKey,
+        isHeartbeat: true,
+        lightContext: opts?.lightContext ?? false,
+        modelOverride: opts?.model,
+      }),
     });
 
     if (!res.ok) {

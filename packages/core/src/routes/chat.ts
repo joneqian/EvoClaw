@@ -45,7 +45,8 @@ import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import { parseSessionKey } from '../routing/session-key.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
-import { drainSystemEvents } from '../infrastructure/system-events.js';
+import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
+import { detectHeartbeatAck } from '../scheduler/heartbeat-utils.js';
 
 const log = createLogger('chat');
 
@@ -283,7 +284,7 @@ export function createChatRoutes(
 
   app.post('/:agentId/send', async (c) => {
     const agentId = c.req.param('agentId');
-    type SendBody = { message?: string; sessionKey?: string };
+    type SendBody = { message?: string; sessionKey?: string; isHeartbeat?: boolean; lightContext?: boolean; modelOverride?: string };
     const body: SendBody = await c.req.json<SendBody>().catch(() => ({}));
     const message = body.message;
 
@@ -454,9 +455,11 @@ export function createChatRoutes(
 
     const isSubAgent = sessionKey.includes(':subagent:');
     const isCron = sessionKey.includes(':cron:');
-    const isHeartbeat = sessionKey.endsWith(':heartbeat');
+    const isHeartbeat = body.isHeartbeat === true;
+    const isLightContext = isHeartbeat && body.lightContext === true;
 
-    const filesToLoad = isHeartbeat ? HEARTBEAT_FILES : (isSubAgent || isCron) ? MINIMAL_FILES : ALL_FILES;
+    const LIGHT_FILES = ['HEARTBEAT.md'];
+    const filesToLoad = isLightContext ? LIGHT_FILES : isHeartbeat ? HEARTBEAT_FILES : (isSubAgent || isCron) ? MINIMAL_FILES : ALL_FILES;
 
     const workspaceFiles: Record<string, string> = {};
     for (const file of filesToLoad) {
@@ -685,10 +688,10 @@ export function createChatRoutes(
       saveMessage(store, agentId, sessionKey, 'user', message);
     }
 
-    // System Events 注入 — drain 待处理事件，前缀拼接到 LLM 输入消息
-    const pendingEvents = drainSystemEvents(sessionKey);
-    const effectiveMessage = pendingEvents.length > 0
-      ? `${pendingEvents.map(e => `[System Event] ${e}`).join('\n')}\n\n${message}`
+    // System Events 注入 — drain 待处理事件（噪音过滤 + 时间戳格式化），前缀拼接到 LLM 输入消息
+    const systemLines = drainFormattedSystemEvents(sessionKey);
+    const effectiveMessage = systemLines.length > 0
+      ? `System:\n${systemLines.map(l => `  ${l}`).join('\n')}\n\n${message}`
       : message;
 
     // 返回 SSE 流
@@ -747,12 +750,8 @@ export function createChatRoutes(
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 
-      // Heartbeat 零污染回滚：HEARTBEAT_OK / NO_REPLY / 空响应 → 不存任何消息、不触发事件
-      const isHeartbeatNoOp = isHeartbeat && (
-        !cleanResponse ||
-        cleanResponse.includes('HEARTBEAT_OK') ||
-        cleanResponse === 'NO_REPLY'
-      );
+      // Heartbeat 零污染回滚：鲁棒 ACK 检测（支持 Markdown/HTML 包裹、尾随标点等变体）
+      const isHeartbeatNoOp = isHeartbeat && detectHeartbeatAck(cleanResponse).isAck;
 
       if (!isHeartbeatNoOp) {
         // heartbeat 会话的 user 消息延迟到这里保存（非 heartbeat 已在上方保存）

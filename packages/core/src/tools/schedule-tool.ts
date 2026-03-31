@@ -24,13 +24,14 @@ export function createScheduleTool(deps: ScheduleToolDeps): ToolDefinition[] {
   const scheduleTool: ToolDefinition = {
     name: 'schedule',
     description: [
-      '创建定时提醒或周期性任务。',
+      '创建一次性提醒或精确定时任务（用于 reminders 和 precise schedules）。',
+      '注意：周期性监控/检查（如"每隔 X 分钟检查邮件"）应该编辑 HEARTBEAT.md，不要用此工具。',
       '',
       '模式 1 — 一次性提醒（设置 delay）:',
       '  delay: "5m" / "1h" / "30s" 等时间表达式',
       '  message: 提醒内容',
       '',
-      '模式 2 — 周期性任务（设置 cron）:',
+      '模式 2 — 精确定时任务（设置 cron）:',
       '  cron: 标准 5 字段 cron 表达式（如 "0 9 * * *" = 每天 9 点）',
       '  message: 任务执行时发送的内容',
       '',

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   enqueueSystemEvent,
   drainSystemEvents,
+  drainFormattedSystemEvents,
+  isHeartbeatNoiseEvent,
   peekSystemEvents,
   hasSystemEvents,
   resetSystemEventsForTest,
@@ -114,6 +116,71 @@ describe('SystemEvents', () => {
       drainSystemEvents(session1);
       expect(hasSystemEvents(session1)).toBe(false);
       expect(hasSystemEvents(session2)).toBe(true);
+    });
+  });
+
+  // ─── Phase 2 增强 ───
+
+  describe('contextKey 去重', () => {
+    it('同一 contextKey 应只保留最新事件', () => {
+      enqueueSystemEvent('旧事件', sessionKey, { contextKey: 'cron:job1' });
+      enqueueSystemEvent('新事件', sessionKey, { contextKey: 'cron:job1' });
+
+      const events = peekSystemEvents(sessionKey);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toBe('新事件');
+    });
+
+    it('不同 contextKey 应独立保留', () => {
+      enqueueSystemEvent('事件A', sessionKey, { contextKey: 'cron:job1' });
+      enqueueSystemEvent('事件B', sessionKey, { contextKey: 'cron:job2' });
+
+      expect(peekSystemEvents(sessionKey)).toHaveLength(2);
+    });
+
+    it('无 contextKey 应不做 key 去重', () => {
+      enqueueSystemEvent('事件A', sessionKey);
+      enqueueSystemEvent('事件B', sessionKey);
+
+      expect(peekSystemEvents(sessionKey)).toHaveLength(2);
+    });
+  });
+
+  describe('isHeartbeatNoiseEvent', () => {
+    it('应检测 heartbeat 噪音事件', () => {
+      expect(isHeartbeatNoiseEvent('Read HEARTBEAT.md if it exists')).toBe(true);
+      expect(isHeartbeatNoiseEvent('heartbeat poll triggered')).toBe(true);
+      expect(isHeartbeatNoiseEvent('heartbeat wake signal')).toBe(true);
+      expect(isHeartbeatNoiseEvent('reason periodic check')).toBe(true);
+    });
+
+    it('普通事件不应被视为噪音', () => {
+      expect(isHeartbeatNoiseEvent('Daily standup reminder')).toBe(false);
+      expect(isHeartbeatNoiseEvent('检查邮件')).toBe(false);
+    });
+  });
+
+  describe('drainFormattedSystemEvents', () => {
+    it('应返回带时间戳的格式化文本', () => {
+      enqueueSystemEvent('测试事件', sessionKey);
+
+      const formatted = drainFormattedSystemEvents(sessionKey);
+      expect(formatted).toHaveLength(1);
+      // 格式：[HH:mm:ss] text
+      expect(formatted[0]).toMatch(/^\[\d{2}:\d{2}:\d{2}\] 测试事件$/);
+    });
+
+    it('应过滤 heartbeat 噪音事件', () => {
+      enqueueSystemEvent('Read HEARTBEAT.md if it exists', sessionKey);
+      enqueueSystemEvent('真正的事件', sessionKey);
+
+      const formatted = drainFormattedSystemEvents(sessionKey);
+      expect(formatted).toHaveLength(1);
+      expect(formatted[0]).toContain('真正的事件');
+    });
+
+    it('空队列应返回空数组', () => {
+      expect(drainFormattedSystemEvents(sessionKey)).toEqual([]);
     });
   });
 });

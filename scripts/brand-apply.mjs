@@ -54,6 +54,7 @@ export interface BrandConfig {
     gradient: [string, string];
   };
   windowTitle: string;
+  defaultEnv?: Record<string, string>;
 }
 
 /** 当前品牌配置 */

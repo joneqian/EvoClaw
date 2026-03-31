@@ -1,8 +1,8 @@
 # EvoClaw 技术架构设计文档
 
-> **文档版本**: v6.3
+> **文档版本**: v6.4
 > **创建日期**: 2026-03-11
-> **更新日期**: 2026-03-30
+> **更新日期**: 2026-03-31
 > **文档状态**: 已完成（10 个 Sprint 全部完成）
 > **定位**: 企业级 AI Agent 桌面平台，安全优先、稳定优先
 
@@ -1243,6 +1243,42 @@ Heartbeat 特点 (vs Cron):
   2. 文件非空？
   3. 距上次执行 >= minIntervalMinutes（默认 5 分钟）？
   4. 在活跃时段内（默认 08:00-22:00）？
+
+空文件预检（Token 节省）:
+  heartbeat-utils.ts: isHeartbeatContentEffectivelyEmpty()
+  检测规则：跳过仅含空行、Markdown 标题、空列表项、HTML 注释的内容
+  文件不存在（null）→ 不跳过（交给 LLM 判断）
+  有 System Events 待处理 → 不跳过（即使文件为空）
+  效果：无实际任务时 Token 消耗为零
+
+HEARTBEAT_OK 鲁棒检测:
+  heartbeat-utils.ts: detectHeartbeatAck()
+  两步检测：stripMarkup（剥离 HTML/Markdown 标记）→ token 匹配
+  支持变体：
+    - Markdown: **HEARTBEAT_OK**, `HEARTBEAT_OK`
+    - HTML: <b>HEARTBEAT_OK</b>
+    - 尾随标点: HEARTBEAT_OK., HEARTBEAT_OK!
+    - 短附带文本: HEARTBEAT_OK，一切正常（≤ ackMaxChars=300 字符）
+    - NO_REPLY → 直接判空闲
+  替代旧逻辑：cleanResponse.includes('HEARTBEAT_OK')
+
+Reason-based 提示词体系:
+  heartbeat-prompts.ts: buildHeartbeatPrompt()
+  触发原因（HeartbeatReason）:
+    - interval: 定时触发 → 标准 heartbeat prompt（读 HEARTBEAT.md）
+    - wake: 手动唤醒 → 同 interval
+    - cron-event: Cron 事件 → 定时提醒 prompt（区分投递/内部处理）
+    - exec-event: 异步命令完成 → 命令结果 prompt
+  自定义覆盖: HeartbeatConfig.prompt 字段
+  语言: 英文 prompt（LLM 遵从性更高）
+
+隔离 Session（lightContext）:
+  HeartbeatConfig 新增:
+    - isolatedSession: true → sessionKey = agent:{id}:heartbeat
+    - lightContext: true → 仅加载 HEARTBEAT.md（0.5K-2K token）
+    - model: 模型覆盖（使用更便宜的模型）
+  Token 消耗对比:
+    主 session: 50K-200K → 标准 heartbeat: 1K-5K → lightContext: 0.5K-2K
 ```
 
 #### 3.10.3 HeartbeatManager 架构
@@ -1270,6 +1306,20 @@ Agent 生命周期联动:
 cleanup:
   - stopAll() 在 SIGINT/SIGTERM 时调用
   - 确保所有 Runner 优雅关闭
+
+Wake 合并与优先级调度:
+  heartbeat-wake.ts: HeartbeatWakeCoalescer
+  合并窗口: 250ms（防重复 LLM 调用）
+  4 级优先级: RETRY(0) < INTERVAL(1) < DEFAULT(2) < ACTION(3)
+  窗口内保留最高优先级请求，窗口结束后执行一次
+
+  HeartbeatRunner.requestNow(reason):
+    → WakeCoalescer.request(reason, ACTION)
+    → 250ms 后 tick(reason)
+
+  HeartbeatManager.requestNow(agentId, reason):
+    → runners.get(agentId)?.requestNow(reason)
+    → 外部触发点: REST API / Cron 事件 / System Events
 ```
 
 #### 3.10.4 System Events 事件队列
@@ -1290,6 +1340,24 @@ REST API 手动注入:
   POST /system-events/:agentId/events
   - 外部系统可通过 API 推送事件
   - 事件排队等待 Agent 下一轮对话时处理
+
+增强能力:
+  contextKey 去重:
+    - enqueueSystemEvent 新增 opts.contextKey 参数
+    - 同一 contextKey 的事件只保留最新（覆盖旧事件）
+    - 用例: Cron Job 产生的周期事件不重复堆积
+
+  deliveryContext 路由:
+    - SystemEvent 新增 deliveryContext: { channel?, accountId? }
+    - 用于渠道投递时的路由信息合并
+
+  时间戳格式化:
+    - drainFormattedSystemEvents() 替代原 drain
+    - 格式: [HH:mm:ss] event text（替代 [System Event] text）
+
+  噪音过滤:
+    - isHeartbeatNoiseEvent() 过滤 heartbeat prompt/poll 标记
+    - 防止 heartbeat 内部事件泄漏到用户可见消息
 ```
 
 #### 3.10.5 Standing Orders
@@ -1323,6 +1391,52 @@ REST API 手动注入:
 Session Key: agent:{id}:boot
   - 独立的启动会话
   - 不与主对话会话混淆
+```
+
+#### 3.10.7 Cron 错误追踪与状态机
+
+```
+数据库扩展（cron_jobs 表新增列）:
+  - consecutive_errors: INTEGER DEFAULT 0
+  - last_run_status: TEXT ('ok' | 'error')
+  - last_delivery_status: TEXT
+
+状态转换:
+  执行成功 → last_run_status='ok', consecutive_errors=0
+  执行失败 → last_run_status='error', consecutive_errors++
+  consecutive_errors >= 5 → enabled=0（自动禁用）
+
+用途:
+  - 防止坏配置的 Cron 任务持续消耗资源
+  - 运维可通过 API 查询各任务健康状态
+  - 手动重新启用后 consecutive_errors 保持（下次成功时归零）
+```
+
+#### 3.10.8 TaskRegistry 统一任务追踪
+
+```
+纯内存注册表: Map<taskId, TaskRecord>
+
+TaskRecord:
+  - taskId: 唯一标识
+  - runtime: 'cron' | 'heartbeat' | 'subagent' | 'boot'
+  - status: 'queued' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'cancelled'
+  - label: 人类可读描述
+  - agentId, sessionKey
+  - createdAt, startedAt?, endedAt?, error?
+
+生命周期:
+  cron-runner.ts → createTask() → tick 开始 → updateTask(running) → 完成 → updateTask(succeeded/failed)
+  heartbeat-runner.ts → 同上
+  spawn_agent → 同上
+
+API:
+  GET /tasks?agentId=X&runtime=heartbeat&status=running
+  → listTasks(filter) → 按 createdAt 倒序返回
+
+清理:
+  pruneCompleted(maxAgeMs=3600000)
+  已结束超过 1 小时的记录自动删除
 ```
 
 ### 3.11 RAG 系统

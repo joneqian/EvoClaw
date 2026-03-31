@@ -5,8 +5,12 @@ import type { LaneQueue } from '../agent/lane-queue.js';
 import type { CronJobConfig } from '@evoclaw/shared';
 import { createLogger } from '../infrastructure/logger.js';
 import { enqueueSystemEvent } from '../infrastructure/system-events.js';
+import { createTask, updateTask } from './task-registry.js';
 
 const log = createLogger('cron');
+
+/** 连续失败自动禁用阈值 */
+const MAX_CONSECUTIVE_ERRORS = 5;
 
 /** 数据库行类型 */
 interface CronJobRow {
@@ -19,6 +23,9 @@ interface CronJobRow {
   enabled: number;
   last_run_at: string | null;
   next_run_at: string | null;
+  consecutive_errors: number;
+  last_run_status: string | null;
+  last_delivery_status: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -98,11 +105,18 @@ export class CronRunner {
         if (job.action_type === 'event') {
           const mainSessionKey = `agent:${job.agent_id}:local:direct:local-user`;
           const text = config.prompt ?? `[Cron: ${job.name}] 请执行计划任务。`;
+          const eventTaskId = `cron-event-${job.id}-${crypto.randomUUID()}`;
+          createTask({
+            taskId: eventTaskId, runtime: 'cron', sourceId: job.id,
+            status: 'running', label: `cron:event:${job.name}`,
+            agentId: job.agent_id, sessionKey: mainSessionKey, startedAt: Date.now(),
+          });
           enqueueSystemEvent(text, mainSessionKey);
           this.db.run(
-            `UPDATE cron_jobs SET last_run_at = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE cron_jobs SET last_run_at = ?, last_run_status = 'ok', consecutive_errors = 0, updated_at = ? WHERE id = ?`,
             now, now, job.id,
           );
+          updateTask(eventTaskId, { status: 'succeeded', endedAt: Date.now() });
           executed++;
           log.debug(`cron job ${job.name} → system event 已注入`);
           continue;
@@ -110,9 +124,15 @@ export class CronRunner {
 
         // 通过 LaneQueue cron 车道执行（隔离会话）
         const sessionKey = `agent:${job.agent_id}:cron:${job.id}`;
+        const cronTaskId = `cron-${job.id}-${crypto.randomUUID()}`;
+        createTask({
+          taskId: cronTaskId, runtime: 'cron', sourceId: job.id,
+          status: 'queued', label: `cron:${job.action_type}:${job.name}`,
+          agentId: job.agent_id, sessionKey, startedAt: undefined,
+        });
 
         this.laneQueue.enqueue({
-          id: `cron-${job.id}-${crypto.randomUUID()}`,
+          id: cronTaskId,
           sessionKey,
           lane: 'cron',
           task: async () => {
@@ -122,15 +142,17 @@ export class CronRunner {
           },
           timeoutMs: 300_000, // 5 分钟
         }).then(() => {
-          // 更新 last_run_at
+          // 成功：更新 last_run_at + 重置错误计数
+          const ts = new Date().toISOString();
           this.db.run(
-            `UPDATE cron_jobs SET last_run_at = ?, updated_at = ? WHERE id = ?`,
-            new Date().toISOString(),
-            new Date().toISOString(),
-            job.id,
+            `UPDATE cron_jobs SET last_run_at = ?, last_run_status = 'ok', consecutive_errors = 0, updated_at = ? WHERE id = ?`,
+            ts, ts, job.id,
           );
+          updateTask(cronTaskId, { status: 'succeeded', endedAt: Date.now() });
         }).catch((err) => {
           log.error(`任务 ${job.name} (${job.id}) 执行失败:`, err);
+          this.recordError(job.id, job.name);
+          updateTask(cronTaskId, { status: 'failed', endedAt: Date.now(), error: String(err) });
         });
 
         executed++;
@@ -225,6 +247,24 @@ export class CronRunner {
       agentId,
     );
     return rows.map(rowToConfig);
+  }
+
+  /** 记录执行失败 + 连续失败自动禁用 */
+  private recordError(jobId: string, jobName: string): void {
+    const ts = new Date().toISOString();
+    this.db.run(
+      `UPDATE cron_jobs SET last_run_status = 'error', consecutive_errors = consecutive_errors + 1, updated_at = ? WHERE id = ?`,
+      ts, jobId,
+    );
+
+    const row = this.db.get<{ consecutive_errors: number }>(
+      'SELECT consecutive_errors FROM cron_jobs WHERE id = ?',
+      jobId,
+    );
+    if (row && row.consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
+      this.db.run('UPDATE cron_jobs SET enabled = 0, updated_at = ? WHERE id = ?', ts, jobId);
+      log.warn(`任务 ${jobName} 连续失败 ${MAX_CONSECUTIVE_ERRORS} 次，已自动禁用`);
+    }
   }
 
   /** 计算下次运行时间 */

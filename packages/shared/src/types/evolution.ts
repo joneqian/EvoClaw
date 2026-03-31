@@ -46,6 +46,16 @@ export interface HeartbeatConfig {
   showOk?: boolean;
   /** 是否投递告警内容（默认 true） */
   showAlerts?: boolean;
+  /** 自定义 prompt 覆盖（默认使用内置英文 prompt） */
+  prompt?: string;
+  /** HEARTBEAT_OK 后允许的最大附带文本字符数（默认 300） */
+  ackMaxChars?: number;
+  /** 是否使用隔离 session（默认 false = 共享主 session） */
+  isolatedSession?: boolean;
+  /** 是否使用轻量上下文 — 仅加载 HEARTBEAT.md（默认 false） */
+  lightContext?: boolean;
+  /** 模型覆盖 — 使用更便宜的模型运行 heartbeat */
+  model?: string;
 }
 
 /** Cron 任务配置 */

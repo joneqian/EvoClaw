@@ -1,5 +1,5 @@
 // ⚠️ 此文件由 scripts/brand-apply.mjs 自动生成，请勿手动编辑
-// 品牌: HealthClaw | 生成时间: 2026-03-30T10:20:14.830Z
+// 品牌: HealthClaw | 生成时间: 2026-03-31T06:29:37.013Z
 
 /** 品牌配置类型 */
 export interface BrandConfig {
@@ -17,6 +17,7 @@ export interface BrandConfig {
     gradient: [string, string];
   };
   windowTitle: string;
+  defaultEnv?: Record<string, string>;
 }
 
 /** 当前品牌配置 */
@@ -37,7 +38,14 @@ export const BRAND: BrandConfig = {
       "#2563EB"
     ]
   },
-  "windowTitle": "HealthClaw"
+  "windowTitle": "HealthClaw",
+  "defaultEnv": {
+    "DEEP_HEALTH_AI_SERVER_URL": "http://localhost:9100/api",
+    "DEEP_HEALTH_AI_AGENT_KEY": "claw-6c637a625e4715f71d54d7cffd0a07b4",
+    "DEEP_HEALTH_AI_PROJECT_CODE": "",
+    "DEEP_HEALTH_AI_COMPANY_CODE": "",
+    "DEEP_HEALTH_AI_EMPLOYEE_CODE": ""
+  }
 } as const;
 
 // 便捷导出

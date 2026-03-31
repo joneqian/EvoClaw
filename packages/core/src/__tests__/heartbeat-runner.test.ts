@@ -1,12 +1,14 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { HeartbeatRunner, type HeartbeatExecuteFn } from '../scheduler/heartbeat-runner.js';
 import type { HeartbeatConfig } from '@evoclaw/shared';
+import { enqueueSystemEvent, resetSystemEventsForTest } from '../infrastructure/system-events.js';
 
 describe('HeartbeatRunner', () => {
   const agentId = 'test-agent-hb';
 
   afterEach(() => {
     vi.restoreAllMocks();
+    resetSystemEventsForTest();
   });
 
   function makeConfig(overrides?: Partial<HeartbeatConfig>): HeartbeatConfig {
@@ -73,11 +75,12 @@ describe('HeartbeatRunner', () => {
     expect(executeFn).toHaveBeenCalledWith(
       agentId,
       expect.stringContaining('[Heartbeat]'),
-      `agent:${agentId}:heartbeat`,
+      `agent:${agentId}:local:direct:local-user`,
+      expect.objectContaining({}),
     );
   });
 
-  it('tick 应调用 executeFn 并传入正确的 prompt', async () => {
+  it('tick 应调用 executeFn 并传入英文 reason-based prompt', async () => {
     const executeFn = mockExecuteFn('HEARTBEAT_OK');
     const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn);
 
@@ -87,7 +90,8 @@ describe('HeartbeatRunner', () => {
     expect(call[0]).toBe(agentId);
     expect(call[1]).toContain('HEARTBEAT.md');
     expect(call[1]).toContain('HEARTBEAT_OK');
-    expect(call[2]).toBe(`agent:${agentId}:heartbeat`);
+    expect(call[1]).toContain('[Heartbeat]');
+    expect(call[2]).toBe(`agent:${agentId}:local:direct:local-user`);
   });
 
   it('updateConfig 应更新配置', () => {
@@ -178,6 +182,97 @@ describe('HeartbeatRunner', () => {
       // 立即再调一次 — 应被默认 5 分钟间隔挡住
       const result = await hb.tick();
       expect(result).toBe('skipped');
+    });
+  });
+
+  // ─── 空文件预检 ───
+
+  describe('空文件预检', () => {
+    it('HEARTBEAT.md 为空时应跳过（无系统事件）', async () => {
+      const executeFn = mockExecuteFn('HEARTBEAT_OK');
+      const readFile = vi.fn().mockReturnValue('# Heartbeat\n');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn, undefined, undefined, readFile);
+
+      const result = await hb.tick();
+      expect(result).toBe('skipped');
+      expect(executeFn).not.toHaveBeenCalled();
+    });
+
+    it('HEARTBEAT.md 有内容时应执行', async () => {
+      const executeFn = mockExecuteFn('HEARTBEAT_OK');
+      const readFile = vi.fn().mockReturnValue('# Heartbeat\n每15分钟检查服务器');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn, undefined, undefined, readFile);
+
+      const result = await hb.tick();
+      expect(result).toBe('ok');
+      expect(executeFn).toHaveBeenCalledOnce();
+    });
+
+    it('HEARTBEAT.md 为空但有系统事件时应执行', async () => {
+      const executeFn = mockExecuteFn('HEARTBEAT_OK');
+      const readFile = vi.fn().mockReturnValue('# Heartbeat\n');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn, undefined, undefined, readFile);
+
+      // 注入系统事件到默认 session key
+      enqueueSystemEvent('测试事件', `agent:${agentId}:local:direct:local-user`);
+
+      const result = await hb.tick();
+      expect(result).toBe('ok');
+      expect(executeFn).toHaveBeenCalledOnce();
+    });
+
+    it('无 readWorkspaceFile 时应跳过预检直接执行', async () => {
+      const executeFn = mockExecuteFn('HEARTBEAT_OK');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn);
+
+      const result = await hb.tick();
+      expect(result).toBe('ok');
+      expect(executeFn).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ─── 鲁棒 ACK 检测 ───
+
+  describe('鲁棒 ACK 检测', () => {
+    it('**HEARTBEAT_OK** 应返回 ok', async () => {
+      const executeFn = mockExecuteFn('**HEARTBEAT_OK**');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn);
+
+      const result = await hb.tick();
+      expect(result).toBe('ok');
+    });
+
+    it('<b>HEARTBEAT_OK</b> 应返回 ok', async () => {
+      const executeFn = mockExecuteFn('<b>HEARTBEAT_OK</b>');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn);
+
+      const result = await hb.tick();
+      expect(result).toBe('ok');
+    });
+
+    it('HEARTBEAT_OK. 尾随标点应返回 ok', async () => {
+      const executeFn = mockExecuteFn('HEARTBEAT_OK.');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn);
+
+      const result = await hb.tick();
+      expect(result).toBe('ok');
+    });
+  });
+
+  // ─── reason-based prompt ───
+
+  describe('reason-based prompt', () => {
+    it('有系统事件时应使用 cron-event prompt', async () => {
+      const executeFn = mockExecuteFn('HEARTBEAT_OK');
+      const hb = new HeartbeatRunner(agentId, makeConfig(), executeFn);
+
+      // 注入系统事件
+      enqueueSystemEvent('Daily reminder', `agent:${agentId}:local:direct:local-user`);
+
+      await hb.tick();
+
+      const call = (executeFn as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(call[1]).toContain('scheduled reminder');
     });
   });
 

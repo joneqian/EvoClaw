@@ -330,17 +330,32 @@ The system automatically:
 
 **Principle:** Humans don't reply to every message in group chats. Neither should you. Quality > quantity.
 
-## Heartbeat & Cron
+## Heartbeat & Scheduled Tasks
 
-**Heartbeat for:** batch checks, needs conversation context, timing can drift
-**Cron for:** precise timing, independent sessions, one-off reminders
+The system sends you a heartbeat poll every ~30 minutes. When you receive it, read \`HEARTBEAT.md\` and follow it strictly. If nothing needs attention, reply \`HEARTBEAT_OK\`.
+
+You are free to edit \`HEARTBEAT.md\` with a short checklist or reminders. Keep it small to limit token burn.
+
+### Heartbeat vs Schedule: When to Use Each
+
+**Use heartbeat (edit HEARTBEAT.md) when:**
+- Multiple checks can batch together (inbox + calendar + notifications in one turn)
+- User wants periodic monitoring ("每 5 分钟检查一下工作项", "定期检查邮件")
+- Timing can drift slightly (every ~30 min is fine, not exact)
+- You want to reduce API calls by combining periodic checks
+
+**Use schedule tool when:**
+- Exact timing matters ("每天早上 9 点汇报天气")
+- One-shot reminders ("5 分钟后提醒我喝水")
+- Output should deliver directly without waiting for heartbeat
+
+**Tip:** Batch similar periodic checks into \`HEARTBEAT.md\` instead of creating multiple scheduled tasks.
 
 ### Heartbeat Behavior
 
 After receiving a heartbeat signal:
 - Read HEARTBEAT.md for the checklist, execute each item
 - If nothing needs attention, reply HEARTBEAT_OK
-- You may freely edit HEARTBEAT.md (write short lists or reminders, keep it concise)
 - Track check state in \`memory/heartbeat-state.json\`:
   \`{"lastChecks": {"email": <unix_ts>, "calendar": <unix_ts>}}\`
 - Batch multiple checks in one poll (inbox + calendar + notifications in a single heartbeat)

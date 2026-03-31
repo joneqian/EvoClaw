@@ -1,5 +1,6 @@
 import type { HeartbeatConfig } from '@evoclaw/shared';
 import { HeartbeatRunner, type HeartbeatExecuteFn, type HeartbeatResultCallback } from './heartbeat-runner.js';
+import type { HeartbeatReason } from './heartbeat-prompts.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -28,6 +29,7 @@ export class HeartbeatManager {
     private readonly db: SqliteStore,
     private readonly executeFn: HeartbeatExecuteFn,
     private readonly onResult?: HeartbeatResultCallback,
+    private readonly readWorkspaceFile?: (agentId: string, filename: string) => string | null,
   ) {}
 
   /**
@@ -58,7 +60,10 @@ export class HeartbeatManager {
     }
 
     const resolvedConfig = config ?? this.readConfig(agentId);
-    const runner = new HeartbeatRunner(agentId, resolvedConfig, this.executeFn, this.onResult);
+    const readFn = this.readWorkspaceFile
+      ? (filename: string) => this.readWorkspaceFile!(agentId, filename)
+      : undefined;
+    const runner = new HeartbeatRunner(agentId, resolvedConfig, this.executeFn, this.onResult, this.db, readFn);
     this.runners.set(agentId, runner);
 
     if (resolvedConfig.enabled) {
@@ -111,6 +116,11 @@ export class HeartbeatManager {
     }
     this.runners.clear();
     log.info('HeartbeatManager 已停止所有 runner');
+  }
+
+  /** 请求立即执行指定 Agent 的心跳（合并防抖） */
+  requestNow(agentId: string, reason?: HeartbeatReason): void {
+    this.runners.get(agentId)?.requestNow(reason);
   }
 
   /** 获取指定 Agent 的 runner（测试/调试用） */

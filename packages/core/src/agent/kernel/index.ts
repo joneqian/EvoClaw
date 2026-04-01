@@ -29,3 +29,8 @@ export { ApiError, IdleTimeoutError, AbortError } from './types.js';
 // Stream
 export { parseSSE, safeParseJSON } from './stream-parser.js';
 export { streamLLM } from './stream-client.js';
+
+// Tools
+export { createBuiltinTools } from './builtin-tools.js';
+export { adaptEvoclawTool, buildKernelTools } from './tool-adapter.js';
+export type { AuditLogEntry, ToolAdapterDeps, BuildToolsConfig } from './tool-adapter.js';

@@ -1,5 +1,7 @@
 # PI 内核替换技术方案 — EvoClaw Agent Kernel v2
 
+> ✅ **已完成** — 全部 Phase 实施完毕，Sprint A/B 补全完成，172 个测试全绿
+>
 > 融合 Claude Code 架构研究 + REFACTOR_PLAN.md 设计 + EvoClaw 现有基础设施
 
 ---

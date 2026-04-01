@@ -9,20 +9,20 @@ set -e
 cd "$(dirname "$0")/.."
 
 export BRAND="${BRAND:-evoclaw}"
-BRAND_NAME=$(node -e "const b=require('./brands/${BRAND}/brand.json');console.log(b.name)")
+BRAND_NAME=$(bun -e "const b=require('./brands/${BRAND}/brand.json');console.log(b.name)")
 
 echo "========================================="
 echo "  ${BRAND_NAME} macOS DMG 打包"
 echo "========================================="
 
-# 0. 应用品牌配置 + 下载内嵌 Node
+# 0. 应用品牌配置 + 下载内嵌 Bun
 echo ""
 echo "[0/4] 应用品牌配置: ${BRAND} ..."
-node scripts/brand-apply.mjs
+bun scripts/brand-apply.mjs
 
 echo ""
-echo "[1/4] 确保内嵌 Node.js 二进制 ..."
-node scripts/download-node.mjs
+echo "[1/4] 确保内嵌 Bun 二进制 ..."
+bun scripts/download-bun.mjs
 
 # 2. 构建所有包
 echo ""
@@ -40,11 +40,11 @@ if [ ! -f "packages/core/dist/package.json" ]; then
   echo "❌ packages/core/dist/package.json 不存在（PI 框架需要）"
   exit 1
 fi
-if [ ! -f "packages/core/dist/node_modules/better-sqlite3/build/Release/better_sqlite3.node" ]; then
-  echo "❌ better-sqlite3 native 模块未打包"
+if [ ! -f "apps/desktop/src-tauri/bun-bin/bun" ]; then
+  echo "❌ 内嵌 Bun 二进制不存在"
   exit 1
 fi
-echo "✅ server.mjs + package.json + better-sqlite3 native 模块已就绪"
+echo "✅ server.mjs + package.json + bun 二进制已就绪"
 
 # 4. Tauri 打包
 echo ""

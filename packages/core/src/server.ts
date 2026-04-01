@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
+import { isBun } from './infrastructure/db/sqlite-adapter.js';
 import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 import { HTTPException } from 'hono/http-exception';
@@ -742,13 +742,31 @@ async function main() {
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
 
-  serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
+  const startServer = async () => {
+    let actualPort = port;
+    if (isBun) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const server = (globalThis as any).Bun.serve({ fetch: app.fetch, port, hostname: '127.0.0.1' });
+      actualPort = server.port;
+    } else {
+      const { serve } = await import('@hono/node-server');
+      await new Promise<void>((resolve) => {
+        serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {
+          actualPort = info.port;
+          resolve();
+        });
+      });
+    }
+    return actualPort;
+  };
+  const actualPort = await startServer();
+  {
     // 首行 JSON — Tauri sidecar.rs 解析此行获取连接信息，必须保持 console.log
-    console.log(JSON.stringify({ port: info.port, token }));
-    log.info(`服务已启动 port=${info.port}`);
+    console.log(JSON.stringify({ port: actualPort, token }));
+    log.info(`服务已启动 port=${actualPort}`);
 
     // HTTP 服务就绪后初始化 HeartbeatManager（需要实际 port 构建 executeFn）
-    const executeFn = createHeartbeatExecuteFn(info.port, token);
+    const executeFn = createHeartbeatExecuteFn(actualPort, token);
 
     // Heartbeat 结果回调 — 渠道投递
     const onHeartbeatResult: import('./scheduler/heartbeat-runner.js').HeartbeatResultCallback = (
@@ -823,7 +841,7 @@ async function main() {
       });
       log.info(`Agent ${agent.id} BOOT.md 已触发执行`);
     }
-  });
+  }
 }
 
 // 仅当此文件为入口点时自动启动

@@ -2,33 +2,35 @@ import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Bun 运行时: 内置 import.meta.dirname、require、bun:sqlite，无需额外 polyfill
+// Node.js 回退: 需要 createRequire + NODE_PATH + Module._initPaths()
+const bunBanner = [
+  'import { fileURLToPath as __fileURLToPath } from "url";',
+  'import { dirname as __dirname_, resolve as __resolve } from "path";',
+  'import { realpathSync as __realpathSync } from "fs";',
+  'const __realFile = __realpathSync(__fileURLToPath(import.meta.url));',
+  'const __realDir = __dirname_(__realFile);',
+  'try { Object.defineProperty(import.meta, "dirname", { value: __realDir, writable: true }); } catch {}',
+  // Node.js 回退（Bun 中这些是空操作）
+  'if (typeof Bun === "undefined") {',
+  '  const { createRequire: __cr } = await import("module");',
+  '  const require = __cr(__realFile);',
+  '  const __nodePaths = [__resolve(__realDir, "../node_modules"), __resolve(__realDir, "../../node_modules"), __resolve(__realDir, "../../../node_modules")];',
+  '  process.env.NODE_PATH = [...__nodePaths, process.env.NODE_PATH].filter(Boolean).join(":");',
+  '  const __Module = await import("module"); __Module.default._initPaths();',
+  '}',
+].join('\n');
+
 await build({
   entryPoints: ['src/server.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  target: 'esnext',
   format: 'esm',
   outfile: 'dist/server.mjs',
-  external: ['better-sqlite3'],
+  external: ['better-sqlite3', 'bun:sqlite'],
   sourcemap: true,
-  banner: {
-    js: [
-      'import { createRequire as __createRequire } from "module";',
-      'import { fileURLToPath as __fileURLToPath } from "url";',
-      'import { dirname as __dirname_, resolve as __resolve } from "path";',
-      'import { realpathSync as __realpathSync } from "fs";',
-      // 用 realpathSync 解析真实路径（绕过 Tauri 的 _up_ 符号链接）
-      'const __realFile = __realpathSync(__fileURLToPath(import.meta.url));',
-      'const __realDir = __dirname_(__realFile);',
-      'const require = __createRequire(__realFile);',
-      // 注入 import.meta.dirname 以供 seedBundledSkills 等运行时路径查找使用
-      'try { Object.defineProperty(import.meta, "dirname", { value: __realDir, writable: true }); } catch {}',
-      // 为 ESM import() 设置 NODE_PATH
-      'const __nodePaths = [__resolve(__realDir, "../node_modules"), __resolve(__realDir, "../../node_modules"), __resolve(__realDir, "../../../node_modules")];',
-      'process.env.NODE_PATH = [...__nodePaths, process.env.NODE_PATH].filter(Boolean).join(":");',
-      'import __Module from "module"; __Module._initPaths();',
-    ].join('\n'),
-  },
+  banner: { js: bunBanner },
 });
 
 // 复制迁移 SQL 文件到 dist
@@ -42,90 +44,8 @@ if (fs.existsSync(srcMigrations)) {
   console.log(`Copied ${fs.readdirSync(destMigrations).length} migration files`);
 }
 
-// --- 复制 better-sqlite3 native 模块到 dist/node_modules/ ---
-// 打包后 server.mjs 的 createRequire(import.meta.url) 会从 dist/ 开始查找
-// require('better-sqlite3') → dist/node_modules/better-sqlite3/lib/index.js
-bundleBetterSqlite3();
-
-function bundleBetterSqlite3() {
-  // 在 pnpm store 中查找 better-sqlite3
-  const candidates = [
-    // pnpm hoisted / store
-    path.resolve('../../node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3'),
-    path.resolve('../../node_modules/better-sqlite3'),
-    path.resolve('node_modules/better-sqlite3'),
-  ];
-
-  let srcRoot: string | undefined;
-  for (const c of candidates) {
-    if (fs.existsSync(path.join(c, 'lib', 'index.js'))) {
-      srcRoot = c;
-      break;
-    }
-  }
-
-  if (!srcRoot) {
-    // 动态查找：用 glob 搜索
-    const pnpmStore = path.resolve('../../node_modules/.pnpm');
-    if (fs.existsSync(pnpmStore)) {
-      for (const dir of fs.readdirSync(pnpmStore)) {
-        if (dir.startsWith('better-sqlite3@')) {
-          const candidate = path.join(pnpmStore, dir, 'node_modules', 'better-sqlite3');
-          if (fs.existsSync(path.join(candidate, 'lib', 'index.js'))) {
-            srcRoot = candidate;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  if (!srcRoot) {
-    console.warn('⚠️  better-sqlite3 未找到，跳过 native 模块打包（生产环境将无法运行）');
-    return;
-  }
-
-  const destRoot = 'dist/node_modules/better-sqlite3';
-
-  // 复制 lib/ (JS 文件)
-  copyDirRecursive(path.join(srcRoot, 'lib'), path.join(destRoot, 'lib'));
-
-  // 复制 package.json
-  fs.copyFileSync(path.join(srcRoot, 'package.json'), path.join(destRoot, 'package.json'));
-
-  // 复制 build/Release/better_sqlite3.node (native binding)
-  const nativeSrc = path.join(srcRoot, 'build', 'Release', 'better_sqlite3.node');
-  const nativeDest = path.join(destRoot, 'build', 'Release', 'better_sqlite3.node');
-  if (fs.existsSync(nativeSrc)) {
-    fs.mkdirSync(path.dirname(nativeDest), { recursive: true });
-    fs.copyFileSync(nativeSrc, nativeDest);
-    const sizeMB = (fs.statSync(nativeDest).size / 1024 / 1024).toFixed(1);
-    console.log(`Bundled better-sqlite3 native module (${sizeMB}MB)`);
-  } else {
-    // prebuilds 格式（部分版本用这个）
-    const prebuildsDir = path.join(srcRoot, 'prebuilds');
-    if (fs.existsSync(prebuildsDir)) {
-      copyDirRecursive(prebuildsDir, path.join(destRoot, 'prebuilds'));
-      console.log('Bundled better-sqlite3 prebuilds');
-    } else {
-      console.warn('⚠️  better-sqlite3 native binding 未找到');
-    }
-  }
-
-  // Patch database.js: 替换 require('bindings') 为直接 require native 路径
-  // 原始: DEFAULT_ADDON || (DEFAULT_ADDON = require('bindings')('better_sqlite3.node'))
-  // 替换: DEFAULT_ADDON || (DEFAULT_ADDON = require('../build/Release/better_sqlite3.node'))
-  const dbJs = path.join(destRoot, 'lib', 'database.js');
-  if (fs.existsSync(dbJs)) {
-    let content = fs.readFileSync(dbJs, 'utf-8');
-    content = content.replace(
-      "require('bindings')('better_sqlite3.node')",
-      "require('../build/Release/better_sqlite3.node')",
-    );
-    fs.writeFileSync(dbJs, content, 'utf-8');
-    console.log('Patched database.js: removed bindings dependency');
-  }
-}
+// Bun 运行时使用内置 bun:sqlite，无需打包 native 模块
+// better-sqlite3 仅作为 Node.js 回退保留在 external 中
 
 /** 递归复制目录 */
 function copyDirRecursive(src: string, dest: string) {

@@ -8,6 +8,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
+import { isBun } from '../infrastructure/db/sqlite-adapter.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { MemoryMonitor } from '../infrastructure/memory-monitor.js';
 
@@ -27,7 +28,8 @@ export interface DiagnosticReport {
   system: {
     platform: string;
     arch: string;
-    nodeVersion: string;
+    runtime: string;
+    runtimeVersion: string;
     uptime: number;
     memoryUsage: { rss: number; heapUsed: number; heapTotal: number };
     cpuCount: number;
@@ -92,7 +94,8 @@ export function runDiagnostics(deps: {
     system: {
       platform: `${os.platform()} ${os.release()}`,
       arch: os.arch(),
-      nodeVersion: process.version,
+      runtime: isBun ? 'bun' : 'node',
+      runtimeVersion: isBun ? (globalThis as any).Bun.version : process.version,
       uptime: process.uptime(),
       memoryUsage: {
         rss: Math.round(mem.rss / 1024 / 1024),
@@ -252,8 +255,14 @@ function checkLaneQueue(laneQueue?: LaneQueue): CheckResult {
 
 function checkPIFramework(): CheckResult {
   try {
-    require.resolve('@mariozechner/pi-ai');
-    require.resolve('@mariozechner/pi-coding-agent');
+    // 使用 import.meta.resolve 替代 require.resolve（Bun 兼容）
+    if (typeof import.meta.resolve === 'function') {
+      import.meta.resolve('@mariozechner/pi-ai');
+      import.meta.resolve('@mariozechner/pi-coding-agent');
+    } else {
+      require.resolve('@mariozechner/pi-ai');
+      require.resolve('@mariozechner/pi-coding-agent');
+    }
     return { name: 'PI 框架', status: 'pass', message: 'pi-ai + pi-coding-agent 可用' };
   } catch {
     return { name: 'PI 框架', status: 'fail', message: 'PI 框架依赖缺失' };

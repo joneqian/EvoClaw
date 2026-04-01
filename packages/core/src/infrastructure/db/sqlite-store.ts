@@ -1,15 +1,21 @@
-import Database from 'better-sqlite3';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import { DEFAULT_DATA_DIR, DB_FILENAME } from '@evoclaw/shared';
+import { createDatabase, pragmaSet, type DatabaseInstance } from './sqlite-adapter.js';
+
+/** run() 返回类型 */
+export interface RunResult {
+  changes: number;
+  lastInsertRowid: number | bigint;
+}
 
 /**
- * SQLite 存储层 — 封装 better-sqlite3
+ * SQLite 存储层 — 自动适配 bun:sqlite / better-sqlite3
  * 默认使用 WAL 模式，数据文件存储在 ~/.evoclaw/data/evoclaw.db
  */
 export class SqliteStore {
-  private db: Database.Database;
+  private db: DatabaseInstance;
   readonly dbPath: string;
 
   constructor(dbPath?: string) {
@@ -23,12 +29,12 @@ export class SqliteStore {
       }
     }
 
-    this.db = new Database(this.dbPath);
+    this.db = createDatabase(this.dbPath);
 
     // 启用 WAL 模式
-    this.db.pragma('journal_mode = WAL');
+    pragmaSet(this.db, 'journal_mode', 'WAL');
     // 启用外键约束
-    this.db.pragma('foreign_keys = ON');
+    pragmaSet(this.db, 'foreign_keys', 'ON');
   }
 
   /** 执行原始 SQL（用于迁移） */
@@ -37,7 +43,7 @@ export class SqliteStore {
   }
 
   /** 预编译并执行语句 */
-  run(sql: string, ...params: unknown[]): Database.RunResult {
+  run(sql: string, ...params: unknown[]): RunResult {
     return this.db.prepare(sql).run(...params);
   }
 
@@ -61,8 +67,8 @@ export class SqliteStore {
     this.db.close();
   }
 
-  /** 获取底层 better-sqlite3 实例 */
-  get raw(): Database.Database {
+  /** 获取底层数据库实例 */
+  get raw(): DatabaseInstance {
     return this.db;
   }
 }

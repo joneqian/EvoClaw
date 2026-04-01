@@ -114,6 +114,7 @@ apps/desktop/src-tauri/gen/
 .evoclaw/
 prompt/
 
-# 内嵌 Node.js 二进制（由 scripts/download-node.mjs 下载）
+# 内嵌运行时二进制（由 download 脚本下载）
 apps/desktop/src-tauri/node-bin/
+apps/desktop/src-tauri/bun-bin/
 

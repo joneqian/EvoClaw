@@ -4,29 +4,30 @@
   "private": true,
   "type": "module",
   "engines": {
+    "bun": ">=1.3",
     "node": ">=22",
     "pnpm": ">=10"
   },
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "brand:apply": "node scripts/brand-apply.mjs",
+    "brand:apply": "bun scripts/brand-apply.mjs",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "dev:core": "turbo run dev --filter=@evoclaw/core",
 
     "dev": "./scripts/dev.sh",
-    "build": "node scripts/brand-apply.mjs && turbo run build",
-    "build:desktop": "node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "build": "bun scripts/brand-apply.mjs && turbo run build",
+    "build:desktop": "bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
     "build:dmg": "./scripts/build-dmg.sh",
 
     "dev:evoclaw": "./scripts/dev.sh",
-    "build:evoclaw": "node scripts/brand-apply.mjs && turbo run build",
-    "build:desktop:evoclaw": "node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "build:evoclaw": "bun scripts/brand-apply.mjs && turbo run build",
+    "build:desktop:evoclaw": "bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
     "build:dmg:evoclaw": "./scripts/build-dmg.sh",
 
     "dev:healthclaw": "BRAND=healthclaw ./scripts/dev.sh",
-    "build:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build",
-    "build:desktop:healthclaw": "BRAND=healthclaw node scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
+    "build:healthclaw": "BRAND=healthclaw bun scripts/brand-apply.mjs && turbo run build",
+    "build:desktop:healthclaw": "BRAND=healthclaw bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
     "build:dmg:healthclaw": "BRAND=healthclaw ./scripts/build-dmg.sh"
   },
   "devDependencies": {
@@ -39,7 +40,6 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3",
       "esbuild"
     ]
   }

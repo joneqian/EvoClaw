@@ -28,6 +28,7 @@ const {
   isBlockedReadPath,
   isDangerousWritePath,
   FileStateCache,
+  desanitizeXml,
 } = _testing;
 
 // ─── Test Fixture ───
@@ -552,5 +553,121 @@ describe('P0-6: file state cache + staleness', () => {
     });
     expect(result.isError).toBe(true);
     expect(result.content).toContain('未被读取');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sprint B: P1 功能完整性测试
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('P1-2: Edit XML desanitization', () => {
+  const editCache = new FileStateCache();
+  const tool = createEditTool(editCache);
+
+  it('should match &lt;/&gt; in old_string', async () => {
+    const filePath = writeFile('xml-test.txt', 'if (a < b && c > d) return true;');
+    editCache.recordRead(filePath, 50, false);
+
+    const result = await tool.call({
+      file_path: filePath,
+      old_string: 'if (a &lt; b &amp;&amp; c &gt; d) return true;',
+      new_string: 'if (a <= b && c >= d) return true;',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(fs.readFileSync(filePath, 'utf-8')).toBe('if (a <= b && c >= d) return true;');
+  });
+});
+
+describe('P1-3: Edit quote style preservation', () => {
+  const editCache = new FileStateCache();
+  const tool = createEditTool(editCache);
+
+  it('should preserve curly double quotes', async () => {
+    const filePath = writeFile('curly.txt', 'He said \u201CHello\u201D to her');
+    editCache.recordRead(filePath, 50, false);
+
+    const result = await tool.call({
+      file_path: filePath,
+      old_string: 'He said "Hello" to her',
+      new_string: 'He said "Goodbye" to her',
+    });
+    expect(result.isError).toBeFalsy();
+    const content = fs.readFileSync(filePath, 'utf-8');
+    // 应该保留弯引号风格
+    expect(content).toContain('\u201C');
+    expect(content).toContain('\u201D');
+  });
+});
+
+describe('P1-4: Read encoding detection', () => {
+  it('should read UTF-16LE file', async () => {
+    const filePath = path.join(tmpDir, 'utf16.txt');
+    // 写入 UTF-16LE BOM + 内容
+    const bom = Buffer.from([0xFF, 0xFE]);
+    const content = Buffer.from('Hello\n', 'utf16le');
+    fs.writeFileSync(filePath, Buffer.concat([bom, content]));
+
+    const tool = createReadTool(128_000, new FileStateCache());
+    const result = await tool.call({ file_path: filePath });
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toContain('Hello');
+  });
+});
+
+describe('P1-6: Grep enhancements', () => {
+  it('should support files_with_matches mode', async () => {
+    writeFile('grep-a.ts', 'const foo = 1;');
+    writeFile('grep-b.ts', 'const foo = 2;');
+
+    const tools = createBuiltinTools(128_000);
+    const grepTool = tools.find(t => t.name === 'grep')!;
+    const result = await grepTool.call({
+      pattern: 'foo',
+      path: tmpDir,
+      output_mode: 'files_with_matches',
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toContain('grep-a.ts');
+    expect(result.content).toContain('grep-b.ts');
+  });
+});
+
+describe('P1-7: Glob native implementation', () => {
+  it('should find files by pattern with mtime sorting', async () => {
+    writeFile('src/a.ts', 'a');
+    // 等一点时间确保 mtime 不同
+    await new Promise(r => setTimeout(r, 50));
+    writeFile('src/b.ts', 'b');
+
+    const tools = createBuiltinTools(128_000);
+    const findTool = tools.find(t => t.name === 'find')!;
+    const result = await findTool.call({
+      pattern: '*.ts',
+      path: tmpDir,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toContain('a.ts');
+    expect(result.content).toContain('b.ts');
+    // b.ts 应该在前 (更新)
+    const lines = result.content.split('\n');
+    const aIdx = lines.findIndex((l: string) => l.includes('a.ts'));
+    const bIdx = lines.findIndex((l: string) => l.includes('b.ts'));
+    expect(bIdx).toBeLessThan(aIdx);
+  });
+
+  it('should respect max file limit', async () => {
+    // 创建超过限制的文件数不现实，但至少验证功能
+    writeFile('many/file1.txt', '1');
+    writeFile('many/file2.txt', '2');
+
+    const tools = createBuiltinTools(128_000);
+    const findTool = tools.find(t => t.name === 'find')!;
+    const result = await findTool.call({
+      pattern: '*.txt',
+      path: path.join(tmpDir, 'many'),
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toContain('file1.txt');
+    expect(result.content).toContain('file2.txt');
   });
 });

@@ -39,7 +39,7 @@ import { ApiError, AbortError } from './types.js';
 import { streamLLM } from './stream-client.js';
 import { StreamingToolExecutor } from './streaming-tool-executor.js';
 import { maybeCompress } from './context-compactor.js';
-import { classifyApiError, isRecoverableInLoop, isAbortLike } from './error-recovery.js';
+import { classifyApiError, isRecoverableInLoop, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
 import type { ToolCallRecord } from '../types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
@@ -51,6 +51,9 @@ const log = createLogger('query-loop');
 
 /** 413 压缩重试最大次数 */
 const MAX_OVERFLOW_RETRIES = 2;
+
+/** P1-1: max_output_tokens 升级目标 (64k) */
+const ESCALATED_MAX_TOKENS = 64_000;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helper: Content Block Accumulation
@@ -116,6 +119,7 @@ function mapToToolCallRecords(
 interface RoundResult {
   assistantMessage: KernelMessage;
   usage: TokenUsage;
+  stopReason: string;
 }
 
 /**
@@ -130,9 +134,11 @@ async function streamOneRound(
   config: QueryLoopConfig,
   messages: readonly KernelMessage[],
   executor: StreamingToolExecutor,
+  maxTokensOverride?: number,
 ): Promise<RoundResult> {
   const blocks: ContentBlock[] = [];
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+  let stopReason = 'end_turn';
 
   // 当前累积中的 tool_use (用于跨事件追踪)
   const pendingToolUses = new Map<string, { id: string; name: string }>();
@@ -145,7 +151,7 @@ async function streamOneRound(
     systemPrompt: config.systemPrompt,
     messages,
     tools: config.tools,
-    maxTokens: config.maxTokens,
+    maxTokens: maxTokensOverride ?? config.maxTokens,
     thinking: config.thinking,
     signal: config.abortSignal,
   })) {
@@ -188,7 +194,7 @@ async function streamOneRound(
         throw new ApiError(event.message, event.status);
 
       case 'done':
-        // 流正常结束
+        stopReason = event.stopReason;
         break;
     }
   }
@@ -201,6 +207,7 @@ async function streamOneRound(
       usage,
     },
     usage,
+    stopReason,
   };
 }
 
@@ -219,6 +226,9 @@ async function streamOneRound(
 export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResult> {
   const messages: KernelMessage[] = [...config.messages];
   let turnCount = 0;
+  let maxOutputRecoveryCount = 0;
+  /** P1-1: 可升级的 maxTokens (max_output_tokens 恢复时升级到 64k) */
+  let effectiveMaxTokens = config.maxTokens;
   let fullResponse = '';
   const allToolCalls: ToolCallRecord[] = [];
   let totalInput = 0;
@@ -257,7 +267,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
 
     let roundResult: RoundResult;
     try {
-      roundResult = await streamOneRound(config, messages, executor);
+      roundResult = await streamOneRound(config, messages, executor, effectiveMaxTokens);
       overflowRetries = 0; // 成功后重置
     } catch (err) {
       // 413 overflow → 循环内压缩重试
@@ -304,6 +314,27 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     );
 
     if (toolUseBlocks.length === 0) {
+      // ─── P1-1: max_output_tokens 恢复 (参考 Claude Code query.ts) ───
+      if (roundResult.stopReason === 'max_tokens' && maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
+        maxOutputRecoveryCount++;
+
+        // 第一次: 尝试升级到 64k
+        if (maxOutputRecoveryCount === 1 && effectiveMaxTokens < ESCALATED_MAX_TOKENS) {
+          effectiveMaxTokens = ESCALATED_MAX_TOKENS;
+          log.info(`max_output_tokens 恢复: 升级到 ${ESCALATED_MAX_TOKENS} tokens (attempt ${maxOutputRecoveryCount})`);
+        } else {
+          log.info(`max_output_tokens 恢复: 注入 Resume 消息 (attempt ${maxOutputRecoveryCount})`);
+        }
+
+        // 注入恢复消息
+        messages.push({
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: [{ type: 'text', text: MAX_OUTPUT_RECOVERY_MESSAGE }],
+        });
+        continue; // 重试
+      }
+
       // 模型完成，无工具调用
       log.info(`模型完成 (turn ${turnCount})，无工具调用`);
       break;

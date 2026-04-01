@@ -160,8 +160,40 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
           return { content: `[图片: ${path.basename(filePath)}, ${mediaType}, ${data.length} bytes]\nbase64:${base64}` };
         }
 
-        // 文本文件
-        const content = fs.readFileSync(filePath, 'utf-8');
+        // P1-5: PDF 检测
+        if (ext === '.pdf') {
+          const pdfData = fs.readFileSync(filePath);
+          // 验证 PDF magic bytes
+          if (pdfData.length >= 5 && pdfData.slice(0, 5).toString() === '%PDF-') {
+            const pages = input.pages as string | undefined;
+            if (pdfData.length > 20 * 1024 * 1024) {
+              return { content: `错误：PDF 文件过大 (${(pdfData.length / 1024 / 1024).toFixed(1)}MB)，最大支持 20MB`, isError: true };
+            }
+            // 小于 3MB: 直接 base64
+            if (pdfData.length < 3 * 1024 * 1024) {
+              return { content: `[PDF: ${path.basename(filePath)}, ${pdfData.length} bytes${pages ? `, pages=${pages}` : ''}]\nbase64:${pdfData.toString('base64')}` };
+            }
+            // 大于 3MB: 尝试 pdftoppm 转 JPEG
+            try {
+              const pageArgs = pages ? `-f ${pages.split('-')[0]} -l ${pages.split('-')[1] ?? pages.split('-')[0]}` : '-l 20';
+              const jpegData = execSync(
+                `pdftoppm -jpeg -r 100 ${pageArgs} ${shellEscape(filePath)} /tmp/evoclaw-pdf`,
+                { timeout: 120_000, maxBuffer: 50 * 1024 * 1024 },
+              );
+              return { content: `[PDF 转 JPEG: ${path.basename(filePath)}]\nbase64:${Buffer.from(jpegData).toString('base64')}` };
+            } catch {
+              // pdftoppm 不可用 → 回退 base64
+              return { content: `[PDF: ${path.basename(filePath)}, ${pdfData.length} bytes]\nbase64:${pdfData.toString('base64')}` };
+            }
+          }
+        }
+
+        // P1-4: 编码检测 (UTF-16LE BOM)
+        const rawBuffer = fs.readFileSync(filePath);
+        const encoding = detectEncoding(rawBuffer);
+        const content = encoding === 'utf-16le'
+          ? rawBuffer.toString('utf16le').replace(/^\uFEFF/, '') // 去掉 BOM
+          : rawBuffer.toString('utf-8');
         const lines = content.split('\n');
         const totalLines = lines.length;
 
@@ -268,6 +300,18 @@ function createWriteTool(fileStateCache: FileStateCache): KernelTool {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// P1-4: 编码检测
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 检测文件编码 (UTF-16LE BOM vs UTF-8) */
+function detectEncoding(buffer: Buffer): 'utf-8' | 'utf-16le' {
+  if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+    return 'utf-16le';
+  }
+  return 'utf-8';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Edit Tool — 参考 Claude Code FileEditTool 三步匹配降级
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -276,6 +320,66 @@ function normalizeQuotes(text: string): string {
   return text
     .replace(/[\u201C\u201D]/g, '"')   // " " → "
     .replace(/[\u2018\u2019]/g, "'");  // ' ' → '
+}
+
+/** P1-2: XML 实体反消毒 (参考 Claude Code FileEditTool/utils.ts) */
+function desanitizeXml(text: string): string {
+  return text
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+/**
+ * P1-3: 引号风格保留 (参考 Claude Code FileEditTool/utils.ts)
+ *
+ * 如果 originalContext 使用弯引号，将 newString 中的直引号转为弯引号。
+ * 左引号上下文: 空格/行首/([{ 之后
+ * 右引号: 其他位置
+ * 缩写: 两字母间的 ' → 右单弯引号 (don't)
+ */
+function applyQuoteStyle(newString: string, originalContext: string): string {
+  // 检测原文是否包含弯引号
+  const hasCurlyDouble = /[\u201C\u201D]/.test(originalContext);
+  const hasCurlySingle = /[\u2018\u2019]/.test(originalContext);
+
+  if (!hasCurlyDouble && !hasCurlySingle) return newString;
+
+  let result = newString;
+
+  if (hasCurlyDouble) {
+    // 替换直双引号为弯双引号
+    result = result.replace(/"/g, (_, offset) => {
+      // 左引号: 字符串开头，或前面是空格/换行/([{
+      if (offset === 0 || /[\s\n([\{—–]/.test(result[offset - 1] ?? '')) {
+        return '\u201C'; // 左双弯引号
+      }
+      return '\u201D'; // 右双弯引号
+    });
+  }
+
+  if (hasCurlySingle) {
+    // 替换直单引号为弯单引号
+    result = result.replace(/'/g, (_, offset) => {
+      // 缩写检测: 前后都是字母 (don't, it's)
+      const prev = result[offset - 1] ?? '';
+      const next = result[offset + 1] ?? '';
+      if (/[a-zA-Z]/.test(prev) && /[a-zA-Z]/.test(next)) {
+        return '\u2019'; // 右单弯引号 (缩写)
+      }
+      // 左引号上下文
+      if (offset === 0 || /[\s\n([\{—–]/.test(prev)) {
+        return '\u2018'; // 左单弯引号
+      }
+      return '\u2019'; // 右单弯引号
+    });
+  }
+
+  return result;
 }
 
 function createEditTool(fileStateCache: FileStateCache): KernelTool {
@@ -360,6 +464,17 @@ function createEditTool(fileStateCache: FileStateCache): KernelTool {
           }
         }
 
+        // Step 3: P1-2 XML 反消毒 (参考 Claude Code desanitization)
+        if (matchCount === 0) {
+          const desanitized = desanitizeXml(oldString);
+          if (desanitized !== oldString) {
+            matchCount = countOccurrences(fileContent, desanitized);
+            if (matchCount > 0) {
+              actualOldString = desanitized;
+            }
+          }
+        }
+
         if (matchCount === 0) {
           return { content: `错误：old_string 未在文件中找到。请确认文本精确匹配（包括空格和缩进）`, isError: true };
         }
@@ -372,9 +487,11 @@ function createEditTool(fileStateCache: FileStateCache): KernelTool {
         }
 
         // ─── 执行替换 ───
+        // P1-3: 引号风格保留
+        const effectiveNewString = applyQuoteStyle(newString, actualOldString);
         const newContent = replaceAll
-          ? fileContent.replaceAll(actualOldString, newString)
-          : fileContent.replace(actualOldString, newString);
+          ? fileContent.replaceAll(actualOldString, effectiveNewString)
+          : fileContent.replace(actualOldString, effectiveNewString);
 
         fs.writeFileSync(filePath, newContent, 'utf-8');
 
@@ -410,6 +527,9 @@ function countOccurrences(text: string, search: string): number {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function createGrepTool(): KernelTool {
+  /** VCS 排除目录 (参考 Claude Code GrepTool) */
+  const VCS_EXCLUDES = ['.git', '.svn', '.hg', '.bzr', 'node_modules'];
+
   return {
     name: 'grep',
     description: '搜索文件内容，返回匹配行+文件路径+行号',
@@ -419,6 +539,9 @@ function createGrepTool(): KernelTool {
         pattern: { type: 'string', description: '搜索的正则表达式模式' },
         path: { type: 'string', description: '搜索目录 (默认当前目录)' },
         include: { type: 'string', description: '文件 glob 过滤 (如 "*.ts")' },
+        output_mode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: '输出模式 (默认 files_with_matches)' },
+        head_limit: { type: 'number', description: '限制结果数 (默认 250)' },
+        offset: { type: 'number', description: '跳过前 N 个结果' },
       },
       required: ['pattern'],
     },
@@ -427,23 +550,54 @@ function createGrepTool(): KernelTool {
       const pattern = input.pattern as string;
       const searchPath = (input.path as string) || process.cwd();
       const include = input.include as string | undefined;
+      const outputMode = (input.output_mode as string) || 'files_with_matches';
+      const headLimit = (input.head_limit as number) ?? 250;
+      const offset = (input.offset as number) ?? 0;
 
       if (!pattern) {
         return { content: '错误：缺少 pattern 参数', isError: true };
       }
 
       try {
-        // 优先使用 ripgrep，回退到 grep
         const hasRg = hasCommand('rg');
         let cmd: string;
 
         if (hasRg) {
-          cmd = `rg -n --max-count ${GREP_MAX_MATCHES} --max-columns 500 --hidden`;
-          cmd += ` --glob '!.git'`;
+          // P1-6: ripgrep + VCS 排除
+          const excludes = VCS_EXCLUDES.map(d => `--glob '!${d}'`).join(' ');
+
+          switch (outputMode) {
+            case 'content':
+              cmd = `rg -n --max-columns 500 --hidden ${excludes}`;
+              break;
+            case 'count':
+              cmd = `rg -c --hidden ${excludes}`;
+              break;
+            case 'files_with_matches':
+            default:
+              cmd = `rg -l --hidden ${excludes}`;
+              break;
+          }
           if (include) cmd += ` --glob '${include}'`;
-          cmd += ` -e ${shellEscape(pattern)} ${shellEscape(searchPath)}`;
+          // 以 - 开头的 pattern 用 -e 避免被当作 flag
+          cmd += pattern.startsWith('-')
+            ? ` -e ${shellEscape(pattern)}`
+            : ` ${shellEscape(pattern)}`;
+          cmd += ` ${shellEscape(searchPath)}`;
         } else {
-          cmd = `grep -rn --max-count=${GREP_MAX_MATCHES}`;
+          // 回退 grep
+          switch (outputMode) {
+            case 'content':
+              cmd = `grep -rn`;
+              break;
+            case 'count':
+              cmd = `grep -rc`;
+              break;
+            case 'files_with_matches':
+            default:
+              cmd = `grep -rl`;
+              break;
+          }
           if (include) cmd += ` --include='${include}'`;
           cmd += ` -E ${shellEscape(pattern)} ${shellEscape(searchPath)}`;
         }
@@ -459,14 +613,16 @@ function createGrepTool(): KernelTool {
           return { content: '未找到匹配' };
         }
 
-        // 限制输出行数
-        const lines = result.trim().split('\n');
-        const limited = lines.slice(0, GREP_MAX_MATCHES);
+        // P1-6: 分页 (offset + head_limit)
+        const allLines = result.trim().split('\n');
+        const afterOffset = allLines.slice(offset);
+        const limited = headLimit > 0 ? afterOffset.slice(0, headLimit) : afterOffset;
         const output = limited.join('\n');
+        const truncated = afterOffset.length > limited.length;
 
         return {
-          content: lines.length > GREP_MAX_MATCHES
-            ? `${output}\n\n[... 共 ${lines.length} 个匹配，显示前 ${GREP_MAX_MATCHES} 个]`
+          content: truncated
+            ? `${output}\n\n[... 共 ${allLines.length} 个结果，显示 ${offset + 1}-${offset + limited.length}]`
             : output,
         };
       } catch (err) {
@@ -496,7 +652,7 @@ function createFindTool(): KernelTool {
     inputSchema: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: 'glob 模式 (如 "**/*.ts", "src/**/test*")' },
+        pattern: { type: 'string', description: '文件名 glob 模式 (如 "*.ts", "test*")' },
         path: { type: 'string', description: '搜索目录 (默认当前目录)' },
       },
       required: ['pattern'],
@@ -511,25 +667,26 @@ function createFindTool(): KernelTool {
       }
 
       try {
-        // 使用 find + glob 模式
-        const cmd = `find ${shellEscape(searchPath)} -maxdepth 10 -type f -name ${shellEscape(pattern)} 2>/dev/null | head -${FIND_MAX_FILES}`;
+        // P1-7: 原生 fs 递归 + 简单 glob 匹配 (替代 shell find)
+        const files = findFilesRecursive(searchPath, pattern, FIND_MAX_FILES, 10);
 
-        const result = execSync(cmd, {
-          encoding: 'utf-8',
-          timeout: 30_000,
-          maxBuffer: 5 * 1024 * 1024,
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-
-        if (!result.trim()) {
+        if (files.length === 0) {
           return { content: '未找到匹配文件' };
         }
 
-        const files = result.trim().split('\n');
+        // 按 mtime 排序 (最新优先，参考 Claude Code GlobTool)
+        files.sort((a: string, b: string) => {
+          try {
+            return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs;
+          } catch { return 0; }
+        });
+
+        const truncated = files.length >= FIND_MAX_FILES;
+        const output = files.join('\n');
         return {
-          content: files.length >= FIND_MAX_FILES
-            ? `${files.join('\n')}\n\n[... 结果已截断，共显示 ${FIND_MAX_FILES} 个文件]`
-            : files.join('\n'),
+          content: truncated
+            ? `${output}\n\n[... 结果已截断，共显示 ${FIND_MAX_FILES} 个文件]`
+            : output,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -596,6 +753,52 @@ function createLsTool(): KernelTool {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * P1-7: 递归搜索文件 (原生 fs，替代 shell find)
+ * 简单 glob 匹配: * 匹配任意字符，? 匹配单个字符
+ */
+function findFilesRecursive(
+  dir: string,
+  pattern: string,
+  maxFiles: number,
+  maxDepth: number,
+  depth = 0,
+  results: string[] = [],
+): string[] {
+  if (depth > maxDepth || results.length >= maxFiles) return results;
+
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (results.length >= maxFiles) break;
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        // 跳过隐藏目录和 node_modules
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        findFilesRecursive(fullPath, pattern, maxFiles, maxDepth, depth + 1, results);
+      } else if (entry.isFile()) {
+        if (simpleGlobMatch(entry.name, pattern)) {
+          results.push(fullPath);
+        }
+      }
+    }
+  } catch {
+    // 权限不足等错误，跳过
+  }
+
+  return results;
+}
+
+/** 简单 glob 匹配: * 匹配任意字符序列，? 匹配单个字符 */
+function simpleGlobMatch(filename: string, pattern: string): boolean {
+  const regex = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // 转义特殊字符
+    .replace(/\*/g, '.*')                   // * → .*
+    .replace(/\?/g, '.');                   // ? → .
+  return new RegExp(`^${regex}$`, 'i').test(filename);
+}
+
 /** shell 参数转义 */
 function shellEscape(arg: string): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
@@ -649,4 +852,8 @@ export const _testing = {
   isBlockedReadPath,
   isDangerousWritePath,
   FileStateCache,
+  desanitizeXml,
+  applyQuoteStyle,
+  simpleGlobMatch,
+  detectEncoding,
 };

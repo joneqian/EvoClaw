@@ -19,6 +19,15 @@ EvoClaw 当前通过 PI 框架 (pi-ai + pi-agent-core + pi-coding-agent) 实现 
 
 ---
 
+## 核心原则
+
+1. **内核的质量和能力是唯一标准，不要偷懒** — 每个模块都要做到生产级质量，不接受"先凑合后优化"。边界情况、错误处理、性能都要一步到位。
+2. **能使用 Claude Code 源码的直接抄，不要造轮子** — Claude Code 源码位于 `~/src/github/claude-code-source/src`，对于 SSE 解析、工具执行编排、上下文压缩等核心逻辑，优先从 Claude Code 源码中提取和适配，而非从零实现。
+3. **每次开始前都先阅读 Claude Code 研究分析报告** — 报告位于 `~/src/github/claude-code-source/docs/research`，每个 Phase 开工前必须先阅读对应的研究报告（如 Phase 1 读 `04-streaming.md`，Phase 4 读 `03-agentic-loop.md`），确保理解 Claude Code 的设计决策和边界处理后再动手。
+4. **需要有完整的测试用例** — 每个 kernel 模块都必须有对应的测试文件，覆盖正常路径、边界情况和错误场景，目标覆盖率 ≥80%。测试先行：先写测试验证接口契约，再实现。
+
+---
+
 ## PI 耦合面分析 (6 文件)
 
 | 文件 | PI 耦合内容 | 替换策略 |

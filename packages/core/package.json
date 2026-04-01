@@ -13,9 +13,6 @@
   "dependencies": {
     "@evoclaw/shared": "workspace:*",
     "@hono/node-server": "^1.14.0",
-    "@mariozechner/pi-agent-core": "^0.57.1",
-    "@mariozechner/pi-ai": "^0.57.1",
-    "@mariozechner/pi-coding-agent": "^0.57.1",
     "better-sqlite3": "^11.9.0",
     "hono": "^4.7.0"
   },

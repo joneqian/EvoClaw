@@ -315,17 +315,20 @@ export function createProviderRoutes(
       const ext = getProviderExtension(id);
       const testModel = ext?.models[0]?.id ?? provider?.models[0]?.id ?? 'gpt-4o-mini';
 
-      // 动态导入 PI 做一次轻量级连接测试
-      const piAi = await import('@mariozechner/pi-ai');
-      const piCoding = await import('@mariozechner/pi-coding-agent');
-      piAi.registerBuiltInApiProviders();
+      // 轻量级连接测试: 用 fetch 直接调用 /models 端点验证 API Key
+      const { buildAuthHeaders } = await import('../provider/model-fetcher.js');
+      const headers = buildAuthHeaders(apiKey, id, baseUrl);
+      const modelsUrl = `${baseUrl}/models`;
 
-      const { toPIProvider } = await import('../provider/pi-provider-map.js');
-      const piProviderId = toPIProvider(id);
-      const authStorage = piCoding.AuthStorage.inMemory({
-        [piProviderId]: { type: 'api_key' as const, key: apiKey },
+      const testResp = await fetch(modelsUrl, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
       });
-      const modelRegistry = new piCoding.ModelRegistry(authStorage);
+
+      if (!testResp.ok) {
+        const errText = await testResp.text().catch(() => '');
+        return c.json({ success: false, error: `API 验证失败: HTTP ${testResp.status} ${errText.slice(0, 200)}` });
+      }
 
       return c.json({
         success: true,

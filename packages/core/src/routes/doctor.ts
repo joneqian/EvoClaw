@@ -76,7 +76,7 @@ export function runDiagnostics(deps: {
   checks.push(checkLaneQueue(laneQueue));
 
   // 11. PI 框架可用性检查
-  checks.push(checkPIFramework());
+  checks.push(checkAgentKernel());
 
   // 12. Agent 数量检查
   checks.push(checkAgentCount(store));
@@ -253,19 +253,13 @@ function checkLaneQueue(laneQueue?: LaneQueue): CheckResult {
   };
 }
 
-function checkPIFramework(): CheckResult {
+function checkAgentKernel(): CheckResult {
   try {
-    // 使用 import.meta.resolve 替代 require.resolve（Bun 兼容）
-    if (typeof import.meta.resolve === 'function') {
-      import.meta.resolve('@mariozechner/pi-ai');
-      import.meta.resolve('@mariozechner/pi-coding-agent');
-    } else {
-      require.resolve('@mariozechner/pi-ai');
-      require.resolve('@mariozechner/pi-coding-agent');
-    }
-    return { name: 'PI 框架', status: 'pass', message: 'pi-ai + pi-coding-agent 可用' };
+    // 验证自研 Agent Kernel 模块可用
+    require.resolve('./kernel/index.js');
+    return { name: 'Agent Kernel', status: 'pass', message: '自研 Agent 内核可用' };
   } catch {
-    return { name: 'PI 框架', status: 'fail', message: 'PI 框架依赖缺失' };
+    return { name: 'Agent Kernel', status: 'fail', message: 'Agent 内核模块缺失' };
   }
 }
 

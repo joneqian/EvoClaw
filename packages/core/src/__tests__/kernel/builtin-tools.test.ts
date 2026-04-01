@@ -25,6 +25,9 @@ const {
   normalizeQuotes,
   countOccurrences,
   shellEscape,
+  isBlockedReadPath,
+  isDangerousWritePath,
+  FileStateCache,
 } = _testing;
 
 // ─── Test Fixture ───
@@ -52,7 +55,7 @@ function writeFile(name: string, content: string): string {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('read tool', () => {
-  const tool = createReadTool(128_000);
+  const tool = createReadTool(128_000, new FileStateCache());
 
   it('should read file with line numbers (cat -n format)', async () => {
     const filePath = writeFile('test.txt', 'line1\nline2\nline3');
@@ -129,7 +132,8 @@ describe('read tool', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('write tool', () => {
-  const tool = createWriteTool();
+  const cache = new FileStateCache();
+  const tool = createWriteTool(cache);
 
   it('should create new file', async () => {
     const filePath = path.join(tmpDir, 'new.txt');
@@ -141,6 +145,7 @@ describe('write tool', () => {
 
   it('should overwrite existing file', async () => {
     const filePath = writeFile('existing.txt', 'old content');
+    cache.recordRead(filePath, 11, false); // 模拟先 read
     const result = await tool.call({ file_path: filePath, content: 'new content' });
     expect(result.isError).toBeFalsy();
     expect(result.content).toContain('已更新');
@@ -173,10 +178,18 @@ describe('write tool', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('edit tool', () => {
-  const tool = createEditTool();
+  const editCache = new FileStateCache();
+  const tool = createEditTool(editCache);
+
+  /** 创建文件并模拟 read (先读后写) */
+  function writeAndRead(name: string, content: string): string {
+    const filePath = writeFile(name, content);
+    editCache.recordRead(filePath, content.length, false);
+    return filePath;
+  }
 
   it('should replace text exactly', async () => {
-    const filePath = writeFile('edit.txt', 'hello world\nfoo bar');
+    const filePath = writeAndRead('edit.txt', 'hello world\nfoo bar');
     const result = await tool.call({
       file_path: filePath,
       old_string: 'hello world',
@@ -188,7 +201,7 @@ describe('edit tool', () => {
   });
 
   it('should fail when old_string not found', async () => {
-    const filePath = writeFile('edit2.txt', 'hello world');
+    const filePath = writeAndRead('edit2.txt', 'hello world');
     const result = await tool.call({
       file_path: filePath,
       old_string: 'nonexistent',
@@ -199,7 +212,7 @@ describe('edit tool', () => {
   });
 
   it('should fail for ambiguous matches without replace_all', async () => {
-    const filePath = writeFile('edit3.txt', 'foo\nfoo\nbar');
+    const filePath = writeAndRead('edit3.txt', 'foo\nfoo\nbar');
     const result = await tool.call({
       file_path: filePath,
       old_string: 'foo',
@@ -210,7 +223,7 @@ describe('edit tool', () => {
   });
 
   it('should replace all with replace_all: true', async () => {
-    const filePath = writeFile('edit4.txt', 'foo\nfoo\nbar');
+    const filePath = writeAndRead('edit4.txt', 'foo\nfoo\nbar');
     const result = await tool.call({
       file_path: filePath,
       old_string: 'foo',
@@ -223,7 +236,7 @@ describe('edit tool', () => {
   });
 
   it('should match with quote normalization', async () => {
-    const filePath = writeFile('quotes.txt', 'He said \u201CHello\u201D');
+    const filePath = writeAndRead('quotes.txt', 'He said \u201CHello\u201D');
     const result = await tool.call({
       file_path: filePath,
       old_string: 'He said "Hello"', // 直引号
@@ -246,7 +259,7 @@ describe('edit tool', () => {
   });
 
   it('should reject empty old_string on existing file', async () => {
-    const filePath = writeFile('existing.txt', 'content');
+    const filePath = writeAndRead('existing.txt', 'content');
     const result = await tool.call({
       file_path: filePath,
       old_string: '',
@@ -257,7 +270,7 @@ describe('edit tool', () => {
   });
 
   it('should reject same old_string and new_string', async () => {
-    const filePath = writeFile('same.txt', 'content');
+    const filePath = writeAndRead('same.txt', 'content');
     const result = await tool.call({
       file_path: filePath,
       old_string: 'content',
@@ -378,5 +391,166 @@ describe('createBuiltinTools', () => {
     expect(toolMap.get('grep')!.isConcurrencySafe()).toBe(true);
     expect(toolMap.get('write')!.isConcurrencySafe()).toBe(false);
     expect(toolMap.get('edit')!.isConcurrencySafe()).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Sprint A: P0 安全防护测试
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('P0-3: blocked read paths', () => {
+  it('should detect /dev/zero', () => {
+    expect(isBlockedReadPath('/dev/zero')).toBe(true);
+  });
+
+  it('should detect /proc/self/environ', () => {
+    expect(isBlockedReadPath('/proc/self/environ')).toBe(true);
+  });
+
+  it('should detect /dev/fd/N', () => {
+    expect(isBlockedReadPath('/dev/fd/3')).toBe(true);
+  });
+
+  it('should detect /proc/PID/fd/N', () => {
+    expect(isBlockedReadPath('/proc/1234/fd/0')).toBe(true);
+  });
+
+  it('should allow normal paths', () => {
+    expect(isBlockedReadPath('/home/user/file.txt')).toBe(false);
+    expect(isBlockedReadPath('/tmp/test.txt')).toBe(false);
+  });
+
+  it('should block via read tool', async () => {
+    const tool = createReadTool(128_000, new FileStateCache());
+    const result = await tool.call({ file_path: '/dev/zero' });
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('不允许读取');
+  });
+});
+
+describe('P0-5: dangerous file protection', () => {
+  it('should detect .bashrc', () => {
+    expect(isDangerousWritePath('/home/user/.bashrc')).toBe(true);
+  });
+
+  it('should detect .env', () => {
+    expect(isDangerousWritePath('/project/.env')).toBe(true);
+  });
+
+  it('should detect .git directory', () => {
+    expect(isDangerousWritePath('/project/.git/config')).toBe(true);
+  });
+
+  it('should detect .ssh directory', () => {
+    expect(isDangerousWritePath('/home/user/.ssh/config')).toBe(true);
+  });
+
+  it('should allow normal paths', () => {
+    expect(isDangerousWritePath('/project/src/index.ts')).toBe(false);
+    expect(isDangerousWritePath('/tmp/output.txt')).toBe(false);
+  });
+
+  it('should block edit on .bashrc', async () => {
+    const cache = new FileStateCache();
+    const tool = createEditTool(cache);
+    const result = await tool.call({
+      file_path: '/home/user/.bashrc',
+      old_string: 'export PATH',
+      new_string: 'export PATH=/evil',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('受保护');
+  });
+
+  it('should block write on .gitconfig', async () => {
+    const cache = new FileStateCache();
+    const tool = createWriteTool(cache);
+    const result = await tool.call({
+      file_path: '/home/user/.gitconfig',
+      content: '[user]\nname = evil',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('受保护');
+  });
+});
+
+describe('P0-6: file state cache + staleness', () => {
+  it('should track read state', () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('cached.txt', 'content');
+
+    expect(cache.wasReadBefore(filePath)).toBe(false);
+    cache.recordRead(filePath, 7, false);
+    expect(cache.wasReadBefore(filePath)).toBe(true);
+  });
+
+  it('should detect unmodified file as fresh', () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('fresh.txt', 'content');
+
+    cache.recordRead(filePath, 7, false);
+    expect(cache.checkStaleness(filePath)).toBeNull();
+  });
+
+  it('should detect externally modified file', async () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('modified.txt', 'original');
+
+    cache.recordRead(filePath, 8, false);
+
+    // 等一小段时间确保 mtime 变化
+    await new Promise(r => setTimeout(r, 50));
+    fs.writeFileSync(filePath, 'changed by external', 'utf-8');
+
+    const stale = cache.checkStaleness(filePath);
+    expect(stale).toContain('被外部修改');
+  });
+
+  it('should skip staleness check for partial reads', () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('partial.txt', 'content');
+
+    cache.recordRead(filePath, 7, true); // partial view
+    // 即使修改也不报 stale
+    fs.writeFileSync(filePath, 'changed', 'utf-8');
+    expect(cache.checkStaleness(filePath)).toBeNull();
+  });
+
+  it('should block write on unread file', async () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('unread.txt', 'content');
+    const tool = createWriteTool(cache);
+
+    const result = await tool.call({ file_path: filePath, content: 'new content' });
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('未被读取');
+  });
+
+  it('should allow write after read', async () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('readfirst.txt', 'original');
+
+    // 先读
+    cache.recordRead(filePath, 8, false);
+
+    // 再写
+    const tool = createWriteTool(cache);
+    const result = await tool.call({ file_path: filePath, content: 'updated' });
+    expect(result.isError).toBeFalsy();
+    expect(fs.readFileSync(filePath, 'utf-8')).toBe('updated');
+  });
+
+  it('should block edit on unread file', async () => {
+    const cache = new FileStateCache();
+    const filePath = writeFile('unread-edit.txt', 'hello world');
+    const tool = createEditTool(cache);
+
+    const result = await tool.call({
+      file_path: filePath,
+      old_string: 'hello',
+      new_string: 'hi',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain('未被读取');
   });
 });

@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import type { KernelTool, ToolCallResult } from './types.js';
+import { FileStateCache } from './file-state-cache.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -38,6 +39,53 @@ const CHARS_PER_TOKEN = 4;
 /** 图片文件扩展名 */
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Safety Constants — P0-3/P0-5 安全防护
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** P0-3: 阻止读取的危险设备路径 (参考 Claude Code FileReadTool) */
+const BLOCKED_READ_PATHS = new Set([
+  '/dev/zero', '/dev/random', '/dev/urandom', '/dev/full',
+  '/dev/stdin', '/dev/tty', '/dev/console',
+  '/dev/stdout', '/dev/stderr',
+  '/dev/fd/0', '/dev/fd/1', '/dev/fd/2',
+]);
+
+/** P0-3: 阻止读取的危险路径正则 */
+const BLOCKED_READ_PATH_PATTERNS = [
+  /^\/dev\/fd\/\d+$/,
+  /^\/proc\/\d+\/fd\/\d+$/,
+  /^\/proc\/self\/fd\/\d+$/,
+  /^\/proc\/self\/environ$/,
+];
+
+/** P0-5: 受保护的文件名 (basename 匹配) */
+const DANGEROUS_FILES = new Set([
+  '.gitconfig', '.gitmodules',
+  '.bashrc', '.zshrc', '.profile', '.bash_profile',
+  '.env', '.env.local', '.env.production',
+]);
+
+/** P0-5: 受保护的路径组件 (路径中任一段匹配) */
+const DANGEROUS_PATH_SEGMENTS = new Set([
+  '.git', '.vscode', '.idea', '.claude',
+  '.ssh', '.aws', '.gnupg',
+]);
+
+/** 检测路径是否被阻止读取 */
+function isBlockedReadPath(filePath: string): boolean {
+  if (BLOCKED_READ_PATHS.has(filePath)) return true;
+  return BLOCKED_READ_PATH_PATTERNS.some(p => p.test(filePath));
+}
+
+/** 检测路径是否是受保护文件 (edit/write 拒绝) */
+function isDangerousWritePath(filePath: string): boolean {
+  const basename = path.basename(filePath);
+  if (DANGEROUS_FILES.has(basename)) return true;
+  const segments = filePath.split(path.sep);
+  return segments.some(s => DANGEROUS_PATH_SEGMENTS.has(s));
+}
+
 /** grep 最大匹配数 */
 const GREP_MAX_MATCHES = 100;
 
@@ -48,7 +96,7 @@ const FIND_MAX_FILES = 1000;
 // Read Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createReadTool(contextWindowTokens: number): KernelTool {
+function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCache): KernelTool {
   // 自适应读取上限 (参考 adaptive-read.ts)
   const adaptiveMaxBytes = Math.min(
     Math.max(contextWindowTokens * CHARS_PER_TOKEN * CONTEXT_SHARE, 50 * 1024),
@@ -76,6 +124,11 @@ function createReadTool(contextWindowTokens: number): KernelTool {
 
       if (!filePath) {
         return { content: '错误：缺少 file_path 参数', isError: true };
+      }
+
+      // P0-3: 阻止危险设备路径
+      if (isBlockedReadPath(filePath)) {
+        return { content: `错误：不允许读取此路径 - ${filePath}`, isError: true };
       }
 
       try {
@@ -123,6 +176,10 @@ function createReadTool(contextWindowTokens: number): KernelTool {
           return `${lineNum}\t${line}`;
         }).join('\n');
 
+        // P0-6: 记录文件读取状态
+        const isPartialView = (offset > 1) || (limit < totalLines);
+        fileStateCache.recordRead(filePath, content.length, isPartialView);
+
         // 截断标记
         const truncated = endIdx < totalLines;
         const result = truncated
@@ -148,7 +205,7 @@ function createReadTool(contextWindowTokens: number): KernelTool {
 // Write Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createWriteTool(): KernelTool {
+function createWriteTool(fileStateCache: FileStateCache): KernelTool {
   return {
     name: 'write',
     description: '创建或覆盖文件，自动创建父目录',
@@ -172,11 +229,25 @@ function createWriteTool(): KernelTool {
         return { content: '错误：缺少 content 参数', isError: true };
       }
 
+      // P0-5: 危险文件保护
+      if (isDangerousWritePath(filePath)) {
+        return { content: `错误：此文件受保护，不允许修改 - ${filePath}`, isError: true };
+      }
+
       try {
         const dir = path.dirname(filePath);
         fs.mkdirSync(dir, { recursive: true });
 
         const existed = fs.existsSync(filePath);
+
+        // P0-6: 覆盖已存在文件时检查 staleness
+        if (existed) {
+          const stale = fileStateCache.checkStaleness(filePath);
+          if (stale) {
+            return { content: `错误：${stale} - ${filePath}`, isError: true };
+          }
+        }
+
         fs.writeFileSync(filePath, content, 'utf-8');
 
         const lineCount = content.split('\n').length;
@@ -207,7 +278,7 @@ function normalizeQuotes(text: string): string {
     .replace(/[\u2018\u2019]/g, "'");  // ' ' → '
 }
 
-function createEditTool(): KernelTool {
+function createEditTool(fileStateCache: FileStateCache): KernelTool {
   return {
     name: 'edit',
     description: '精确替换文件中的文本片段（oldText → newText）',
@@ -233,6 +304,11 @@ function createEditTool(): KernelTool {
       if (newString === undefined) return { content: '错误：缺少 new_string 参数', isError: true };
       if (oldString === newString) return { content: '错误：old_string 和 new_string 相同，无需替换', isError: true };
 
+      // P0-5: 危险文件保护
+      if (isDangerousWritePath(filePath)) {
+        return { content: `错误：此文件受保护，不允许修改 - ${filePath}`, isError: true };
+      }
+
       try {
         if (!fs.existsSync(filePath)) {
           // 空 old_string + 文件不存在 → 创建新文件
@@ -249,6 +325,12 @@ function createEditTool(): KernelTool {
         const stat = fs.statSync(filePath);
         if (stat.size > 1024 * 1024 * 1024) {
           return { content: '错误：文件过大 (>1 GiB)，无法编辑', isError: true };
+        }
+
+        // P0-6: 先读后写校验
+        const stale = fileStateCache.checkStaleness(filePath);
+        if (stale) {
+          return { content: `错误：${stale} - ${filePath}`, isError: true };
         }
 
         const fileContent = fs.readFileSync(filePath, 'utf-8');
@@ -540,10 +622,13 @@ function hasCommand(cmd: string): boolean {
  * @returns KernelTool 数组
  */
 export function createBuiltinTools(contextWindowTokens: number): KernelTool[] {
+  // 共享文件状态缓存 (read/edit/write 用于先读后写校验)
+  const fileStateCache = new FileStateCache();
+
   return [
-    createReadTool(contextWindowTokens),
-    createWriteTool(),
-    createEditTool(),
+    createReadTool(contextWindowTokens, fileStateCache),
+    createWriteTool(fileStateCache),
+    createEditTool(fileStateCache),
     createGrepTool(),
     createFindTool(),
     createLsTool(),
@@ -561,4 +646,7 @@ export const _testing = {
   normalizeQuotes,
   countOccurrences,
   shellEscape,
+  isBlockedReadPath,
+  isDangerousWritePath,
+  FileStateCache,
 };

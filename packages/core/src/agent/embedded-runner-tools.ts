@@ -55,6 +55,12 @@ export function createEnhancedExecTool() {
 
       if (!command) return '错误：缺少 command 参数';
 
+      // P0-4: 危险命令检测 (参考 Claude Code destructiveCommandWarning.ts)
+      const destructiveWarning = detectDestructiveCommand(command);
+      if (destructiveWarning) {
+        return `⚠️ 危险命令检测: ${destructiveWarning}\n命令: ${command}\n\n如需执行，请通过权限系统确认。`;
+      }
+
       try {
         const output = execSync(command, {
           cwd: workdir,
@@ -97,3 +103,46 @@ export function createEnhancedExecTool() {
     },
   };
 }
+
+// ─── P0-4: 危险命令检测 ───
+
+/** 危险命令模式 (参考 Claude Code BashTool/destructiveCommandWarning.ts) */
+const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; warning: string }> = [
+  // 文件删除
+  { pattern: /\brm\s+(-[rf]+\s+|.*--force|.*--recursive)/i, warning: '删除文件 (rm -rf)' },
+  { pattern: /\brm\s+-[a-z]*r[a-z]*f|rm\s+-[a-z]*f[a-z]*r/i, warning: '删除文件 (rm -rf)' },
+  // Git 不可逆操作
+  { pattern: /\bgit\s+reset\s+--hard/i, warning: '不可逆 git 操作 (reset --hard)' },
+  { pattern: /\bgit\s+push\s+.*--force/i, warning: '强制推送 (push --force)' },
+  { pattern: /\bgit\s+clean\s+-[a-z]*f/i, warning: '清理未跟踪文件 (clean -f)' },
+  { pattern: /\bgit\s+checkout\s+--\s+\./i, warning: '丢弃所有本地更改' },
+  // 数据库
+  { pattern: /\bdrop\s+(table|database|schema)/i, warning: '删除数据库对象 (DROP)' },
+  { pattern: /\btruncate\s+table/i, warning: '清空数据表 (TRUNCATE)' },
+  // 基础设施
+  { pattern: /\bkubectl\s+delete/i, warning: '删除 K8s 资源' },
+  { pattern: /\bterraform\s+destroy/i, warning: '销毁基础设施' },
+  // 危险 shell 操作
+  { pattern: /\bchmod\s+777/i, warning: '设置全局可写权限' },
+  { pattern: /\bmkfs\b/i, warning: '格式化磁盘' },
+  { pattern: /\bdd\s+if=.*of=\/dev\//i, warning: '直接写入设备' },
+];
+
+/**
+ * 检测命令是否包含危险操作
+ * @returns 危险描述（null 表示安全）
+ */
+function detectDestructiveCommand(command: string): string | null {
+  for (const { pattern, warning } of DESTRUCTIVE_PATTERNS) {
+    if (pattern.test(command)) {
+      return warning;
+    }
+  }
+  return null;
+}
+
+/** @internal 仅供测试使用 */
+export const _testing = {
+  detectDestructiveCommand,
+  DESTRUCTIVE_PATTERNS,
+};

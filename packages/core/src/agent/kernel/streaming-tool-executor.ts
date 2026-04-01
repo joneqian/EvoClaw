@@ -61,6 +61,17 @@ export class StreamingToolExecutor {
   private activeConcurrent = 0;
   private discarded = false;
 
+  /**
+   * 兄弟工具取消控制器 (参考 Claude Code siblingAbortController)
+   * Bash 工具执行失败时，通过此 controller 取消其他并行工具
+   */
+  private siblingAbortController = new AbortController();
+  private hasErrored = false;
+  private erroredToolName: string | undefined;
+
+  /** Bash 工具名称 — 只有 Bash 错误会取消兄弟 */
+  private static readonly BASH_TOOL_NAME = 'bash';
+
   constructor(tools: readonly KernelTool[], maxConcurrency = 8) {
     this.toolMap = new Map(tools.map(t => [t.name, t]));
     this.maxConcurrency = maxConcurrency;
@@ -108,6 +119,28 @@ export class StreamingToolExecutor {
     for (const tracked of this.tools) {
       if (this.discarded) break;
       if (config.signal?.aborted) break;
+
+      // 兄弟错误: 为未完成的工具生成合成错误
+      if (this.hasErrored && tracked.status === 'queued') {
+        const syntheticResult: ToolCallResult = {
+          content: `已中止: 兄弟工具 ${this.erroredToolName ?? 'bash'} 执行失败`,
+          isError: true,
+        };
+        config.onEvent({
+          type: 'tool_end',
+          toolName: tracked.block.name,
+          toolResult: syntheticResult.content,
+          isError: true,
+          timestamp: Date.now(),
+        });
+        results.push({
+          type: 'tool_result',
+          tool_use_id: tracked.block.id,
+          content: syntheticResult.content,
+          is_error: true,
+        });
+        continue;
+      }
 
       // 未开始执行的 → 现在执行
       if (tracked.status === 'queued') {
@@ -180,6 +213,14 @@ export class StreamingToolExecutor {
         if (tracked.isConcurrencySafe) {
           this.activeConcurrent--;
         }
+
+        // Bash 错误 → 取消兄弟工具 (参考 Claude Code)
+        if (result.isError && tracked.block.name === StreamingToolExecutor.BASH_TOOL_NAME) {
+          this.hasErrored = true;
+          this.erroredToolName = tracked.block.name;
+          this.siblingAbortController.abort('sibling_error');
+        }
+
         return result;
       })
       .catch(err => {
@@ -192,6 +233,14 @@ export class StreamingToolExecutor {
           isError: true,
         };
         tracked.result = result;
+
+        // Bash 错误 → 取消兄弟工具
+        if (tracked.block.name === StreamingToolExecutor.BASH_TOOL_NAME) {
+          this.hasErrored = true;
+          this.erroredToolName = tracked.block.name;
+          this.siblingAbortController.abort('sibling_error');
+        }
+
         return result;
       });
   }
@@ -203,7 +252,8 @@ export class StreamingToolExecutor {
     }
 
     try {
-      return await tool.call(block.input);
+      // 传递兄弟取消 signal
+      return await tool.call(block.input, this.siblingAbortController.signal);
     } catch (err) {
       return {
         content: err instanceof Error ? err.message : String(err),

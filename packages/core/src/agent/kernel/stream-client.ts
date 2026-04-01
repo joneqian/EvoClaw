@@ -659,9 +659,16 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
       yield* processOpenAIStream(response.body, watchdog);
     }
   } catch (err) {
-    // 看门狗超时
+    // 看门狗超时 → 非流式回退
     if (watchdog.aborted) {
-      throw new IdleTimeoutError(STREAM_IDLE_TIMEOUT_MS);
+      log.warn('流式超时，尝试非流式回退');
+      try {
+        yield* nonStreamingFallback(config);
+        return;
+      } catch (fallbackErr) {
+        log.error(`非流式回退也失败: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}`);
+        throw new IdleTimeoutError(STREAM_IDLE_TIMEOUT_MS);
+      }
     }
 
     // 外部中止
@@ -673,6 +680,135 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
     throw err;
   } finally {
     watchdog.clear();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Non-Streaming Fallback — 参考 Claude Code executeNonStreamingRequest
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 非流式回退
+ *
+ * 当流式请求超时 (90s idle) 时，回退到非流式请求。
+ * 参考 Claude Code: 本地 300s / 远程 120s 超时
+ *
+ * 将非流式响应转换为 StreamEvent 序列，保持消费者接口一致。
+ */
+async function* nonStreamingFallback(config: StreamConfig): AsyncGenerator<StreamEvent> {
+  const spec = config.protocol === 'anthropic-messages'
+    ? buildAnthropicRequest(config)
+    : buildOpenAIRequest(config);
+
+  // 非流式: 去掉 stream 参数
+  const body = { ...spec.body, stream: false };
+  // 移除 stream_options (OpenAI 专用)
+  delete (body as Record<string, unknown>).stream_options;
+
+  log.info(`非流式回退: ${spec.url} model=${config.modelId} timeout=${NONSTREAMING_FALLBACK_TIMEOUT_MS}ms`);
+
+  const response = await fetch(spec.url, {
+    method: 'POST',
+    headers: spec.headers,
+    body: JSON.stringify(body),
+    signal: config.signal
+      ? AbortSignal.any([config.signal, AbortSignal.timeout(NONSTREAMING_FALLBACK_TIMEOUT_MS)])
+      : AbortSignal.timeout(NONSTREAMING_FALLBACK_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    const parsed = safeParseJSON<Record<string, unknown>>(errText);
+    const errorMessage = ((parsed?.error as Record<string, unknown>)?.message as string)
+      ?? (errText.slice(0, 500) || `HTTP ${response.status}`);
+    throw new ApiError(errorMessage, response.status, errText);
+  }
+
+  const data = await response.json() as Record<string, unknown>;
+
+  // 将非流式响应转为 StreamEvent 序列
+  if (config.protocol === 'anthropic-messages') {
+    // Anthropic 非流式响应: { content: [{ type, text }], usage, stop_reason }
+    const content = data.content as Array<Record<string, unknown>> | undefined;
+    const usage = data.usage as Record<string, number> | undefined;
+    const stopReason = data.stop_reason as string | undefined;
+
+    if (usage) {
+      yield {
+        type: 'usage',
+        usage: {
+          inputTokens: usage.input_tokens ?? 0,
+          outputTokens: usage.output_tokens ?? 0,
+          cacheReadTokens: usage.cache_read_input_tokens,
+          cacheWriteTokens: usage.cache_creation_input_tokens,
+        },
+      };
+    }
+
+    if (content) {
+      for (const block of content) {
+        switch (block.type) {
+          case 'text':
+            yield { type: 'text_delta', delta: block.text as string };
+            break;
+          case 'thinking':
+            yield { type: 'thinking_delta', delta: block.thinking as string };
+            break;
+          case 'tool_use':
+            yield { type: 'tool_use_start', id: block.id as string, name: block.name as string };
+            yield {
+              type: 'tool_use_end',
+              id: block.id as string,
+              name: block.name as string,
+              input: block.input as Record<string, unknown>,
+            };
+            break;
+        }
+      }
+    }
+
+    yield { type: 'done', stopReason: stopReason ?? 'end_turn' };
+  } else {
+    // OpenAI 非流式响应: { choices: [{ message: { content, tool_calls }, finish_reason }], usage }
+    const choices = data.choices as Array<Record<string, unknown>> | undefined;
+    const usage = data.usage as Record<string, number> | undefined;
+
+    if (usage) {
+      yield {
+        type: 'usage',
+        usage: {
+          inputTokens: usage.prompt_tokens ?? 0,
+          outputTokens: usage.completion_tokens ?? 0,
+        },
+      };
+    }
+
+    if (choices && choices.length > 0) {
+      const choice = choices[0]!;
+      const message = choice.message as Record<string, unknown> | undefined;
+      const finishReason = choice.finish_reason as string | undefined;
+
+      if (message) {
+        const content = message.content as string | undefined;
+        if (content) {
+          yield { type: 'text_delta', delta: content };
+        }
+
+        const toolCalls = message.tool_calls as Array<Record<string, unknown>> | undefined;
+        if (toolCalls) {
+          for (const tc of toolCalls) {
+            const fn = tc.function as Record<string, unknown>;
+            const id = tc.id as string;
+            const name = fn.name as string;
+            const args = safeParseJSON<Record<string, unknown>>(fn.arguments as string) ?? {};
+            yield { type: 'tool_use_start', id, name };
+            yield { type: 'tool_use_end', id, name, input: args };
+          }
+        }
+      }
+
+      yield { type: 'done', stopReason: finishReason ?? 'stop' };
+    }
   }
 }
 
@@ -692,4 +828,5 @@ export const _testing = {
   createIdleWatchdog,
   STREAM_IDLE_TIMEOUT_MS,
   NONSTREAMING_FALLBACK_TIMEOUT_MS,
+  nonStreamingFallback,
 };

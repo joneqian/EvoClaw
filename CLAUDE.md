@@ -105,5 +105,5 @@ better-sqlite3 + WAL 模式，MigrationRunner 自动执行 `packages/core/src/in
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: Sprint 15.7 待实施 — Heartbeat 对齐 OpenClaw（空文件预检 + 鲁棒 ACK + Reason-based 提示词 + Wake 合并 + lightContext + System Events 增强 + Cron 错误追踪 + TaskRegistry）
-- **上一冲刺**: Sprint 15.6 ✅ 已完成 — 自主执行系统（HeartbeatManager 运行时接入 + System Events 事件队列 + Standing Orders 授权框架 + 渠道投递 + BOOT.md 启动执行 + 1057 测试）
+- **当前冲刺**: Sprint 16 待实施 — 企微 Channel 生产就绪
+- **上一冲刺**: Sprint 15.7 ✅ 已完成 — Heartbeat 对齐 OpenClaw（空文件预检 + 鲁棒 ACK + Reason-based 提示词 + Wake 合并 + lightContext + System Events 增强 + Cron 错误追踪 + TaskRegistry）

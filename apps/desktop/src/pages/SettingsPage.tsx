@@ -98,10 +98,26 @@ function EnvVarsTab() {
     }
   }, []);
 
+  /** 进入编辑模式时获取明文值 */
+  const startEdit = useCallback(async (key: string) => {
+    setEditingKey(key);
+    try {
+      const data = await get<{ value: string }>(`/config/env-vars/${encodeURIComponent(key)}`);
+      setEditValue(data.value ?? '');
+    } catch {
+      setEditValue('');
+    }
+  }, []);
+
   const handleSaveEdit = useCallback(async () => {
-    if (!editingKey || !editValue.trim()) return;
+    if (!editingKey) return;
+    const trimmed = editValue.trim();
     const vars = await rebuildVarsMap();
-    vars[editingKey] = editValue.trim();
+    if (trimmed) {
+      vars[editingKey] = trimmed;
+    } else {
+      delete vars[editingKey];
+    }
     await saveVars(vars);
     setEditingKey(null);
     setEditValue('');
@@ -131,7 +147,7 @@ function EnvVarsTab() {
 
   const handleAddPreset = (presetKey: string) => {
     if (envVars.some(e => e.key === presetKey)) {
-      setEditingKey(presetKey);
+      startEdit(presetKey);
       return;
     }
     setAddingNew(true);
@@ -179,19 +195,18 @@ function EnvVarsTab() {
                 {item.key}
               </code>
               {editingKey === item.key ? (
-                <div className="flex-1 flex gap-2">
+                <div className="flex-1">
                   <input
-                    type="password"
+                    type="text"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') setEditingKey(null); }}
-                    placeholder="输入新值"
-                    className="flex-1 px-2.5 py-1 text-xs border border-slate-200 rounded-lg
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') { setEditingKey(null); setEditValue(''); } }}
+                    onBlur={handleSaveEdit}
+                    placeholder="输入值"
+                    className="w-full px-2.5 py-1 text-xs border border-slate-200 rounded-lg
                       focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand font-mono"
                     autoFocus
                   />
-                  <button onClick={handleSaveEdit} className="text-xs text-brand font-medium hover:text-brand-hover">保存</button>
-                  <button onClick={() => setEditingKey(null)} className="text-xs text-slate-400 hover:text-slate-600">取消</button>
                 </div>
               ) : (
                 <>
@@ -200,7 +215,7 @@ function EnvVarsTab() {
                   </code>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      onClick={() => { setEditingKey(item.key); setEditValue(''); }}
+                      onClick={() => startEdit(item.key)}
                       className="p-1 text-slate-400 hover:text-brand rounded transition-colors"
                       title="编辑"
                     >

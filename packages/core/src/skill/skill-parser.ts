@@ -45,10 +45,43 @@ function parseYamlFrontmatter(yaml: string): SkillMetadata | null {
     const lines = yaml.split('\n');
     let currentKey = '';
     let currentList: string[] | null = null;
+    /** YAML 折叠块(>) 或字面量块(|) 的累积行 */
+    let blockLines: string[] | null = null;
+    let blockStyle: '>' | '|' | null = null;
+
+    const flushBlock = () => {
+      if (blockLines && currentKey) {
+        result[currentKey] = blockStyle === '>'
+          ? blockLines.join(' ').trim()   // 折叠块：行合并为一行
+          : blockLines.join('\n').trim(); // 字面量块：保留换行
+      }
+      blockLines = null;
+      blockStyle = null;
+    };
+
+    const flushList = () => {
+      if (currentList) {
+        result[currentKey] = currentList;
+        currentList = null;
+      }
+    };
 
     for (const line of lines) {
-      // 跳过空行和注释
-      if (!line.trim() || line.trim().startsWith('#')) continue;
+      // 跳过空行和注释（但折叠块内的空行需保留）
+      if (!line.trim() || line.trim().startsWith('#')) {
+        if (blockLines !== null) blockLines.push('');
+        continue;
+      }
+
+      // 折叠/字面量块的续行（缩进行）
+      if (blockLines !== null) {
+        if (/^\s+/.test(line)) {
+          blockLines.push(line.trim());
+          continue;
+        }
+        // 非缩进行 → 块结束
+        flushBlock();
+      }
 
       // 列表项
       const listMatch = line.match(/^\s+-\s+(.+)$/);
@@ -58,10 +91,7 @@ function parseYamlFrontmatter(yaml: string): SkillMetadata | null {
       }
 
       // 保存前一个列表
-      if (currentList) {
-        result[currentKey] = currentList;
-        currentList = null;
-      }
+      flushList();
 
       // 键值对
       const kvMatch = line.match(/^(\S+)\s*:\s*(.*)$/);
@@ -72,6 +102,10 @@ function parseYamlFrontmatter(yaml: string): SkillMetadata | null {
         if (!value) {
           // 可能是列表的开始
           currentList = [];
+        } else if (value === '>' || value === '|') {
+          // YAML 折叠块(>) 或字面量块(|)
+          blockStyle = value as '>' | '|';
+          blockLines = [];
         } else if (value === 'true') {
           result[currentKey] = true;
         } else if (value === 'false') {
@@ -83,10 +117,9 @@ function parseYamlFrontmatter(yaml: string): SkillMetadata | null {
       }
     }
 
-    // 保存最后一个列表
-    if (currentList) {
-      result[currentKey] = currentList;
-    }
+    // 保存最后的块或列表
+    flushBlock();
+    flushList();
 
     // 映射到 SkillMetadata
     const metadata: SkillMetadata = {

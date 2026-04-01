@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { EvoClawConfig, ProviderEntry } from '@evoclaw/shared';
+import { BRAND } from '@evoclaw/shared';
 import { registerProvider } from '../provider/provider-registry.js';
 
 /** 已知 Provider 的友好名称 */
@@ -117,17 +118,31 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
   /** GET /env-vars — 获取环境变量列表（值脱敏） */
   app.get('/env-vars', (c) => {
     const config = configManager.getConfig();
-    const envVars = config.envVars ?? {};
+    // 品牌默认环境变量（优先级最低） + 用户配置覆盖
+    const merged: Record<string, string> = { ...(BRAND.defaultEnv ?? {}), ...(config.envVars ?? {}) };
     // 向后兼容：合并旧 services.brave.apiKey
-    if (config.services?.brave?.apiKey && !envVars['BRAVE_API_KEY']) {
-      envVars['BRAVE_API_KEY'] = config.services.brave.apiKey;
+    if (config.services?.brave?.apiKey && !merged['BRAVE_API_KEY']) {
+      merged['BRAVE_API_KEY'] = config.services.brave.apiKey;
     }
-    const masked = Object.entries(envVars).map(([key, value]) => ({
+    const masked = Object.entries(merged).map(([key, value]) => ({
       key,
       maskedValue: value ? value.slice(0, 4) + '***' + value.slice(-4) : '',
       configured: !!value,
     }));
     return c.json({ envVars: masked });
+  });
+
+  /** GET /env-vars/:key — 获取单个环境变量明文值（编辑时使用） */
+  app.get('/env-vars/:key', (c) => {
+    const key = c.req.param('key');
+    const config = configManager.getConfig();
+    const merged: Record<string, string> = { ...(BRAND.defaultEnv ?? {}), ...(config.envVars ?? {}) };
+    if (config.services?.brave?.apiKey && !merged['BRAVE_API_KEY']) {
+      merged['BRAVE_API_KEY'] = config.services.brave.apiKey;
+    }
+    const value = merged[key];
+    if (value === undefined) return c.json({ error: '变量不存在' }, 404);
+    return c.json({ key, value });
   });
 
   /** PUT /env-vars — 批量更新环境变量 */

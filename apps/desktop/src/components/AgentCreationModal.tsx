@@ -111,8 +111,8 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
     onClose();
   }, [resetBuilder, onClose]);
 
-  /** 是否为单选阶段（role 只能选一个角色） */
-  const isSingleSelectStage = builderStage === 'role';
+  /** 是否为直接发送阶段（role 单选 / preview 确认/重来） */
+  const isSingleSelectStage = builderStage === 'role' || builderStage === 'preview';
 
   /** 发送消息：合并已选建议 + 输入框内容 */
   const handleSend = useCallback(() => {

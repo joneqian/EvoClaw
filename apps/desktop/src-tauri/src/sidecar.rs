@@ -112,15 +112,18 @@ fn do_spawn_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
         found.unwrap_or_else(|| "packages/core/dist/server.mjs".to_string())
     };
 
-    // 优先使用内嵌的 node，回退到系统 node
-    let node_bin = find_bundled_node(app).or_else(find_node_binary).unwrap_or_else(|| "node".to_string());
-    println!("[sidecar] 使用 node: {}", node_bin);
+    // 优先使用内嵌的 bun，回退到系统 bun，最终回退到 node
+    let runtime_bin = find_bundled_bun(app)
+        .or_else(find_bun_binary)
+        .or_else(find_node_binary)
+        .unwrap_or_else(|| "bun".to_string());
+    println!("[sidecar] 使用运行时: {}", runtime_bin);
 
     let (mut rx, child) = shell
-        .command(&node_bin)
-        .args([&script_path])
+        .command(&runtime_bin)
+        .args(["run", &script_path])
         .spawn()
-        .map_err(|e| format!("启动 Sidecar 失败 (node={}): {}", node_bin, e))?;
+        .map_err(|e| format!("启动 Sidecar 失败 (runtime={}): {}", runtime_bin, e))?;
 
     // 保存子进程 PID 用于退出时清理
     let child_pid = child.pid();
@@ -227,10 +230,10 @@ fn do_spawn_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-/// 验证 node 二进制能否正常执行（3 秒超时）
-fn verify_node(path: &str) -> bool {
+/// 验证运行时二进制能否正常执行（3 秒超时）
+fn verify_runtime(path: &str) -> bool {
     let child = std::process::Command::new(path)
-        .args(["-e", "process.exit(0)"])
+        .args(["--version"])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -244,7 +247,7 @@ fn verify_node(path: &str) -> bool {
                     Ok(None) => {
                         if std::time::Instant::now() > deadline {
                             let _ = child.kill();
-                            eprintln!("[sidecar] verify_node 超时，kill 子进程");
+                            eprintln!("[sidecar] verify_runtime 超时，kill 子进程");
                             return false;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -257,29 +260,70 @@ fn verify_node(path: &str) -> bool {
     }
 }
 
-/// 查找内嵌在 app bundle 里的 node 二进制
-fn find_bundled_node(app: &tauri::AppHandle) -> Option<String> {
+/// 查找内嵌在 app bundle 里的 bun 二进制
+fn find_bundled_bun(app: &tauri::AppHandle) -> Option<String> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
-    // 1) 开发模式：优先用源目录下的 node-bin（跳过 target/debug 里可能无法执行的副本）
-    let dev_node = concat!(env!("CARGO_MANIFEST_DIR"), "/node-bin/node");
-    candidates.push(std::path::PathBuf::from(dev_node));
+    // 1) 开发模式：优先用源目录下的 bun-bin
+    let dev_bun = concat!(env!("CARGO_MANIFEST_DIR"), "/bun-bin/bun");
+    candidates.push(std::path::PathBuf::from(dev_bun));
 
     // 2) 打包后的 resource dir (生产模式)
     if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("node-bin/node"));
+        candidates.push(resource_dir.join("bun-bin/bun"));
     }
 
     for candidate in &candidates {
         if candidate.exists() {
             let path = candidate.to_string_lossy().to_string();
-            if verify_node(&path) {
-                eprintln!("[sidecar] 使用内嵌 node: {}", path);
+            if verify_runtime(&path) {
+                eprintln!("[sidecar] 使用内嵌 bun: {}", path);
                 return Some(path);
             }
-            eprintln!("[sidecar] 内嵌 node 无法执行，跳过: {}", path);
+            eprintln!("[sidecar] 内嵌 bun 无法执行，跳过: {}", path);
         }
     }
+    None
+}
+
+/// 查找系统安装的 bun
+fn find_bun_binary() -> Option<String> {
+    let home = get_home_dir();
+    eprintln!("[sidecar] 查找 bun, HOME={}", home);
+
+    // Bun 默认安装路径
+    let candidates = [
+        format!("{}/.bun/bin/bun", home),
+        "/opt/homebrew/bin/bun".to_string(),
+        "/usr/local/bin/bun".to_string(),
+    ];
+
+    for candidate in &candidates {
+        if std::path::Path::new(candidate).exists() {
+            eprintln!("[sidecar] 找到 bun: {}", candidate);
+            return Some(candidate.clone());
+        }
+    }
+
+    // 尝试通过 shell 查找
+    for shell in ["/bin/zsh", "/bin/bash"] {
+        if !std::path::Path::new(shell).exists() {
+            continue;
+        }
+        if let Ok(output) = std::process::Command::new(shell)
+            .args(["-lc", "which bun 2>/dev/null"])
+            .env("HOME", &home)
+            .output()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && std::path::Path::new(&path).exists() {
+                eprintln!("[sidecar] shell 查找到 bun: {}", path);
+                return Some(path);
+            }
+        }
+    }
+
+    eprintln!("[sidecar] 未找到 bun");
     None
 }
 

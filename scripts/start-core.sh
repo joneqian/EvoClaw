@@ -12,5 +12,5 @@ else
   echo "📦 构建中..."
   pnpm build --filter=@evoclaw/shared --filter=@evoclaw/core
   echo "🚀 启动 Core Sidecar"
-  exec node packages/core/dist/server.mjs
+  exec bun run packages/core/dist/server.mjs
 fi

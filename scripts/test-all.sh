@@ -22,7 +22,7 @@ pnpm build
 # 3. 验证 Core 独立运行
 echo ""
 echo "[3/3] 验证 Core Service 可启动 ..."
-node packages/core/dist/server.mjs &
+bun run packages/core/dist/server.mjs &
 CORE_PID=$!
 sleep 2
 

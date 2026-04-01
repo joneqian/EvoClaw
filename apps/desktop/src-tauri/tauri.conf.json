@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicolo-ribaudo/oxc/json-schema/tauri.conf.json",
-  "productName": "HealthClaw",
+  "productName": "EvoClaw",
   "version": "0.1.0",
-  "identifier": "com.healthclaw.app",
+  "identifier": "com.evoclaw.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "HealthClaw",
+        "title": "EvoClaw",
         "width": 1200,
         "height": 800,
         "minWidth": 1200,
@@ -40,15 +40,11 @@
       "minimumSystemVersion": "13.0"
     },
     "resources": [
-      "node-bin/node",
+      "bun-bin/bun",
       "../../../packages/core/dist/package.json",
       "../../../packages/core/dist/server.mjs",
-      "../../../packages/core/dist/server.cjs",
       "../../../packages/core/dist/migrations/*",
-      "../../../packages/core/dist/node_modules/better-sqlite3/lib/*",
-      "../../../packages/core/dist/node_modules/better-sqlite3/lib/methods/*",
-      "../../../packages/core/dist/node_modules/better-sqlite3/package.json",
-      "../../../packages/core/dist/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+      "../../../packages/core/dist/skill/bundled/**/*"
     ]
   },
   "plugins": {

@@ -34,3 +34,16 @@ export { streamLLM } from './stream-client.js';
 export { createBuiltinTools } from './builtin-tools.js';
 export { adaptEvoclawTool, buildKernelTools } from './tool-adapter.js';
 export type { AuditLogEntry, ToolAdapterDeps, BuildToolsConfig } from './tool-adapter.js';
+
+// Tool Executor
+export { StreamingToolExecutor } from './streaming-tool-executor.js';
+
+// Query Loop
+export { queryLoop } from './query-loop.js';
+
+// Context Compaction
+export { maybeCompress, estimateTokens, snipOldMessages, microcompactToolResults, resetCompactorState } from './context-compactor.js';
+
+// Error Recovery
+export { classifyApiError, isRecoverableInLoop, isAbortLike } from './error-recovery.js';
+export type { ClassifiedApiError } from './error-recovery.js';

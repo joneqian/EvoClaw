@@ -24,6 +24,19 @@ const log = createLogger('context-compactor');
 // Constants — 参考 Claude Code autoCompact.ts
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * P2-3: Token 阈值分级 (参考 Claude Code autoCompact.ts)
+ *
+ * warning:     90% — UI 警告
+ * autoCompact: 93% — 触发自动压缩
+ * hardLimit:   99% — 阻断输入
+ */
+const TOKEN_THRESHOLDS = {
+  warning: 0.90,
+  autoCompact: 0.93,
+  hardLimit: 0.99,
+};
+
 /** Autocompact 缓冲 tokens (参考 Claude Code: 13_000) */
 const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
 
@@ -374,13 +387,28 @@ export async function maybeCompress(
   messages: KernelMessage[],
   config: QueryLoopConfig,
 ): Promise<boolean> {
-  const threshold = config.contextWindow - AUTOCOMPACT_BUFFER_TOKENS;
   const estimated = estimateTokens(messages);
+  const contextWindow = config.contextWindow;
 
-  if (estimated < threshold) {
+  // P2-3: 三级阈值
+  const warningThreshold = contextWindow * TOKEN_THRESHOLDS.warning;
+  const autoCompactThreshold = contextWindow * TOKEN_THRESHOLDS.autoCompact;
+  const hardLimitThreshold = contextWindow * TOKEN_THRESHOLDS.hardLimit;
+
+  if (estimated < warningThreshold) {
     return false;
   }
 
+  if (estimated >= warningThreshold && estimated < autoCompactThreshold) {
+    log.warn(`Token 警告: ${estimated}/${contextWindow} (${(estimated / contextWindow * 100).toFixed(0)}%)，接近压缩阈值`);
+    return false; // 警告但不压缩
+  }
+
+  if (estimated >= hardLimitThreshold) {
+    log.error(`Token 硬限制: ${estimated}/${contextWindow} (${(estimated / contextWindow * 100).toFixed(0)}%)，强制压缩`);
+  }
+
+  const threshold = contextWindow - AUTOCOMPACT_BUFFER_TOKENS;
   log.info(`压缩触发: estimated=${estimated}, threshold=${threshold}, messages=${messages.length}`);
 
   // Layer 1: Snip (零成本)

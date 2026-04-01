@@ -350,16 +350,28 @@ function serializeMessageForOpenAI(
  * message_start → content_block_start → content_block_delta(多次)
  * → content_block_stop → message_delta → message_stop
  */
+/** P2-1: Stall 检测阈值 (参考 Claude Code: 30s) */
+const STALL_THRESHOLD_MS = 30_000;
+
 async function* processAnthropicStream(
   body: ReadableStream<Uint8Array>,
   watchdog: IdleWatchdog,
 ): AsyncGenerator<StreamEvent> {
   // 累积中的 content blocks (按 index)
   const contentBlocks = new Map<number, { type: string; id?: string; name?: string; input: string; text: string; thinking: string }>();
+  let lastEventTime = Date.now();
 
   watchdog.reset();
 
   for await (const raw of parseSSE(body)) {
+    // P2-1: stall 检测
+    const now = Date.now();
+    const gap = now - lastEventTime;
+    if (gap > STALL_THRESHOLD_MS) {
+      log.warn(`流式 stall: ${(gap / 1000).toFixed(1)}s 事件间隔`);
+    }
+    lastEventTime = now;
+
     watchdog.reset();
 
     const data = safeParseJSON<Record<string, unknown>>(raw.data);
@@ -511,10 +523,19 @@ async function* processOpenAIStream(
   watchdog: IdleWatchdog,
 ): AsyncGenerator<StreamEvent> {
   const accumulator = new ToolCallAccumulator();
+  let lastEventTime = Date.now();
 
   watchdog.reset();
 
   for await (const raw of parseSSE(body)) {
+    // P2-1: stall 检测
+    const now = Date.now();
+    const gap = now - lastEventTime;
+    if (gap > STALL_THRESHOLD_MS) {
+      log.warn(`流式 stall: ${(gap / 1000).toFixed(1)}s 事件间隔`);
+    }
+    lastEventTime = now;
+
     watchdog.reset();
 
     const data = safeParseJSON<Record<string, unknown>>(raw.data);

@@ -152,8 +152,22 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
             : ext === '.ico' ? 'image/x-icon'
             : 'image/jpeg';
 
-          // 5MB 限制
-          if (data.length > 5 * 1024 * 1024) {
+          // P2-4: 图片大小限制 + 自适应压缩
+          const maxImageBytes = 5 * 1024 * 1024;
+          if (data.length > maxImageBytes) {
+            // 尝试用 sips (macOS) 缩小图片
+            try {
+              const tmpOut = path.join(require('node:os').tmpdir(), `evoclaw-resize-${Date.now()}.jpg`);
+              const targetWidth = Math.min(2000, Math.floor(2000 * (maxImageBytes / data.length)));
+              execSync(`sips --resampleWidth ${targetWidth} --setProperty format jpeg ${shellEscape(filePath)} --out ${shellEscape(tmpOut)}`, { timeout: 30_000, stdio: 'pipe' });
+              const resizedData = fs.readFileSync(tmpOut);
+              fs.unlinkSync(tmpOut);
+              if (resizedData.length <= maxImageBytes) {
+                return { content: `[图片(压缩): ${path.basename(filePath)}, image/jpeg, ${resizedData.length} bytes]\nbase64:${resizedData.toString('base64')}` };
+              }
+            } catch {
+              // sips 不可用或失败，回退报错
+            }
             return { content: `错误：图片文件过大 (${(data.length / 1024 / 1024).toFixed(1)}MB)，最大支持 5MB`, isError: true };
           }
 
@@ -222,7 +236,12 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          return { content: `错误：文件不存在 - ${filePath}`, isError: true };
+          // P2-5: 路径建议
+          const suggestion = suggestSimilarFiles(filePath);
+          const msg = suggestion
+            ? `错误：文件不存在 - ${filePath}\n\n相似文件: ${suggestion}`
+            : `错误：文件不存在 - ${filePath}`;
+          return { content: msg, isError: true };
         }
         return { content: `错误：读取文件失败 - ${msg}`, isError: true };
       }
@@ -797,6 +816,35 @@ function simpleGlobMatch(filename: string, pattern: string): boolean {
     .replace(/\*/g, '.*')                   // * → .*
     .replace(/\?/g, '.');                   // ? → .
   return new RegExp(`^${regex}$`, 'i').test(filename);
+}
+
+/**
+ * P2-5: 文件不存在时搜索同目录相似文件名
+ * 参考 Claude Code: findSimilarFile() + suggestPathUnderCwd()
+ */
+function suggestSimilarFiles(filePath: string): string | null {
+  try {
+    const dir = path.dirname(filePath);
+    const basename = path.basename(filePath).toLowerCase();
+    const entries = fs.readdirSync(dir);
+
+    // 找相似文件名 (包含子串 或 编辑距离小)
+    const similar = entries
+      .filter(e => {
+        const lower = e.toLowerCase();
+        // 子串匹配
+        if (lower.includes(basename) || basename.includes(lower)) return true;
+        // 扩展名相同
+        if (path.extname(e).toLowerCase() === path.extname(filePath).toLowerCase()) return true;
+        return false;
+      })
+      .slice(0, 5);
+
+    if (similar.length === 0) return null;
+    return similar.map(f => path.join(dir, f)).join(', ');
+  } catch {
+    return null;
+  }
 }
 
 /** shell 参数转义 */

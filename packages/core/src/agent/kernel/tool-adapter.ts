@@ -8,6 +8,10 @@
  * 内置工具 (read/write/edit/grep/find/ls) + 增强 bash + EvoClaw 自定义工具
  */
 
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import type { ToolDefinition } from '../../bridge/tool-injector.js';
 import type { KernelTool, ToolCallResult } from './types.js';
 import type { ToolSafetyGuard } from '../tool-safety.js';
@@ -34,6 +38,27 @@ const CONCURRENT_SAFE_TOOLS = new Set([
   'web_search', 'web_fetch', 'image', 'pdf',
   'memory_search', 'memory_get', 'knowledge_query',
 ]);
+
+/** P2-2: 大结果持久化阈值 (参考 Claude Code BashTool: 30K) */
+const LARGE_RESULT_THRESHOLD = 30_000;
+
+/**
+ * P2-2: 大结果持久化 — 超过阈值的结果写入临时文件
+ * 参考 Claude Code: persistedOutputPath + persistedOutputSize
+ */
+function maybePersistLargeResult(content: string, toolName: string): string {
+  if (content.length <= LARGE_RESULT_THRESHOLD) return content;
+
+  try {
+    const dir = path.join(os.tmpdir(), '.evoclaw-tool-results');
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, `${toolName}-${crypto.randomUUID().slice(0, 8)}.txt`);
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return `[结果已持久化: ${filePath} (${content.length} 字符)]\n\n${content.slice(0, 2000)}\n\n... [完整结果见上述文件]`;
+  } catch {
+    return content; // 持久化失败回退原内容
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -147,13 +172,16 @@ export function adaptEvoclawTool(
         // 5. 结果截断
         const truncated = deps.toolSafety.truncateResult(rawResult);
 
+        // P2-2: 大结果磁盘持久化 (>30K chars)
+        const finalContent = maybePersistLargeResult(truncated, tool.name);
+
         deps.auditFn?.({
           toolName: tool.name, args: input,
-          result: truncated.slice(0, 500), status: 'success',
+          result: finalContent.slice(0, 500), status: 'success',
           durationMs: Date.now() - start,
         });
 
-        return { content: truncated };
+        return { content: finalContent };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         deps.auditFn?.({

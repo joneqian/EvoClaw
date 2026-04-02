@@ -1,8 +1,11 @@
 import type { ContextPlugin, TurnContext, CompactContext, BootstrapContext, ShutdownContext } from '../plugin.interface.js';
 import type { ChatMessage } from '@evoclaw/shared';
 import { isGroupChat } from '../../routing/session-key.js';
+import { createLogger } from '../../infrastructure/logger.js';
 import fs from 'node:fs';
 import path from 'node:path';
+
+const log = createLogger('context-assembler');
 
 // ─── 会话级 Prompt 缓存 (Sprint 5) ───
 
@@ -25,16 +28,21 @@ function getCachedOrCompute(sessionKey: string, key: string, computeFn: () => st
   return content;
 }
 
-/** 清除会话级缓存 */
+/** 清除会话级缓存（含事件日志） */
 export function clearSessionPromptCache(sessionKey?: string): void {
   if (sessionKey) {
+    let count = 0;
     for (const key of sessionPromptCache.keys()) {
       if (key.startsWith(`${sessionKey}:`)) {
         sessionPromptCache.delete(key);
+        count++;
       }
     }
+    if (count > 0) log.info(`会话 prompt 缓存已清除: session=${sessionKey}, entries=${count}`);
   } else {
+    const count = sessionPromptCache.size;
     sessionPromptCache.clear();
+    if (count > 0) log.info(`全局 prompt 缓存已清除: entries=${count}`);
   }
 }
 
@@ -59,10 +67,16 @@ const FILE_LOAD_MATRIX: Record<string, { bootstrap: boolean; beforeTurn: boolean
 /** 工作区文件缓存 */
 const workspaceCache = new Map<string, Map<string, string>>();
 
-/** 读取工作区文件 */
+/** 剥离 HTML 注释（用户可在工作区文件中写内部注释，LLM 不应看到） */
+function stripHtmlComments(text: string): string {
+  return text.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+/** 读取工作区文件（自动剥离 HTML 注释） */
 function readWorkspaceFile(workspacePath: string, filename: string): string {
   try {
-    return fs.readFileSync(path.join(workspacePath, filename), 'utf-8');
+    const raw = fs.readFileSync(path.join(workspacePath, filename), 'utf-8');
+    return stripHtmlComments(raw);
   } catch {
     return '';
   }
@@ -113,14 +127,16 @@ export const contextAssemblerPlugin: ContextPlugin = {
 
       // 总量截断：超过上限停止加载剩余文件
       if (totalChars >= MAX_TOTAL_CHARS) {
-        console.warn(`[context-assembler] 工作区文件总量超限 (${totalChars}/${MAX_TOTAL_CHARS})，跳过 ${file} 及后续文件`);
+        const msg = `工作区文件总量超限 (${totalChars}/${MAX_TOTAL_CHARS} 字符)，跳过 ${file} 及后续文件`;
+        ctx.warnings.push(msg);
         break;
       }
 
       // 单文件截断
       let truncated = content;
       if (content.length > MAX_FILE_CHARS) {
-        console.warn(`[context-assembler] 文件 ${file} 超长 (${content.length}/${MAX_FILE_CHARS})，已截断`);
+        const msg = `文件 ${file} 超长 (${content.length}/${MAX_FILE_CHARS} 字符)，已截断`;
+        ctx.warnings.push(msg);
         truncated = content.slice(0, MAX_FILE_CHARS) + '\n...[文件已截断]';
       }
 
@@ -157,9 +173,10 @@ export const contextAssemblerPlugin: ContextPlugin = {
   },
 
   async shutdown(ctx: ShutdownContext) {
-    // 清除该会话的 prompt 缓存
     clearSessionPromptCache(ctx.sessionKey);
-    // 清除该 Agent 的工作区文件缓存
-    workspaceCache.delete(ctx.agentId);
+    if (workspaceCache.has(ctx.agentId)) {
+      workspaceCache.delete(ctx.agentId);
+      log.info(`工作区文件缓存已清除: agent=${ctx.agentId}`);
+    }
   },
 };

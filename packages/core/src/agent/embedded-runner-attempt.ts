@@ -16,6 +16,8 @@
 import crypto from 'node:crypto';
 import type { ThinkLevel } from '@evoclaw/shared';
 import type { AgentRunConfig, AttemptResult, ProviderConfig, ToolCallRecord, MessageSnapshot, RuntimeEvent } from './types.js';
+import type { ThinkingConfig } from './kernel/types.js';
+import { lookupModelDefinition } from '../provider/extensions/index.js';
 import { ToolSafetyGuard } from './tool-safety.js';
 import { shouldTriggerFlush, buildMemoryFlushPrompt, createFlushPermissionInterceptor } from './memory-flush.js';
 import { buildSystemPrompt } from './embedded-runner-prompt.js';
@@ -85,6 +87,41 @@ function kernelMessageToSnapshot(msg: KernelMessage): MessageSnapshot {
     .map(b => (b as { text: string }).text)
     .join('');
   return { role: msg.role, content: text };
+}
+
+/**
+ * 根据 ThinkLevel + 模型能力解析 ThinkingConfig
+ *
+ * - thinkLevel === 'off' → disabled
+ * - 模型支持 adaptive (4.6+ Anthropic) → adaptive
+ * - 否则 → enabled (固定预算)
+ */
+function resolveThinkingConfig(
+  thinkLevel: ThinkLevel,
+  provider: string,
+  modelId: string,
+  maxTokens: number,
+): ThinkingConfig {
+  if (thinkLevel === 'off') return { type: 'disabled' };
+
+  // 检测是否支持 adaptive（Anthropic 4.6+ 模型）
+  const modelDef = lookupModelDefinition(provider, modelId);
+  const isAdaptiveCapable = provider === 'anthropic' && (
+    modelId.includes('opus-4-6') ||
+    modelId.includes('sonnet-4-6') ||
+    modelId.includes('opus-4-5') ||
+    modelId.includes('sonnet-4-5')
+  );
+
+  if (isAdaptiveCapable) {
+    return { type: 'adaptive' };
+  }
+
+  // 固定预算模式
+  const budget = modelDef?.maxTokens
+    ? Math.max(modelDef.maxTokens - 1, 1024)
+    : Math.max(maxTokens - 1, 1024);
+  return { type: 'enabled', budgetTokens: budget };
 }
 
 /**
@@ -183,7 +220,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     modelId: effectiveModelId,
     maxTokens,
     contextWindow,
-    thinking: thinkLevel !== 'off',
+    thinkingConfig: resolveThinkingConfig(thinkLevel, effectiveProvider, effectiveModelId, maxTokens),
     tools: kernelTools,
     systemPrompt,
     messages: kernelMessages,

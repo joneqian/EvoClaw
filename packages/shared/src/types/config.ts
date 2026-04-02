@@ -10,6 +10,8 @@ export interface EvoClawConfig {
   envVars?: Record<string, string>;
   /** 响应语言偏好（前端设置页面选择，优先级高于品牌默认值） */
   language?: 'zh' | 'en';
+  /** 思考模式: auto=模型支持就开, on=强制开, off=强制关（默认 auto） */
+  thinking?: 'auto' | 'on' | 'off';
 }
 
 /** 模型配置 */

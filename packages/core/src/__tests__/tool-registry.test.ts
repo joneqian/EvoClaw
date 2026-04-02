@@ -43,6 +43,7 @@ describe('tool-registry plugin', () => {
       messages: [{ id: '1', conversationId: 'c1', role: 'user', content: 'hello', createdAt: '' }],
       systemPrompt: '',
       injectedContext: [],
+      warnings: [],
       estimatedTokens: 0,
       tokenLimit: 100000,
     };

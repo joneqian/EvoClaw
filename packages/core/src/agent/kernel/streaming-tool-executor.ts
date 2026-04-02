@@ -68,6 +68,8 @@ export class StreamingToolExecutor {
   private siblingAbortController = new AbortController();
   private hasErrored = false;
   private erroredToolName: string | undefined;
+  /** onEvent 回调（在 collectResults 时设置，用于进度桥接） */
+  private onEvent?: (event: import('../types.js').RuntimeEvent) => void;
 
   /** Bash 工具名称 — 只有 Bash 错误会取消兄弟 */
   private static readonly BASH_TOOL_NAME = 'bash';
@@ -113,6 +115,8 @@ export class StreamingToolExecutor {
    */
   async collectResults(config: CollectConfig): Promise<ToolResultBlock[]> {
     if (this.discarded) return [];
+    // 存储 onEvent 供 executeSingle 中的进度回调使用
+    this.onEvent = config.onEvent;
 
     const results: ToolResultBlock[] = [];
 
@@ -252,8 +256,13 @@ export class StreamingToolExecutor {
     }
 
     try {
-      // 传递兄弟取消 signal
-      return await tool.call(block.input, this.siblingAbortController.signal);
+      // 传递兄弟取消 signal + 进度回调（通过 onEvent 桥接）
+      const onProgress = this.onEvent
+        ? (progress: { message: string; data?: unknown }) => {
+            this.onEvent!({ type: 'tool_update', toolName: block.name, toolResult: progress.message, timestamp: Date.now() });
+          }
+        : undefined;
+      return await tool.call(block.input, this.siblingAbortController.signal, onProgress);
     } catch (err) {
       return {
         content: err instanceof Error ? err.message : String(err),

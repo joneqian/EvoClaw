@@ -55,6 +55,8 @@ export interface BrandConfig {
   };
   windowTitle: string;
   defaultEnv?: Record<string, string>;
+  /** 品牌级默认语言 */
+  defaultLanguage?: 'zh' | 'en';
 }
 
 /** 当前品牌配置 */

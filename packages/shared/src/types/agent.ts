@@ -13,6 +13,11 @@ export function degradeThinkLevel(level: ThinkLevel): ThinkLevel {
   return THINK_LEVEL_ORDER[idx + 1]!;
 }
 
+/** 检测消息是否包含 ultrathink 关键词（触发深度思考） */
+export function hasUltrathinkKeyword(text: string): boolean {
+  return /\bultrathink\b/i.test(text);
+}
+
 /** Agent 状态枚举 */
 export type AgentStatus = 'draft' | 'active' | 'paused' | 'archived';
 

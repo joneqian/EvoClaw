@@ -154,9 +154,14 @@ export type Message =
 // Tool Interface — 统一签名，参考 Claude Code Tool 接口
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** 工具进度回调 */
+export type ToolProgressCallback = (progress: { message: string; data?: unknown }) => void;
+
 export interface ToolCallResult {
   content: string;
   isError?: boolean;
+  /** 上下文修改器（仅非并行工具可用，如 cd 命令修改 cwd） */
+  contextModifier?: (ctx: Record<string, unknown>) => Record<string, unknown>;
 }
 
 /**
@@ -165,19 +170,33 @@ export interface ToolCallResult {
  * 安全默认值 (fail-closed):
  * - isReadOnly() 默认 false (假设可写)
  * - isConcurrencySafe() 默认 false (假设不安全)
+ * - isDestructive() 默认 false
+ * - shouldDefer 默认 false (全量加载)
  */
 export interface KernelTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: Record<string, unknown>;
 
-  call(input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolCallResult>;
+  /** 向后兼容别名（旧名称映射到此工具） */
+  readonly aliases?: readonly string[];
+
+  /** 搜索提示词（3-10 词能力描述，供 ToolSearchTool 匹配） */
+  readonly searchHint?: string;
+
+  /** 是否延迟加载（true = 初始 prompt 不含完整 schema，需通过 ToolSearch 发现） */
+  readonly shouldDefer?: boolean;
+
+  call(input: Record<string, unknown>, signal?: AbortSignal, onProgress?: ToolProgressCallback): Promise<ToolCallResult>;
 
   /** 是否只读 (默认 false — fail-closed) */
   isReadOnly(): boolean;
 
   /** 是否并发安全 (默认 false — fail-closed) */
   isConcurrencySafe(): boolean;
+
+  /** 是否不可逆操作 (默认 false) — true 时前端显示确认对话框 */
+  isDestructive?(input: Record<string, unknown>): boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -255,6 +274,12 @@ export interface RawSSEEvent {
 
 export type ApiProtocol = 'anthropic-messages' | 'openai-completions';
 
+/** 思考配置（参考 Claude Code ThinkingConfig） */
+export type ThinkingConfig =
+  | { type: 'adaptive' }                         // 模型自主决定（4.6+ 模型）
+  | { type: 'enabled'; budgetTokens?: number }    // 固定预算模式
+  | { type: 'disabled' };                         // 禁用
+
 /** 系统提示词分块（支持 Anthropic cache_control） */
 export interface SystemPromptBlock {
   /** 文本内容 */
@@ -280,7 +305,8 @@ export interface StreamConfig {
   readonly messages: readonly KernelMessage[];
   readonly tools: readonly KernelTool[];
   readonly maxTokens: number;
-  readonly thinking: boolean;
+  /** 思考配置（adaptive/enabled/disabled） */
+  readonly thinkingConfig: ThinkingConfig;
   readonly signal?: AbortSignal;
   /** Eager Input Streaming — 允许工具 JSON 输入在完成前开始流式传输（仅 Anthropic 第一方 API） */
   readonly eagerInputStreaming?: boolean;
@@ -366,7 +392,8 @@ export interface QueryLoopConfig {
   readonly modelId: string;
   readonly maxTokens: number;
   readonly contextWindow: number;
-  readonly thinking: boolean;
+  /** 思考配置（adaptive/enabled/disabled） */
+  readonly thinkingConfig: ThinkingConfig;
 
   // ─── Tools ───
   readonly tools: readonly KernelTool[];

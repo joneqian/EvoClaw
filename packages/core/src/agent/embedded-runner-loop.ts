@@ -123,8 +123,19 @@ export async function runEmbeddedLoop(
   // Provider 冷却期追踪
   const providerCooldowns = new Map<string, number>();
 
-  // 状态 — ThinkLevel 渐进降级替代 boolean reasoning
-  let thinkLevel: ThinkLevel = 'off'; // 默认关闭（大多数国产模型不支持）
+  // 状态 — ThinkLevel 根据模型能力自动决定，渐进降级
+  // auto: 模型 reasoning=true → 'high'，否则 'off'
+  // on: 强制 'high'
+  // off: 强制 'off'
+  const thinkingMode = (config as any).thinkingMode ?? 'auto';
+  let thinkLevel: ThinkLevel = (() => {
+    if (thinkingMode === 'off') return 'off';
+    if (thinkingMode === 'on') return 'high';
+    // auto: 检查主模型是否支持 reasoning
+    const { lookupModelDefinition } = require('../provider/extensions/index.js');
+    const modelDef = lookupModelDefinition(config.provider, config.modelId);
+    return modelDef?.reasoning ? 'high' : 'off';
+  })();
   let messages: MessageSnapshot[] | undefined;
   let overloadAttempts = 0;
   let overflowCompactionAttempts = 0;

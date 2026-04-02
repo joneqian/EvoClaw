@@ -72,6 +72,11 @@ export class ConfigManager {
     return this.config.language ?? BRAND.defaultLanguage ?? 'zh';
   }
 
+  /** 获取思考模式: auto=模型支持就开, on=强制开, off=强制关（默认 auto） */
+  getThinkingMode(): 'auto' | 'on' | 'off' {
+    return this.config.thinking ?? 'auto';
+  }
+
   /** 更新完整配置 */
   updateConfig(config: EvoClawConfig): void {
     this.config = structuredClone(config);

@@ -24,10 +24,26 @@ export interface ToolSegment {
   result?: string;
   isError?: boolean;
   status: 'running' | 'done' | 'error';
+  /** 实时进度文本（工具执行中的增量输出） */
+  progress?: string;
+}
+
+/** 消息段：思考过程（Extended Thinking） */
+export interface ThinkingSegment {
+  type: 'thinking';
+  content: string;
+  isExpanded: boolean;
 }
 
 /** 消息段联合类型 */
-export type MessageSegment = TextSegment | ToolSegment;
+export type MessageSegment = TextSegment | ToolSegment | ThinkingSegment;
+
+/** 破坏性操作确认状态 */
+export interface DestructiveConfirmState {
+  toolName: string;
+  args: Record<string, unknown>;
+  resolve: (confirmed: boolean) => void;
+}
 
 /** 聊天消息 */
 export interface Message {
@@ -87,6 +103,15 @@ interface ChatState {
   addToolSegment: (seg: ToolSegment) => void;
   /** 更新最后一个匹配的 tool segment */
   updateToolSegment: (name: string, update: { status: ToolSegment['status']; result?: string; isError?: boolean }) => void;
+  /** 追加 thinking 文本到最后一条 assistant 消息 */
+  appendThinkingSegment: (delta: string) => void;
+  /** 切换 thinking 段落的折叠/展开 */
+  toggleThinkingExpanded: (messageId: string) => void;
+  /** 更新工具实时进度 */
+  updateToolProgress: (toolName: string, progressText: string) => void;
+  /** 破坏性操作确认状态 */
+  destructiveConfirm: DestructiveConfirmState | null;
+  setDestructiveConfirm: (state: DestructiveConfirmState | null) => void;
   setStreaming: (streaming: boolean) => void;
   clearMessages: () => void;
 }
@@ -269,6 +294,56 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       msgs[msgs.length - 1] = { ...last, segments, toolCalls };
       return { messages: msgs };
     }),
+
+  appendThinkingSegment: (delta) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant') return { messages: msgs };
+      const segments = [...(last.segments ?? [])];
+      const lastSeg = segments[segments.length - 1];
+      if (lastSeg && lastSeg.type === 'thinking') {
+        // 追加到现有 thinking segment
+        segments[segments.length - 1] = { ...lastSeg, content: lastSeg.content + delta };
+      } else {
+        // 新建 thinking segment
+        segments.push({ type: 'thinking', content: delta, isExpanded: false });
+      }
+      msgs[msgs.length - 1] = { ...last, segments };
+      return { messages: msgs };
+    }),
+
+  toggleThinkingExpanded: (messageId) =>
+    set((state) => {
+      const msgs = state.messages.map(msg => {
+        if (msg.id !== messageId) return msg;
+        const segments = (msg.segments ?? []).map(seg =>
+          seg.type === 'thinking' ? { ...seg, isExpanded: !seg.isExpanded } : seg,
+        );
+        return { ...msg, segments };
+      });
+      return { messages: msgs };
+    }),
+
+  updateToolProgress: (toolName, progressText) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant') return { messages: msgs };
+      const segments = [...(last.segments ?? [])];
+      for (let i = segments.length - 1; i >= 0; i--) {
+        const seg = segments[i]!;
+        if (seg.type === 'tool' && seg.name === toolName && seg.status === 'running') {
+          segments[i] = { ...seg, progress: (seg.progress ?? '') + progressText };
+          break;
+        }
+      }
+      msgs[msgs.length - 1] = { ...last, segments };
+      return { messages: msgs };
+    }),
+
+  destructiveConfirm: null,
+  setDestructiveConfirm: (confirm) => set({ destructiveConfirm: confirm }),
 
   setStreaming: (streaming) => set({ isStreaming: streaming }),
 

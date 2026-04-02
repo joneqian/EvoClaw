@@ -60,6 +60,7 @@ describe('gap-detection', () => {
         ],
         systemPrompt: '',
         injectedContext: [],
+      warnings: [],
         estimatedTokens: 0,
         tokenLimit: 100000,
       };
@@ -80,6 +81,7 @@ describe('gap-detection', () => {
         ],
         systemPrompt: '',
         injectedContext: [],
+      warnings: [],
         estimatedTokens: 0,
         tokenLimit: 100000,
       };

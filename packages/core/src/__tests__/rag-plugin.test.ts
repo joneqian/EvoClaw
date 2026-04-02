@@ -31,6 +31,7 @@ function createTurnContext(userMessage: string): TurnContext {
     messages: [{ role: 'user', content: userMessage, id: 'test-msg-1', conversationId: 'test-conv', createdAt: new Date().toISOString() }],
     systemPrompt: '',
     injectedContext: [],
+      warnings: [],
     estimatedTokens: 0,
     tokenLimit: 100000,
   };
@@ -84,6 +85,7 @@ describe('RAG Plugin', () => {
       messages: [],
       systemPrompt: '',
       injectedContext: [],
+      warnings: [],
       estimatedTokens: 0,
       tokenLimit: 100000,
     };

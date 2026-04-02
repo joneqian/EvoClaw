@@ -8,6 +8,8 @@ import ModelSelector from '../components/ModelSelector';
 import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
 import { useAppStore } from '../stores/app-store';
 import PermissionDialog from '../components/PermissionDialog';
+import ThinkingBlock from '../components/ThinkingBlock';
+import DestructiveConfirmDialog from '../components/DestructiveConfirmDialog';
 import { invoke } from '@tauri-apps/api/core';
 
 import ReactMarkdown from 'react-markdown';
@@ -40,8 +42,13 @@ function ChatView() {
     appendToLastMessage,
     updateLastMessageToolCalls,
     appendTextSegment,
+    appendThinkingSegment,
+    toggleThinkingExpanded,
     addToolSegment,
     updateToolSegment,
+    updateToolProgress,
+    destructiveConfirm,
+    setDestructiveConfirm,
     setStreaming,
     fetchConversations,
     newConversation,
@@ -208,6 +215,17 @@ function ChatView() {
                 case 'text_delta': {
                   const delta = payload.delta ?? payload.text ?? '';
                   appendTextSegment(delta);
+                  break;
+                }
+                case 'thinking_delta': {
+                  const thinkDelta = payload.delta ?? '';
+                  appendThinkingSegment(thinkDelta);
+                  break;
+                }
+                case 'tool_update': {
+                  const progressName = payload.toolName ?? payload.name;
+                  const progressText = payload.toolResult ?? payload.message ?? '';
+                  updateToolProgress(progressName, progressText);
                   break;
                 }
                 case 'tool_start': {
@@ -542,6 +560,22 @@ function ChatView() {
         onClose={() => setPermissionRequest(null)}
       />
 
+      {/* 破坏性操作确认对话框 */}
+      {destructiveConfirm && (
+        <DestructiveConfirmDialog
+          toolName={destructiveConfirm.toolName}
+          args={destructiveConfirm.args}
+          onConfirm={() => {
+            destructiveConfirm.resolve(true);
+            setDestructiveConfirm(null);
+          }}
+          onDeny={() => {
+            destructiveConfirm.resolve(false);
+            setDestructiveConfirm(null);
+          }}
+        />
+      )}
+
       {/* 专家设置面板 */}
       {currentAgentId && (
         <ExpertSettingsPanel
@@ -675,6 +709,15 @@ function ToolCallCard({ seg }: { seg: ToolSegment }) {
           </svg>
         )}
       </div>
+      {/* 工具进度区域（运行中 + 有进度时显示） */}
+      {seg.status === 'running' && seg.progress && (
+        <div className="border-t border-slate-100/80">
+          <pre className="bg-slate-900 text-green-400 font-mono text-[11px] leading-relaxed p-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
+            {seg.progress}
+            <span className="inline-block w-1.5 h-3 bg-green-400 animate-pulse ml-0.5" />
+          </pre>
+        </div>
+      )}
       {/* 可展开的结果区域（带动画） */}
       <div className={`overflow-hidden transition-all duration-200 ease-in-out ${
         expanded && seg.result ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
@@ -745,6 +788,7 @@ function MessageActions({ content }: { content: string }) {
 
 /** 单条消息气泡组件 */
 function MessageBubble({ message }: { message: Message }) {
+  const { isStreaming, toggleThinkingExpanded } = useChatStore();
   const isUser = message.role === 'user';
   const hasSegments = message.segments && message.segments.length > 0;
   const hasContent = !!message.content;
@@ -782,6 +826,14 @@ function MessageBubble({ message }: { message: Message }) {
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{seg.content}</ReactMarkdown>
                 </div>
               ) : null
+            ) : seg.type === 'thinking' ? (
+              <ThinkingBlock
+                key={i}
+                content={seg.content}
+                isExpanded={seg.isExpanded}
+                onToggle={() => toggleThinkingExpanded(message.id)}
+                isStreaming={isStreaming}
+              />
             ) : (
               <ToolCallCard key={i} seg={seg} />
             )

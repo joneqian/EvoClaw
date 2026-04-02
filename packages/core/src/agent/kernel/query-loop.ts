@@ -42,7 +42,7 @@ import { streamLLM } from './stream-client.js';
 import { StreamingToolExecutor } from './streaming-tool-executor.js';
 import { maybeCompress } from './context-compactor.js';
 import { classifyApiError, isRecoverableInLoop, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
-import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage } from './message-utils.js';
+import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage, stripThinkingBlocks } from './message-utils.js';
 import type { ToolCallRecord } from '../types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
@@ -132,16 +132,21 @@ async function streamOneRound(
   // 当前累积中的 tool_use (用于跨事件追踪)
   const pendingToolUses = new Map<string, { id: string; name: string }>();
 
+  // Thinking 块跨轮次清理：如果 thinking 已禁用，从历史消息中剥离 thinking 块避免 API 错误
+  const messagesForApi = config.thinkingConfig.type === 'disabled'
+    ? messages.map(stripThinkingBlocks)
+    : messages;
+
   for await (const event of streamLLM({
     protocol: config.protocol,
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     modelId: config.modelId,
     systemPrompt: config.systemPrompt,
-    messages,
+    messages: messagesForApi,
     tools: config.tools,
     maxTokens: maxTokensOverride ?? config.maxTokens,
-    thinking: config.thinking,
+    thinkingConfig: config.thinkingConfig,
     signal: config.abortSignal,
   })) {
     switch (event.type) {
@@ -169,6 +174,13 @@ async function streamOneRound(
         };
         blocks.push(toolBlock);
         pendingToolUses.delete(event.id);
+
+        // 检查工具是否不可逆，附带到事件供前端显示确认
+        const matchedTool = config.tools.find(t => t.name === event.name);
+        const destructive = matchedTool?.isDestructive?.(event.input) ?? false;
+        if (destructive) {
+          config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: event.input, isDestructive: true, timestamp: Date.now() });
+        }
 
         // 入队 StreamingToolExecutor — 并发安全工具立即开始
         executor.enqueue(toolBlock);

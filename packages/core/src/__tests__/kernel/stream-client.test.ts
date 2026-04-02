@@ -154,7 +154,7 @@ describe('buildAnthropicRequest', () => {
     messages: [] as KernelMessage[],
     tools: [] as KernelTool[],
     maxTokens: 4096,
-    thinking: false,
+    thinkingConfig: { type: 'disabled' } as const,
   };
 
   it('should build correct URL with /v1 auto-append', () => {
@@ -189,11 +189,22 @@ describe('buildAnthropicRequest', () => {
     expect(spec.body.tools).toBeUndefined();
   });
 
-  it('should include thinking config when enabled', () => {
-    const spec = buildAnthropicRequest({ ...baseConfig, thinking: true });
+  it('should include thinking config when enabled (fixed budget)', () => {
+    const spec = buildAnthropicRequest({ ...baseConfig, thinkingConfig: { type: 'enabled' } });
     const thinking = spec.body.thinking as Record<string, unknown>;
     expect(thinking.type).toBe('enabled');
     expect(thinking.budget_tokens).toBeGreaterThan(0);
+  });
+
+  it('should include adaptive thinking config', () => {
+    const spec = buildAnthropicRequest({ ...baseConfig, thinkingConfig: { type: 'adaptive' } });
+    const thinking = spec.body.thinking as Record<string, unknown>;
+    expect(thinking.type).toBe('adaptive');
+  });
+
+  it('should not include thinking when disabled', () => {
+    const spec = buildAnthropicRequest({ ...baseConfig, thinkingConfig: { type: 'disabled' } });
+    expect(spec.body.thinking).toBeUndefined();
   });
 });
 
@@ -211,7 +222,7 @@ describe('buildOpenAIRequest', () => {
     messages: [] as KernelMessage[],
     tools: [] as KernelTool[],
     maxTokens: 4096,
-    thinking: false,
+    thinkingConfig: { type: 'disabled' } as const,
   };
 
   it('should build correct URL', () => {

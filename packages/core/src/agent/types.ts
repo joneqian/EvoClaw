@@ -46,6 +46,8 @@ export interface AgentRunConfig {
   maxTokens?: number;
   /** 响应语言偏好（从全局配置读取，优先级: 用户配置 > 品牌默认 > 'zh'） */
   language?: 'zh' | 'en';
+  /** 思考模式: auto=模型支持就开, on=强制开, off=强制关（默认 auto） */
+  thinkingMode?: 'auto' | 'on' | 'off';
   /** 系统提示词覆盖列表（5 级优先级链） */
   promptOverrides?: Array<{
     level: 'override' | 'coordinator' | 'agent' | 'custom' | 'default';
@@ -127,4 +129,6 @@ export interface RuntimeEvent {
   isError?: boolean;
   /** 错误信息 */
   error?: string;
+  /** 工具是否不可逆操作（前端显示确认对话框） */
+  isDestructive?: boolean;
 }

@@ -30,6 +30,8 @@ export interface TurnContext {
   tokenLimit: number;
   /** 安全检测标志（由 SecurityPlugin 设置） */
   securityFlags?: SecurityFlags;
+  /** 加载警告（文件截断、缓存失效等） */
+  warnings: string[];
 }
 
 /** 压缩阶段上下文 */

@@ -424,6 +424,7 @@ export function createChatRoutes(
       injectedContext: [] as string[],
       estimatedTokens: 0,
       tokenLimit: 128_000,
+      warnings: [] as string[],
     };
     await contextEngine.beforeTurn(turnCtx);
 

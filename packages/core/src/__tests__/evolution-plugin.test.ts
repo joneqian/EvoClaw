@@ -27,6 +27,7 @@ describe('createEvolutionPlugin', () => {
       messages: messages as any,
       systemPrompt: '',
       injectedContext: [],
+      warnings: [],
       estimatedTokens: 100,
       tokenLimit: 4000,
     };

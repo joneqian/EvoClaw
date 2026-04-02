@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { get, put, post, del } from '../lib/api';
+import Select from '../components/Select';
 
 /** Provider 预设（新增 Provider 时可选） */
 interface ProviderPreset {
@@ -806,16 +807,14 @@ function AddProviderForm({
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">API 协议</label>
-            <select
+            <Select
               value={api}
-              onChange={(e) => setApi(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
-            >
-              <option value="openai-completions">OpenAI 兼容</option>
-              <option value="anthropic">Anthropic</option>
-            </select>
+              onChange={(val) => setApi(val)}
+              options={[
+                { value: 'openai-completions', label: 'OpenAI 兼容' },
+                { value: 'anthropic', label: 'Anthropic' },
+              ]}
+            />
           </div>
         </div>
 

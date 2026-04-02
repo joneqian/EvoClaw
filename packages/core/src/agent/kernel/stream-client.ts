@@ -214,11 +214,13 @@ function buildAnthropicRequest(config: StreamConfig): RequestSpec {
     body.tools = tools;
   }
 
-  // Extended thinking
-  if (config.thinking) {
+  // Extended thinking — 支持 adaptive/enabled/disabled 三种模式
+  if (config.thinkingConfig.type === 'adaptive') {
+    body.thinking = { type: 'adaptive' };
+  } else if (config.thinkingConfig.type === 'enabled') {
     body.thinking = {
       type: 'enabled',
-      budget_tokens: Math.max(config.maxTokens - 1, 1024),
+      budget_tokens: config.thinkingConfig.budgetTokens ?? Math.max(config.maxTokens - 1, 1024),
     };
   }
 
@@ -448,6 +450,11 @@ async function* processAnthropicStream(
             const thinking = delta.thinking as string;
             block.thinking += thinking;
             yield { type: 'thinking_delta', delta: thinking };
+            break;
+          }
+          case 'signature_delta': {
+            // 思考签名（用于验证思考内容完整性），记录但不 yield
+            (block as any).signature = (delta as any).signature;
             break;
           }
         }

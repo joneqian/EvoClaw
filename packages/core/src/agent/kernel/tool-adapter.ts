@@ -305,11 +305,23 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
     adaptEvoclawTool(tool, deps)
   );
 
-  // 合并 (去重: 后注入覆盖先注入)
+  // 合并 (去重: 后注入覆盖先注入, 含别名映射)
   const toolMap = new Map<string, KernelTool>();
   for (const tool of [...builtinTools, bashTool, ...customTools]) {
     toolMap.set(tool.name, tool);
+    // 注册别名（旧名称指向同一工具）
+    if (tool.aliases) {
+      for (const alias of tool.aliases) {
+        if (!toolMap.has(alias)) {
+          toolMap.set(alias, tool);
+        }
+      }
+    }
   }
 
-  return [...toolMap.values()];
+  // 显式排序: 保持工具列表稳定，避免因注册顺序变化破坏 prompt cache
+  const sorted = [...toolMap.values()];
+  sorted.sort((a, b) => a.name.localeCompare(b.name));
+
+  return sorted;
 }

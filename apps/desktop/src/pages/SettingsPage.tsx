@@ -1,15 +1,100 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BRAND_NAME } from '@evoclaw/shared';
 import { get, put } from '../lib/api';
+import Select from '../components/Select';
 
 // ─── Tab 定义 ───
 
-type SettingsTab = 'env' | 'about';
+type SettingsTab = 'general' | 'env' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
+  { key: 'general', label: '通用' },
   { key: 'env', label: '环境变量' },
   { key: 'about', label: '关于' },
 ];
+
+// ─── 通用设置 Tab ───
+
+function GeneralTab() {
+  const [language, setLanguage] = useState<'zh' | 'en'>('zh');
+  const [thinking, setThinking] = useState<'auto' | 'on' | 'off'>('auto');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // 加载当前配置
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await get<{ config: { language?: 'zh' | 'en'; thinking?: 'auto' | 'on' | 'off' } }>('/config');
+        if (data.config?.language) setLanguage(data.config.language);
+        if (data.config?.thinking) setThinking(data.config.thinking);
+      } catch { /* sidecar 可能未就绪 */ }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const saveConfig = useCallback(async (patch: Record<string, unknown>) => {
+    try {
+      await put('/config', patch);
+      setToast({ message: '已保存', type: 'success' });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : '保存失败', type: 'error' });
+    }
+  }, []);
+
+  return (
+    <>
+      <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+        {/* 语言设置 */}
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-slate-700">响应语言</div>
+            <div className="text-xs text-slate-400 mt-0.5">Agent 回复时使用的语言</div>
+          </div>
+          <Select
+            value={language}
+            onChange={(val) => { setLanguage(val as 'zh' | 'en'); saveConfig({ language: val }); }}
+            options={[
+              { value: 'zh', label: '中文' },
+              { value: 'en', label: 'English' },
+            ]}
+            className="w-[140px]"
+          />
+        </div>
+
+        {/* 思考模式 */}
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-slate-700">思考模式</div>
+            <div className="text-xs text-slate-400 mt-0.5">Extended Thinking 让模型在回答前进行深度推理</div>
+          </div>
+          <Select
+            value={thinking}
+            onChange={(val) => { setThinking(val as 'auto' | 'on' | 'off'); saveConfig({ thinking: val }); }}
+            options={[
+              { value: 'auto', label: '自动', hint: '模型支持时开启' },
+              { value: 'on', label: '始终开启' },
+              { value: 'off', label: '关闭' },
+            ]}
+            className="w-[160px]"
+          />
+        </div>
+      </div>
+
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-50 ${
+          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+    </>
+  );
+}
 
 // ─── 环境变量预设 ───
 
@@ -338,7 +423,7 @@ function AboutTab() {
 // ─── 主页面 ───
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('env');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   return (
     <div className="h-full flex flex-col">
@@ -363,6 +448,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
+        {activeTab === 'general' && <GeneralTab />}
         {activeTab === 'env' && <EnvVarsTab />}
         {activeTab === 'about' && <AboutTab />}
       </div>

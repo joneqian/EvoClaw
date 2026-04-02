@@ -82,7 +82,7 @@ function baseConfig(overrides?: Partial<QueryLoopConfig>): QueryLoopConfig {
     modelId: 'test-model',
     maxTokens: 4096,
     contextWindow: 128_000,
-    thinking: false,
+    thinkingConfig: { type: 'disabled' },
     tools: [],
     systemPrompt: 'You are helpful.',
     messages: [{

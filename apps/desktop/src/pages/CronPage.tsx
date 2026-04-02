@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import Select from '../components/Select';
 
 interface CronTask {
   id: string;
@@ -135,33 +136,31 @@ export default function CronPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1.5">执行专家</label>
-                  <select
+                  <Select
                     value={createForm.expert}
-                    onChange={e => setCreateForm({ ...createForm, expert: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50
-                      focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand text-slate-700"
-                  >
-                    <option value="">选择专家</option>
-                    <option value="营养膳食专家">营养膳食专家</option>
-                    <option value="慢病管理助手">慢病管理助手</option>
-                    <option value="运动健身教练">运动健身教练</option>
-                    <option value="心理健康顾问">心理健康顾问</option>
-                  </select>
+                    onChange={(val) => setCreateForm({ ...createForm, expert: val })}
+                    placeholder="选择专家"
+                    options={[
+                      { value: '营养膳食专家', label: '营养膳食专家' },
+                      { value: '慢病管理助手', label: '慢病管理助手' },
+                      { value: '运动健身教练', label: '运动健身教练' },
+                      { value: '心理健康顾问', label: '心理健康顾问' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1.5">执行频率</label>
-                  <select
+                  <Select
                     value={createForm.cronLabel}
-                    onChange={e => setCreateForm({ ...createForm, cronLabel: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50
-                      focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand text-slate-700"
-                  >
-                    <option value="">选择频率</option>
-                    <option value="每天 08:00">每天 08:00</option>
-                    <option value="每天 09:00/15:00/21:00">每天三次</option>
-                    <option value="每周一 10:00">每周一次</option>
-                    <option value="每月1号 09:00">每月一次</option>
-                  </select>
+                    onChange={(val) => setCreateForm({ ...createForm, cronLabel: val })}
+                    placeholder="选择频率"
+                    options={[
+                      { value: '每天 08:00', label: '每天 08:00' },
+                      { value: '每天 09:00/15:00/21:00', label: '每天三次' },
+                      { value: '每周一 10:00', label: '每周一次' },
+                      { value: '每月1号 09:00', label: '每月一次' },
+                    ]}
+                  />
                 </div>
               </div>
               <div>

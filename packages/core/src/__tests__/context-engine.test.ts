@@ -11,6 +11,7 @@ function makeTurnContext(overrides: Partial<TurnContext> = {}): TurnContext {
     messages: [],
     systemPrompt: '你是一个助手',
     injectedContext: [],
+      warnings: [],
     estimatedTokens: 1000,
     tokenLimit: 4000,
     ...overrides,

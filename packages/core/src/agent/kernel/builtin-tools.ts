@@ -868,11 +868,21 @@ function hasCommand(cmd: string): boolean {
  * @param contextWindowTokens - 模型 context window 大小 (用于 adaptive read)
  * @returns KernelTool 数组
  */
+/** 内置工具 searchHint 映射 */
+const BUILTIN_SEARCH_HINTS: Record<string, string> = {
+  read: 'read files images PDFs text content',
+  write: 'write create files save output',
+  edit: 'edit replace modify text string',
+  grep: 'search content regex pattern match',
+  find: 'find files glob pattern path',
+  ls: 'list directory contents files',
+};
+
 export function createBuiltinTools(contextWindowTokens: number): KernelTool[] {
   // 共享文件状态缓存 (read/edit/write 用于先读后写校验)
   const fileStateCache = new FileStateCache();
 
-  return [
+  const tools = [
     createReadTool(contextWindowTokens, fileStateCache),
     createWriteTool(fileStateCache),
     createEditTool(fileStateCache),
@@ -880,6 +890,12 @@ export function createBuiltinTools(contextWindowTokens: number): KernelTool[] {
     createFindTool(),
     createLsTool(),
   ];
+
+  // 注入 searchHint（内置工具不延迟加载）
+  return tools.map(tool => ({
+    ...tool,
+    searchHint: BUILTIN_SEARCH_HINTS[tool.name],
+  }));
 }
 
 /** @internal 仅供测试使用 */

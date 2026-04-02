@@ -25,6 +25,7 @@ function createTurnContext(userMessage: string, flags?: SecurityFlags): TurnCont
     ],
     systemPrompt: '',
     injectedContext: [],
+      warnings: [],
     estimatedTokens: 0,
     tokenLimit: 128_000,
     securityFlags: flags,

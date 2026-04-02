@@ -453,7 +453,8 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       }
     }
 
-    log.info(`turn ${turnCount}: ${toolUseBlocks.length} 个工具调用完成，继续`);
+    const calledTools = toolUseBlocks.map(b => b.name).join(', ');
+    log.info(`turn ${turnCount}: ${toolUseBlocks.length} 个工具调用完成 [${calledTools}]，继续`);
     // transition: tool_use → continue
   }
 }

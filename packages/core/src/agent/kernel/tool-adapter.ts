@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import type { ToolDefinition } from '../../bridge/tool-injector.js';
+// SkillTool 由调用方注入（避免 agent → skill 层级违反）
 import type { KernelTool, ToolCallResult } from './types.js';
 import type { ToolSafetyGuard } from '../tool-safety.js';
 import { normalizeToolSchema } from '../schema-adapter.js';
@@ -99,6 +100,8 @@ export interface BuildToolsConfig {
   auditFn?: (entry: AuditLogEntry) => void;
   /** Provider ID */
   provider: string;
+  /** 额外 KernelTool（如 SkillTool、ToolSearchTool，由调用方创建注入） */
+  extraTools?: KernelTool[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -305,9 +308,14 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
     adaptEvoclawTool(tool, deps)
   );
 
+  // 4. 额外工具（SkillTool、ToolSearchTool 等，由调用方注入）
+  const extraTools = config.extraTools ?? [];
+
   // 合并 (去重: 后注入覆盖先注入, 含别名映射)
+  const allTools = [...builtinTools, bashTool, ...customTools, ...extraTools];
+
   const toolMap = new Map<string, KernelTool>();
-  for (const tool of [...builtinTools, bashTool, ...customTools]) {
+  for (const tool of allTools) {
     toolMap.set(tool.name, tool);
     // 注册别名（旧名称指向同一工具）
     if (tool.aliases) {

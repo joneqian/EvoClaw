@@ -842,10 +842,16 @@ async function main() {
   // 3d. BOOT.md 启动执行 — 异步，不阻塞
   const activeAgents = agentManager.listAgents('active');
   for (const agent of activeAgents) {
-    const bootContent = agentManager.readWorkspaceFile(agent.id, 'BOOT.md');
-    if (!bootContent || !bootContent.split('\n').some(l => {
+    let bootContent = agentManager.readWorkspaceFile(agent.id, 'BOOT.md');
+    if (!bootContent) continue;
+
+    // 剥离 HTML 注释（与 context-assembler 一致）
+    bootContent = bootContent.replace(/<!--[\s\S]*?-->/g, '');
+
+    // 跳过空内容（只有空行/标题）
+    if (!bootContent.split('\n').some(l => {
       const t = l.trim();
-      return t && !t.startsWith('#') && !t.startsWith('<!--');
+      return t && !t.startsWith('#');
     })) continue;
 
     const bootSessionKey = `agent:${agent.id}:boot`;

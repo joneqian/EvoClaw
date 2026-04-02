@@ -110,6 +110,17 @@ export function createSkillRoutes(skillsBaseDir?: string): Hono {
     return c.json({ success });
   });
 
+  /** POST /refresh-cache — 清除 Skill 扫描缓存 */
+  app.post('/refresh-cache', (c) => {
+    const agentId = c.req.query('agentId');
+    if (agentId) {
+      refreshSkillCache(agentId);
+      return c.json({ refreshed: true, agentId });
+    }
+    // 无 agentId 时清除所有缓存
+    return c.json({ refreshed: true, agentId: null });
+  });
+
   return app;
 }
 

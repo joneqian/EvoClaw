@@ -221,32 +221,19 @@ function tryLoadSkill(filePath: string, installPath: string): InstalledSkill | n
 // Prompt 格式化
 // ---------------------------------------------------------------------------
 
-/** 路径压缩：将 home 目录替换为 ~ */
-function compactPath(fullPath: string): string {
-  const home = os.homedir();
-  if (fullPath.startsWith(home)) {
-    return '~' + fullPath.slice(home.length);
-  }
-  return fullPath;
-}
-
-/** 获取 Skill 的 SKILL.md 路径（压缩后） */
-function getSkillLocation(s: InstalledSkill): string {
-  const rawPath = s.skillMdPath ?? path.join(s.installPath, 'SKILL.md');
-  return compactPath(rawPath);
-}
-
 /**
  * 构建技能 prompt — 含引导语 + XML 目录
  * 自动在完整模式和紧凑模式之间降级
+ *
+ * 注意：不暴露 SKILL.md 文件路径，引导模型通过 invoke_skill 工具加载技能
  */
 function buildSkillsPrompt(skills: InstalledSkill[]): string {
   const header = `## Skills (mandatory)
 Before replying: scan <available_skills> entries.
-- If exactly one skill clearly applies: read its SKILL.md at <location> with \`read\`, then follow it.
-- If multiple could apply: choose the most specific one, then read/follow it.
-- If none clearly apply: do not read any SKILL.md.
-Constraints: never read more than one skill up front; only read after selecting.
+- If exactly one skill clearly applies: invoke it with \`invoke_skill({ skill: "name" })\`, then follow the returned instructions.
+- If multiple could apply: choose the most specific one, then invoke it.
+- If none clearly apply: proceed without invoking any skill.
+Constraints: never invoke more than one skill up front; only invoke after selecting.
 
 `;
 
@@ -276,30 +263,19 @@ Constraints: never read more than one skill up front; only read after selecting.
   return header + truncatedCatalog;
 }
 
-/** 完整模式 — name + description + location（多行 XML） */
+/** 完整模式 — name + description（不含文件路径，引导用 invoke_skill） */
 function formatSkillsFull(skills: InstalledSkill[]): string {
-  const entries = skills.map(s => {
-    const loc = getSkillLocation(s);
-    return `  <skill>
-    <name>${escapeXml(s.name)}</name>
-    <description>${escapeXml(s.description)}</description>
-    <location>${escapeXml(loc)}</location>
-  </skill>`;
-  });
-
+  const entries = skills.map(s =>
+    `  <skill>\n    <name>${escapeXml(s.name)}</name>\n    <description>${escapeXml(s.description)}</description>\n  </skill>`,
+  );
   return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
 }
 
-/** 紧凑模式 — 仅 name + location（省略 description，节省 token） */
+/** 紧凑模式 — 仅 name（省略 description + 路径，最省 token） */
 function formatSkillsCompact(skills: InstalledSkill[]): string {
-  const entries = skills.map(s => {
-    const loc = getSkillLocation(s);
-    return `  <skill>
-    <name>${escapeXml(s.name)}</name>
-    <location>${escapeXml(loc)}</location>
-  </skill>`;
-  });
-
+  const entries = skills.map(s =>
+    `  <skill><name>${escapeXml(s.name)}</name></skill>`,
+  );
   return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
 }
 

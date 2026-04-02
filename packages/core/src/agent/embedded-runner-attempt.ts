@@ -14,6 +14,8 @@
  */
 
 import crypto from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 import type { ThinkLevel } from '@evoclaw/shared';
 import type { AgentRunConfig, AttemptResult, ProviderConfig, ToolCallRecord, MessageSnapshot, RuntimeEvent } from './types.js';
 import type { ThinkingConfig } from './kernel/types.js';
@@ -167,6 +169,15 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
 
   // ─── 工具池 ───
   const toolSafety = new ToolSafetyGuard();
+  // Skill 搜索路径 + SkillTool 创建（避免 agent→skill 层级违反，在此处桥接）
+  const { DEFAULT_DATA_DIR } = await import('@evoclaw/shared');
+  const { createSkillTool } = await import('../skill/skill-tool.js');
+  const skillSearchPaths = [
+    path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+    ...(config.workspacePath ? [path.join(config.workspacePath, 'skills')] : []),
+  ];
+  const skillTool = createSkillTool(skillSearchPaths) as import('./kernel/types.js').KernelTool;
+
   const kernelTools = buildKernelTools({
     builtinContextWindow: contextWindow,
     evoClawTools: config.tools,
@@ -174,6 +185,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     toolSafety,
     auditFn: config.auditLogFn,
     provider: effectiveProvider,
+    extraTools: [skillTool],
   });
 
   // ─── 消息历史 ───

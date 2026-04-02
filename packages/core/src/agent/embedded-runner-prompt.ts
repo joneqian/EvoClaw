@@ -205,6 +205,7 @@ When the user asks to find a file:
    - Limit depth: \`-maxdepth 4\`
 3. **Never search root /**; stay within user home ~
 4. If no results, broaden scope (remove dir constraint or reduce keyword precision)
+
 </tool_call_style>`,
     cacheControl: { type: 'ephemeral' },
     label: 'tool_style',

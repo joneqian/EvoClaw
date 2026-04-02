@@ -159,6 +159,9 @@ export function createChatRoutes(
            ROW_NUMBER() OVER (PARTITION BY cl.session_key ORDER BY cl.created_at DESC) AS rn
          FROM conversation_log cl
          WHERE cl.role IN ('user', 'assistant')
+           AND cl.session_key NOT LIKE '%:boot'
+           AND cl.session_key NOT LIKE '%:heartbeat%'
+           AND cl.session_key NOT LIKE '%:cron:%'
        ) sub
        WHERE rn = 1
        ORDER BY last_at DESC
@@ -216,6 +219,9 @@ export function createChatRoutes(
            ROW_NUMBER() OVER (PARTITION BY cl.session_key ORDER BY cl.created_at DESC) AS rn
          FROM conversation_log cl
          WHERE cl.agent_id = ? AND cl.role IN ('user', 'assistant')
+           AND cl.session_key NOT LIKE '%:boot'
+           AND cl.session_key NOT LIKE '%:heartbeat%'
+           AND cl.session_key NOT LIKE '%:cron:%'
        ) sub
        WHERE rn = 1
        ORDER BY last_at DESC`,

@@ -132,6 +132,7 @@ export function createChatRoutes(
   userMdRenderer?: UserMdRenderer,
   skillDiscoverer?: SkillDiscoverer,
   cronRunner?: import('../scheduler/cron-runner.js').CronRunner,
+  costTracker?: import('../cost/cost-tracker.js').CostTracker,
 ) {
   const app = new Hono();
 
@@ -705,6 +706,7 @@ export function createChatRoutes(
       : message;
 
     // 返回 SSE 流
+    const startTime = Date.now();
     return streamSSE(c, async (stream) => {
       let fullResponse = '';
 
@@ -712,6 +714,23 @@ export function createChatRoutes(
         await runEmbeddedAgent(runConfig, effectiveMessage, async (event) => {
           if (event.type === 'text_delta' && event.delta) {
             fullResponse += event.delta;
+          }
+          // 成本追踪：捕获 usage 事件并持久化
+          if (event.type === 'usage' && event.usage && costTracker) {
+            costTracker.track({
+              agentId,
+              sessionKey,
+              channel: sessionKey.split(':')[2] ?? 'desktop',
+              provider: runConfig.provider,
+              model: runConfig.modelId,
+              inputTokens: event.usage.inputTokens,
+              outputTokens: event.usage.outputTokens,
+              cacheReadTokens: event.usage.cacheReadTokens,
+              cacheWriteTokens: event.usage.cacheWriteTokens,
+              callType: 'chat',
+              latencyMs: Date.now() - startTime,
+              turnCount: event.usage.turnCount,
+            });
           }
           await stream.writeSSE({ data: JSON.stringify(event) });
         }, abortSignal);

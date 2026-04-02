@@ -109,7 +109,8 @@ export type RuntimeEventType =
   | 'message_start'
   | 'message_end'
   | 'compaction_start'
-  | 'compaction_end';
+  | 'compaction_end'
+  | 'usage';
 
 /** Agent 运行时事件 */
 export interface RuntimeEvent {
@@ -131,4 +132,14 @@ export interface RuntimeEvent {
   error?: string;
   /** 工具是否不可逆操作（前端显示确认对话框） */
   isDestructive?: boolean;
+  /** Token 使用量（type='usage' 时） */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+    estimatedCostMilli: number;
+    turnCount: number;
+  };
 }

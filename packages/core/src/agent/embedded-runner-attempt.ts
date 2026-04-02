@@ -281,6 +281,25 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     // ─── 消息快照 (供 failover 使用) ───
     const messagesSnapshot = result.messages.map(kernelMessageToSnapshot);
 
+    // ─── Usage Event — 发送 token 使用量给前端 ───
+    const { calculateCostMilli } = await import('../cost/model-pricing.js');
+    const totalCacheRead = result.messages.reduce((sum, m) => sum + (m.usage?.cacheReadTokens ?? 0), 0);
+    const totalCacheWrite = result.messages.reduce((sum, m) => sum + (m.usage?.cacheWriteTokens ?? 0), 0);
+    const costMilli = calculateCostMilli(effectiveModelId, result.totalInputTokens, result.totalOutputTokens, totalCacheRead, totalCacheWrite);
+    onEvent({
+      type: 'usage',
+      timestamp: Date.now(),
+      usage: {
+        inputTokens: result.totalInputTokens,
+        outputTokens: result.totalOutputTokens,
+        cacheReadTokens: totalCacheRead,
+        cacheWriteTokens: totalCacheWrite,
+        totalTokens: result.totalInputTokens + result.totalOutputTokens,
+        estimatedCostMilli: costMilli,
+        turnCount: result.turnCount,
+      },
+    });
+
     // ─── Memory Flush ───
     const totalTokens = result.totalInputTokens + result.totalOutputTokens;
     if (shouldTriggerFlush(totalTokens, contextWindow)) {

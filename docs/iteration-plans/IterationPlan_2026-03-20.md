@@ -491,6 +491,35 @@ Phase 4 (15.8.11-15.8.13): API + 前端 + 测试
 
 ---
 
+#### Sprint 15.10: API 集成增强 ⏳ 进行中
+
+> **研究基础**: Claude Code 源码研究 `25-api-integration.md` 差距分析。补齐成本追踪、重试策略、工具摘要。
+
+**目标**: 实现成本可见化，增强 API 调用可靠性。
+
+| # | 任务 | 优先级 | 预估 | 状态 | 对应 Feature |
+|---|------|--------|------|------|-------------|
+| 15.10.1 | 成本追踪：CostTracker 聚合 + 定价表 + DB 持久化 + HTTP API | P0 | 2d | 📋 | F8.2 |
+| 15.10.2 | DB 迁移 020_usage_tracking：含 cache_read/write tokens | P0 | 0.5d | 📋 | F8.2 |
+| 15.10.3 | Retry-After 头解析 + 退避参数调优 (5s→32s) | P1 | 0.5d | 📋 | F10 |
+| 15.10.4 | 持久重试模式：无人值守场景无限重试 + 529 前台/后台区分 | P1 | 1d | 📋 | F10 |
+| 15.10.5 | Tool Use Summary：低成本模型生成工具摘要 | P2 | 1d | 📋 | F9 |
+| 15.10.6 | 集成验证 + 文档更新 | — | 0.5d | 📋 | — |
+
+- 新建: cost-tracker.ts, model-pricing.ts, tool-use-summary.ts, usage-tracking-store.ts
+- 修改: stream-client.ts, embedded-runner-loop.ts, query-loop.ts, server.ts, chat.ts
+- 测试: cost-tracker.test.ts, retry-enhancement.test.ts, tool-use-summary.test.ts
+
+**验收标准**:
+- [ ] 每次 API 调用的 token 用量和费用自动记录到 usage_tracking 表
+- [ ] HTTP API 可查询按 agent/provider/model/channel 分维度的用量统计
+- [ ] 退避最大值 32s，支持 Retry-After 头
+- [ ] 持久重试模式下 overload 不终止循环
+- [ ] 工具调用后 5s 内生成 ~30 字符摘要
+- [ ] 全量测试通过，无回归
+
+---
+
 #### Sprint 16: 企微 Channel 生产就绪
 
 > **注**: 原 Sprint 15 企微生产化顺延至 Sprint 16。

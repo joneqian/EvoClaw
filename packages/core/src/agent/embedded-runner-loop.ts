@@ -41,17 +41,36 @@ const MAX_OVERLOAD_BEFORE_FAILOVER = 3;
 /** Context overflow 最大 compaction 尝试次数 */
 const MAX_OVERFLOW_COMPACTION_ATTEMPTS = 3;
 
-/** 计算指数退避延迟（含 jitter） */
+/**
+ * 计算指数退避延迟（含 jitter）
+ *
+ * 参考 Claude Code: 500ms base, max 32s, 25% jitter
+ * EvoClaw: 500ms base, max 32s, 20% jitter
+ */
 function calculateBackoff(attempt: number, opts?: {
   initialDelayMs?: number;
   maxDelayMs?: number;
   factor?: number;
   jitter?: number;
+  /** Retry-After 头指定的秒数（优先使用） */
+  retryAfterSeconds?: number;
 }): number {
-  const { initialDelayMs = 250, maxDelayMs = 5000, factor = 2, jitter = 0.2 } = opts ?? {};
+  // 优先使用服务端指定的 Retry-After 时间
+  if (opts?.retryAfterSeconds && opts.retryAfterSeconds > 0) {
+    return opts.retryAfterSeconds * 1000;
+  }
+  const { initialDelayMs = 500, maxDelayMs = 32_000, factor = 2, jitter = 0.2 } = opts ?? {};
   const base = Math.min(initialDelayMs * Math.pow(factor, attempt), maxDelayMs);
   const jitterRange = base * jitter;
   return base + (Math.random() * 2 - 1) * jitterRange;
+}
+
+/** 从错误消息中提取 Retry-After 秒数 */
+function extractRetryAfterSeconds(errorMessage: string): number | undefined {
+  // 从 HTTP 响应头提取（API 错误消息中可能包含）
+  const match = errorMessage.match(/retry.?after[\s:=]*(\d+)/i);
+  if (match) return parseInt(match[1]!, 10);
+  return undefined;
 }
 
 /** sleep 辅助 */
@@ -112,13 +131,21 @@ export async function runEmbeddedLoop(
   message: string,
   onEvent: EventCallback,
   abortSignal?: AbortSignal,
+  options?: {
+    /** 持久重试模式：overload 时无限重试（适用于 Cron/Heartbeat 无人值守场景） */
+    persistentRetry?: boolean;
+    /** 是否为后台查询（529 时直接放弃，不浪费资源） */
+    isBackgroundQuery?: boolean;
+  },
 ): Promise<void> {
   const providerChain = buildProviderChain(config);
   let providerIndex = 0;
   let currentProvider = providerChain[0];
 
-  // 动态重试上限（基于 provider 数量）
-  const maxIterations = calculateMaxIterations(providerChain.length);
+  // 动态重试上限（基于 provider 数量；持久模式下大幅提升）
+  const maxIterations = options?.persistentRetry
+    ? 1000  // 持久模式：实际上无限（1000 次 × 最大 32s 退避 ≈ 8+ 小时）
+    : calculateMaxIterations(providerChain.length);
 
   // Provider 冷却期追踪
   const providerCooldowns = new Map<string, number>();
@@ -181,7 +208,13 @@ export async function runEmbeddedLoop(
     // ─── 根据错误类型决定恢复策略 ───
 
     // Overload → 退避重试，连续 N 次后切 provider
+    // 529 后台查询: 直接放弃（参考 Claude Code: 后台查询遇 529 不重试，节省资源）
     if (result.errorType === 'overload') {
+      if (options?.isBackgroundQuery && result.error?.includes('529')) {
+        log.warn('后台查询遇 529 (过载)，直接放弃');
+        emit(onEvent, { type: 'error', error: '服务过载，后台任务已放弃' });
+        return;
+      }
       overloadAttempts++;
       if (result.messagesSnapshot) messages = result.messagesSnapshot;
 
@@ -203,8 +236,11 @@ export async function runEmbeddedLoop(
         log.warn(`overload 重试耗尽但无可用备选 provider，继续退避当前 provider`);
       }
 
-      const delay = calculateBackoff(overloadAttempts, { maxDelayMs: 5000 });
-      log.warn(`overload，${delay.toFixed(0)}ms 后重试 (${iteration}/${maxIterations})`);
+      const retryAfter = extractRetryAfterSeconds(result.error ?? '');
+      // 持久模式: 最大退避 5 分钟（参考 Claude Code UNATTENDED_RETRY）
+      const maxDelay = options?.persistentRetry ? 300_000 : 32_000;
+      const delay = calculateBackoff(overloadAttempts, { maxDelayMs: maxDelay, retryAfterSeconds: retryAfter });
+      log.warn(`overload，${delay.toFixed(0)}ms 后重试 (${iteration}/${maxIterations})${retryAfter ? ` (Retry-After: ${retryAfter}s)` : ''}${options?.persistentRetry ? ' [持久模式]' : ''}`);
       await sleep(delay);
       continue;
     }

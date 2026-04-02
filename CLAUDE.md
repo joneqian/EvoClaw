@@ -105,6 +105,6 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: Sprint 15.9 ⏳ 进行中 — 记忆系统增强（AutoDream 整合、Session Memory、新鲜度警告、互斥防护、Prompt Cache、LLM 精选层）
-- **上一冲刺**: Sprint 15.8 ✅ 已完成 — MCP 协议集成（stdio + SSE 双传输、工具发现注入、重连、安全策略、前端配置 UI）
+- **当前冲刺**: Sprint 15.10 ⏳ 进行中 — API 集成增强（成本追踪、重试策略增强、Tool Use Summary）
+- **上一冲刺**: Sprint 15.9 ✅ 已完成 — 记忆系统增强（AutoDream 整合、Session Memory、新鲜度警告、互斥防护、Prompt Cache、LLM 精选层）
 - **下一冲刺**: Sprint 16 — 企微 Channel 生产就绪

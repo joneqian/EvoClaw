@@ -56,6 +56,8 @@ import { HybridSearcher } from './memory/hybrid-searcher.js';
 import { MemoryExtractor } from './memory/memory-extractor.js';
 import { DecayScheduler } from './memory/decay-scheduler.js';
 import { MemoryConsolidator } from './memory/memory-consolidator.js';
+import { CostTracker } from './cost/cost-tracker.js';
+import { createUsageRoutes } from './routes/usage.js';
 import { UserMdRenderer } from './memory/user-md-renderer.js';
 import { SkillDiscoverer } from './skill/skill-discoverer.js';
 import { MemoryStore } from './memory/memory-store.js';
@@ -266,6 +268,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/config', createConfigRoutes(configManager));
   }
 
+  // 成本追踪器实例（跨路由共享）
+  const costTrackerInstance = store ? new CostTracker(store) : undefined;
+
   // 挂载业务路由
   if (agentManager) {
     // 构建 LLM 生成函数：引导式创建 Agent 时用于生成工作区文件
@@ -278,12 +283,15 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
   }
   if (store) {
+    if (costTrackerInstance) {
+      app.route('/usage', createUsageRoutes(costTrackerInstance));
+    }
     app.route('/memory', createMemoryRoutes(store, vectorStore));
     app.route('/security', createSecurityRoutes(store));
     if (vectorStore) {

@@ -2,7 +2,7 @@
  * ThinkingBlock — Extended Thinking 折叠展示组件
  *
  * 参考 Claude Code AssistantThinkingMessage:
- * - 默认折叠：显示 "∴ 正在思考..." + 展开按钮
+ * - 默认折叠：显示 "💭 正在思考..." + 展开按钮
  * - 展开后：Markdown 渲染完整思考内容
  */
 
@@ -25,7 +25,7 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
         className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 transition-colors"
       >
         <span className="flex items-center gap-2">
-          <span className="text-base">∴</span>
+          <span className="text-base">💭</span>
           {isStreaming && !isExpanded ? (
             <span className="flex items-center gap-1">
               正在思考

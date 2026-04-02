@@ -294,7 +294,7 @@ function serializeContentForAnthropic(
       case 'tool_result':
         return { type: 'tool_result', tool_use_id: block.tool_use_id, content: block.content, is_error: block.is_error };
       case 'thinking':
-        return { type: 'thinking', thinking: block.thinking };
+        return { type: 'thinking', thinking: block.thinking, ...((block as any).signature ? { signature: (block as any).signature } : {}) };
       case 'image':
         return { type: 'image', source: block.source };
       default:
@@ -453,8 +453,10 @@ async function* processAnthropicStream(
             break;
           }
           case 'signature_delta': {
-            // 思考签名（用于验证思考内容完整性），记录但不 yield
-            (block as any).signature = (delta as any).signature;
+            // 思考签名（Anthropic 要求后续轮次回传）
+            const sig = (delta as any).signature as string;
+            (block as any).signature = sig;
+            yield { type: 'thinking_signature', signature: sig };
             break;
           }
         }

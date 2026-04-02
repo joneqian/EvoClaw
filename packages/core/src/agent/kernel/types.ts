@@ -39,6 +39,8 @@ export interface ToolResultBlock {
 export interface ThinkingBlock {
   readonly type: 'thinking';
   thinking: string;
+  /** 思考签名（Anthropic API 要求在后续轮次中回传） */
+  signature?: string;
 }
 
 export interface ImageBlock {
@@ -252,6 +254,7 @@ export type StreamEvent =
   | { readonly type: 'tool_use_delta'; readonly id: string; readonly delta: string }
   | { readonly type: 'tool_use_end'; readonly id: string; readonly name: string; readonly input: Record<string, unknown> }
   | { readonly type: 'usage'; readonly usage: TokenUsage }
+  | { readonly type: 'thinking_signature'; readonly signature: string }
   | { readonly type: 'done'; readonly stopReason: string }
   | { readonly type: 'error'; readonly message: string; readonly status?: number }
   | { readonly type: 'latency'; readonly checkpoints: StreamLatencyCheckpoints }

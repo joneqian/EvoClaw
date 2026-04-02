@@ -160,6 +160,15 @@ async function streamOneRound(
         appendOrCreateThinkingBlock(blocks, event.delta);
         break;
 
+      case 'thinking_signature': {
+        // 将 signature 附加到最后一个 thinking 块（Anthropic 要求后续轮次回传）
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock && lastBlock.type === 'thinking') {
+          (lastBlock as import('./types.js').ThinkingBlock).signature = event.signature;
+        }
+        break;
+      }
+
       case 'tool_use_start':
         pendingToolUses.set(event.id, { id: event.id, name: event.name });
         config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: {}, timestamp: Date.now() });

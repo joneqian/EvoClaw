@@ -44,6 +44,14 @@ export interface AgentRunConfig {
   contextWindow?: number;
   /** 模型最大输出 tokens — 从 extension 预设或用户配置获取 */
   maxTokens?: number;
+  /** 响应语言偏好（从全局配置读取，优先级: 用户配置 > 品牌默认 > 'zh'） */
+  language?: 'zh' | 'en';
+  /** 系统提示词覆盖列表（5 级优先级链） */
+  promptOverrides?: Array<{
+    level: 'override' | 'coordinator' | 'agent' | 'custom' | 'default';
+    content: string;
+    mode: 'replace' | 'append';
+  }>;
 }
 
 // ─── 单次执行结果 ───

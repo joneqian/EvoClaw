@@ -24,7 +24,8 @@ import type {
   ContentBlock,
   ToolUseBlock,
 } from './types.js';
-import { ApiError } from './types.js';
+import { ApiError, systemPromptBlocksToString } from './types.js';
+import type { SystemPromptBlock } from './types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
 const log = createLogger('stream-client');
@@ -192,9 +193,18 @@ function buildAnthropicRequest(config: StreamConfig): RequestSpec {
     input_schema: t.inputSchema,
   }));
 
+  // Anthropic 支持 system 为 TextBlock 数组（含 cache_control）
+  const systemParam = Array.isArray(config.systemPrompt)
+    ? (config.systemPrompt as readonly SystemPromptBlock[]).map(block => ({
+        type: 'text' as const,
+        text: block.text,
+        ...(block.cacheControl ? { cache_control: block.cacheControl } : {}),
+      }))
+    : config.systemPrompt;
+
   const body: Record<string, unknown> = {
     model: config.modelId,
-    system: config.systemPrompt,
+    system: systemParam,
     messages,
     max_tokens: config.maxTokens,
     stream: true,
@@ -232,7 +242,7 @@ function buildOpenAIRequest(config: StreamConfig): RequestSpec {
 
   // 构建 messages (OpenAI 格式: system + user/assistant + tool)
   const messages: Array<Record<string, unknown>> = [
-    { role: 'system', content: config.systemPrompt },
+    { role: 'system', content: Array.isArray(config.systemPrompt) ? systemPromptBlocksToString(config.systemPrompt as readonly SystemPromptBlock[]) : config.systemPrompt },
   ];
 
   for (const msg of config.messages) {

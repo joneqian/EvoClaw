@@ -255,12 +255,28 @@ export interface RawSSEEvent {
 
 export type ApiProtocol = 'anthropic-messages' | 'openai-completions';
 
+/** 系统提示词分块（支持 Anthropic cache_control） */
+export interface SystemPromptBlock {
+  /** 文本内容 */
+  text: string;
+  /** Anthropic cache 控制。undefined = 不设置，ephemeral = 可缓存 */
+  cacheControl?: { type: 'ephemeral' } | null;
+  /** 段落标识（用于调试） */
+  label?: string;
+}
+
+/** 将 SystemPromptBlock[] 合并为单字符串（OpenAI 兼容） */
+export function systemPromptBlocksToString(blocks: readonly SystemPromptBlock[]): string {
+  return blocks.map(b => b.text).join('\n\n');
+}
+
 export interface StreamConfig {
   readonly protocol: ApiProtocol;
   readonly baseUrl: string;
   readonly apiKey: string;
   readonly modelId: string;
-  readonly systemPrompt: string;
+  /** 系统提示词：字符串（兼容）或分块数组（支持 Anthropic cache_control） */
+  readonly systemPrompt: string | readonly SystemPromptBlock[];
   readonly messages: readonly KernelMessage[];
   readonly tools: readonly KernelTool[];
   readonly maxTokens: number;
@@ -273,47 +289,6 @@ export interface StreamConfig {
 // ═══════════════════════════════════════════════════════════════════════════
 // Query Loop Config & Result
 // ═══════════════════════════════════════════════════════════════════════════
-
-export interface QueryLoopConfig {
-  // ─── API ───
-  readonly protocol: ApiProtocol;
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly modelId: string;
-  readonly maxTokens: number;
-  readonly contextWindow: number;
-  readonly thinking: boolean;
-
-  // ─── Tools ───
-  readonly tools: readonly KernelTool[];
-
-  // ─── System prompt ───
-  readonly systemPrompt: string;
-
-  // ─── History (初始消息，循环内部会追加) ───
-  readonly messages: KernelMessage[];
-
-  // ─── Limits ───
-  readonly maxTurns: number;
-  readonly timeoutMs: number;
-
-  // ─── Callbacks — 桥接到 RuntimeEvent ───
-  readonly onEvent: (event: RuntimeEvent) => void;
-
-  // ─── Safety ───
-  readonly toolSafety: ToolSafetyGuard;
-
-  // ─── Abort ───
-  readonly abortSignal?: AbortSignal;
-
-  // ─── Compaction (可选: 用于 autocompact 的轻量模型) ───
-  readonly compaction?: {
-    readonly protocol: ApiProtocol;
-    readonly baseUrl: string;
-    readonly apiKey: string;
-    readonly modelId: string;
-  };
-}
 
 /** 循环退出原因 */
 export type ExitReason =
@@ -397,7 +372,7 @@ export interface QueryLoopConfig {
   readonly tools: readonly KernelTool[];
 
   // ─── System prompt ───
-  readonly systemPrompt: string;
+  readonly systemPrompt: string | readonly SystemPromptBlock[];
 
   // ─── History (初始消息，循环内部会追加) ───
   readonly messages: KernelMessage[];

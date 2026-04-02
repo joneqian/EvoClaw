@@ -1,8 +1,42 @@
-import type { ContextPlugin, TurnContext, CompactContext, BootstrapContext } from '../plugin.interface.js';
+import type { ContextPlugin, TurnContext, CompactContext, BootstrapContext, ShutdownContext } from '../plugin.interface.js';
 import type { ChatMessage } from '@evoclaw/shared';
 import { isGroupChat } from '../../routing/session-key.js';
 import fs from 'node:fs';
 import path from 'node:path';
+
+// ─── 会话级 Prompt 缓存 (Sprint 5) ───
+
+/** 会话级缓存条目 */
+interface SessionCacheEntry { content: string; computedAt: number }
+
+/** 会话级缓存（5 分钟 TTL） */
+const sessionPromptCache = new Map<string, SessionCacheEntry>();
+const SESSION_CACHE_TTL_MS = 300_000;
+
+/** 获取会话缓存或重新计算 */
+function getCachedOrCompute(sessionKey: string, key: string, computeFn: () => string): string {
+  const cacheKey = `${sessionKey}:${key}`;
+  const cached = sessionPromptCache.get(cacheKey);
+  if (cached && Date.now() - cached.computedAt < SESSION_CACHE_TTL_MS) {
+    return cached.content;
+  }
+  const content = computeFn();
+  sessionPromptCache.set(cacheKey, { content, computedAt: Date.now() });
+  return content;
+}
+
+/** 清除会话级缓存 */
+export function clearSessionPromptCache(sessionKey?: string): void {
+  if (sessionKey) {
+    for (const key of sessionPromptCache.keys()) {
+      if (key.startsWith(`${sessionKey}:`)) {
+        sessionPromptCache.delete(key);
+      }
+    }
+  } else {
+    sessionPromptCache.clear();
+  }
+}
 
 /** 单个工作区文件最大字符数 */
 const MAX_FILE_CHARS = 20_000;
@@ -120,5 +154,12 @@ export const contextAssemblerPlugin: ContextPlugin = {
     };
 
     return [summary, ...recent];
+  },
+
+  async shutdown(ctx: ShutdownContext) {
+    // 清除该会话的 prompt 缓存
+    clearSessionPromptCache(ctx.sessionKey);
+    // 清除该 Agent 的工作区文件缓存
+    workspaceCache.delete(ctx.agentId);
   },
 };

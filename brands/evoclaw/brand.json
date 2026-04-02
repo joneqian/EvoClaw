@@ -12,5 +12,6 @@
     "primaryDark": "#00a88a",
     "gradient": ["#00d4aa", "#00a88a"]
   },
-  "windowTitle": "EvoClaw"
+  "windowTitle": "EvoClaw",
+  "defaultLanguage": "zh"
 }

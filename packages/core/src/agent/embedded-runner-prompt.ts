@@ -1,12 +1,20 @@
 /**
- * 系统提示构建 — 模块化 8 段式架构
+ * 系统提示构建 — 模块化段式架构 + Prompt Cache 分区
  *
- * 从 embedded-runner.ts 提取，参考 OpenClaw 22 段式架构精简而来。
- * 段落: 安全宪法 → 运行时信息 → 人格 → 操作规程 → 记忆召回 → 工具目录 → 工具风格 → 沉默回复 → 自定义
+ * 参考 Claude Code prompts.ts (53KB) 的静态/动态分区设计:
+ * - 静态段（Safety/Style/Tool Guide）→ cache_control: { type: 'ephemeral' }
+ * - 动态段（Runtime/Memory/Tools）→ cache_control: null
+ * - 大内容（USER.md/MEMORY.md）→ 移至用户消息 <system-reminder>（不在此函数中）
+ *
+ * 返回 SystemPromptBlock[] 数组，Anthropic API 可利用 cache_control 降低 90% 缓存费用。
+ * OpenAI API 通过 systemPromptBlocksToString() 合并为单字符串。
  */
 
 import os from 'node:os';
 import type { AgentRunConfig } from './types.js';
+import type { SystemPromptBlock } from './kernel/types.js';
+import { systemPromptBlocksToString } from './kernel/types.js';
+// Git context 不注入 — EvoClaw 面向企业用户，非开发者，无需 Git 状态
 
 /** 沉默回复 token — Agent 返回此 token 表示无需回复用户 */
 export const NO_REPLY_TOKEN = 'NO_REPLY';
@@ -100,14 +108,20 @@ function truncateBootstrapContent(files: Record<string, string>): Record<string,
 // ---------------------------------------------------------------------------
 
 /**
- * 模块化系统提示构建（参考 OpenClaw 22 段式架构）
+ * 构建系统提示词（返回 SystemPromptBlock[] 支持 Prompt Cache 分区）
+ *
+ * 静态段用 cache_control: { type: 'ephemeral' }，动态段不缓存。
+ * USER.md/MEMORY.md 不在此函数中注入（由 buildUserContextReminder 移至用户消息）。
  */
-export function buildSystemPrompt(config: AgentRunConfig): string {
-  const files = truncateBootstrapContent(config.workspaceFiles);
-  const sections: string[] = [];
+export function buildSystemPromptBlocks(config: AgentRunConfig): SystemPromptBlock[] {
+  const files = truncateBootstrapContent(config.workspaceFiles ?? {});
+  const blocks: SystemPromptBlock[] = [];
 
-  // § 1 Safety constitution + hardcoded Red Lines (immutable, independent of AGENTS.md)
-  sections.push(`<safety>
+  // ═══ 静态段（可缓存）═══
+
+  // § 1 Safety constitution
+  blocks.push({
+    text: `<safety>
 You are an AI assistant governed by these core safety principles:
 - You have no independent goals; always serve the user's needs
 - Safety and human oversight take priority over task completion
@@ -123,51 +137,27 @@ You are an AI assistant governed by these core safety principles:
 - Never send messages to external channels without user consent
 - Never execute financial, contractual, or legally binding actions autonomously
 - In group chats, never expose private conversation context
-</safety>`);
+</safety>`,
+    cacheControl: { type: 'ephemeral' },
+    label: 'safety',
+  });
 
-  // § 2 Runtime info
-  const runtimeInfo = [
-    `Agent ID: ${config.agent?.id ?? 'unknown'}`,
-    `Agent name: ${config.agent?.name ?? 'unnamed'}`,
-    `OS: ${os.platform()} ${os.arch()}`,
-    `Node.js: ${process.version}`,
-    `Model: ${config.provider}/${config.modelId}`,
-    `Current time: ${new Date().toISOString()}`,
-    `Diary directory: memory/ (only for .md daily memory diary files — no other file types allowed)`,
-    `Diary write path: memory/YYYY-MM-DD.md (append-only — never overwrite existing content)`,
-    `Work output: files generated for the user (HTML/PDF/images etc.) go to workspace root, not memory/`,
-  ].join('\n');
-  sections.push(`<runtime>\n${runtimeInfo}\n</runtime>`);
-
-  // § 3 人格
+  // § 3 人格（不常变，可缓存）
   if (files['SOUL.md']) {
-    sections.push(`<personality>\n${files['SOUL.md']}\n</personality>`);
+    blocks.push({ text: `<personality>\n${files['SOUL.md']}\n</personality>`, cacheControl: { type: 'ephemeral' }, label: 'personality' });
   }
   if (files['IDENTITY.md']) {
-    sections.push(`<identity>\n${files['IDENTITY.md']}\n</identity>`);
+    blocks.push({ text: `<identity>\n${files['IDENTITY.md']}\n</identity>`, cacheControl: { type: 'ephemeral' }, label: 'identity' });
   }
 
-  // § 3.5 用户画像
-  if (files['USER.md']) {
-    sections.push(`<user_profile>\n${files['USER.md']}\n</user_profile>`);
-  }
-
-  // § 4 操作规程
+  // § 4 操作规程（不常变，可缓存）
   if (files['AGENTS.md']) {
-    sections.push(`<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`);
+    blocks.push({ text: `<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`, cacheControl: { type: 'ephemeral' }, label: 'procedures' });
   }
 
-  // § 4.5 BOOTSTRAP.md — controlled by chat.ts based on setupCompleted
-  if (files['BOOTSTRAP.md']) {
-    sections.push(`<bootstrap>
-**IMPORTANT: This is your first conversation. You must prioritize the onboarding flow below. Set aside your professional role for now — meet the user, build rapport, then complete onboarding before entering normal work mode.**
-
-${files['BOOTSTRAP.md']}
-</bootstrap>`);
-  }
-
-  // § 5 Memory recall instructions
-  sections.push(`<memory_recall>
+  // § 5 Memory recall instructions（静态指令）
+  blocks.push({
+    text: `<memory_recall>
 Before answering the user, you should:
 1. Use memory_search to find relevant memories — learn about the user's preferences, history, and context
 2. Use memory_get for full details when needed
@@ -176,39 +166,14 @@ Before answering the user, you should:
 5. MEMORY.md is your long-term notebook — read it with the read tool
 6. When you discover important information worth remembering long-term, write it to today's diary (memory/YYYY-MM-DD.md)
 7. At the start of each session, check MEMORY.md for previously recorded notes
-</memory_recall>`);
+</memory_recall>`,
+    cacheControl: { type: 'ephemeral' },
+    label: 'memory_recall',
+  });
 
-  // § 5.1 Agent 笔记本
-  if (files['MEMORY.md']) {
-    sections.push(`<agent_notes>\n${files['MEMORY.md']}\n</agent_notes>`);
-  }
-
-  // § 5.2 任务状态注入（TodoWrite）
-  if (files['TODO.json']) {
-    try {
-      const tasks = JSON.parse(files['TODO.json']) as Array<{ id: string; description: string; status: string }>;
-      if (Array.isArray(tasks) && tasks.length > 0) {
-        const inProgress = tasks.filter(t => t.status === 'in_progress');
-        const todo = tasks.filter(t => t.status === 'todo');
-        const done = tasks.filter(t => t.status === 'done');
-        sections.push(`<current_tasks>
-进行中: ${inProgress.map(t => `[${t.id}] ${t.description}`).join(', ') || '无'}
-待办: ${todo.map(t => `[${t.id}] ${t.description}`).join(', ') || '无'}
-已完成: ${done.length} 项
-</current_tasks>`);
-      }
-    } catch { /* malformed TODO.json, skip */ }
-  }
-
-  // § 5.5 工具目录
-  const toolNames = (config.tools ?? []).map(t => t.name);
-  const toolCatalog = buildToolCatalog(toolNames);
-  if (toolCatalog) {
-    sections.push(toolCatalog);
-  }
-
-  // § 6 Tool call style
-  sections.push(`<tool_call_style>
+  // § 6 Tool call style（静态指令）
+  blocks.push({
+    text: `<tool_call_style>
 ## Tool Call Style
 Default: do not narrate routine, low-risk tool calls (just call the tool).
 Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.
@@ -240,18 +205,125 @@ When the user asks to find a file:
    - Limit depth: \`-maxdepth 4\`
 3. **Never search root /**; stay within user home ~
 4. If no results, broaden scope (remove dir constraint or reduce keyword precision)
-</tool_call_style>`);
+</tool_call_style>`,
+    cacheControl: { type: 'ephemeral' },
+    label: 'tool_style',
+  });
 
-  // § 7 Silent reply
-  sections.push(`<silent_reply>
+  // § 7 Silent reply（静态指令）
+  blocks.push({
+    text: `<silent_reply>
 If you determine the current message needs no reply (e.g., it's just an acknowledgment, emoji, or system notification),
 reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show anything to the user.
-</silent_reply>`);
+</silent_reply>`,
+    cacheControl: { type: 'ephemeral' },
+    label: 'silent_reply',
+  });
 
-  // § 8 自定义
-  if (config.systemPrompt) {
-    sections.push(config.systemPrompt);
+  // § 语言偏好（全局配置，优先级: 用户配置 > 品牌默认 > 'zh'）
+  const language = (config as any).language ?? 'zh';
+  const languageLabel = language === 'zh' ? 'Chinese (中文)' : 'English';
+  blocks.push({
+    text: `<language>\nIMPORTANT: Always respond in ${languageLabel}. This is a user preference set in the application settings.\n</language>`,
+    cacheControl: { type: 'ephemeral' },
+    label: 'language',
+  });
+
+  // ═══ 动态段（不缓存，每轮可变）═══
+
+  // § 2 Runtime info（含时间戳 + Git 状态，每轮变）
+  const runtimeLines = [
+    `Agent ID: ${config.agent?.id ?? 'unknown'}`,
+    `Agent name: ${config.agent?.name ?? 'unnamed'}`,
+    `OS: ${os.platform()} ${os.arch()}`,
+    `Node.js: ${process.version}`,
+    `Model: ${config.provider}/${config.modelId}`,
+    `Current time: ${new Date().toISOString()}`,
+  ];
+
+  // Scratchpad / 工作区路径
+  if (config.workspacePath) {
+    runtimeLines.push(`Workspace path: ${config.workspacePath}`);
+    runtimeLines.push(`Scratchpad: ${config.workspacePath}/tmp/ (temporary files)`);
   }
 
-  return sections.join('\n\n');
+  runtimeLines.push(
+    `Diary directory: memory/ (only for .md daily memory diary files — no other file types allowed)`,
+    `Diary write path: memory/YYYY-MM-DD.md (append-only — never overwrite existing content)`,
+    `Work output: files generated for the user (HTML/PDF/images etc.) go to workspace root, not memory/`,
+  );
+
+  blocks.push({ text: `<runtime>\n${runtimeLines.join('\n')}\n</runtime>`, cacheControl: null, label: 'runtime' });
+
+  // § 4.5 BOOTSTRAP.md（动态，首轮才有）
+  if (files['BOOTSTRAP.md']) {
+    blocks.push({
+      text: `<bootstrap>\n**IMPORTANT: This is your first conversation. You must prioritize the onboarding flow below.**\n\n${files['BOOTSTRAP.md']}\n</bootstrap>`,
+      cacheControl: null,
+      label: 'bootstrap',
+    });
+  }
+
+  // § 5.2 任务状态（动态）
+  if (files['TODO.json']) {
+    try {
+      const tasks = JSON.parse(files['TODO.json']) as Array<{ id: string; description: string; status: string }>;
+      if (Array.isArray(tasks) && tasks.length > 0) {
+        const inProgress = tasks.filter(t => t.status === 'in_progress');
+        const todo = tasks.filter(t => t.status === 'todo');
+        const done = tasks.filter(t => t.status === 'done');
+        blocks.push({
+          text: `<current_tasks>\n进行中: ${inProgress.map(t => `[${t.id}] ${t.description}`).join(', ') || '无'}\n待办: ${todo.map(t => `[${t.id}] ${t.description}`).join(', ') || '无'}\n已完成: ${done.length} 项\n</current_tasks>`,
+          cacheControl: null,
+          label: 'tasks',
+        });
+      }
+    } catch { /* malformed TODO.json, skip */ }
+  }
+
+  // § 5.5 工具目录（动态，工具列表可变）
+  const toolNames = (config.tools ?? []).map(t => t.name);
+  const toolCatalog = buildToolCatalog(toolNames);
+  if (toolCatalog) {
+    blocks.push({ text: toolCatalog, cacheControl: null, label: 'tools' });
+  }
+
+  // § 8 自定义系统提示词（动态）
+  if (config.systemPrompt) {
+    blocks.push({ text: config.systemPrompt, cacheControl: null, label: 'custom' });
+  }
+
+  return blocks;
+}
+
+/**
+ * 构建用户上下文提醒（注入首条用户消息前）
+ *
+ * 将 USER.md/MEMORY.md 等大内容从 system prompt 移至用户消息，
+ * 避免破坏 system prompt 的 Prompt Cache 命中率。
+ *
+ * 参考 Claude Code utils/api.ts::prependUserContext() 的 <system-reminder> 模式。
+ */
+export function buildUserContextReminder(files: Record<string, string>): string | null {
+  const parts: string[] = [];
+
+  if (files['USER.md']) {
+    parts.push(`# userProfile\n${files['USER.md']}`);
+  }
+  if (files['MEMORY.md']) {
+    parts.push(`# agentNotes\n${files['MEMORY.md']}`);
+  }
+
+  parts.push(`# currentDate\nToday's date is ${new Date().toISOString().slice(0, 10)}.`);
+
+  if (parts.length <= 1) return null; // 只有日期，不注入
+
+  return `<system-reminder>\n${parts.join('\n\n')}\n\nIMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant.\n</system-reminder>`;
+}
+
+/**
+ * 兼容函数：返回单字符串格式（供旧调用方和 OpenAI 使用）
+ */
+export function buildSystemPrompt(config: AgentRunConfig): string {
+  return systemPromptBlocksToString(buildSystemPromptBlocks(config));
 }

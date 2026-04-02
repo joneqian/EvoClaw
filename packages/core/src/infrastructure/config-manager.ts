@@ -15,7 +15,7 @@ import type {
   ModelReference,
 } from '@evoclaw/shared';
 import { parseModelRef } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME, BRAND } from '@evoclaw/shared';
 import { createLogger } from './logger.js';
 
 const log = createLogger('config');
@@ -65,6 +65,11 @@ export class ConfigManager {
   /** 获取完整配置 */
   getConfig(): EvoClawConfig {
     return structuredClone(this.config);
+  }
+
+  /** 获取响应语言偏好（优先级: 用户配置 > 品牌默认 > 'zh'） */
+  getLanguage(): 'zh' | 'en' {
+    return this.config.language ?? BRAND.defaultLanguage ?? 'zh';
   }
 
   /** 更新完整配置 */

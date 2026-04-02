@@ -8,6 +8,8 @@ export interface EvoClawConfig {
   };
   /** 环境变量（注入到 process.env，供 Skill/工具读取） */
   envVars?: Record<string, string>;
+  /** 响应语言偏好（前端设置页面选择，优先级高于品牌默认值） */
+  language?: 'zh' | 'en';
 }
 
 /** 模型配置 */

@@ -251,6 +251,13 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   // 重置压缩器状态 (新 attempt)
   resetCompactorState();
 
+  // ─── Tool Summary Generator (可选: LLM 驱动工具摘要) ───
+  let toolSummaryGenerator: QueryLoopConfig['toolSummaryGenerator'];
+  if (config.toolSummaryGeneratorFn) {
+    const { ToolUseSummaryGenerator } = await import('../cost/tool-use-summary.js');
+    toolSummaryGenerator = new ToolUseSummaryGenerator(config.toolSummaryGeneratorFn);
+  }
+
   // ─── 构建 QueryLoopConfig ───
   const loopConfig: QueryLoopConfig = {
     protocol: normalizeProtocol(effectiveProtocol),
@@ -268,6 +275,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     onEvent: wrappedOnEvent,
     toolSafety,
     abortSignal: mergedSignal,
+    toolSummaryGenerator,
   };
 
   try {

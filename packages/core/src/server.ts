@@ -58,6 +58,8 @@ import { DecayScheduler } from './memory/decay-scheduler.js';
 import { MemoryConsolidator } from './memory/memory-consolidator.js';
 import { CostTracker } from './cost/cost-tracker.js';
 import { createUsageRoutes } from './routes/usage.js';
+import { SessionSummarizer } from './memory/session-summarizer.js';
+import { LlmReranker } from './memory/llm-reranker.js';
 import { UserMdRenderer } from './memory/user-md-renderer.js';
 import { SkillDiscoverer } from './skill/skill-discoverer.js';
 import { MemoryStore } from './memory/memory-store.js';
@@ -128,6 +130,8 @@ export interface CreateAppOptions {
   bindingRouter?: BindingRouter;
   /** Channel 状态持久化 */
   channelStateRepo?: ChannelStateRepo;
+  /** 会话摘要器 */
+  sessionSummarizer?: SessionSummarizer;
   /** Heartbeat 管理器（延迟获取，因 HTTP 就绪后才初始化） */
   getHeartbeatManager?: () => HeartbeatManager | undefined;
 }
@@ -154,6 +158,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     memoryMonitor,
     bindingRouter,
     channelStateRepo,
+    sessionSummarizer,
   } = options;
 
   const app = new Hono();
@@ -283,7 +288,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance, sessionSummarizer),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -612,13 +617,16 @@ async function main() {
   const memoryStore = new MemoryStore(db, vectorStore);
   const knowledgeGraph = new KnowledgeGraphStore(db);
   const ftsStore = new FtsStore(db);
-  const hybridSearcher = new HybridSearcher(ftsStore, vectorStore, knowledgeGraph, memoryStore);
+  const llmCallFn = async (system: string, user: string) => callLLM(configManager, { systemPrompt: system, userMessage: user });
+  const llmReranker = new LlmReranker(llmCallFn);
+  const hybridSearcher = new HybridSearcher(ftsStore, vectorStore, knowledgeGraph, memoryStore, llmReranker);
   const memoryExtractor = new MemoryExtractor(
     db,
-    async (system: string, user: string) => callLLM(configManager, { systemPrompt: system, userMessage: user }),
+    llmCallFn,
     vectorStore,
     ftsStore,
   );
+  const sessionSummarizer = new SessionSummarizer(db, llmCallFn);
   const userMdRenderer = new UserMdRenderer(db);
   const skillDiscoverer = new SkillDiscoverer();
   log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
@@ -717,6 +725,7 @@ async function main() {
     memoryMonitor,
     bindingRouter,
     channelStateRepo,
+    sessionSummarizer,
     getHeartbeatManager: () => heartbeatManager ?? undefined,
   });
 

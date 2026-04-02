@@ -35,12 +35,18 @@ export async function runEmbeddedAgent(
   message: string,
   onEvent: EventCallback,
   externalAbortSignal?: AbortSignal,
+  options?: {
+    /** 持久重试模式（Cron/Heartbeat 无人值守场景） */
+    persistentRetry?: boolean;
+    /** 后台查询（529 时直接放弃） */
+    isBackgroundQuery?: boolean;
+  },
 ): Promise<void> {
   emit(onEvent, { type: 'agent_start' });
 
   try {
     log.info(`开始运行 Agent: provider=${config.provider}/${config.modelId}`);
-    await runEmbeddedLoop(config, message, onEvent, externalAbortSignal);
+    await runEmbeddedLoop(config, message, onEvent, externalAbortSignal, options);
     log.info('Agent 运行完成');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

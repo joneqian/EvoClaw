@@ -54,6 +54,8 @@ export interface AgentRunConfig {
     content: string;
     mode: 'replace' | 'append';
   }>;
+  /** Tool Use Summary LLM 调用函数（可选，用于生成工具摘要） */
+  toolSummaryGeneratorFn?: (system: string, user: string) => Promise<string>;
 }
 
 // ─── 单次执行结果 ───

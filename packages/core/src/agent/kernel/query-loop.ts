@@ -466,8 +466,22 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       ? `${toolNames.join(', ')} (${toolResults.length} 次调用, 有错误)`
       : `${toolNames.join(', ')} (${toolResults.length} 次调用)`;
     // 生成工具摘要并通过 onEvent 广播（可用于上下文压缩和 UI 展示）
-    createToolUseSummaryMessage(summaryText, toolIds); // 保留创建以便未来持久化
+    createToolUseSummaryMessage(summaryText, toolIds);
+    // 先发送简单摘要（即时），然后异步用 LLM 生成更好的摘要
     config.onEvent({ type: 'tool_end', toolName: summaryText, timestamp: Date.now() });
+    if (config.toolSummaryGenerator) {
+      const summaryTools = toolUseBlocks.map((b, i) => ({
+        toolName: b.name,
+        toolInput: b.input as Record<string, unknown>,
+        toolResult: toolResults[i]?.content?.slice(0, 300),
+        isError: toolResults[i]?.is_error,
+      }));
+      config.toolSummaryGenerator.generateAsync(summaryTools).then(llmSummary => {
+        if (llmSummary && llmSummary !== summaryText) {
+          config.onEvent({ type: 'tool_end', toolName: llmSummary, timestamp: Date.now() });
+        }
+      }).catch(() => { /* 非关键，忽略 */ });
+    }
 
     // ─── 7. 附件收集 (参考 Claude Code 附件与延续阶段) ───
     if (config.attachmentCollector) {

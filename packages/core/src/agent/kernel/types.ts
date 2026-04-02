@@ -434,6 +434,11 @@ export interface QueryLoopConfig {
 
   // ─── Attachment Collector (可选: 工具执行后收集附件) ───
   readonly attachmentCollector?: AttachmentCollectorFn;
+
+  // ─── Tool Summary Generator (可选: LLM 驱动的工具摘要) ───
+  readonly toolSummaryGenerator?: {
+    generateAsync(tools: Array<{ toolName: string; toolInput: Record<string, unknown>; toolResult?: string; isError?: boolean }>): Promise<string>;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

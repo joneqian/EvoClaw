@@ -133,6 +133,7 @@ export function createChatRoutes(
   skillDiscoverer?: SkillDiscoverer,
   cronRunner?: import('../scheduler/cron-runner.js').CronRunner,
   costTracker?: import('../cost/cost-tracker.js').CostTracker,
+  sessionSummarizer?: import('../memory/session-summarizer.js').SessionSummarizer,
 ) {
   const app = new Hono();
 
@@ -386,6 +387,10 @@ export function createChatRoutes(
       },
     }));                  // Tier 1: <available_skills> 目录注入
     contextEngine.register(createGapDetectionPlugin(skillDiscoverer));   // afterTurn: 能力缺口检测 + Skill 推荐
+    if (sessionSummarizer) {
+      const { createSessionSummaryPlugin } = await import('../context/plugins/session-summary.js');
+      contextEngine.register(createSessionSummaryPlugin(sessionSummarizer));
+    }
 
     // 加载消息历史
     const history = loadMessageHistory(store, agentId, sessionKey);
@@ -689,6 +694,13 @@ export function createChatRoutes(
           durationMs: entry.durationMs,
         });
       },
+      // Tool Summary: 使用低成本模型生成工具调用摘要
+      toolSummaryGeneratorFn: configManager
+        ? async (system: string, user: string) => {
+            const { callLLM } = await import('../agent/llm-client.js');
+            return callLLM(configManager, { systemPrompt: system, userMessage: user, maxTokens: 256 });
+          }
+        : undefined,
     };
 
     // 审计日志异步队列（内存缓存 + Agent 结束后批量写入）

@@ -9,7 +9,7 @@ describe('Doctor 自诊断', () => {
     expect(report.overall).toBeDefined();
     expect(report.checks.length).toBeGreaterThan(0);
     expect(report.system).toBeDefined();
-    expect(report.system.nodeVersion).toBe(process.version);
+    expect(report.system.runtimeVersion).toBe(process.version);
     expect(report.system.cpuCount).toBeGreaterThan(0);
   });
 
@@ -81,11 +81,14 @@ describe('Doctor 自诊断', () => {
     const report = runDiagnostics({});
     expect(report.system.platform).toBeTruthy();
     expect(report.system.arch).toBeTruthy();
-    expect(report.system.nodeVersion).toMatch(/^v\d+/);
+    expect(report.system.runtimeVersion).toMatch(/^v?\d+/);
     expect(report.system.uptime).toBeGreaterThan(0);
     expect(report.system.memoryUsage.rss).toBeGreaterThan(0);
     expect(report.system.memoryUsage.heapUsed).toBeGreaterThan(0);
     expect(report.system.memoryUsage.heapTotal).toBeGreaterThan(0);
+    expect(report.system.memoryUsage.external).toBeGreaterThanOrEqual(0);
+    expect(report.system.featureFlags).toBeDefined();
+    expect(typeof report.system.featureFlags.SANDBOX).toBe('boolean');
   });
 
   it('Lane 队列检查无 queue 时应 warn', () => {

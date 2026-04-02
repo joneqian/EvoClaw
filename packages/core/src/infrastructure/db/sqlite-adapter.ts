@@ -9,9 +9,7 @@
  * 唯一差异是 pragma() — better-sqlite3 有此方法，bun:sqlite 没有。
  */
 
-/** 运行时是否为 Bun */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const isBun = typeof (globalThis as any).Bun !== 'undefined';
+import { isBun } from '../runtime.js';
 
 /** 统一的 Database 实例类型（取两者交集） */
 export interface DatabaseInstance {

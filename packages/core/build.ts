@@ -21,6 +21,15 @@ const bunBanner = [
   '}',
 ].join('\n');
 
+// Feature Flag — 编译时常量注入
+// 环境变量 ENABLE_* 控制功能开关，esbuild 替换为 true/false 常量后 tree shake 移除未启用分支
+const featureFlags: Record<string, string> = {
+  'FEATURE_SANDBOX': JSON.stringify(process.env.ENABLE_SANDBOX === 'true'),
+  'FEATURE_WEIXIN': JSON.stringify(process.env.ENABLE_WEIXIN === 'true'),
+  'FEATURE_MCP': JSON.stringify(process.env.ENABLE_MCP === 'true'),
+  'FEATURE_SILK_VOICE': JSON.stringify(process.env.ENABLE_SILK_VOICE === 'true'),
+};
+
 await build({
   entryPoints: ['src/server.ts'],
   bundle: true,
@@ -31,6 +40,7 @@ await build({
   external: ['better-sqlite3', 'bun:sqlite'],
   sourcemap: true,
   banner: { js: bunBanner },
+  define: featureFlags,
 });
 
 // 复制迁移 SQL 文件到 dist

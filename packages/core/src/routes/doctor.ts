@@ -8,7 +8,8 @@ import os from 'node:os';
 import fs from 'node:fs';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
-import { isBun } from '../infrastructure/db/sqlite-adapter.js';
+import { isBun, bunVersion, bunGC, bunHeapSnapshot } from '../infrastructure/runtime.js';
+import { getFeatureStatus } from '../infrastructure/feature.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { MemoryMonitor } from '../infrastructure/memory-monitor.js';
 
@@ -31,8 +32,9 @@ export interface DiagnosticReport {
     runtime: string;
     runtimeVersion: string;
     uptime: number;
-    memoryUsage: { rss: number; heapUsed: number; heapTotal: number };
+    memoryUsage: { rss: number; heapUsed: number; heapTotal: number; external: number };
     cpuCount: number;
+    featureFlags: Record<string, boolean>;
   };
 }
 
@@ -95,14 +97,16 @@ export function runDiagnostics(deps: {
       platform: `${os.platform()} ${os.release()}`,
       arch: os.arch(),
       runtime: isBun ? 'bun' : 'node',
-      runtimeVersion: isBun ? (globalThis as any).Bun.version : process.version,
+      runtimeVersion: bunVersion ?? process.version,
       uptime: process.uptime(),
       memoryUsage: {
         rss: Math.round(mem.rss / 1024 / 1024),
         heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
         heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+        external: Math.round((mem.external ?? 0) / 1024 / 1024),
       },
       cpuCount: os.cpus().length,
+      featureFlags: getFeatureStatus(),
     },
   };
 }
@@ -293,6 +297,22 @@ export function createDoctorRoutes(store?: SqliteStore, configManager?: ConfigMa
       return c.json({ error: '内存监控未启用' }, 503);
     }
     return c.json(memoryMonitor.getReport());
+  });
+
+  // 堆快照（仅 Bun 可用）— 用于内存泄漏诊断
+  app.get('/heap-snapshot', (c) => {
+    if (!bunHeapSnapshot) {
+      return c.json({ error: '堆快照仅在 Bun 运行时可用' }, 501);
+    }
+    // 先强制 GC 以获得更准确的快照
+    if (bunGC) bunGC(true);
+    const snapshot = bunHeapSnapshot('v8', 'arraybuffer');
+    return new Response(snapshot, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="heap-${Date.now()}.heapsnapshot"`,
+      },
+    });
   });
 
   return app;

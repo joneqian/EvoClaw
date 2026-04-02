@@ -31,15 +31,18 @@ import type {
   ThinkingBlock,
   ToolUseBlock,
   ToolResultBlock,
+  TombstoneMessage,
   TokenUsage,
   QueryLoopConfig,
   QueryLoopResult,
+  ExitReason,
 } from './types.js';
-import { ApiError, AbortError } from './types.js';
+import { ApiError } from './types.js';
 import { streamLLM } from './stream-client.js';
 import { StreamingToolExecutor } from './streaming-tool-executor.js';
 import { maybeCompress } from './context-compactor.js';
 import { classifyApiError, isRecoverableInLoop, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
+import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage } from './message-utils.js';
 import type { ToolCallRecord } from '../types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
@@ -96,21 +99,7 @@ function buildToolResultMessage(results: ToolResultBlock[]): KernelMessage {
   };
 }
 
-/** 将 ToolUseBlock + ToolResultBlock 映射为 ToolCallRecord */
-function mapToToolCallRecords(
-  toolUseBlocks: ToolUseBlock[],
-  toolResults: ToolResultBlock[],
-): ToolCallRecord[] {
-  return toolUseBlocks.map(block => {
-    const result = toolResults.find(r => r.tool_use_id === block.id);
-    return {
-      toolName: block.name,
-      args: block.input,
-      result: result?.content ?? '',
-      isError: result?.is_error ?? false,
-    };
-  });
-}
+// mapToToolCallRecords 已移至 message-utils.ts（使用 MessageLookups O(1) 查找）
 
 // ═══════════════════════════════════════════════════════════════════════════
 // streamOneRound — 单轮流式调用 + 流中工具预执行
@@ -227,34 +216,46 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
   const messages: KernelMessage[] = [...config.messages];
   let turnCount = 0;
   let maxOutputRecoveryCount = 0;
-  /** P1-1: 可升级的 maxTokens (max_output_tokens 恢复时升级到 64k) */
   let effectiveMaxTokens = config.maxTokens;
   let fullResponse = '';
   const allToolCalls: ToolCallRecord[] = [];
   let totalInput = 0;
   let totalOutput = 0;
   let overflowRetries = 0;
+  let exitReason: ExitReason = 'completed';
+  const tombstones: TombstoneMessage[] = [];
 
   log.info(`queryLoop 开始: model=${config.modelId}, maxTurns=${config.maxTurns}, tools=${config.tools.length}`);
+
+  const buildResult = (): QueryLoopResult => ({
+    fullResponse,
+    toolCalls: allToolCalls,
+    messages,
+    totalInputTokens: totalInput,
+    totalOutputTokens: totalOutput,
+    exitReason,
+    turnCount,
+    tombstones,
+  });
 
   while (true) {
     // ─── 1. 中止检查 ───
     if (config.abortSignal?.aborted) {
-      throw new AbortError('外部中止');
+      exitReason = 'abort';
+      log.info('外部中止');
+      return buildResult();
     }
     if (turnCount >= config.maxTurns) {
+      exitReason = 'max_turns';
       log.info(`达到最大 turn 数 (${config.maxTurns})，退出`);
-      break;
+      return buildResult();
     }
 
     // ─── 2. 上下文压缩 (turn > 0 时检查) ───
     if (turnCount > 0) {
       try {
-        const compressed = await maybeCompress(messages, config);
-        if (compressed) {
-          config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-          config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
-        }
+        // 压缩边界事件由 context-compactor 内部发射（每层独立发射 start/end）
+        await maybeCompress(messages, config);
       } catch (err) {
         log.warn(`压缩失败，继续: ${err instanceof Error ? err.message : err}`);
       }
@@ -268,31 +269,29 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     let roundResult: RoundResult;
     try {
       roundResult = await streamOneRound(config, messages, executor, effectiveMaxTokens);
-      overflowRetries = 0; // 成功后重置
+      overflowRetries = 0;
     } catch (err) {
-      // 413 overflow → 循环内压缩重试
+      // 413 overflow → 循环内压缩重试 (transition: overflow_retry)
       const classified = classifyApiError(err);
       if (isRecoverableInLoop(classified) && overflowRetries < MAX_OVERFLOW_RETRIES) {
         overflowRetries++;
         log.warn(`413 overflow, 压缩重试 (${overflowRetries}/${MAX_OVERFLOW_RETRIES})`);
         executor.discard();
 
-        // 强制压缩
         try {
           await maybeCompress(messages, config);
         } catch {
-          // 压缩也失败 → 抛出原始错误
           throw err;
         }
-        continue; // 重试本轮
+        continue; // transition: overflow_retry
       }
 
-      // 中止错误
       if (isAbortLike(err)) {
-        throw err instanceof AbortError ? err : new AbortError();
+        exitReason = 'abort';
+        return buildResult();
       }
 
-      // 其他错误 → 抛给外层
+      exitReason = 'error';
       throw err;
     }
 
@@ -314,11 +313,35 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     );
 
     if (toolUseBlocks.length === 0) {
-      // ─── P1-1: max_output_tokens 恢复 (参考 Claude Code query.ts) ───
+      // ─── 5a. Stop Hook 检查 (参考 Claude Code query.ts stopHookResult) ───
+      if (config.stopHook) {
+        try {
+          const hookResult = await config.stopHook(roundResult.assistantMessage, messages);
+          if (hookResult.preventContinuation) {
+            exitReason = 'stop_hook_prevented';
+            log.info('Stop Hook 阻止继续');
+            return buildResult();
+          }
+          if (hookResult.blockingErrors.length > 0) {
+            // Hook 报告阻断性错误 → 注入错误信息，继续循环修复
+            log.info(`Stop Hook 报告 ${hookResult.blockingErrors.length} 个阻断性错误，继续修复`);
+            messages.push({
+              id: crypto.randomUUID(),
+              role: 'user',
+              content: [{ type: 'text', text: `以下检查未通过，请修复:\n${hookResult.blockingErrors.join('\n')}` }],
+              isMeta: true,
+            });
+            continue; // transition: stop_hook_blocking
+          }
+        } catch (err) {
+          log.warn(`Stop Hook 执行失败，忽略: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+
+      // ─── 5b. max_output_tokens 恢复 ───
       if (roundResult.stopReason === 'max_tokens' && maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
         maxOutputRecoveryCount++;
 
-        // 第一次: 尝试升级到 64k
         if (maxOutputRecoveryCount === 1 && effectiveMaxTokens < ESCALATED_MAX_TOKENS) {
           effectiveMaxTokens = ESCALATED_MAX_TOKENS;
           log.info(`max_output_tokens 恢复: 升级到 ${ESCALATED_MAX_TOKENS} tokens (attempt ${maxOutputRecoveryCount})`);
@@ -326,41 +349,90 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
           log.info(`max_output_tokens 恢复: 注入 Resume 消息 (attempt ${maxOutputRecoveryCount})`);
         }
 
-        // 注入恢复消息
         messages.push({
           id: crypto.randomUUID(),
           role: 'user',
           content: [{ type: 'text', text: MAX_OUTPUT_RECOVERY_MESSAGE }],
+          isMeta: true,
         });
-        continue; // 重试
+        continue; // transition: max_tokens_recovery
+      }
+
+      if (roundResult.stopReason === 'max_tokens') {
+        exitReason = 'max_tokens_exhausted';
+        log.info(`max_output_tokens 恢复次数用尽 (${MAX_OUTPUT_RECOVERY_LIMIT})`);
+        return buildResult();
+      }
+
+      // ─── 5c. Token Budget 连续执行 (参考 Claude Code TOKEN_BUDGET feature) ───
+      if (config.tokenBudget) {
+        const decision = config.tokenBudget(turnCount, totalInput, totalOutput);
+        if (decision.action === 'continue' && decision.nudgeMessage) {
+          log.info(`Token Budget 续行: ${decision.nudgeMessage.slice(0, 50)}...`);
+          messages.push({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: [{ type: 'text', text: decision.nudgeMessage }],
+            isMeta: true,
+          });
+          continue; // transition: token_budget_continue
+        }
+        if (decision.action === 'stop' && decision.stopReason === 'budget_exhausted') {
+          exitReason = 'token_budget_exhausted';
+          log.info('Token Budget 耗尽');
+          return buildResult();
+        }
       }
 
       // 模型完成，无工具调用
+      exitReason = 'completed';
       log.info(`模型完成 (turn ${turnCount})，无工具调用`);
-      break;
+      return buildResult();
     }
 
-    // 收集工具结果 (流中已预执行的直接获取)
+    // ─── 6. 收集工具结果 ───
     const toolResults = await executor.collectResults({
       onEvent: config.onEvent,
       signal: config.abortSignal,
     });
 
-    allToolCalls.push(...mapToToolCallRecords(toolUseBlocks, toolResults));
+    const toolResultMsg = buildToolResultMessage(toolResults);
+    const lookups = buildMessageLookups([roundResult.assistantMessage, toolResultMsg]);
+    allToolCalls.push(...mapToolCalls(toolUseBlocks, lookups));
 
-    // ─── 6. 构建 tool result message → continue ───
-    messages.push(buildToolResultMessage(toolResults));
+    messages.push(toolResultMsg);
+
+    // ─── 6b. 工具调用摘要 (参考 Claude Code ToolUseSummaryMessage) ───
+    // 生成 git-commit-subject 风格的简短摘要，用于上下文压缩和 UI 展示
+    const toolNames = toolUseBlocks.map(b => b.name);
+    const toolIds = toolUseBlocks.map(b => b.id);
+    const hasErrors = toolResults.some(r => r.is_error);
+    const summaryText = hasErrors
+      ? `${toolNames.join(', ')} (${toolResults.length} 次调用, 有错误)`
+      : `${toolNames.join(', ')} (${toolResults.length} 次调用)`;
+    // 生成工具摘要并通过 onEvent 广播（可用于上下文压缩和 UI 展示）
+    createToolUseSummaryMessage(summaryText, toolIds); // 保留创建以便未来持久化
+    config.onEvent({ type: 'tool_end', toolName: summaryText, timestamp: Date.now() });
+
+    // ─── 7. 附件收集 (参考 Claude Code 附件与延续阶段) ───
+    if (config.attachmentCollector) {
+      try {
+        const attachment = await config.attachmentCollector(allToolCalls, messages);
+        if (attachment) {
+          messages.push({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: [{ type: 'text', text: attachment }],
+            isMeta: true,
+          });
+          log.info('附件已注入下一轮上下文');
+        }
+      } catch (err) {
+        log.warn(`附件收集失败，忽略: ${err instanceof Error ? err.message : err}`);
+      }
+    }
 
     log.info(`turn ${turnCount}: ${toolUseBlocks.length} 个工具调用完成，继续`);
+    // transition: tool_use → continue
   }
-
-  log.info(`queryLoop 结束: turns=${turnCount}, toolCalls=${allToolCalls.length}`);
-
-  return {
-    fullResponse,
-    toolCalls: allToolCalls,
-    messages,
-    totalInputTokens: totalInput,
-    totalOutputTokens: totalOutput,
-  };
 }

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { isBun } from './infrastructure/db/sqlite-adapter.js';
+import { isBun } from './infrastructure/runtime.js';
 import { cors } from 'hono/cors';
 import { bearerAuth } from 'hono/bearer-auth';
 import { HTTPException } from 'hono/http-exception';
@@ -59,6 +59,9 @@ import { SkillDiscoverer } from './skill/skill-discoverer.js';
 import { MemoryStore } from './memory/memory-store.js';
 import { KnowledgeGraphStore } from './memory/knowledge-graph.js';
 import { FtsStore } from './infrastructure/db/fts-store.js';
+import { StartupProfiler } from './infrastructure/startup-profiler.js';
+import { BootstrapState } from './infrastructure/bootstrap-state.js';
+import { preconnectProviders } from './infrastructure/preconnect.js';
 
 const log = createLogger('server');
 
@@ -546,112 +549,85 @@ function initVectorStore(
 
 /** 主入口 — 仅在直接执行时运行 */
 async function main() {
+  const profiler = new StartupProfiler();
+  profiler.checkpoint('main_start');
+
   const log = createLogger('server');
+  const bootstrapState = new BootstrapState();
+  bootstrapState.transition('initializing');
+
   const token = generateToken();
   const port = getRandomPort();
-
   log.info(`日志文件: ${LOG_PATH}`);
 
-  // 初始化配置管理器
+  // ═══════════════════════════════════════════════════════════════════════
+  // Phase 1（并行）: Config 加载 + DB 初始化 + Skills 预装
+  // ConfigManager 和 SqliteStore 互不依赖，可以并行执行
+  // ═══════════════════════════════════════════════════════════════════════
+
   const configManager = new ConfigManager();
-
-  // 从 evo_claw.json 同步 Provider 到内存注册表
   syncProvidersFromConfig(configManager);
-
-  // 从 evo_claw.json 同步环境变量到 process.env
   syncEnvVarsFromConfig(configManager);
+  profiler.checkpoint('config_loaded');
 
-  // 预装 Bundled Skills（首次启动时复制到 skills 目录）
-  seedBundledSkills();
+  // DB 初始化 + Skills 预装并行执行
+  const [db] = await Promise.all([
+    // Group A: 数据库初始化 + 迁移
+    (async () => {
+      const store = new SqliteStore();
+      const migrationRunner = new MigrationRunner(store);
+      await migrationRunner.run();
+      return store;
+    })(),
+    // Group B: Skills 预装（独立，无依赖）
+    Promise.resolve(seedBundledSkills()),
+  ]);
 
-  // 初始化数据库
-  const db = new SqliteStore();
-  const migrationRunner = new MigrationRunner(db);
-  await migrationRunner.run();
+  profiler.checkpoint('db_ready');
   log.info('数据库迁移完成');
 
-  // 初始化 VectorStore（从 evo_claw.json 读取配置）
-  const vectorStore = initVectorStore(db, configManager);
+  // ═══════════════════════════════════════════════════════════════════════
+  // Phase 2（并行）: Memory 系统 + Agent 系统 + Channel 系统
+  // 这三个子系统都依赖 Phase 1 的 DB + Config，但彼此独立
+  // ═══════════════════════════════════════════════════════════════════════
 
-  // 初始化记忆系统（完整版：FTS + 向量 + 知识图谱 + 记忆提取）
+  // --- Memory 子系统（同步创建，无需 await）---
+  const vectorStore = initVectorStore(db, configManager);
   const memoryStore = new MemoryStore(db, vectorStore);
   const knowledgeGraph = new KnowledgeGraphStore(db);
   const ftsStore = new FtsStore(db);
   const hybridSearcher = new HybridSearcher(ftsStore, vectorStore, knowledgeGraph, memoryStore);
-
-  // 记忆提取器（需要 LLM + VectorStore + FtsStore 索引）
   const memoryExtractor = new MemoryExtractor(
     db,
     async (system: string, user: string) => callLLM(configManager, { systemPrompt: system, userMessage: user }),
     vectorStore,
     ftsStore,
   );
-
-  // USER.md / MEMORY.md 动态渲染器
   const userMdRenderer = new UserMdRenderer(db);
-
-  // Skill 发现器（用于能力缺口检测 + Skill 推荐）
   const skillDiscoverer = new SkillDiscoverer();
-
   log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
 
+  // --- Agent + Scheduler 子系统 ---
   const agentManager = new AgentManager(db);
-
-  // 初始化 LaneQueue + CronRunner
   const laneQueue = new LaneQueue();
   const cronRunner = new CronRunner(db, laneQueue);
   cronRunner.start();
   log.info('CronRunner 已启动');
 
-  // HeartbeatManager — 延迟到 HTTP 服务就绪后初始化（需要实际 port）
-  let heartbeatManager: HeartbeatManager | null = null;
-
-  // 初始化 ChannelManager + 适配器
+  // --- Channel 子系统（注册适配器，但不恢复连接 — 延迟到 Phase 3）---
   const channelManager = new ChannelManager();
   const desktopAdapter = new DesktopAdapter();
   channelManager.registerAdapter(desktopAdapter);
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
-
   const channelStateRepo = new ChannelStateRepo(db);
   const weixinAdapter = new WeixinAdapter(channelStateRepo);
   channelManager.registerAdapter(weixinAdapter);
-
-  // 自动恢复渠道连接 — 从 channel_state 读取上次保存的凭证
-  // 按需轮询：仅当渠道有 Agent 绑定时才启动轮询，避免无绑定时空耗资源
-  const channelTypes = ['weixin', 'feishu', 'wecom'] as const;
-  for (const chType of channelTypes) {
-    const savedCreds = channelStateRepo.getState(chType as any, 'credentials');
-    const savedName = channelStateRepo.getState(chType as any, 'name');
-    if (savedCreds) {
-      // 检查该渠道是否有 Agent 绑定（含 channel 级 + peer 级 + 默认 Agent）
-      const hasBinding = db.get<{ cnt: number }>(
-        `SELECT COUNT(*) AS cnt FROM bindings WHERE channel = ? OR is_default = 1`,
-        chType,
-      );
-      if (!hasBinding || hasBinding.cnt === 0) {
-        log.info(`渠道 ${chType} 无 Agent 绑定，跳过轮询（凭证已保留，绑定后可手动连接）`);
-        continue;
-      }
-
-      try {
-        const credentials = JSON.parse(savedCreds);
-        await channelManager.connect({
-          type: chType as any,
-          name: savedName ?? chType,
-          credentials,
-        });
-        log.info(`渠道 ${chType} 已自动恢复连接`);
-      } catch (err) {
-        log.warn(`渠道 ${chType} 自动恢复失败: ${err instanceof Error ? err.message : String(err)}`);
-        // 清除无效凭证
-        channelStateRepo.deleteState(chType as any, 'credentials');
-        channelStateRepo.deleteState(chType as any, 'name');
-      }
-    }
-  }
-
-  // 初始化 BindingRouter — Channel → Agent 绑定匹配
   const bindingRouter = new BindingRouter(db);
+
+  profiler.checkpoint('systems_ready');
+
+  // HeartbeatManager — 延迟到 HTTP 服务就绪后初始化（需要实际 port）
+  let heartbeatManager: HeartbeatManager | null = null;
 
   // 渠道消息处理依赖
   const channelMsgDeps: ChannelMessageDeps = {
@@ -669,7 +645,6 @@ async function main() {
 
   // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理
   channelManager.onMessage(async (msg) => {
-    // 1. 通过 BindingRouter 匹配目标 Agent
     const targetAgentId = bindingRouter.resolveAgent({
       channel: msg.channel,
       accountId: msg.accountId,
@@ -680,11 +655,9 @@ async function main() {
       return;
     }
 
-    // 2. 生成 Session Key（'private' → 'direct' 映射）
     const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
     const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId);
 
-    // 3. 通过消息处理器处理
     try {
       await handleChannelMessage(
         {
@@ -704,12 +677,13 @@ async function main() {
     }
   });
 
-  log.info('ChannelManager 已初始化');
-
   // 内存监控
   const memoryMonitor = new MemoryMonitor();
   memoryMonitor.start();
-  log.info('MemoryMonitor 已启动');
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 创建 HTTP 应用 + 启动服务器
+  // ═══════════════════════════════════════════════════════════════════════
 
   const app = createApp({
     token,
@@ -760,88 +734,135 @@ async function main() {
     return actualPort;
   };
   const actualPort = await startServer();
-  {
-    // 首行 JSON — Tauri sidecar.rs 解析此行获取连接信息，必须保持 console.log
-    console.log(JSON.stringify({ port: actualPort, token }));
-    log.info(`服务已启动 port=${actualPort}`);
 
-    // HTTP 服务就绪后初始化 HeartbeatManager（需要实际 port 构建 executeFn）
-    const executeFn = createHeartbeatExecuteFn(actualPort, token);
+  // 首行 JSON — Tauri sidecar.rs 解析此行获取连接信息，必须保持 console.log
+  console.log(JSON.stringify({ port: actualPort, token }));
 
-    // Heartbeat 结果回调 — 渠道投递
-    const onHeartbeatResult: import('./scheduler/heartbeat-runner.js').HeartbeatResultCallback = (
-      agentId, result, response, config,
-    ) => {
-      const target = config.target ?? 'none';
-      if (target === 'none') return;
+  profiler.checkpoint('http_listening');
+  bootstrapState.transition('ready');
+  bootstrapState.setServerInfo(actualPort, token);
+  log.info(`服务已启动 port=${actualPort}`);
 
-      const shouldDeliver =
-        (result === 'ok' && config.showOk) ||
-        (result === 'active' && (config.showAlerts ?? true));
-      if (!shouldDeliver || !response.trim()) return;
+  // ═══════════════════════════════════════════════════════════════════════
+  // Phase 3（延迟）: HTTP 就绪后的非阻塞任务
+  // 这些操作不影响服务接收请求，异步执行
+  // ═══════════════════════════════════════════════════════════════════════
 
-      // 异步投递，不阻塞心跳
-      (async () => {
+  // 3a. API 预连接 — 提前建立 TCP+TLS，减少首次 LLM 调用延迟
+  preconnectProviders(configManager);
+
+  // 3b. Channel 自动恢复（可能涉及网络 I/O，不阻塞服务启动）
+  const recoverChannels = async () => {
+    const channelTypes = ['weixin', 'feishu', 'wecom'] as const;
+    for (const chType of channelTypes) {
+      const savedCreds = channelStateRepo.getState(chType as any, 'credentials');
+      const savedName = channelStateRepo.getState(chType as any, 'name');
+      if (savedCreds) {
+        const hasBinding = db.get<{ cnt: number }>(
+          `SELECT COUNT(*) AS cnt FROM bindings WHERE channel = ? OR is_default = 1`,
+          chType,
+        );
+        if (!hasBinding || hasBinding.cnt === 0) {
+          log.info(`渠道 ${chType} 无 Agent 绑定，跳过轮询（凭证已保留，绑定后可手动连接）`);
+          continue;
+        }
         try {
-          if (target === 'last') {
-            // 查找 Agent 最近对话的外部渠道
-            const lastSession = db.get<{ session_key: string }>(
-              `SELECT session_key FROM conversation_log
-               WHERE agent_id = ? AND session_key NOT LIKE '%:local:%' AND session_key NOT LIKE '%:heartbeat%'
-               ORDER BY created_at DESC LIMIT 1`,
-              agentId,
-            );
-            if (!lastSession) return;
-            const parts = lastSession.session_key.split(':');
-            // session key: agent:{id}:{channel}:{type}:{peer}
+          const credentials = JSON.parse(savedCreds);
+          await channelManager.connect({
+            type: chType as any,
+            name: savedName ?? chType,
+            credentials,
+          });
+          log.info(`渠道 ${chType} 已自动恢复连接`);
+        } catch (err) {
+          log.warn(`渠道 ${chType} 自动恢复失败: ${err instanceof Error ? err.message : String(err)}`);
+          channelStateRepo.deleteState(chType as any, 'credentials');
+          channelStateRepo.deleteState(chType as any, 'name');
+        }
+      }
+    }
+  };
+  recoverChannels().catch(err => log.error('渠道恢复异常', err));
+
+  // 3c. HeartbeatManager（需要实际 port 构建 executeFn）
+  const executeFn = createHeartbeatExecuteFn(actualPort, token);
+
+  const onHeartbeatResult: import('./scheduler/heartbeat-runner.js').HeartbeatResultCallback = (
+    agentId, result, response, config,
+  ) => {
+    const target = config.target ?? 'none';
+    if (target === 'none') return;
+
+    const shouldDeliver =
+      (result === 'ok' && config.showOk) ||
+      (result === 'active' && (config.showAlerts ?? true));
+    if (!shouldDeliver || !response.trim()) return;
+
+    (async () => {
+      try {
+        if (target === 'last') {
+          const lastSession = db.get<{ session_key: string }>(
+            `SELECT session_key FROM conversation_log
+             WHERE agent_id = ? AND session_key NOT LIKE '%:local:%' AND session_key NOT LIKE '%:heartbeat%'
+             ORDER BY created_at DESC LIMIT 1`,
+            agentId,
+          );
+          if (!lastSession) return;
+          const parts = lastSession.session_key.split(':');
+          if (parts.length >= 5) {
+            await channelManager.sendMessage(parts[2] as any, parts[4], response);
+          }
+        } else {
+          const lastPeer = db.get<{ session_key: string }>(
+            `SELECT session_key FROM conversation_log
+             WHERE agent_id = ? AND session_key LIKE ?
+             ORDER BY created_at DESC LIMIT 1`,
+            agentId, `%:${target}:%`,
+          );
+          if (lastPeer) {
+            const parts = lastPeer.session_key.split(':');
             if (parts.length >= 5) {
-              await channelManager.sendMessage(parts[2] as any, parts[4], response);
-            }
-          } else {
-            // target 是具体渠道 ID，尝试发送到该渠道最近的 peer
-            const lastPeer = db.get<{ session_key: string }>(
-              `SELECT session_key FROM conversation_log
-               WHERE agent_id = ? AND session_key LIKE ?
-               ORDER BY created_at DESC LIMIT 1`,
-              agentId, `%:${target}:%`,
-            );
-            if (lastPeer) {
-              const parts = lastPeer.session_key.split(':');
-              if (parts.length >= 5) {
-                await channelManager.sendMessage(target as any, parts[4], response);
-              }
+              await channelManager.sendMessage(target as any, parts[4], response);
             }
           }
-        } catch (err) {
-          log.error(`Heartbeat 渠道投递失败 agent=${agentId} target=${target}`, err);
         }
-      })();
-    };
+      } catch (err) {
+        log.error(`Heartbeat 渠道投递失败 agent=${agentId} target=${target}`, err);
+      }
+    })();
+  };
 
-    heartbeatManager = new HeartbeatManager(
-      db, executeFn, onHeartbeatResult,
-      (agentId, filename) => agentManager.readWorkspaceFile(agentId, filename) ?? null,
-    );
-    heartbeatManager.startAll();
-    log.info('HeartbeatManager 已启动');
+  heartbeatManager = new HeartbeatManager(
+    db, executeFn, onHeartbeatResult,
+    (agentId, filename) => agentManager.readWorkspaceFile(agentId, filename) ?? null,
+  );
+  heartbeatManager.startAll();
+  log.info('HeartbeatManager 已启动');
 
-    // BOOT.md 启动执行 — 每次 sidecar 重启时为每个 Agent 执行 BOOT.md
-    const activeAgents = agentManager.listAgents('active');
-    for (const agent of activeAgents) {
-      const bootContent = agentManager.readWorkspaceFile(agent.id, 'BOOT.md');
-      // 跳过空内容（只有空行/注释/标题）
-      if (!bootContent || !bootContent.split('\n').some(l => {
-        const t = l.trim();
-        return t && !t.startsWith('#') && !t.startsWith('<!--');
-      })) continue;
+  // 3d. BOOT.md 启动执行 — 异步，不阻塞
+  const activeAgents = agentManager.listAgents('active');
+  for (const agent of activeAgents) {
+    const bootContent = agentManager.readWorkspaceFile(agent.id, 'BOOT.md');
+    if (!bootContent || !bootContent.split('\n').some(l => {
+      const t = l.trim();
+      return t && !t.startsWith('#') && !t.startsWith('<!--');
+    })) continue;
 
-      const bootSessionKey = `agent:${agent.id}:boot`;
-      executeFn(agent.id, bootContent, bootSessionKey).catch(err => {
-        log.error(`Agent ${agent.id} BOOT.md 执行失败:`, err);
-      });
-      log.info(`Agent ${agent.id} BOOT.md 已触发执行`);
-    }
+    const bootSessionKey = `agent:${agent.id}:boot`;
+    executeFn(agent.id, bootContent, bootSessionKey).catch(err => {
+      log.error(`Agent ${agent.id} BOOT.md 执行失败:`, err);
+    });
+    log.info(`Agent ${agent.id} BOOT.md 已触发执行`);
   }
+
+  profiler.checkpoint('startup_complete');
+  log.info(`启动性能报告:\n${profiler.formatReport()}`);
+
+  // 存入 bootstrapState 供诊断使用
+  bootstrapState.set('profiler', profiler);
+  bootstrapState.set('db', db);
+  bootstrapState.set('configManager', configManager);
+  bootstrapState.set('agentManager', agentManager);
 }
 
 // 仅当此文件为入口点时自动启动

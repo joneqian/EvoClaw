@@ -24,7 +24,7 @@ import type {
   ContentBlock,
   ToolUseBlock,
 } from './types.js';
-import { ApiError, IdleTimeoutError } from './types.js';
+import { ApiError } from './types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
 const log = createLogger('stream-client');
@@ -212,6 +212,11 @@ function buildAnthropicRequest(config: StreamConfig): RequestSpec {
     };
   }
 
+  // Eager Input Streaming — 仅 Anthropic 第一方 API
+  if (config.eagerInputStreaming) {
+    body.eager_input_streaming = true;
+  }
+
   return { url: `${anthropicUrl}/messages`, headers, body };
 }
 
@@ -359,19 +364,10 @@ async function* processAnthropicStream(
 ): AsyncGenerator<StreamEvent> {
   // 累积中的 content blocks (按 index)
   const contentBlocks = new Map<number, { type: string; id?: string; name?: string; input: string; text: string; thinking: string }>();
-  let lastEventTime = Date.now();
 
   watchdog.reset();
 
   for await (const raw of parseSSE(body)) {
-    // P2-1: stall 检测
-    const now = Date.now();
-    const gap = now - lastEventTime;
-    if (gap > STALL_THRESHOLD_MS) {
-      log.warn(`流式 stall: ${(gap / 1000).toFixed(1)}s 事件间隔`);
-    }
-    lastEventTime = now;
-
     watchdog.reset();
 
     const data = safeParseJSON<Record<string, unknown>>(raw.data);
@@ -523,19 +519,10 @@ async function* processOpenAIStream(
   watchdog: IdleWatchdog,
 ): AsyncGenerator<StreamEvent> {
   const accumulator = new ToolCallAccumulator();
-  let lastEventTime = Date.now();
 
   watchdog.reset();
 
   for await (const raw of parseSSE(body)) {
-    // P2-1: stall 检测
-    const now = Date.now();
-    const gap = now - lastEventTime;
-    if (gap > STALL_THRESHOLD_MS) {
-      log.warn(`流式 stall: ${(gap / 1000).toFixed(1)}s 事件间隔`);
-    }
-    lastEventTime = now;
-
     watchdog.reset();
 
     const data = safeParseJSON<Record<string, unknown>>(raw.data);
@@ -624,9 +611,12 @@ async function* processOpenAIStream(
  * 特性:
  * - 90 秒空闲看门狗 (参考 Claude Code)
  * - HTTP 错误码直接作为 ApiError 抛出
- * - 看门狗超时抛出 IdleTimeoutError
+ * - 看门狗超时 → 非流式回退 → 双重失败时 yield error event（不 throw）
  */
 export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEvent> {
+  // ─── 防多次消费 ───
+  let consumed = false;
+
   const { protocol } = config;
 
   // 构建请求
@@ -635,6 +625,17 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
     : buildOpenAIRequest(config);
 
   log.info(`流式调用: ${protocol} ${spec.url} model=${config.modelId}`);
+
+  // ─── 延迟检查点 ───
+  const latency: import('./types.js').StreamLatencyCheckpoints = {
+    requestSentAt: Date.now(),
+  };
+
+  // ─── 可观测性指标 ───
+  let stallCount = 0;
+  let totalStallMs = 0;
+  let eventCount = 0;
+  let fallbackUsed = false;
 
   // 看门狗
   const abortController = new AbortController();
@@ -647,7 +648,28 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
     ? AbortSignal.any([config.signal, abortController.signal])
     : abortController.signal;
 
+  /** yield 指标和延迟检查点 */
+  function* yieldMetrics(): Generator<StreamEvent> {
+    latency.doneAt = Date.now();
+    yield { type: 'latency', checkpoints: latency };
+    yield {
+      type: 'metrics',
+      metrics: {
+        stallCount,
+        totalStallMs,
+        eventCount,
+        totalDurationMs: latency.doneAt - latency.requestSentAt,
+        protocol,
+        fallbackUsed,
+        latency,
+      },
+    };
+  }
+
   try {
+    if (consumed) throw new Error('Stream already consumed — cannot iterate twice');
+    consumed = true;
+
     const response = await fetch(spec.url, {
       method: 'POST',
       headers: spec.headers,
@@ -655,12 +677,14 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
       signal: mergedSignal,
     });
 
+    // 延迟检查点: TTFB (fetch 返回 = headers 到达)
+    latency.headersReceivedAt = Date.now();
+
     // HTTP 错误
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       watchdog.clear();
 
-      // 如果 body 中有结构化错误信息，提取
       const parsed = safeParseJSON<Record<string, unknown>>(errText);
       const errorMessage = ((parsed?.error as Record<string, unknown>)?.message as string)
         ?? (errText.slice(0, 500) || `HTTP ${response.status}`);
@@ -674,21 +698,56 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
     }
 
     // 解析 SSE 流 → 归一化 StreamEvent
-    if (protocol === 'anthropic-messages') {
-      yield* processAnthropicStream(response.body, watchdog);
-    } else {
-      yield* processOpenAIStream(response.body, watchdog);
+    // 包装 processStream 以追踪首 chunk 和 stall
+    let lastEventTime = Date.now();
+    let isFirstEvent = true;
+
+    const innerStream = protocol === 'anthropic-messages'
+      ? processAnthropicStream(response.body, watchdog)
+      : processOpenAIStream(response.body, watchdog);
+
+    for await (const event of innerStream) {
+      const now = Date.now();
+      eventCount++;
+
+      // 延迟检查点: 首个事件
+      if (isFirstEvent) {
+        latency.firstChunkAt = now;
+        isFirstEvent = false;
+      }
+
+      // 可观测性: stall 检测
+      const gap = now - lastEventTime;
+      if (gap > STALL_THRESHOLD_MS) {
+        stallCount++;
+        totalStallMs += gap;
+        log.warn(`流式 stall #${stallCount}: ${(gap / 1000).toFixed(1)}s 事件间隔 (累计 ${(totalStallMs / 1000).toFixed(1)}s)`);
+      }
+      lastEventTime = now;
+
+      yield event;
     }
+
+    yield* yieldMetrics();
   } catch (err) {
-    // 看门狗超时 → 非流式回退
+    // ─── 双重回退: 流式 → 非流式 → yield error（不 throw） ───
     if (watchdog.aborted) {
       log.warn('流式超时，尝试非流式回退');
+      fallbackUsed = true;
       try {
         yield* nonStreamingFallback(config);
+        yield* yieldMetrics();
         return;
       } catch (fallbackErr) {
-        log.error(`非流式回退也失败: ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}`);
-        throw new IdleTimeoutError(STREAM_IDLE_TIMEOUT_MS);
+        // 双重回退失败: yield error event 让外层决定（如模型回退）
+        log.error(`双重回退失败 (流式+非流式): ${fallbackErr instanceof Error ? fallbackErr.message : fallbackErr}`);
+        yield {
+          type: 'error',
+          message: `流式+非流式双重回退失败: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+          status: undefined,
+        };
+        yield* yieldMetrics();
+        return;
       }
     }
 

@@ -409,16 +409,27 @@ export async function maybeCompress(
   }
 
   const threshold = contextWindow - AUTOCOMPACT_BUFFER_TOKENS;
-  log.info(`压缩触发: estimated=${estimated}, threshold=${threshold}, messages=${messages.length}`);
+  const msgCountBefore = messages.length;
+  log.info(`压缩触发: estimated=${estimated}, threshold=${threshold}, messages=${msgCountBefore}`);
 
   // Layer 1: Snip (零成本)
-  snipOldMessages(messages);
+  const snipped = snipOldMessages(messages);
+  if (snipped > 0) {
+    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    log.info(`Snip 边界: ${msgCountBefore} → ${messages.length} 消息 (移除 ${snipped})`);
+  }
   if (estimateTokens(messages) < threshold) {
     return true;
   }
 
   // Layer 2: Microcompact (零成本)
-  microcompactToolResults(messages);
+  const truncated = microcompactToolResults(messages);
+  if (truncated > 0) {
+    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    log.info(`Microcompact 边界: 截断 ${truncated} 个 tool_result`);
+  }
   if (estimateTokens(messages) < threshold) {
     return true;
   }
@@ -431,11 +442,15 @@ export async function maybeCompress(
   }
 
   try {
+    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
     await autocompact(messages, config);
-    consecutiveAutocompactFailures = 0; // 重置
+    consecutiveAutocompactFailures = 0;
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    log.info(`Autocompact 边界: ${msgCountBefore} → ${messages.length} 消息`);
     return true;
   } catch (err) {
     consecutiveAutocompactFailures++;
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     log.warn(`Autocompact 失败 (${consecutiveAutocompactFailures}/${MAX_CONSECUTIVE_FAILURES}): ${err instanceof Error ? err.message : err}`);
     return true; // snip + microcompact 已执行
   }

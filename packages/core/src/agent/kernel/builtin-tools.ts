@@ -21,6 +21,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import type { KernelTool, ToolCallResult } from './types.js';
 import { FileStateCache } from './file-state-cache.js';
+import { which } from '../../infrastructure/runtime.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -852,14 +853,9 @@ function shellEscape(arg: string): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
-/** 检测命令是否可用 */
+/** 检测命令是否可用（Bun: Bun.which() 零进程开销，Node: execSync 回退，结果缓存） */
 function hasCommand(cmd: string): boolean {
-  try {
-    execSync(`which ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
-    return true;
-  } catch {
-    return false;
-  }
+  return which(cmd) !== null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

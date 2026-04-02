@@ -202,8 +202,11 @@ describe('queryLoop - tool calls', () => {
     await queryLoop(baseConfig({ tools: [readTool], onEvent }));
 
     const toolEnds = onEvent.mock.calls.filter(([e]) => e.type === 'tool_end');
-    expect(toolEnds).toHaveLength(1);
+    // 2 个 tool_end 事件: 1 个来自 executor (per-tool), 1 个来自工具摘要 (batch summary)
+    expect(toolEnds).toHaveLength(2);
     expect(toolEnds[0]![0].toolName).toBe('read');
+    // 第 2 个是工具摘要事件
+    expect(toolEnds[1]![0].toolName).toContain('read');
   });
 });
 
@@ -230,13 +233,13 @@ describe('queryLoop - limits and termination', () => {
     expect(result.toolCalls).toHaveLength(3);
   });
 
-  it('should throw AbortError when signal is aborted', async () => {
+  it('should return abort exitReason when signal is aborted', async () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(
-      queryLoop(baseConfig({ abortSignal: controller.signal })),
-    ).rejects.toThrow(AbortError);
+    const result = await queryLoop(baseConfig({ abortSignal: controller.signal }));
+    expect(result.exitReason).toBe('abort');
+    expect(result.turnCount).toBe(0);
   });
 });
 

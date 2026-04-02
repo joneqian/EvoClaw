@@ -406,6 +406,55 @@ Phase 2 内: 15.7.6 先行 → 15.7.7-15.7.12 可并行 → 15.7.13
 
 ---
 
+#### Sprint 15.8: MCP 协议集成 ⏳ 进行中
+
+> **注**: 基于 Claude Code 研究（docs/research/21-mcp-client.md），实现完整 MCP 客户端能力，让 Agent 能连接外部 MCP 服务器扩展工具集。
+
+**目标**: EvoClaw 作为 MCP 客户端，支持 stdio + SSE 两种传输，自动发现并注入 MCP 工具到 Agent 工具池。
+
+**关联**: PRD F9.12, Architecture §3.5.3
+
+| # | 任务 | 优先级 | 预估 | 说明 |
+|---|------|--------|------|------|
+| 15.8.1 | 安装 @modelcontextprotocol/sdk + 类型适配 | P0 | 0.5d | pnpm add @modelcontextprotocol/sdk |
+| 15.8.2 | .mcp.json 配置发现 + evo_claw.json mcp_servers 配置 | P0 | 0.5d | 项目级 + 全局配置双入口 |
+| 15.8.3 | McpClient 真实 stdio 传输实现 | P0 | 1d | 替换占位实现，StdioClientTransport |
+| 15.8.4 | 连接生命周期（start → discover → running → dispose） | P0 | 0.5d | McpManager 批量连接 |
+| 15.8.5 | 工具发现 tools/list + mcp__server__tool 命名 | P0 | 1d | 注入 Agent 工具池 |
+| 15.8.6 | 工具调用 tools/call + 结果转换 | P0 | 0.5d | MCP result → ToolCallResult |
+| 15.8.7 | MCP 指令注入 system prompt（截断 2048 字符） | P1 | 0.5d | 已有 mcp-instructions.ts 插件 |
+| 15.8.8 | SSE 远程传输支持 | P1 | 1d | SSEClientTransport |
+| 15.8.9 | 重连机制（5 次 + 指数退避 + 错误计数） | P1 | 0.5d | 连续 3 错误 → 强制重连 |
+| 15.8.10 | 安全策略（白名单/黑名单 + 禁用） | P1 | 0.5d | 配置级控制 |
+| 15.8.11 | MCP 配置管理 API（/mcp 路由） | P1 | 0.5d | CRUD + 状态查询 |
+| 15.8.12 | 前端 MCP 配置页面 | P2 | 1d | 服务器列表 + 添加/删除 + 状态指示 |
+| 15.8.13 | 集成测试（sqlite MCP server 端到端） | P0 | 0.5d | @modelcontextprotocol/server-sqlite |
+
+**实施顺序**:
+```
+Phase 1 (15.8.1-15.8.4): 基础设施 — 安装 SDK + 配置发现 + stdio 连接
+Phase 2 (15.8.5-15.8.7): 工具集成 — 发现 + 注入 + 指令
+Phase 3 (15.8.8-15.8.10): 远程 + 安全 — SSE 传输 + 重连 + 白名单
+Phase 4 (15.8.11-15.8.13): API + 前端 + 测试
+```
+
+**交付物**:
+- 修改文件: mcp-client.ts（真实实现）, mcp-tool-bridge.ts, mcp-instructions.ts, server.ts, chat.ts
+- 新增文件: mcp-config.ts（配置发现）, mcp-reconnect.ts, mcp-security.ts, routes/mcp.ts
+- 前端: McpSettingsPage.tsx
+- 测试: mcp-client.test.ts, mcp-integration.test.ts
+
+**验收标准**:
+- [ ] stdio MCP server（如 sqlite）连接成功，工具自动发现
+- [ ] Agent 可通过 mcp__sqlite__query 工具执行 SQL 查询
+- [ ] SSE 远程 MCP server 连接成功
+- [ ] 断连后 30 秒内自动重连
+- [ ] 黑名单服务器不可连接
+- [ ] 前端可添加/删除/禁用 MCP 服务器
+- [ ] 全量测试通过，无回归
+
+---
+
 #### Sprint 16: 企微 Channel 生产就绪
 
 > **注**: 原 Sprint 15 企微生产化顺延至 Sprint 16。

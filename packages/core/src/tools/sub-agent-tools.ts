@@ -19,6 +19,8 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
           task: { type: 'string', description: '子 Agent 要完成的任务描述（要详细，子 Agent 无法访问你的记忆和对话历史）' },
           context: { type: 'string', description: '补充上下文信息（可选，将所需信息直接传入）' },
           timeout: { type: 'number', description: '超时秒数（默认 300，最大 3600）' },
+          subagent_type: { type: 'string', enum: ['general', 'researcher', 'writer', 'analyst'], description: '子 Agent 类型: general（通用）、researcher（搜索研究，快速）、writer（内容创作）、analyst（数据分析）。默认 general。' },
+          fork: { type: 'boolean', description: '是否 Fork 模式（继承父 Agent 的完整上下文，共享缓存）。默认 false。' },
           mode: { type: 'string', enum: ['run', 'session'], description: 'Spawn 模式: run（一次性，默认）或 session（持久化，可 resume）' },
           agentId: { type: 'string', description: '跨 Agent 生成：目标 Agent ID（可选，默认使用当前 Agent）' },
           attachments: {
@@ -40,6 +42,8 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
         const task = args['task'] as string;
         const context = args['context'] as string | undefined;
         const timeoutSec = args['timeout'] as number | undefined;
+        const subagentType = (args['subagent_type'] as string) ?? 'general';
+        const fork = (args['fork'] as boolean) ?? false;
         const mode = (args['mode'] as 'run' | 'session') ?? 'run';
         const agentId = args['agentId'] as string | undefined;
         const attachments = args['attachments'] as Array<{ name: string; content: string }> | undefined;
@@ -56,7 +60,9 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
             agentId,
             attachments,
             mode,
-          });
+            agentType: subagentType,
+            fork,
+          } as any);
           const lines = [
             `子 Agent 已启动。`,
             `Task ID: ${taskId}`,
@@ -96,7 +102,19 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
             ? `${((a.completedAt - a.startedAt) / 1000).toFixed(1)}s`
             : `${((Date.now() - a.startedAt) / 1000).toFixed(1)}s (进行中)`;
 
-          let statusLine = `${i + 1}. [${a.status}] ${a.task.slice(0, 100)}${a.task.length > 100 ? '...' : ''}\n   ID: ${a.taskId}\n   耗时: ${duration}`;
+          let statusLine = `${i + 1}. [${a.status}] ${a.task.slice(0, 100)}${a.task.length > 100 ? '...' : ''}\n   ID: ${a.taskId}`;
+          if ((a as any).agentType) statusLine += `  类型: ${(a as any).agentType}`;
+          statusLine += `\n   耗时: ${duration}`;
+
+          // 进度追踪
+          const progress = (a as any).progress;
+          if (progress && a.status === 'running') {
+            statusLine += `\n   进度: ${progress.toolUseCount} 次工具调用`;
+            if (progress.recentActivities?.length > 0) {
+              const recent = progress.recentActivities.map((act: any) => act.toolName).join(' → ');
+              statusLine += ` [${recent}]`;
+            }
+          }
 
           // 已完成：展示完整结果
           if (a.status === 'completed' && a.result) {
@@ -128,18 +146,33 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
       },
       execute: async (args) => {
         const taskId = args['taskId'] as string;
+        const graceful = (args['graceful'] as boolean) ?? true;
         if (!taskId) return '错误：缺少 taskId 参数';
-
-        const killed = spawner.kill(taskId);
-        if (killed) {
-          return `子 Agent ${taskId} 已被终止。`;
-        }
 
         const entry = spawner.get(taskId);
         if (!entry) {
           return `未找到 Task ID 为 ${taskId} 的子 Agent。`;
         }
-        return `子 Agent ${taskId} 当前状态为 "${entry.status}"，无法终止。`;
+        if (entry.status !== 'running') {
+          return `子 Agent ${taskId} 当前状态为 "${entry.status}"，无法终止。`;
+        }
+
+        // 优雅关闭：等待 5 秒让子 Agent 完成当前操作
+        if (graceful) {
+          const waitMs = 5_000;
+          // 先给子 Agent 一个缓冲期
+          await new Promise(resolve => setTimeout(resolve, Math.min(waitMs, 2_000)));
+          // 如果已经完成了就不需要 kill
+          if (entry.status !== 'running') {
+            return `子 Agent ${taskId} 在关闭等待期间已自行完成 (${entry.status})。`;
+          }
+        }
+
+        const killed = spawner.kill(taskId);
+        if (killed) {
+          return `子 Agent ${taskId} 已被终止。`;
+        }
+        return `子 Agent ${taskId} 终止失败。`;
       },
     },
     {

@@ -31,7 +31,6 @@ import type {
   ThinkingBlock,
   ToolUseBlock,
   ToolResultBlock,
-  TombstoneMessage,
   TokenUsage,
   QueryLoopConfig,
   QueryLoopResult,
@@ -40,9 +39,10 @@ import type {
 import { ApiError } from './types.js';
 import { streamLLM } from './stream-client.js';
 import { StreamingToolExecutor } from './streaming-tool-executor.js';
-import { maybeCompress } from './context-compactor.js';
+import { maybeCompress, contextCollapseDrain } from './context-compactor.js';
 import { classifyApiError, isRecoverableInLoop, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
-import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage, stripThinkingBlocks } from './message-utils.js';
+import { PromptCacheMonitor } from './prompt-cache-monitor.js';
+import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage, stripThinkingBlocks, ensureToolResultPairing } from './message-utils.js';
 import type { ToolCallRecord } from '../types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
@@ -244,19 +244,19 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
   let totalOutput = 0;
   let overflowRetries = 0;
   let exitReason: ExitReason = 'completed';
-  const tombstones: TombstoneMessage[] = [];
+  const cacheMonitor = new PromptCacheMonitor();
 
   log.info(`queryLoop 开始: model=${config.modelId}, maxTurns=${config.maxTurns}, tools=${config.tools.length}`);
 
   const buildResult = (): QueryLoopResult => ({
     fullResponse,
     toolCalls: allToolCalls,
-    messages,
+    // 确保每个 tool_use 都有配对的 tool_result（中断时补占位符）
+    messages: ensureToolResultPairing(messages),
     totalInputTokens: totalInput,
     totalOutputTokens: totalOutput,
     exitReason,
     turnCount,
-    tombstones,
   });
 
   while (true) {
@@ -276,7 +276,8 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     if (turnCount > 0) {
       try {
         // 压缩边界事件由 context-compactor 内部发射（每层独立发射 start/end）
-        await maybeCompress(messages, config);
+        const compressed = await maybeCompress(messages, config);
+        if (compressed) cacheMonitor.notifyCompaction();
       } catch (err) {
         log.warn(`压缩失败，继续: ${err instanceof Error ? err.message : err}`);
       }
@@ -287,20 +288,43 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
 
     const executor = new StreamingToolExecutor(config.tools);
 
+    // Cache Monitor: 记录调用前状态
+    const systemPromptStr = typeof config.systemPrompt === 'string'
+      ? config.systemPrompt
+      : config.systemPrompt.map(b => b.text).join('\n');
+    cacheMonitor.recordPreCallState({
+      systemPrompt: systemPromptStr,
+      tools: config.tools,
+      modelId: config.modelId,
+      thinkingEnabled: config.thinkingConfig.type !== 'disabled',
+    });
+
     let roundResult: RoundResult;
     try {
       roundResult = await streamOneRound(config, messages, executor, effectiveMaxTokens);
       overflowRetries = 0;
     } catch (err) {
-      // 413 overflow → 循环内压缩重试 (transition: overflow_retry)
+      // 413 overflow → Context Collapse Drain (轻量) → 完整压缩 (重量)
       const classified = classifyApiError(err);
       if (isRecoverableInLoop(classified) && overflowRetries < MAX_OVERFLOW_RETRIES) {
         overflowRetries++;
-        log.warn(`413 overflow, 压缩重试 (${overflowRetries}/${MAX_OVERFLOW_RETRIES})`);
         executor.discard();
 
+        // 第 1 次: 尝试轻量 Context Collapse Drain（零 API 成本）
+        if (overflowRetries === 1) {
+          log.warn(`413 overflow, 尝试 Context Collapse Drain (${overflowRetries}/${MAX_OVERFLOW_RETRIES})`);
+          const collapsed = contextCollapseDrain(messages);
+          if (collapsed) {
+            cacheMonitor.notifyCompaction();
+            continue;
+          }
+        }
+
+        // 第 2 次或 collapse 无效: 完整压缩
+        log.warn(`413 overflow, 完整压缩重试 (${overflowRetries}/${MAX_OVERFLOW_RETRIES})`);
         try {
           await maybeCompress(messages, config);
+          cacheMonitor.notifyCompaction();
         } catch {
           throw err;
         }
@@ -320,6 +344,16 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     turnCount++;
     totalInput += roundResult.usage.inputTokens;
     totalOutput += roundResult.usage.outputTokens;
+
+    // Cache Monitor: 检测断裂
+    cacheMonitor.checkForBreak({
+      cacheReadTokens: roundResult.usage.cacheReadTokens ?? 0,
+      cacheWriteTokens: roundResult.usage.cacheWriteTokens ?? 0,
+      systemPrompt: systemPromptStr,
+      tools: config.tools,
+      modelId: config.modelId,
+      thinkingEnabled: config.thinkingConfig.type !== 'disabled',
+    });
 
     // ─── 4. 累积文本 ───
     for (const block of roundResult.assistantMessage.content) {

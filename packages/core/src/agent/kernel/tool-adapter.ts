@@ -72,6 +72,8 @@ export interface AuditLogEntry {
   result: string;
   status: 'success' | 'error' | 'denied';
   durationMs: number;
+  /** 权限决策原因（拒绝/阻断时记录） */
+  reason?: string;
 }
 
 /** 工具适配依赖项 */
@@ -133,6 +135,13 @@ export function adaptEvoclawTool(
     async call(input: Record<string, unknown>): Promise<ToolCallResult> {
       const start = Date.now();
 
+      // 0. Schema 验证（统一校验 required + 类型）
+      const { validateInput } = await import('./schema-validator.js');
+      const validation = validateInput(input, tool.parameters as Record<string, unknown>);
+      if (!validation.valid) {
+        return { content: `参数校验失败: ${validation.errors.join('; ')}`, isError: true };
+      }
+
       // 1. 权限检查
       if (deps.permissionFn) {
         const rejection = await deps.permissionFn(tool.name, input);
@@ -141,6 +150,7 @@ export function adaptEvoclawTool(
             toolName: tool.name, args: input,
             result: rejection, status: 'denied',
             durationMs: Date.now() - start,
+            reason: `permission_denied: ${rejection}`,
           });
           return { content: `[权限拒绝] ${rejection}`, isError: true };
         }
@@ -153,6 +163,7 @@ export function adaptEvoclawTool(
           toolName: tool.name, args: input,
           result: check.reason ?? '', status: 'denied',
           durationMs: Date.now() - start,
+          reason: `safety_block: ${check.reason ?? 'unknown'}`,
         });
         return { content: `⚠️ ${check.reason}`, isError: true };
       }
@@ -227,6 +238,7 @@ function wrapBuiltinTool(tool: KernelTool, deps: ToolAdapterDeps): KernelTool {
             toolName: tool.name, args: input,
             result: rejection, status: 'denied',
             durationMs: Date.now() - start,
+            reason: `permission_denied: ${rejection}`,
           });
           return { content: `[权限拒绝] ${rejection}`, isError: true };
         }
@@ -239,6 +251,7 @@ function wrapBuiltinTool(tool: KernelTool, deps: ToolAdapterDeps): KernelTool {
           toolName: tool.name, args: input,
           result: check.reason ?? '', status: 'denied',
           durationMs: Date.now() - start,
+          reason: `safety_block: ${check.reason ?? 'unknown'}`,
         });
         return { content: `⚠️ ${check.reason}`, isError: true };
       }

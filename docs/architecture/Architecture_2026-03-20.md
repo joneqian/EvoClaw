@@ -812,26 +812,86 @@ MemoryExtractor.extract(messages)
 - Workspace 安全区自动放行
 - 通道工具多样性（飞书/企微/微信）
 
-##### MCP 集成架构
+##### MCP 集成架构（Sprint 15.8 更新）
+
+参考 Claude Code MCP 客户端（docs/research/21-mcp-client.md），实现完整 MCP 客户端。
 
 ```
-用户配置 (evo_claw.json)
-  └── mcp_servers: [{ name, command, args, env }]
+配置发现（双入口，优先级从高到低）:
+  1. 项目级 .mcp.json（项目根目录）
+  2. 全局 evo_claw.json → mcp_servers 数组
+  
+配置格式:
+  {
+    "mcpServers": {
+      "sqlite": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-sqlite"],
+        "env": { "DB_PATH": "./data.db" }
+      },
+      "remote-api": {
+        "type": "sse",
+        "url": "https://mcp.example.com/sse",
+        "headers": { "Authorization": "Bearer ..." }
+      }
+    }
+  }
 
-启动流程:
-  1. McpManager 读取配置
-  2. 为每个 server 创建 StdioClientTransport
-  3. 调用 listTools() 获取工具清单
-  4. 转换为 PI Tool 格式注入阶段 3
+传输类型:
+  - stdio: JSON-RPC over stdin/stdout（本地进程）
+  - sse: Server-Sent Events HTTP（远程服务器）
 
-运行时:
-  Agent 调用 MCP 工具 → McpManager.callTool(server, name, args)
-    → StdioClientTransport 转发 → MCP Server 执行 → 返回结果
+连接生命周期:
+  配置发现 → 安全策略过滤 → 批量连接（并发 3）→ 工具发现 → 注入工具池
+  
+  connectToServer():
+    1. 创建传输实例（StdioClientTransport / SSEClientTransport）
+    2. Client.connect(transport)
+    3. 提取 capabilities + server_info + instructions
+    4. instructions 截断到 2048 字符
+    5. 注册 error/close 处理器
+    6. 连接缓存 (memoize)
 
-生命周期:
-  - 启动时按需连接（lazy init）
-  - 会话结束时断开
-  - 异常自动重连（3 次重试 + 指数退避）
+工具命名空间:
+  mcp__serverName__toolName（双下划线，参考 Claude Code）
+  内置工具优先——同名时内置覆盖 MCP 工具
+
+工具注入:
+  McpManager.getAllTools() → mcp-tool-adapter.ts adaptMcpTool()
+    → mergeToolPools(builtinTools, mcpTools)
+    → 注入 Agent 工具池
+
+指令注入:
+  mcp-instructions.ts ContextPlugin (priority 55)
+    → 每个服务器的 instructions 独立注入 system prompt
+
+重连机制:
+  MAX_RECONNECT_ATTEMPTS = 5
+  INITIAL_BACKOFF_MS = 1000
+  MAX_BACKOFF_MS = 30000
+  连续 3 次错误 → 强制关闭 → 重连
+
+安全策略:
+  - 白名单/黑名单（黑名单绝对优先）
+  - 用户可单独禁用服务器（持久化到配置）
+  - MCP 工具描述截断到 2048 字符
+```
+
+```
+关键文件:
+  packages/core/src/mcp/
+  ├── mcp-client.ts         — McpClient 单服务器连接管理
+  ├── mcp-manager.ts        — McpManager 多服务器生命周期
+  ├── mcp-config.ts         — 配置发现（.mcp.json + evo_claw.json）
+  ├── mcp-reconnect.ts      — 重连逻辑
+  ├── mcp-security.ts       — 白名单/黑名单安全策略
+  ├── mcp-tool-bridge.ts    — MCP 工具 → EvoClaw ToolDefinition 转换
+  └── mcp-tool-adapter.ts   — MCP 工具 → KernelTool 转换（已有）
+  
+  packages/core/src/routes/mcp.ts    — MCP 管理 API
+  packages/core/src/context/plugins/mcp-instructions.ts — 指令注入（已有）
+  apps/desktop/src/pages/McpSettingsPage.tsx — 前端配置 UI
 ```
 
 ##### Read 自适应分页机制

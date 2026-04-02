@@ -90,26 +90,3 @@ export function createToolSearchTool(allTools: readonly KernelTool[]): KernelToo
   };
 }
 
-/**
- * 将工具列表分为 eager（立即加载）和 deferred（延迟加载）
- *
- * @param tools 所有工具
- * @returns { eager: 完整工具, deferred: 仅名称+defer标记 }
- */
-export function partitionToolsByDefer(tools: readonly KernelTool[]): {
-  eager: KernelTool[];
-  deferred: Array<{ name: string; description: string }>;
-} {
-  const eager: KernelTool[] = [];
-  const deferred: Array<{ name: string; description: string }> = [];
-
-  for (const tool of tools) {
-    if (tool.shouldDefer) {
-      deferred.push({ name: tool.name, description: tool.description });
-    } else {
-      eager.push(tool);
-    }
-  }
-
-  return { eager, deferred };
-}

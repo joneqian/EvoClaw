@@ -12,9 +12,6 @@ import type {
   TextBlock,
   ToolUseBlock,
   ToolResultBlock,
-  SystemMessage,
-  SystemMessageSubtype,
-  TombstoneMessage,
   ToolUseSummaryMessage,
 } from './types.js';
 import type { ToolCallRecord } from '../types.js';
@@ -215,82 +212,8 @@ export function stripThinkingBlocks(message: KernelMessage): KernelMessage {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 工厂函数 — SystemMessage
+// 工厂函数
 // ═══════════════════════════════════════════════════════════════════════════
-
-/** 创建系统消息 */
-export function createSystemMessage(
-  content: string,
-  subtype: SystemMessageSubtype = 'informational',
-  level: SystemMessage['level'] = 'info',
-  detail?: Record<string, unknown>,
-): SystemMessage {
-  return {
-    type: 'system',
-    subtype,
-    id: crypto.randomUUID(),
-    content,
-    level,
-    timestamp: new Date().toISOString(),
-    detail,
-  };
-}
-
-/** 创建 API 错误系统消息 */
-export function createApiErrorMessage(
-  content: string,
-  status?: number,
-  retryable?: boolean,
-): SystemMessage {
-  return createSystemMessage(content, 'api_error', 'error', { status, retryable });
-}
-
-/** 创建压缩边界消息 */
-export function createCompactBoundaryMessage(
-  strategy: 'snip' | 'microcompact' | 'autocompact',
-  stats: { messagesBefore: number; messagesAfter: number; tokensSaved?: number },
-): SystemMessage {
-  const subtypeMap = {
-    snip: 'snip_boundary' as const,
-    microcompact: 'microcompact_boundary' as const,
-    autocompact: 'compact_boundary' as const,
-  };
-  return createSystemMessage(
-    `上下文压缩 (${strategy}): ${stats.messagesBefore} → ${stats.messagesAfter} 消息`,
-    subtypeMap[strategy],
-    'info',
-    stats,
-  );
-}
-
-/** 创建记忆保存通知 */
-export function createMemorySavedMessage(count: number): SystemMessage {
-  return createSystemMessage(`已保存 ${count} 条记忆`, 'memory_saved', 'info', { count });
-}
-
-/** 创建轮次耗时消息 */
-export function createTurnDurationMessage(durationMs: number, turnCount: number): SystemMessage {
-  return createSystemMessage(
-    `轮次 ${turnCount} 耗时 ${durationMs}ms`,
-    'turn_duration',
-    'info',
-    { durationMs, turnCount },
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 工厂函数 — TombstoneMessage / ToolUseSummaryMessage
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** 创建墓碑消息（标记移除但保留记录） */
-export function createTombstoneMessage(original: KernelMessage, reason: string): TombstoneMessage {
-  return {
-    type: 'tombstone',
-    id: crypto.randomUUID(),
-    original,
-    reason,
-  };
-}
 
 /** 创建工具调用摘要消息 */
 export function createToolUseSummaryMessage(

@@ -105,5 +105,6 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: Sprint 16 待实施 — 企微 Channel 生产就绪
-- **上一冲刺**: Sprint 15.7 ✅ 已完成 — Heartbeat 对齐 OpenClaw（空文件预检 + 鲁棒 ACK + Reason-based 提示词 + Wake 合并 + lightContext + System Events 增强 + Cron 错误追踪 + TaskRegistry）
+- **当前冲刺**: Sprint 15.8 ⏳ 进行中 — MCP 协议集成（stdio + SSE 双传输、工具发现注入、重连、安全策略、前端配置 UI）
+- **上一冲刺**: Sprint 15.7 ✅ 已完成 — Heartbeat 对齐 OpenClaw + Claude Code 对标优化（Bun 运行时 / 启动优化 / 消息模型 / Agentic Loop / 流式响应 / 系统提示词 / Extended Thinking / 工具系统 / Skill 系统 / 权限系统 / 上下文管理 / Sub-Agent）
+- **下一冲刺**: Sprint 16 — 企微 Channel 生产就绪

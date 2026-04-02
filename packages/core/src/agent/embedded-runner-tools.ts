@@ -61,6 +61,8 @@ export function createEnhancedExecTool() {
         return `⚠️ 危险命令检测: ${destructiveWarning}\n命令: ${command}\n\n如需执行，请通过权限系统确认。`;
       }
 
+
+
       try {
         const output = execSync(command, {
           cwd: workdir,
@@ -85,7 +87,22 @@ export function createEnhancedExecTool() {
         const e = err as { status?: number; stdout?: string; stderr?: string; message?: string; killed?: boolean };
 
         if (e.killed) {
-          return `命令超时（${timeoutSec} 秒），已终止。如需更长时间，请使用 exec_background 工具后台执行。`;
+          // 超时后自动转后台继续执行（参考 Claude Code BashTool 超时→后台）
+          try {
+            const { spawn } = require('node:child_process') as typeof import('node:child_process');
+            const bg = spawn(command, [], {
+              cwd: workdir,
+              shell: true,
+              detached: true,
+              stdio: 'ignore',
+              env: { ...process.env, EVOCLAW_SHELL: 'background' },
+            });
+            bg.unref();
+            const partialOut = (e.stdout?.toString() ?? '').slice(0, 2000);
+            return `命令超时（${timeoutSec} 秒），已自动转为后台继续执行 (PID: ${bg.pid})。\n${partialOut ? `部分输出:\n${partialOut}\n` : ''}后续输出可通过 process 工具查看。`;
+          } catch {
+            return `命令超时（${timeoutSec} 秒），已终止。转后台执行失败，请使用 exec_background 工具手动重试。`;
+          }
         }
 
         const stdout = e.stdout?.toString() ?? '';

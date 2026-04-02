@@ -165,20 +165,32 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   );
 
   // ─── 系统提示 ───
-  const systemPrompt = buildSystemPrompt(config);
+  let systemPrompt = buildSystemPrompt(config);
+
+  // 优先级覆盖（如果有 promptOverrides）
+  if (config.promptOverrides && config.promptOverrides.length > 0) {
+    const { resolvePromptOverrides } = await import('./prompt-override.js');
+    const { buildSystemPromptBlocks } = await import('./embedded-runner-prompt.js');
+    const blocks = buildSystemPromptBlocks(config);
+    const resolved = resolvePromptOverrides(blocks, config.promptOverrides as any);
+    const { systemPromptBlocksToString } = await import('./kernel/types.js');
+    systemPrompt = systemPromptBlocksToString(resolved);
+  }
 
   // ─── 工具池 ───
   const toolSafety = new ToolSafetyGuard();
   // Skill 搜索路径 + SkillTool 创建（避免 agent→skill 层级违反，在此处桥接）
   const { DEFAULT_DATA_DIR } = await import('@evoclaw/shared');
   const { createSkillTool } = await import('../skill/skill-tool.js');
+  const { createToolSearchTool } = await import('./kernel/tool-search.js');
   const skillSearchPaths = [
     path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
     ...(config.workspacePath ? [path.join(config.workspacePath, 'skills')] : []),
   ];
   const skillTool = createSkillTool(skillSearchPaths) as import('./kernel/types.js').KernelTool;
 
-  const kernelTools = buildKernelTools({
+  // 先构建基础工具池（不含 ToolSearch，因为 ToolSearch 需要完整工具列表）
+  const baseTools = buildKernelTools({
     builtinContextWindow: contextWindow,
     evoClawTools: config.tools,
     permissionFn: config.permissionInterceptFn,
@@ -188,12 +200,27 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     extraTools: [skillTool],
   });
 
+  // ToolSearchTool 需要完整工具列表才能搜索（包含 deferred 工具）
+  const toolSearchTool = createToolSearchTool(baseTools);
+  const kernelTools = [...baseTools, toolSearchTool];
+
   // ─── 消息历史 ───
   const effectiveMessages: MessageSnapshot[] = messagesOverride
     ?? (config.messages ?? []).map(m => ({ role: m.role, content: m.content }));
 
   // 转为 KernelMessage + 追加当前用户消息
   const kernelMessages: KernelMessage[] = effectiveMessages.map(snapshotToKernelMessage);
+
+  // 大内容移至用户消息（USER.md/MEMORY.md → <system-reminder>，避免破坏 prompt cache）
+  const { buildUserContextReminder } = await import('./embedded-runner-prompt.js');
+  const contextReminder = buildUserContextReminder(config.workspaceFiles ?? {});
+  if (contextReminder && kernelMessages.length > 0 && kernelMessages[0].role === 'user') {
+    const first = kernelMessages[0];
+    const firstText = first.content.find(b => b.type === 'text');
+    if (firstText && firstText.type === 'text') {
+      (firstText as { text: string }).text = contextReminder + '\n' + firstText.text;
+    }
+  }
   kernelMessages.push({
     id: crypto.randomUUID(),
     role: 'user',

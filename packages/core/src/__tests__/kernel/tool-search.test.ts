@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { KernelTool, ToolCallResult } from '../../agent/kernel/types.js';
-import { createToolSearchTool, partitionToolsByDefer } from '../../agent/kernel/tool-search.js';
+import { createToolSearchTool } from '../../agent/kernel/tool-search.js';
 
 function makeTool(name: string, opts: Partial<KernelTool> = {}): KernelTool {
   return {
@@ -63,24 +63,3 @@ describe('ToolSearchTool', () => {
   });
 });
 
-describe('partitionToolsByDefer', () => {
-  it('应正确分区 eager 和 deferred', () => {
-    const tools = [
-      makeTool('read'),
-      makeTool('CronCreate', { shouldDefer: true }),
-      makeTool('web_fetch', { shouldDefer: true }),
-    ];
-
-    const { eager, deferred } = partitionToolsByDefer(tools);
-    expect(eager).toHaveLength(1);
-    expect(eager[0].name).toBe('read');
-    expect(deferred).toHaveLength(2);
-    expect(deferred.map(d => d.name)).toEqual(['CronCreate', 'web_fetch']);
-  });
-
-  it('无 deferred 时应返回空数组', () => {
-    const { eager, deferred } = partitionToolsByDefer([makeTool('read'), makeTool('write')]);
-    expect(eager).toHaveLength(2);
-    expect(deferred).toHaveLength(0);
-  });
-});

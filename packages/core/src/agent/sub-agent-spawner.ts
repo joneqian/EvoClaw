@@ -63,6 +63,21 @@ export type SubAgentStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 
 /** 子 Agent 角色（参考 OpenClaw 三层角色） */
 export type SubAgentRole = 'main' | 'orchestrator' | 'leaf';
 
+/** 工具活动记录（进度追踪） */
+export interface ToolActivity {
+  toolName: string;
+  timestamp: number;
+}
+
+/** 子 Agent 进度追踪（参考 Claude Code ProgressTracker） */
+export interface SubAgentProgress {
+  toolUseCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** 最近 5 个工具活动 */
+  recentActivities: ToolActivity[];
+}
+
 /** 子 Agent 条目 */
 export interface SubAgentEntry {
   taskId: string;
@@ -79,6 +94,12 @@ export interface SubAgentEntry {
   childSpawner?: SubAgentSpawner;
   /** Spawn 模式 */
   mode: SpawnMode;
+  /** 子 Agent 类型 */
+  agentType?: string;
+  /** 进度追踪 */
+  progress: SubAgentProgress;
+  /** 是否 Fork 模式（继承父 prompt 缓存） */
+  isFork?: boolean;
 }
 
 /** 完成通知回调 */
@@ -136,6 +157,10 @@ export class SubAgentSpawner {
     attachments?: SpawnAttachment[];
     /** Spawn 模式（默认 'run'） */
     mode?: SpawnMode;
+    /** 子 Agent 类型（预定义: general/researcher/writer/analyst） */
+    agentType?: string;
+    /** Fork 模式：继承父 Agent 的完整 system prompt（复用缓存） */
+    fork?: boolean;
   }): string {
     if (this.currentDepth >= this.maxSpawnDepth) {
       throw new Error(`已达最大嵌套深度（${this.maxSpawnDepth} 层），无法继续创建子 Agent`);
@@ -183,6 +208,9 @@ export class SubAgentSpawner {
       abortController,
       announced: false,
       mode: spawnMode,
+      agentType: options?.agentType,
+      progress: { toolUseCount: 0, inputTokens: 0, outputTokens: 0, recentActivities: [] },
+      isFork: options?.fork === true,
     };
     this.agents.set(taskId, entry);
 
@@ -198,11 +226,49 @@ export class SubAgentSpawner {
     });
 
     // 构建子 Agent 配置
+    // Fork 模式: 继承父 Agent 完整 system prompt（复用 prompt cache）
+    // 类型模式: 使用预定义类型的 system prompt
+    // 默认: 构建最小 prompt
+    let systemPrompt: string;
+    let effectiveTools = filteredTools;
+
+    if (entry.isFork) {
+      // Fork: 继承父 prompt（缓存命中最大化）
+      systemPrompt = this.parentConfig.systemPrompt;
+    } else if (entry.agentType) {
+      // 预定义类型
+      let typeDef: any = null;
+      try {
+        const { getSubAgentType } = require('./agent-types.js') as typeof import('./agent-types.js');
+        typeDef = getSubAgentType(entry.agentType);
+      } catch { /* agent-types 不可用时降级为 general */ }
+
+      if (typeDef) {
+        // 加载该类型的持久记忆（如果有）
+        let typeMemory: string | null = null;
+        try {
+          const { readAgentMemory } = require('./agent-memory.js') as typeof import('./agent-memory.js');
+          typeMemory = readAgentMemory(entry.agentType!);
+        } catch { /* agent-memory 不可用时跳过 */ }
+        const memorySection = typeMemory ? `\n\n<agent_memory>\n${typeMemory}\n</agent_memory>` : '';
+
+        systemPrompt = typeDef.systemPrompt + memorySection + '\n\n' + this.buildMinimalPrompt(task, context, childRole, options?.attachments);
+        // 工具白名单过滤
+        if (typeDef.allowedTools) {
+          const allowed = new Set(typeDef.allowedTools);
+          effectiveTools = filteredTools.filter(t => allowed.has(t.name));
+        }
+      } else {
+        systemPrompt = this.buildMinimalPrompt(task, context, childRole, options?.attachments);
+      }
+    } else {
+      systemPrompt = this.buildMinimalPrompt(task, context, childRole, options?.attachments);
+    }
+
     const childConfig: AgentRunConfig = {
       agent: targetAgent,
-      systemPrompt: this.buildMinimalPrompt(task, context, childRole, options?.attachments),
+      systemPrompt,
       workspaceFiles: {
-        // 继承目标 Agent 的操作规程和工具说明
         ...(targetWorkspaceFiles['AGENTS.md'] ? { 'AGENTS.md': targetWorkspaceFiles['AGENTS.md'] } : {}),
         ...(targetWorkspaceFiles['TOOLS.md'] ? { 'TOOLS.md': targetWorkspaceFiles['TOOLS.md'] } : {}),
       },
@@ -211,8 +277,8 @@ export class SubAgentSpawner {
       apiKey: this.parentConfig.apiKey,
       baseUrl: this.parentConfig.baseUrl,
       apiProtocol: this.parentConfig.apiProtocol,
-      tools: filteredTools,
-      messages: [],  // 子 Agent 没有历史消息
+      tools: effectiveTools,
+      messages: [],
     };
 
     // 计算超时
@@ -232,6 +298,12 @@ export class SubAgentSpawner {
             (event: RuntimeEvent) => {
               if (event.type === 'text_delta' && event.delta) {
                 result += event.delta;
+              }
+              // 进度追踪
+              if (event.type === 'tool_start' && event.toolName) {
+                entry.progress.toolUseCount++;
+                entry.progress.recentActivities.push({ toolName: event.toolName, timestamp: Date.now() });
+                if (entry.progress.recentActivities.length > 5) entry.progress.recentActivities.shift();
               }
             },
             abortController.signal,

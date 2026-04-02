@@ -142,6 +142,12 @@ export function snipOldMessages(messages: KernelMessage[]): number {
  * @returns 截断的 block 数
  */
 export function microcompactToolResults(messages: KernelMessage[]): number {
+  // TODO: Cached Microcompact（参考 Claude Code microCompact.ts）
+  // 当 Anthropic cache_edits API 对所有用户开放后，可以：
+  // 1. 不修改消息内容，仅通过 cache_edits 删除旧工具结果
+  // 2. 调用 notifyCacheDeletion() 抑制缓存断裂误报
+  // 3. 这样可以保留缓存前缀的有效性
+  // 当前实现: 直接截断消息内容（会破坏缓存）
   let truncatedCount = 0;
 
   for (const msg of messages) {
@@ -169,6 +175,56 @@ export function microcompactToolResults(messages: KernelMessage[]): number {
   }
 
   return truncatedCount;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Context Collapse Drain — 413 时的轻量紧急折叠
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 紧急折叠后保留的最近消息数 */
+const COLLAPSE_KEEP_RECENT = 4;
+
+/** tool_result 紧急截断限制 */
+const COLLAPSE_TRUNCATE_LIMIT = 1_000;
+
+/**
+ * Context Collapse Drain — 413 时先尝试的轻量折叠
+ *
+ * 比 Snip+Microcompact 更激进（保留更少消息 + 更短截断），
+ * 但比 Autocompact 便宜（零 API 调用）。
+ *
+ * 参考 Claude Code: 413 → Context Collapse Drain → Reactive Compact
+ *
+ * @returns 折叠是否有效（消息数减少了）
+ */
+export function contextCollapseDrain(messages: KernelMessage[]): boolean {
+  const beforeCount = messages.length;
+
+  // 1. 激进 Snip — 只保留首条 + 最近 4 条
+  if (messages.length > COLLAPSE_KEEP_RECENT + 1) {
+    const keepFirst = messages[0];
+    const keepRecent = messages.slice(-COLLAPSE_KEEP_RECENT);
+    messages.length = 0;
+    if (keepFirst) messages.push(keepFirst);
+    messages.push(...keepRecent);
+  }
+
+  // 2. 激进截断所有 tool_result（1000 字符上限）
+  for (const msg of messages) {
+    for (let i = 0; i < msg.content.length; i++) {
+      const block = msg.content[i]!;
+      if (block.type === 'tool_result' && block.content.length > COLLAPSE_TRUNCATE_LIMIT) {
+        (block as { content: string }).content =
+          block.content.slice(0, COLLAPSE_TRUNCATE_LIMIT) + '\n... [紧急截断]';
+      }
+    }
+  }
+
+  const removed = beforeCount - messages.length;
+  if (removed > 0) {
+    log.info(`Context Collapse: ${beforeCount} → ${messages.length} 消息 (移除 ${removed})`);
+  }
+  return removed > 0;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -346,23 +402,26 @@ export async function autocompact(
   // 保留的最近消息
   messages.push(...recentMessages);
 
-  // Post-compaction 恢复指令
+  // Post-compaction 恢复指令 + 关键内容重注入（参考 Claude Code compact.ts）
   const today = new Date().toISOString().slice(0, 10);
+  const refreshParts = [
+    `[Post-compaction context refresh]`,
+    `会话刚刚被压缩。上面的对话摘要是对之前内容的总结。`,
+    ``,
+    `请立即执行以恢复工作上下文：`,
+    `1. 读取 AGENTS.md — 你的操作规程`,
+    `2. 读取 MEMORY.md — 你的长期记忆`,
+    `3. 读取今天的 memory/${today}.md — 今日笔记（如果存在）`,
+    `4. 如果摘要中提到了正在编辑的文件，重新读取这些文件`,
+    `5. 检查 <available_skills> 确认可用技能`,
+    ``,
+    `然后继续完成用户最新的请求。不要重新自我介绍。`,
+  ];
   messages.push({
     id: crypto.randomUUID(),
     role: 'user',
-    content: [{
-      type: 'text',
-      text: `[Post-compaction context refresh]
-会话刚刚被压缩。上面的对话摘要只是提示，不能替代你的启动流程。
-
-请立即执行：
-1. 读取 AGENTS.md — 你的操作规程
-2. 读取 MEMORY.md — 你的长期记忆
-3. 读取今天的 memory/${today}.md — 今日笔记（如果存在）
-
-从最新的文件状态恢复上下文，然后继续对话。`,
-    }],
+    content: [{ type: 'text', text: refreshParts.join('\n') }],
+    isMeta: true,
   });
 
   log.info(`Autocompact: 摘要 ${summary.length} 字符，保留 ${keepCount} 条最近消息`);

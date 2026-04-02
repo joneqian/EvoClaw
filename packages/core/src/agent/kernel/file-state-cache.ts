@@ -87,7 +87,14 @@ export class FileStateCache {
    * 检查文件是否曾被读取
    */
   wasReadBefore(filePath: string): boolean {
-    return this.cache.has(filePath);
+    // LRU: 访问时刷新位置（Map 删除再重插 = 移到末尾）
+    const entry = this.cache.get(filePath);
+    if (entry) {
+      this.cache.delete(filePath);
+      this.cache.set(filePath, entry);
+      return true;
+    }
+    return false;
   }
 
   /**

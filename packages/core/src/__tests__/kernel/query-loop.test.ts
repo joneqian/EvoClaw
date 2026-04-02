@@ -29,6 +29,16 @@ vi.mock('../../agent/kernel/stream-client.js', () => ({
 // Mock maybeCompress (不在单元测试中真正调用 LLM)
 vi.mock('../../agent/kernel/context-compactor.js', () => ({
   maybeCompress: vi.fn().mockResolvedValue(false),
+  contextCollapseDrain: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock('../../agent/kernel/prompt-cache-monitor.js', () => ({
+  PromptCacheMonitor: vi.fn().mockImplementation(() => ({
+    recordPreCallState: vi.fn(),
+    checkForBreak: vi.fn().mockReturnValue({ detected: false, tokenDrop: 0, prevCacheRead: 0, newCacheRead: 0, reasons: [] }),
+    notifyCompaction: vi.fn(),
+    reset: vi.fn(),
+  })),
 }));
 
 // 现在导入被测模块 (mock 已就位)

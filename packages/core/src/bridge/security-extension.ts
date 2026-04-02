@@ -75,14 +75,17 @@ export class SecurityExtension {
           return wildcard.scope === 'deny' ? 'deny' : 'allow';
         }
       }
-      // 类别级匹配：该类别下有任何 always 权限即放行（简化权限模型）
+      // 模式匹配：支持 ToolName(content) 格式（参考 Claude Code 规则语法）
+      // 如 resource="git push --force"，规则 "git:*" 可匹配
       for (const [key, record] of agentCache) {
-        if (key.startsWith(`${category}:`) && record.scope === 'always') {
-          if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
-            this.revokePermission(record.id);
-            continue;
-          }
-          return 'allow';
+        if (!key.startsWith(`${category}:`)) continue;
+        if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
+          this.revokePermission(record.id);
+          continue;
+        }
+        const ruleResource = key.slice(category.length + 1);
+        if (matchResourcePattern(ruleResource, resource)) {
+          return record.scope === 'deny' ? 'deny' : 'allow';
         }
       }
     }
@@ -196,4 +199,44 @@ function rowToRecord(row: Record<string, unknown>): PermissionRecord {
     expiresAt: (row['expires_at'] as string) ?? null,
     grantedBy: row['granted_by'] as 'user' | 'system',
   };
+}
+
+/**
+ * 资源模式匹配（参考 Claude Code 规则语法）
+ *
+ * 支持:
+ * - 精确匹配: "git push" === "git push"
+ * - 通配符: "*" 匹配任何资源
+ * - 前缀+冒号: "git:*" 匹配 "git status", "git push" 等
+ * - 路径通配: "/src/**" 匹配 /src 下所有文件
+ * - 空格通配: "npm *" 匹配 "npm install", "npm test" 等
+ */
+function matchResourcePattern(pattern: string, resource: string): boolean {
+  if (pattern === '*') return true;
+  if (pattern === resource) return true;
+
+  // 前缀+冒号通配: "git:*" → 匹配 "git status", "git push --force"
+  if (pattern.endsWith(':*')) {
+    const prefix = pattern.slice(0, -2);
+    return resource.startsWith(prefix + ' ') || resource === prefix;
+  }
+
+  // 空格通配: "npm *" → 匹配 "npm install"
+  if (pattern.endsWith(' *')) {
+    const prefix = pattern.slice(0, -2);
+    return resource.startsWith(prefix + ' ') || resource === prefix;
+  }
+
+  // 路径通配: "/src/**" → 匹配 "/src/foo/bar.ts"
+  if (pattern.endsWith('/**')) {
+    const prefix = pattern.slice(0, -3);
+    return resource.startsWith(prefix + '/') || resource === prefix;
+  }
+
+  // 简单通配符: "python*" → 匹配 "python3"
+  if (pattern.endsWith('*')) {
+    return resource.startsWith(pattern.slice(0, -1));
+  }
+
+  return false;
 }

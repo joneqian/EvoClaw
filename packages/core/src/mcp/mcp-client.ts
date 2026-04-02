@@ -1,120 +1,150 @@
 /**
- * MCP Client — MCP Server 生命周期管理
+ * MCP Client — 真实 MCP 协议实现
  *
- * 通过 stdio 启动 MCP Server 子进程，发现工具，代理工具调用。
+ * 使用 @modelcontextprotocol/sdk 连接 MCP Server，
+ * 支持 stdio + SSE 两种传输。
  *
- * 注意：当前 @modelcontextprotocol/sdk 未安装，此模块为占位实现。
- * 安装 SDK 后可替换为真实的 Client + StdioClientTransport 实现。
- *
- * TODO: 安装 @modelcontextprotocol/sdk 后：
- * 1. import { Client } from '@modelcontextprotocol/sdk/client/index.js';
- * 2. import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
- * 3. 替换 start/listTools/callTool/dispose 的占位实现
+ * 参考 Claude Code MCP 客户端（docs/research/21-mcp-client.md）
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
-import type { McpServerConfig, McpToolInfo, McpToolResult, McpServerState, McpServerStatus } from '@evoclaw/shared';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { McpServerConfig } from './mcp-config.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('mcp-client');
 
+/** MCP 工具信息 */
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  serverName: string;
+  searchHint?: string;
+  alwaysLoad?: boolean;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+}
+
+/** MCP 工具调用结果 */
+export interface McpToolResult {
+  content: Array<{ type: string; text?: string }>;
+  isError?: boolean;
+}
+
+/** MCP 服务器状态 */
+export type McpServerStatus = 'stopped' | 'starting' | 'running' | 'error';
+
+/** 指令截断限制 */
+const MAX_INSTRUCTIONS_LENGTH = 2048;
+const CONNECT_TIMEOUT_MS = 30_000;
+
 /**
- * MCP 客户端 — 管理单个 MCP Server 的连接
+ * MCP 客户端 — 管理单个 MCP Server 连接
  */
 export class McpClient {
-  private status: McpServerStatus = 'stopped';
-  private tools: McpToolInfo[] = [];
-  private error?: string;
-  private process?: ChildProcess;
+  private client: Client | null = null;
+  private _status: McpServerStatus = 'stopped';
+  private _tools: McpToolInfo[] = [];
+  private _error?: string;
+  private _instructions?: string;
 
   constructor(private readonly config: McpServerConfig) {}
 
-  /** 获取当前状态 */
-  getState(): McpServerState {
-    return {
-      config: this.config,
-      status: this.status,
-      tools: [...this.tools],
-      error: this.error,
-    };
-  }
+  get status(): McpServerStatus { return this._status; }
+  get tools(): ReadonlyArray<McpToolInfo> { return this._tools; }
+  get error(): string | undefined { return this._error; }
+  get instructions(): string | undefined { return this._instructions; }
+  get serverName(): string { return this.config.name; }
 
-  /**
-   * 启动 MCP Server 并发现工具
-   *
-   * TODO: 当 @modelcontextprotocol/sdk 可用时，替换为：
-   * ```
-   * const transport = new StdioClientTransport({ command, args, env });
-   * const client = new Client({ name: 'evoclaw', version: '1.0' });
-   * await client.connect(transport);
-   * const { tools } = await client.listTools();
-   * ```
-   */
+  /** 连接 MCP Server 并发现工具 */
   async start(): Promise<void> {
-    if (this.status === 'running') return;
-
-    this.status = 'starting';
-    this.error = undefined;
+    if (this._status === 'running') return;
+    this._status = 'starting';
+    this._error = undefined;
 
     try {
-      const timeoutMs = this.config.startupTimeoutMs ?? 30_000;
+      // 创建传输
+      let transport: StdioClientTransport | StreamableHTTPClientTransport;
+      if (this.config.type === 'stdio') {
+        if (!this.config.command) throw new Error('stdio 类型需要 command 字段');
+        transport = new StdioClientTransport({
+          command: this.config.command,
+          args: this.config.args,
+          env: { ...process.env, ...(this.config.env ?? {}) } as Record<string, string>,
+        });
+      } else if (this.config.type === 'sse') {
+        if (!this.config.url) throw new Error('sse 类型需要 url 字段');
+        transport = new StreamableHTTPClientTransport(new URL(this.config.url));
+      } else {
+        throw new Error(`不支持的传输类型: ${(this.config as any).type}`);
+      }
 
-      // 占位实现：启动子进程但不进行 MCP 协议通信
-      // 真实实现需要 @modelcontextprotocol/sdk 的 Client + StdioClientTransport
-      log.warn(
-        `MCP Server "${this.config.name}" 启动跳过：@modelcontextprotocol/sdk 未安装。` +
-        `命令: ${this.config.command} ${(this.config.args ?? []).join(' ')}`,
-      );
+      // 创建客户端并连接
+      this.client = new Client({ name: 'evoclaw', version: '1.0.0' }, { capabilities: {} });
 
-      // 标记为错误状态，提示用户安装 SDK
-      this.status = 'error';
-      this.error = '@modelcontextprotocol/sdk 未安装，请运行: pnpm add @modelcontextprotocol/sdk';
-      this.tools = [];
+      const timeoutMs = this.config.startupTimeoutMs ?? CONNECT_TIMEOUT_MS;
+      await Promise.race([
+        this.client.connect(transport),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`连接超时 (${timeoutMs}ms)`)), timeoutMs)),
+      ]);
+
+      const serverInfo = this.client.getServerVersion();
+      log.info(`MCP "${this.config.name}" 已连接: ${serverInfo?.name ?? 'unknown'} v${serverInfo?.version ?? '?'}`);
+
+      // 发现工具
+      await this.refreshTools();
+      this._status = 'running';
     } catch (err) {
-      this.status = 'error';
-      this.error = err instanceof Error ? err.message : String(err);
-      log.error(`MCP Server "${this.config.name}" 启动失败:`, this.error);
+      this._status = 'error';
+      this._error = err instanceof Error ? err.message : String(err);
+      log.error(`MCP "${this.config.name}" 连接失败: ${this._error}`);
+      await this.dispose().catch(() => {});
     }
   }
 
-  /** 获取已发现的工具列表 */
-  listTools(): ReadonlyArray<McpToolInfo> {
-    return this.tools;
-  }
-
-  /**
-   * 调用 MCP 工具
-   *
-   * TODO: 当 @modelcontextprotocol/sdk 可用时，替换为：
-   * ```
-   * const result = await client.callTool({ name, arguments: args });
-   * return result;
-   * ```
-   */
-  async callTool(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
-    if (this.status !== 'running') {
-      return {
-        content: [{ type: 'text', text: `MCP Server "${this.config.name}" 未运行 (status=${this.status})` }],
-        isError: true,
-      };
+  /** 刷新工具列表 */
+  async refreshTools(): Promise<void> {
+    if (!this.client) return;
+    try {
+      const result = await this.client.listTools();
+      this._tools = (result.tools ?? []).map(tool => ({
+        name: tool.name,
+        description: (tool.description ?? '').slice(0, MAX_INSTRUCTIONS_LENGTH),
+        inputSchema: (tool.inputSchema ?? {}) as Record<string, unknown>,
+        serverName: this.config.name,
+        searchHint: (tool as any)._meta?.['anthropic/searchHint'],
+        alwaysLoad: (tool as any)._meta?.['anthropic/alwaysLoad'],
+        readOnlyHint: (tool as any).annotations?.readOnlyHint,
+        destructiveHint: (tool as any).annotations?.destructiveHint,
+      }));
+      log.info(`MCP "${this.config.name}" 发现 ${this._tools.length} 个工具`);
+    } catch (err) {
+      log.warn(`MCP "${this.config.name}" 工具发现失败: ${err instanceof Error ? err.message : err}`);
+      this._tools = [];
     }
-
-    // 占位实现
-    return {
-      content: [{ type: 'text', text: `MCP 工具调用未实现：需要安装 @modelcontextprotocol/sdk` }],
-      isError: true,
-    };
   }
 
-  /** 停止 MCP Server */
+  /** 调用 MCP 工具 */
+  async callTool(toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
+    if (!this.client || this._status !== 'running') {
+      return { content: [{ type: 'text', text: `MCP "${this.config.name}" 未运行` }], isError: true };
+    }
+    try {
+      const result = await this.client.callTool({ name: toolName, arguments: args });
+      return { content: (result.content ?? []) as McpToolResult['content'], isError: result.isError === true };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `MCP 调用失败: ${err instanceof Error ? err.message : String(err)}` }], isError: true };
+    }
+  }
+
+  /** 断开连接 */
   async dispose(): Promise<void> {
-    if (this.process) {
-      this.process.kill('SIGTERM');
-      this.process = undefined;
-    }
-    this.status = 'stopped';
-    this.tools = [];
-    log.info(`MCP Server "${this.config.name}" 已停止`);
+    try { if (this.client) await this.client.close(); } catch { /* ignore */ }
+    this.client = null;
+    this._status = 'stopped';
+    this._tools = [];
   }
 }
 
@@ -124,59 +154,46 @@ export class McpClient {
 export class McpManager {
   private readonly clients = new Map<string, McpClient>();
 
-  /** 添加并启动一个 MCP Server */
   async addServer(config: McpServerConfig): Promise<void> {
-    if (this.clients.has(config.name)) {
-      await this.removeServer(config.name);
-    }
-
+    if (this.clients.has(config.name)) await this.removeServer(config.name);
     const client = new McpClient(config);
     this.clients.set(config.name, client);
-
-    if (config.enabled !== false) {
-      await client.start();
-    }
+    if (config.enabled !== false) await client.start();
   }
 
-  /** 移除一个 MCP Server */
   async removeServer(name: string): Promise<void> {
     const client = this.clients.get(name);
-    if (client) {
-      await client.dispose();
-      this.clients.delete(name);
-    }
+    if (client) { await client.dispose(); this.clients.delete(name); }
   }
 
-  /** 获取所有已发现的工具 */
   getAllTools(): McpToolInfo[] {
     const tools: McpToolInfo[] = [];
     for (const client of this.clients.values()) {
-      tools.push(...client.listTools());
+      if (client.status === 'running') tools.push(...client.tools);
     }
     return tools;
   }
 
-  /** 调用工具（自动路由到对应的 MCP Server） */
   async callTool(serverName: string, toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
     const client = this.clients.get(serverName);
-    if (!client) {
-      return {
-        content: [{ type: 'text', text: `MCP Server "${serverName}" 不存在` }],
-        isError: true,
-      };
-    }
+    if (!client) return { content: [{ type: 'text', text: `MCP "${serverName}" 不存在` }], isError: true };
     return client.callTool(toolName, args);
   }
 
-  /** 获取所有 Server 状态 */
-  getStates(): McpServerState[] {
-    return Array.from(this.clients.values()).map((c) => c.getState());
+  getStates(): Array<{ name: string; status: McpServerStatus; toolCount: number; error?: string }> {
+    return [...this.clients.values()].map(c => ({
+      name: c.serverName, status: c.status, toolCount: c.tools.length, error: c.error,
+    }));
   }
 
-  /** 停止所有 MCP Server */
+  getAllInstructions(): Array<{ name: string; instructions: string }> {
+    return [...this.clients.values()]
+      .filter(c => c.instructions)
+      .map(c => ({ name: c.serverName, instructions: c.instructions! }));
+  }
+
   async disposeAll(): Promise<void> {
-    const promises = Array.from(this.clients.values()).map((c) => c.dispose());
-    await Promise.all(promises);
+    await Promise.all([...this.clients.values()].map(c => c.dispose()));
     this.clients.clear();
   }
 }

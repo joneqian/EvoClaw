@@ -347,8 +347,6 @@ export interface QueryLoopResult {
   readonly exitReason: ExitReason;
   /** 轮次数 */
   readonly turnCount: number;
-  /** 被标记移除的消息（流式回退/压缩重试时产生） */
-  readonly tombstones: readonly TombstoneMessage[];
 }
 
 /** Stop Hook 检查结果 */

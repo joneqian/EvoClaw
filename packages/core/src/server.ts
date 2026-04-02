@@ -61,6 +61,9 @@ import { KnowledgeGraphStore } from './memory/knowledge-graph.js';
 import { FtsStore } from './infrastructure/db/fts-store.js';
 import { StartupProfiler } from './infrastructure/startup-profiler.js';
 import { BootstrapState } from './infrastructure/bootstrap-state.js';
+import { McpManager } from './mcp/mcp-client.js';
+import { discoverMcpConfigs } from './mcp/mcp-config.js';
+import { createMcpRoutes } from './routes/mcp.js';
 import { preconnectProviders } from './infrastructure/preconnect.js';
 
 const log = createLogger('server');
@@ -285,6 +288,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }
     app.route('/skill', createSkillRoutes());
+    if ((options as any).mcpManager) {
+      app.route('/mcp', createMcpRoutes((options as any).mcpManager));
+    }
     app.route('/evolution', createEvolutionRoutes({ db: store, getHeartbeatManager: options.getHeartbeatManager }));
     app.route('/provider', createProviderRoutes(store, configManager));
     if (cronRunner) {
@@ -711,6 +717,7 @@ async function main() {
     cronRunner.stop();
     heartbeatManager?.stopAll();
     channelManager.disconnectAll();
+    mcpManager.disposeAll().catch(() => {});
     closeLogger();
   };
   process.on('SIGINT', cleanup);
@@ -750,6 +757,37 @@ async function main() {
 
   // 3a. API 预连接 — 提前建立 TCP+TLS，减少首次 LLM 调用延迟
   preconnectProviders(configManager);
+
+  // 3a.5. MCP 服务器发现 + 安全过滤 + 重连机制（异步，不阻塞）
+  const mcpManager = new McpManager();
+  (async () => {
+    try {
+      const { applySecurityPolicy } = await import('./mcp/mcp-security.js');
+
+      let mcpConfigs = discoverMcpConfigs();
+      if (mcpConfigs.length === 0) return;
+
+      // 安全策略过滤
+      const mcpPolicy = (configManager.getConfig() as any).mcpSecurity;
+      if (mcpPolicy) {
+        mcpConfigs = applySecurityPolicy(mcpConfigs, mcpPolicy);
+      }
+
+      // 连接已启用的服务器（内置重连）
+      for (const config of mcpConfigs) {
+        if (config.enabled === false) continue;
+        await mcpManager.addServer(config);
+      }
+
+      const states = mcpManager.getStates();
+      const running = states.filter(s => s.status === 'running').length;
+      if (running > 0 || mcpConfigs.length > 0) {
+        log.info(`MCP: ${running}/${mcpConfigs.filter(c => c.enabled !== false).length} 服务器已连接, ${mcpManager.getAllTools().length} 个工具`);
+      }
+    } catch (err) {
+      log.warn(`MCP 初始化失败: ${err instanceof Error ? err.message : err}`);
+    }
+  })();
 
   // 3b. Channel 自动恢复（可能涉及网络 I/O，不阻塞服务启动）
   const recoverChannels = async () => {

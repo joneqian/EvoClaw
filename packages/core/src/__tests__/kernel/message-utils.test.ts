@@ -25,12 +25,6 @@ import {
   mergeConsecutiveTextBlocks,
   filterEmptyMessages,
   stripThinkingBlocks,
-  createSystemMessage,
-  createApiErrorMessage,
-  createCompactBoundaryMessage,
-  createMemorySavedMessage,
-  createTurnDurationMessage,
-  createTombstoneMessage,
   createToolUseSummaryMessage,
 } from '../../agent/kernel/message-utils.js';
 
@@ -243,57 +237,6 @@ describe('合并 & 清理', () => {
 });
 
 describe('工厂函数', () => {
-  it('createSystemMessage 应创建正确结构', () => {
-    const msg = createSystemMessage('test info');
-    expect(msg.type).toBe('system');
-    expect(msg.subtype).toBe('informational');
-    expect(msg.level).toBe('info');
-    expect(msg.content).toBe('test info');
-    expect(msg.id).toBeTruthy();
-    expect(msg.timestamp).toBeTruthy();
-  });
-
-  it('createApiErrorMessage 应携带 status', () => {
-    const msg = createApiErrorMessage('rate limited', 429, true);
-    expect(msg.subtype).toBe('api_error');
-    expect(msg.level).toBe('error');
-    expect(msg.detail?.status).toBe(429);
-    expect(msg.detail?.retryable).toBe(true);
-  });
-
-  it('createCompactBoundaryMessage 应映射策略到子类型', () => {
-    const snip = createCompactBoundaryMessage('snip', { messagesBefore: 20, messagesAfter: 10 });
-    expect(snip.subtype).toBe('snip_boundary');
-
-    const micro = createCompactBoundaryMessage('microcompact', { messagesBefore: 20, messagesAfter: 20 });
-    expect(micro.subtype).toBe('microcompact_boundary');
-
-    const auto = createCompactBoundaryMessage('autocompact', { messagesBefore: 20, messagesAfter: 5, tokensSaved: 5000 });
-    expect(auto.subtype).toBe('compact_boundary');
-    expect(auto.detail?.tokensSaved).toBe(5000);
-  });
-
-  it('createMemorySavedMessage 应包含数量', () => {
-    const msg = createMemorySavedMessage(3);
-    expect(msg.subtype).toBe('memory_saved');
-    expect(msg.detail?.count).toBe(3);
-  });
-
-  it('createTurnDurationMessage 应包含耗时', () => {
-    const msg = createTurnDurationMessage(1500, 3);
-    expect(msg.subtype).toBe('turn_duration');
-    expect(msg.detail?.durationMs).toBe(1500);
-    expect(msg.detail?.turnCount).toBe(3);
-  });
-
-  it('createTombstoneMessage 应包装原始消息', () => {
-    const original = makeMsg('assistant', [{ type: 'text', text: 'partial' }]);
-    const tomb = createTombstoneMessage(original, 'streaming fallback');
-    expect(tomb.type).toBe('tombstone');
-    expect(tomb.original).toBe(original);
-    expect(tomb.reason).toBe('streaming fallback');
-  });
-
   it('createToolUseSummaryMessage 应包含工具 ID', () => {
     const msg = createToolUseSummaryMessage('Searched auth/ and fixed NPE', ['t1', 't2', 't3']);
     expect(msg.type).toBe('tool_use_summary');

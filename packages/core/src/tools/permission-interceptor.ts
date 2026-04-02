@@ -26,6 +26,11 @@ const DANGEROUS_PATTERNS = [
   /(?:rm\s+-rf|mkfs|dd\s+if=|chmod\s+777).*&\s*$/i,          // 后台执行危险命令
   /[><]\(.*(?:rm\s+-rf|mkfs|dd\s+if=)/i,                     // 进程替换
   /crontab\s+-[re]/i,                                         // 定时任务篡改
+  // 补充安全检查（参考 Claude Code bashSecurity.ts 21 项）
+  /[\x00-\x08\x0b\x0c\x0e-\x1f]/,                            // 控制字符（排除 \t\n\r）
+  /[\u00A0\u2000-\u200B\u2028\u2029\u202F\u205F\u3000]/,      // Unicode 伪空格
+  /\{[^}]*,[^}]*\}/,                                          // 花括号展开 {a,b}
+  /(?:^|[;&|])\s*['"][^'"]*$/,                                // 不完整命令（未闭合引号）
 ];
 
 /** 消息发送类工具（需要强制确认） */

@@ -383,6 +383,19 @@ function ChatView() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={(e) => {
+            // 剪贴板图片粘贴支持
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+              if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (file) setAttachments(prev => [...prev, file]);
+                return;
+              }
+            }
+          }}
           placeholder="任何问题，尽管吩咐~"
           rows={3}
           className="w-full resize-none px-4 py-3 text-sm bg-transparent text-slate-900

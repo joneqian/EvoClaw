@@ -673,6 +673,9 @@ export function createChatRoutes(
       messages,
       contextWindow: modelDef?.contextWindow,
       maxTokens: modelDef?.maxTokens,
+      promptOverrides: (body as any).promptOverrides,
+      thinkingMode: configManager?.getThinkingMode(),
+      language: configManager?.getLanguage(),
       permissionInterceptFn,
       auditLogFn: (entry) => {
         auditQueue.push({

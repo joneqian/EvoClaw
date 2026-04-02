@@ -119,3 +119,69 @@ async function callAnthropic(
   const textBlock = data.content?.find(b => b.type === 'text');
   return textBlock?.text ?? '';
 }
+
+/**
+ * 支持 SystemPromptBlock[] 的 LLM 调用 — 用于 Prompt Cache 共享
+ *
+ * Anthropic 协议: system 字段传递 blocks 数组，含 cache_control
+ * OpenAI 协议: 将 blocks 拼接为纯文本（无 cache_control 支持）
+ */
+export async function callLLMWithBlocks(
+  configManager: ConfigManager,
+  systemBlocks: Array<{ text: string; cacheControl?: { type: string } | null }>,
+  userMessage: string,
+  maxTokens = 4096,
+): Promise<string> {
+  const apiKey = configManager.getDefaultApiKey();
+  const baseUrl = configManager.getDefaultBaseUrl();
+  const modelId = configManager.getDefaultModelId();
+  const protocol = configManager.getDefaultApi();
+
+  if (!apiKey || !baseUrl || !modelId) {
+    throw new Error('LLM 未配置：请先在设置中配置 Provider 和模型');
+  }
+
+  log.info(`调用 LLM (blocks): model=${modelId} protocol=${protocol} blocks=${systemBlocks.length}`);
+
+  if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
+    const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;
+
+    // Anthropic: 传递 system blocks 含 cache_control
+    const systemContent = systemBlocks.map(b => ({
+      type: 'text' as const,
+      text: b.text,
+      ...(b.cacheControl ? { cache_control: b.cacheControl } : {}),
+    }));
+
+    const response = await fetch(`${anthropicUrl}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: modelId,
+        system: systemContent,
+        messages: [{ role: 'user', content: userMessage }],
+        max_tokens: maxTokens,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`LLM 调用失败: HTTP ${response.status} ${errText.slice(0, 200)}`);
+    }
+
+    const data = await response.json() as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    return data.content?.find(b => b.type === 'text')?.text ?? '';
+  }
+
+  // OpenAI: 拼接 blocks 为纯文本
+  const systemPrompt = systemBlocks.map(b => b.text).join('\n\n');
+  return callOpenAI(baseUrl, apiKey, modelId, systemPrompt, userMessage, maxTokens);
+}

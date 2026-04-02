@@ -5,6 +5,7 @@ import type { FtsStore } from '../infrastructure/db/fts-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { KnowledgeGraphStore } from './knowledge-graph.js';
 import type { MemoryStore } from './memory-store.js';
+import type { LlmReranker } from './llm-reranker.js';
 import { analyzeQuery, type QueryType } from './query-analyzer.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -19,6 +20,8 @@ export interface SearchResult {
   category: string;
   finalScore: number;
   activation: number;
+  /** 记忆最后更新时间 (ISO 8601)，用于新鲜度警告 */
+  updatedAt: string;
 }
 
 /**
@@ -46,12 +49,17 @@ export interface SearchOptions {
 }
 
 export class HybridSearcher {
+  private reranker?: LlmReranker;
+
   constructor(
     private ftsStore: FtsStore,
     private vectorStore: VectorStore,
     private knowledgeGraph: KnowledgeGraphStore,
     private memoryStore: MemoryStore,
-  ) {}
+    reranker?: LlmReranker,
+  ) {
+    this.reranker = reranker;
+  }
 
   /**
    * 三阶段渐进检索
@@ -134,6 +142,7 @@ export class HybridSearcher {
         category: unit.category,
         finalScore,
         activation: unit.activation,
+        updatedAt: unit.updatedAt,
       };
     });
 
@@ -161,7 +170,13 @@ export class HybridSearcher {
     if (relevant.length < deduped.length) {
       log.debug(`Phase 2 过滤: ${deduped.length - relevant.length} 条低分噪音 (阈值 ${minScore})`);
     }
-    const topResults = relevant.slice(0, limit);
+    let topResults = relevant.slice(0, limit);
+
+    // === Phase 2.5: LLM 精选（仅高价值场景） ===
+    if (this.reranker && topResults.length > 1 && (analysis.isExplicitRecall || analysis.needsDetail)) {
+      log.info(`触发 LLM 精选: isExplicitRecall=${analysis.isExplicitRecall}, needsDetail=${analysis.needsDetail}`);
+      topResults = await this.reranker.rerank(query, topResults, limit);
+    }
 
     // 提升被召回记忆的 activation
     const recalledIds = topResults.map(r => r.memoryId);

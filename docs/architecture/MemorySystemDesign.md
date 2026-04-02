@@ -858,6 +858,203 @@ packages/core/src/
 
 ---
 
+## 12. AutoDream 记忆整合
+
+> 参考 Claude Code 的 AutoDream 机制。EvoClaw 已有记忆的"生产"（提取 Pipeline）和"消费"（混合检索），AutoDream 补齐"维护"环节。
+
+### 12.1 触发条件（渐进门控）
+
+```
+1. 距上次整合 >= 24 小时?           ← 查 consolidation_log
+  ↓
+2. 上次整合后 >= 5 个新会话?         ← 查 conversation_log distinct session_key
+  ↓
+3. 无其他进程在整合?                 ← 锁文件检查
+  ↓
+触发整合
+```
+
+### 12.2 锁机制
+
+```
+锁文件: {dataDir}/agents/{agentId}/.consolidation.lock
+内容: 持有者 PID
+有效期: 1 小时（超时自动接管）
+
+获取: 写入 PID → 成功
+检查: 已有锁 → PID 存活 + mtime < 1h → 阻塞; 否则 → 接管
+失败回滚: 更新 consolidation_log 状态为 'failed'
+```
+
+### 12.3 四阶段整合流程
+
+```
+┌──────────────────────────────────────────────────┐
+│  Phase 1: Orient                                 │
+│  加载所有非归档记忆的统计信息                       │
+│  分析类别分布、重复 merge_key、矛盾信号             │
+├──────────────────────────────────────────────────┤
+│  Phase 2: Gather                                 │
+│  按类别分组，找候选合并组:                          │
+│  - 同 merge_key 多版本                            │
+│  - 语义重叠（L0 相似度 > 0.85）                    │
+│  - 矛盾事实（同 entity 不同属性值）                 │
+├──────────────────────────────────────────────────┤
+│  Phase 3: Consolidate (LLM)                      │
+│  输入: 候选合并组 + 统计信息                        │
+│  LLM 输出 XML:                                   │
+│  <consolidation>                                 │
+│    <merge id="..." into="...">新L1/L2</merge>    │
+│    <create category="...">新记忆</create>         │
+│    <archive id="..." reason="..."/>              │
+│  </consolidation>                                │
+│  约束: L0 保持稳定, 相对日期→绝对日期               │
+├──────────────────────────────────────────────────┤
+│  Phase 4: Prune                                  │
+│  在事务内执行 Consolidate 输出的所有操作             │
+│  写入 consolidation_log 记录                      │
+│  更新 FTS5 索引                                   │
+└──────────────────────────────────────────────────┘
+```
+
+### 12.4 数据模型
+
+```sql
+CREATE TABLE IF NOT EXISTS consolidation_log (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  status TEXT NOT NULL DEFAULT 'running',  -- running|completed|failed
+  memories_merged INTEGER DEFAULT 0,
+  memories_pruned INTEGER DEFAULT 0,
+  memories_created INTEGER DEFAULT 0,
+  error_message TEXT,
+  FOREIGN KEY (agent_id) REFERENCES agents(id)
+);
+```
+
+### 12.5 调度
+
+- 独立 `MemoryConsolidator` 类（非 ContextPlugin），与 `DecayScheduler` 同级
+- 每小时检查一次所有 Agent 的 `shouldRun()` 条件
+- 在 `server.ts` 启动时实例化
+
+---
+
+## 13. 会话记忆摘要
+
+> 独立于 Kernel 三层压缩（Snip/Microcompact/Autocompact），Session Memory 是持久化的会话级运行笔记。
+
+### 13.1 触发阈值
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `INIT_THRESHOLD` | 10,000 tokens | 首次摘要触发 |
+| `UPDATE_THRESHOLD` | 5,000 tokens | 增量更新间隔 |
+| `TOOL_CALL_THRESHOLD` | 3 次 | 或每 3 次工具调用 |
+
+### 13.2 工作方式
+
+```
+会话进行中
+  ↓
+afterTurn → 累加 token/turn/toolCall 计数
+  ↓
+达到阈值?
+  ├─ 有已有摘要 → 增量更新（"以下是之前的摘要...新增的对话..."）
+  └─ 无已有摘要 → 全量摘要
+  ↓
+UPSERT session_summaries 表（per-agent per-session_key 唯一）
+```
+
+### 13.3 会话恢复注入
+
+```
+beforeTurn（首轮，cumulativeTurns === 0）
+  ↓
+读取 session_summaries 表
+  ↓
+有已有摘要? → 注入 ctx.injectedContext: "## 上次会话摘要\n{summary}"
+```
+
+### 13.4 数据模型
+
+```sql
+CREATE TABLE IF NOT EXISTS session_summaries (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  summary_markdown TEXT NOT NULL,
+  token_count_at INTEGER NOT NULL,
+  turn_count_at INTEGER NOT NULL,
+  tool_call_count_at INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (agent_id) REFERENCES agents(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_summary_key
+  ON session_summaries(agent_id, session_key);
+```
+
+### 13.5 与 Kernel 压缩的区别
+
+| 维度 | Kernel 压缩 | Session Memory |
+|------|-------------|----------------|
+| 目的 | 控制 LLM 上下文窗口 | 持久化会话记录 |
+| 存储 | 替换 messages 数组 | 独立表 |
+| 生命周期 | 单会话内有效 | 跨会话可用 |
+| 触发 | token 超预算 | 周期性（token/turn/toolCall） |
+
+---
+
+## 14. 记忆运维保障
+
+### 14.1 新鲜度警告
+
+**召回时过期标记**:
+- `daysSinceUpdate > 1`: `[⚠ {N}天前]`
+- `daysSinceUpdate > 7`: `[⚠ 较旧: {N}天前，建议验证]`
+
+**系统提示词漂移告诫**:
+```
+记忆可能随时间过期。使用超过1天的记忆前，请验证其是否仍然正确。
+如果记忆与当前状态矛盾，信任当前观察并更新记忆。
+```
+
+`SearchResult` 接口新增 `updatedAt: string` 字段，由 `hybrid-searcher.ts` 从 `MemoryUnit` 传递。
+
+### 14.2 提取互斥防护
+
+```
+afterTurn 提取前检查:
+1. inProgress? → 跳过（防并发）
+2. lastProcessedMsgId === 当前最后消息ID? → 跳过（防重处理）
+3. ctx.messages 包含 memory_search/memory_get/knowledge_query 工具调用?
+   → 跳过（Agent 已主动操作记忆，避免重复提取）
+```
+
+状态管理: 工厂函数闭包内维护 `lastProcessedMsgId`、`inProgress` 标志。
+
+### 14.3 Prompt Cache 共享
+
+**目标**: 记忆提取 LLM 调用复用静态提示词前缀的 prompt cache。
+
+**实现**:
+- `buildExtractionPrompt()` 返回 `SystemPromptBlock[]`，静态部分标记 `cache_control`
+- `LLMCallWithBlocksFn` 类型接受 blocks 而非纯字符串
+- Anthropic 协议直接传递 blocks，OpenAI 协议拼接为纯文本
+
+### 14.4 LLM 相关性精选
+
+**触发条件**: 仅高价值场景
+- `isExplicitRecall`: 用户显式召回（"你记得"、"之前"、"上次"）
+- `needsDetail`: query-analyzer 判定
+
+**流程**: HybridSearcher Phase 2 结果 → `LlmReranker.rerank()` → 替换 Top-N
+
+---
+
 ## 附录：研究来源
 
 ### MemOS Cloud OpenClaw Plugin

@@ -3,12 +3,23 @@
  * 用于指导 LLM 从对话中提取结构化记忆
  */
 
+/** Prompt Cache 块（与 agent/kernel/types.SystemPromptBlock 结构兼容） */
+export interface PromptBlock {
+  text: string;
+  cacheControl?: { type: 'ephemeral' } | null;
+  label?: string;
+}
+
 /**
  * 构建记忆提取的 system + user prompt
  * @param conversationText - 对话文本（已格式化的多轮对话）
- * @returns system 和 user prompt
+ * @returns system 和 user prompt（system 同时提供 string 和 PromptBlock[] 格式）
  */
-export function buildExtractionPrompt(conversationText: string): { system: string; user: string } {
+export function buildExtractionPrompt(conversationText: string): {
+  system: string;
+  systemBlocks: PromptBlock[];
+  user: string;
+} {
   const system = `你是一个专业的记忆提取引擎。你的任务是从用户与 AI 助手的对话中提取有价值的记忆信息。
 
 ## 记忆类别（共 9 类）
@@ -124,5 +135,13 @@ ${conversationText}
 
 现在直接输出 XML：`;
 
-  return { system, user };
+  const systemBlocks: PromptBlock[] = [
+    {
+      text: system,
+      cacheControl: { type: 'ephemeral' },
+      label: 'memory_extraction',
+    },
+  ];
+
+  return { system, systemBlocks, user };
 }

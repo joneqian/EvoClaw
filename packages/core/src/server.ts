@@ -54,6 +54,8 @@ import { registerProvider, registerFromExtension } from './provider/provider-reg
 import { getProviderExtension } from './provider/extensions/index.js';
 import { HybridSearcher } from './memory/hybrid-searcher.js';
 import { MemoryExtractor } from './memory/memory-extractor.js';
+import { DecayScheduler } from './memory/decay-scheduler.js';
+import { MemoryConsolidator } from './memory/memory-consolidator.js';
 import { UserMdRenderer } from './memory/user-md-renderer.js';
 import { SkillDiscoverer } from './skill/skill-discoverer.js';
 import { MemoryStore } from './memory/memory-store.js';
@@ -710,12 +712,18 @@ async function main() {
     getHeartbeatManager: () => heartbeatManager ?? undefined,
   });
 
+  // 延迟初始化的调度器引用（在 cleanup 中关闭）
+  let decayScheduler: DecayScheduler | null = null;
+  let consolidator: MemoryConsolidator | null = null;
+
   // 进程退出时清理
   const cleanup = () => {
     log.info('正在关闭服务...');
     memoryMonitor.stop();
     cronRunner.stop();
     heartbeatManager?.stopAll();
+    decayScheduler?.stop();
+    consolidator?.stop();
     channelManager.disconnectAll();
     mcpManager.disposeAll().catch(() => {});
     closeLogger();
@@ -876,6 +884,17 @@ async function main() {
   );
   heartbeatManager.startAll();
   log.info('HeartbeatManager 已启动');
+
+  // 3c.5. 记忆衰减调度器 + AutoDream 整合器
+  decayScheduler = new DecayScheduler(db);
+  decayScheduler.start();
+
+  const memoryDataDir = path.join(os.homedir(), DEFAULT_DATA_DIR);
+  const llmCallForConsolidation = (system: string, user: string) =>
+    callLLM(configManager, { systemPrompt: system, userMessage: user });
+  consolidator = new MemoryConsolidator(db, llmCallForConsolidation, memoryDataDir, undefined, ftsStore);
+  consolidator.start();
+  log.info('DecayScheduler + MemoryConsolidator 已启动');
 
   // 3d. BOOT.md 启动执行 — 异步，不阻塞
   const activeAgents = agentManager.listAgents('active');

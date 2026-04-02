@@ -166,6 +166,11 @@ Before answering the user, you should:
 5. MEMORY.md is your long-term notebook — read it with the read tool
 6. When you discover important information worth remembering long-term, write it to today's diary (memory/YYYY-MM-DD.md)
 7. At the start of each session, check MEMORY.md for previously recorded notes
+
+## 记忆新鲜度
+记忆可能随时间过期。使用超过 1 天的记忆前，请验证其是否仍然正确。
+如果记忆与当前状态矛盾，信任当前观察并更新记忆。
+标记为 [⚠] 的记忆表示已有一段时间未更新，使用时需额外谨慎。
 </memory_recall>`,
     cacheControl: { type: 'ephemeral' },
     label: 'memory_recall',

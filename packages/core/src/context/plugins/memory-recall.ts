@@ -7,6 +7,18 @@ import { createLogger } from '../../infrastructure/logger.js';
 
 const log = createLogger('memory-recall');
 
+/** 计算新鲜度警告标记 */
+function computeStalenessTag(updatedAt: string): string {
+  const daysSince = (Date.now() - new Date(updatedAt).getTime()) / (1000 * 60 * 60 * 24);
+  if (daysSince > 7) {
+    return ` [⚠ 较旧: ${Math.floor(daysSince)}天前，建议验证]`;
+  }
+  if (daysSince > 1) {
+    return ` [⚠ ${Math.floor(daysSince)}天前]`;
+  }
+  return '';
+}
+
 /** 创建记忆召回插件 */
 export function createMemoryRecallPlugin(searcher: HybridSearcher): ContextPlugin {
   return {
@@ -46,10 +58,11 @@ export function createMemoryRecallPlugin(searcher: HybridSearcher): ContextPlugi
         log.debug(`  [${r.category}] score=${r.finalScore.toFixed(3)} activation=${r.activation.toFixed(2)} "${r.l0Index.slice(0, 50)}"`);
       }
 
-      // 组装记忆上下文（L0 + L1）
+      // 组装记忆上下文（L0 + L1 + 新鲜度警告）
       const memoryBlock = results.map(r => {
         const detail = r.l2Content ? `\n详情: ${r.l2Content}` : '';
-        return `- [${r.category}] ${r.l0Index}\n  ${r.l1Overview}${detail}`;
+        const stalenessTag = computeStalenessTag(r.updatedAt);
+        return `- [${r.category}]${stalenessTag} ${r.l0Index}\n  ${r.l1Overview}${detail}`;
       }).join('\n');
 
       // 用标记包裹，防止反馈循环

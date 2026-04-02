@@ -455,6 +455,42 @@ Phase 4 (15.8.11-15.8.13): API + 前端 + 测试
 
 ---
 
+#### Sprint 15.9: 记忆系统增强 ⏳ 进行中
+
+> **研究基础**: Claude Code 源码研究 `22-memory-system.md` 差距分析。补齐记忆运维层：自动整合、互斥防护、成本优化。
+
+**目标**: 补齐记忆系统的"维护和整合"环节，确保记忆质量不随使用时间退化。
+
+| # | 任务 | 优先级 | 预估 | 状态 | 对应 Feature |
+|---|------|--------|------|------|-------------|
+| 15.9.1 | 记忆新鲜度警告：SearchResult.updatedAt + 召回过期标记 + 系统提示词漂移告诫 | P1 | 0.5d | 📋 | F3.18 |
+| 15.9.2 | 提取互斥 + 游标追踪：inProgress/lastProcessedMsgId/agent-wrote-memory 检测 | P2 | 1d | 📋 | F3.19 |
+| 15.9.3 | DB 迁移 018+019：consolidation_log + session_summaries 表 | — | 0.5d | 📋 | F3.16, F3.17 |
+| 15.9.4 | AutoDream 整合提示词：4 阶段 XML 输出格式 | P0 | 0.5d | 📋 | F3.16 |
+| 15.9.5 | AutoDream 核心整合器：shouldRun + 锁机制 + 4 阶段 pipeline | P0 | 2d | 📋 | F3.16 |
+| 15.9.6 | AutoDream 集成调度：server.ts 实例化 + setInterval 调度 | P0 | 0.5d | 📋 | F3.16 |
+| 15.9.7 | 会话摘要器：SessionSummarizer（增量/全量摘要 + UPSERT） | P1 | 1d | 📋 | F3.17 |
+| 15.9.8 | 会话摘要插件：ContextPlugin afterTurn 阈值触发 + beforeTurn 恢复注入 | P1 | 1d | 📋 | F3.17 |
+| 15.9.9 | Prompt Cache 共享：extraction-prompt→SystemPromptBlock[] + callLLMWithBlocks | P2 | 1.5d | 📋 | F3.19 |
+| 15.9.10 | LLM 相关性精选层：LlmReranker + isExplicitRecall + HybridSearcher 集成 | P3 | 1.5d | 📋 | F3.20 |
+| 15.9.11 | 集成验证 + 文档更新 | — | 1d | 📋 | — |
+
+- 新建: memory-consolidator.ts, consolidation-prompt.ts, session-summarizer.ts, llm-reranker.ts, session-summary.ts (plugin)
+- 修改: hybrid-searcher.ts, memory-recall.ts, memory-extract.ts, memory-extractor.ts, extraction-prompt.ts, query-analyzer.ts, llm-client.ts, embedded-runner-prompt.ts, server.ts, chat.ts
+- 测试: memory-consolidator.test.ts, session-summarizer.test.ts, memory-staleness.test.ts, memory-extract-mutex.test.ts, llm-reranker.test.ts
+
+**验收标准**:
+- [ ] AutoDream 在 24h + 5 会话后自动触发，合并重复记忆
+- [ ] 整合锁机制多进程安全，超时自动接管
+- [ ] 会话摘要 10K tokens 后自动生成，恢复时注入
+- [ ] 召回记忆带过期标记（>1天/7天）
+- [ ] 主 Agent 操作记忆后同轮提取跳过
+- [ ] 提取 LLM 调用使用 Prompt Cache
+- [ ] 显式召回触发 LLM 精选层
+- [ ] 全量测试通过，无回归
+
+---
+
 #### Sprint 16: 企微 Channel 生产就绪
 
 > **注**: 原 Sprint 15 企微生产化顺延至 Sprint 16。

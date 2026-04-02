@@ -15,6 +15,11 @@ const log = createLogger('memory-extractor');
 /** LLM 调用函数签名：接收 system/user prompt，返回原始响应文本 */
 export type LLMCallFn = (system: string, user: string) => Promise<string>;
 
+/** 支持 PromptBlock[] 的 LLM 调用函数（用于 Prompt Cache） */
+export type LLMCallWithBlocksFn = (system: PromptBlock[], user: string) => Promise<string>;
+
+import type { PromptBlock } from './extraction-prompt.js';
+
 /**
  * 记忆提取器 — 完整的记忆提取 Pipeline 编排器
  * 将预处理、LLM 调用、解析、持久化串联为一条完整流水线
@@ -26,16 +31,21 @@ export class MemoryExtractor {
 
   private ftsStore?: FtsStore;
 
+  /** 支持 Prompt Cache 的 LLM 调用（可选） */
+  private llmCallWithBlocks?: LLMCallWithBlocksFn;
+
   constructor(
     private db: SqliteStore,
     private llmCall: LLMCallFn,
     vectorStore?: VectorStore,
     ftsStore?: FtsStore,
+    llmCallWithBlocks?: LLMCallWithBlocksFn,
   ) {
     this.memoryStore = new MemoryStore(db, vectorStore);
     this.mergeResolver = new MergeResolver(this.memoryStore);
     this.knowledgeGraph = new KnowledgeGraphStore(db);
     this.ftsStore = ftsStore;
+    this.llmCallWithBlocks = llmCallWithBlocks;
   }
 
   /**
@@ -66,12 +76,15 @@ export class MemoryExtractor {
     log.debug(`清洗后: ${sanitized.length} 字符`);
 
     // Stage 2: LLM 调用 — 构建提示词、调用模型、解析 XML 响应
-    const { system, user } = buildExtractionPrompt(sanitized);
-    log.debug(`调用 LLM 提取记忆: system=${system.length} 字符, user=${user.length} 字符`);
+    const { system, systemBlocks, user } = buildExtractionPrompt(sanitized);
+    log.debug(`调用 LLM 提取记忆: system=${system.length} 字符, user=${user.length} 字符, blocks=${this.llmCallWithBlocks ? '✓' : '✗'}`);
 
     let llmResponse: string;
     try {
-      llmResponse = await this.llmCall(system, user);
+      // 优先使用 blocks 版本（支持 Prompt Cache）
+      llmResponse = this.llmCallWithBlocks
+        ? await this.llmCallWithBlocks(systemBlocks, user)
+        : await this.llmCall(system, user);
       log.debug(`LLM 响应: ${llmResponse.length} 字符, 前200字: "${llmResponse.slice(0, 200)}"`);
     } catch (err) {
       log.error(`LLM 调用失败: ${err instanceof Error ? err.message : String(err)}`);

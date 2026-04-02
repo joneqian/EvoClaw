@@ -11,6 +11,8 @@ export interface QueryAnalysis {
   queryType: QueryType;
   /** 是否需要 L2 详细内容 */
   needsDetail: boolean;
+  /** 是否为显式召回（"你记得..."、"之前说过..."） */
+  isExplicitRecall: boolean;
 }
 
 /**
@@ -21,7 +23,8 @@ export function analyzeQuery(query: string): QueryAnalysis {
   const dateRange = extractDateRange(query);
   const queryType = classifyQuery(query);
   const needsDetail = detectDetailNeed(query);
-  return { keywords, dateRange, queryType, needsDetail };
+  const isExplicitRecall = detectExplicitRecall(query);
+  return { keywords, dateRange, queryType, needsDetail, isExplicitRecall };
 }
 
 /** 中文停用词 */
@@ -157,5 +160,10 @@ function classifyQuery(query: string): QueryType {
 /** 检测是否需要详细内容（L2） */
 function detectDetailNeed(query: string): boolean {
   return /详细|具体|详情|展开|全部|完整|detail|full|complete|elaborate|explain/.test(query);
+}
+
+/** 检测是否为显式记忆召回 */
+function detectExplicitRecall(query: string): boolean {
+  return /你记得|之前说过|我说过|上次讨论|上次提到|你还记得|我们聊过|之前聊过|recall|remember|you said|I said|we discussed/.test(query);
 }
 

@@ -1,0 +1,70 @@
+/**
+ * EvoClawConfig Zod Schema
+ */
+
+import { z } from 'zod';
+
+/** 模型费用 */
+export const modelCostSchema = z.object({
+  input: z.number(),
+  output: z.number(),
+  cacheRead: z.number().optional(),
+  cacheWrite: z.number().optional(),
+});
+
+/** 模型条目 */
+export const modelEntrySchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  reasoning: z.boolean().optional(),
+  input: z.array(z.string()).optional(),
+  cost: modelCostSchema.optional(),
+  contextWindow: z.number().int().positive().optional(),
+  maxTokens: z.number().int().positive().optional(),
+  dimension: z.number().int().positive().optional(),
+});
+
+/** API 协议 */
+export const apiProtocolSchema = z.enum(['openai-completions', 'anthropic-messages']);
+
+/** Provider 配置条目 */
+export const providerEntrySchema = z.object({
+  baseUrl: z.string().url(),
+  apiKey: z.string().min(1),
+  api: apiProtocolSchema,
+  models: z.array(modelEntrySchema),
+});
+
+/** 模型配置 */
+export const modelsConfigSchema = z.object({
+  default: z.string().optional(),
+  embedding: z.string().optional(),
+  providers: z.record(z.string(), providerEntrySchema).optional(),
+}).optional();
+
+/** 安全策略引用（避免循环导入，内联定义） */
+const nameSecurityPolicyInline = z.object({
+  allowlist: z.array(z.string()).optional(),
+  denylist: z.array(z.string()).optional(),
+  disabled: z.array(z.string()).optional(),
+}).optional();
+
+/** EvoClawConfig 完整 schema */
+export const configSchema = z.object({
+  models: modelsConfigSchema,
+  services: z.object({
+    brave: z.object({ apiKey: z.string() }).optional(),
+  }).optional(),
+  envVars: z.record(z.string(), z.string()).optional(),
+  language: z.enum(['zh', 'en']).optional(),
+  thinking: z.enum(['auto', 'on', 'off']).optional(),
+  security: z.object({
+    skills: nameSecurityPolicyInline,
+    mcpServers: nameSecurityPolicyInline,
+  }).optional(),
+}).passthrough();  // 允许未知字段（向前兼容）
+
+/** 安全解析 EvoClawConfig（不抛异常） */
+export function safeParseConfig(data: unknown) {
+  return configSchema.safeParse(data);
+}

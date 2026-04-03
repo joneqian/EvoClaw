@@ -16,7 +16,7 @@ import type {
   ExtensionSecurityPolicy,
   NameSecurityPolicy,
 } from '@evoclaw/shared';
-import { parseModelRef } from '@evoclaw/shared';
+import { parseModelRef, safeParseConfig } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME, BRAND } from '@evoclaw/shared';
 import { createLogger } from './logger.js';
 
@@ -37,12 +37,20 @@ export class ConfigManager {
     this.config = this.loadFromDisk();
   }
 
-  /** 从磁盘加载配置 */
+  /** 从磁盘加载配置（Zod 验证） */
   private loadFromDisk(): EvoClawConfig {
     try {
       if (fs.existsSync(this.configPath)) {
         const raw = fs.readFileSync(this.configPath, 'utf-8');
-        return JSON.parse(raw) as EvoClawConfig;
+        const json = JSON.parse(raw);
+        const result = safeParseConfig(json);
+        if (result.success) {
+          return result.data as EvoClawConfig;
+        }
+        // 验证失败：记录问题但仍加载原始数据（向后兼容，避免阻塞启动）
+        log.warn(`配置文件验证有 ${result.error.issues.length} 个问题:`,
+          result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; '));
+        return json as EvoClawConfig;
       }
     } catch (err) {
       log.error('加载配置失败:', err);

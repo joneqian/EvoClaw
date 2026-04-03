@@ -11,6 +11,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createLogger } from '../infrastructure/logger.js';
 import type { ExtensionPackManifest, ParsedExtensionPack } from '@evoclaw/shared';
+import { safeParseManifest } from '@evoclaw/shared';
 
 const log = createLogger('pack-parser');
 
@@ -62,19 +63,21 @@ export async function parseExtensionPack(zipPath: string): Promise<ParsedExtensi
 
   let manifest: ExtensionPackManifest;
   try {
-    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as ExtensionPackManifest;
+    const json = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    const result = safeParseManifest(json);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        errors.push(`${issue.path.join('.') || 'manifest'}: ${issue.message}`);
+      }
+      // 仍尝试使用原始数据（部分信息可能有用）
+      manifest = json as ExtensionPackManifest;
+    } else {
+      manifest = result.data as ExtensionPackManifest;
+    }
   } catch {
-    errors.push(`${MANIFEST_FILENAME} 格式无效`);
+    errors.push(`${MANIFEST_FILENAME} JSON 格式无效`);
     return { manifest: emptyManifest(), tempDir, skillDirs: [], errors };
   }
-
-  // 校验必要字段
-  if (manifest.manifestVersion !== 1) {
-    errors.push(`不支持的 manifestVersion: ${manifest.manifestVersion}`);
-  }
-  if (!manifest.name?.trim()) errors.push('缺少 name 字段');
-  if (!manifest.description?.trim()) errors.push('缺少 description 字段');
-  if (!manifest.version?.trim()) errors.push('缺少 version 字段');
 
   // 校验 skills 目录存在
   const skillDirs: string[] = [];

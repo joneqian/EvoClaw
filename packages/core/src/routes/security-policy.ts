@@ -6,7 +6,7 @@
 
 import { Hono } from 'hono';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
-import type { ExtensionSecurityPolicy, NameSecurityPolicy } from '@evoclaw/shared';
+import { safeParseSecurityPolicy } from '@evoclaw/shared';
 import { evaluateAccess } from '../security/extension-security.js';
 
 /** 创建安全策略路由 */
@@ -19,27 +19,21 @@ export function createSecurityPolicyRoutes(configManager: ConfigManager): Hono {
     return c.json({ policy: policy ?? {} });
   });
 
-  /** PUT / — 更新安全策略（完整替换） */
+  /** PUT / — 更新安全策略（完整替换，Zod 验证） */
   app.put('/', async (c) => {
     try {
-      const body = await c.req.json<{ policy: ExtensionSecurityPolicy }>();
+      const body = await c.req.json<{ policy: unknown }>();
       if (!body.policy || typeof body.policy !== 'object') {
         return c.json({ error: '请提供 policy 对象' }, 400);
       }
 
-      // 基本校验：allowlist/denylist/disabled 必须是字符串数组
-      for (const key of ['skills', 'mcpServers'] as const) {
-        const sub = body.policy[key] as NameSecurityPolicy | undefined;
-        if (!sub) continue;
-        for (const field of ['allowlist', 'denylist', 'disabled'] as const) {
-          const val = sub[field];
-          if (val !== undefined && (!Array.isArray(val) || val.some((v: unknown) => typeof v !== 'string'))) {
-            return c.json({ error: `${key}.${field} 必须是字符串数组` }, 400);
-          }
-        }
+      const result = safeParseSecurityPolicy(body.policy);
+      if (!result.success) {
+        const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
+        return c.json({ error: '安全策略格式无效', issues }, 400);
       }
 
-      configManager.updateSecurityPolicy(body.policy);
+      configManager.updateSecurityPolicy(result.data);
       return c.json({ success: true });
     } catch {
       return c.json({ error: '请求格式无效' }, 400);

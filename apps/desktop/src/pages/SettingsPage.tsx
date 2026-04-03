@@ -15,18 +15,37 @@ const TABS: { key: SettingsTab; label: string }[] = [
 
 // ─── 通用设置 Tab ───
 
+/** 检查字段是否被企业管理员锁定 */
+function isEnforced(enforcedPaths: string[], field: string): boolean {
+  return enforcedPaths.some(p => p === field || field.startsWith(p + '.'));
+}
+
+/** 锁定标记组件 */
+function EnforcedBadge() {
+  return (
+    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700" title="此设置由企业管理员控制">
+      <svg className="w-3 h-3 mr-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+      企业管控
+    </span>
+  );
+}
+
 function GeneralTab() {
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
   const [thinking, setThinking] = useState<'auto' | 'on' | 'off'>('auto');
+  const [enforced, setEnforced] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // 加载当前配置
   useEffect(() => {
     (async () => {
       try {
-        const data = await get<{ config: { language?: 'zh' | 'en'; thinking?: 'auto' | 'on' | 'off' } }>('/config');
+        const data = await get<{ config: { language?: 'zh' | 'en'; thinking?: 'auto' | 'on' | 'off' }; enforced?: string[] }>('/config');
         if (data.config?.language) setLanguage(data.config.language);
         if (data.config?.thinking) setThinking(data.config.thinking);
+        if (data.enforced) setEnforced(data.enforced);
       } catch { /* sidecar 可能未就绪 */ }
     })();
   }, []);
@@ -52,7 +71,7 @@ function GeneralTab() {
         {/* 语言设置 */}
         <div className="px-4 py-3 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-slate-700">响应语言</div>
+            <div className="text-sm font-medium text-slate-700">响应语言{isEnforced(enforced, 'language') && <EnforcedBadge />}</div>
             <div className="text-xs text-slate-400 mt-0.5">Agent 回复时使用的语言</div>
           </div>
           <Select
@@ -69,7 +88,7 @@ function GeneralTab() {
         {/* 思考模式 */}
         <div className="px-4 py-3 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-slate-700">思考模式</div>
+            <div className="text-sm font-medium text-slate-700">思考模式{isEnforced(enforced, 'thinking') && <EnforcedBadge />}</div>
             <div className="text-xs text-slate-400 mt-0.5">Extended Thinking 让模型在回答前进行深度推理</div>
           </div>
           <Select

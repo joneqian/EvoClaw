@@ -37,12 +37,12 @@ describe('Zod Schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('无效 provider baseUrl 被拒绝', () => {
+    it('空 baseUrl 被拒绝', () => {
       const result = safeParseConfig({
         models: {
           providers: {
             test: {
-              baseUrl: 'not-a-url',
+              baseUrl: '',
               apiKey: 'key',
               api: 'openai-completions',
               models: [],

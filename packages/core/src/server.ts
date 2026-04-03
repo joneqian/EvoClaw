@@ -87,13 +87,7 @@ process.on('uncaughtException', (err) => {
   // 注意：仅捕获日志，不退出。对于真正致命的错误，Node.js 仍会退出
 });
 
-process.on('SIGTERM', () => {
-  log.info('收到 SIGTERM 信号，准备优雅关闭...');
-});
-
-process.on('SIGINT', () => {
-  log.info('收到 SIGINT 信号，准备优雅关闭...');
-});
+// SIGTERM/SIGINT 由 graceful-shutdown 模块统一管理（在 server 启动后安装）
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -739,20 +733,24 @@ async function main() {
   let decayScheduler: DecayScheduler | null = null;
   let consolidator: MemoryConsolidator | null = null;
 
-  // 进程退出时清理
-  const cleanup = () => {
-    log.info('正在关闭服务...');
-    memoryMonitor.stop();
+  // 优雅关闭 — 注册各资源的关闭处理器（按优先级执行）
+  const { registerShutdownHandler, installShutdownHandlers } = await import('./infrastructure/graceful-shutdown.js');
+
+  registerShutdownHandler({ name: '调度器', priority: 10, handler: () => {
     cronRunner.stop();
     heartbeatManager?.stopAll();
     decayScheduler?.stop();
     consolidator?.stop();
-    channelManager.disconnectAll();
-    mcpManager.disposeAll().catch(() => {});
-    closeLogger();
-  };
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
+    memoryMonitor.stop();
+  }});
+  registerShutdownHandler({ name: '渠道', priority: 20, handler: () => { channelManager.disconnectAll(); }});
+  registerShutdownHandler({ name: 'MCP', priority: 30, handler: () => mcpManager.disposeAll() });
+  if (db) {
+    registerShutdownHandler({ name: '数据库', priority: 80, handler: () => { db.close(); }});
+  }
+  registerShutdownHandler({ name: '日志', priority: 99, handler: () => { closeLogger(); }});
+
+  installShutdownHandlers();
 
   const startServer = async () => {
     let actualPort = port;

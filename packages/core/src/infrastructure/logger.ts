@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { sanitizePII } from './pii-sanitizer.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -144,9 +145,12 @@ function write(level: LogLevel, tag: string, message: string, extra?: unknown): 
 
   const ts = formatTimestamp();
   const prefix = `${ts} [${level.toUpperCase().padEnd(5)}] [${tag}]`;
-  const line = extra !== undefined
-    ? `${prefix} ${message} ${serializeExtra(extra)}`
-    : `${prefix} ${message}`;
+  // PII 脱敏：对消息和 extra 参数进行敏感数据替换
+  const safeMessage = sanitizePII(message);
+  const safeExtra = extra !== undefined ? sanitizePII(serializeExtra(extra)) : undefined;
+  const line = safeExtra !== undefined
+    ? `${prefix} ${safeMessage} ${safeExtra}`
+    : `${prefix} ${safeMessage}`;
 
   // 运行时轮转检查
   maybeRotate();

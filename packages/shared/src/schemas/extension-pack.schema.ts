@@ -4,19 +4,7 @@
 
 import { z } from 'zod';
 import { extensionSecurityPolicySchema } from './security.schema.js';
-
-/** MCP Server 配置（内联定义避免循环） */
-const mcpServerConfigInline = z.object({
-  name: z.string().min(1),
-  type: z.enum(['stdio', 'sse']),
-  command: z.string().optional(),
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-  url: z.string().optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  enabled: z.boolean().optional(),
-  startupTimeoutMs: z.number().int().positive().optional(),
-});
+import { mcpServerConfigSchema } from './mcp.schema.js';
 
 /** 扩展包 manifest schema */
 export const extensionPackManifestSchema = z.object({
@@ -26,7 +14,7 @@ export const extensionPackManifestSchema = z.object({
   version: z.string().min(1, '缺少 version 字段'),
   author: z.string().optional(),
   skills: z.array(z.string()).optional(),
-  mcpServers: z.array(mcpServerConfigInline).optional(),
+  mcpServers: z.array(mcpServerConfigSchema).optional(),
   securityPolicy: extensionSecurityPolicySchema.optional(),
 });
 

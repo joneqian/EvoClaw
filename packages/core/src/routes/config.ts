@@ -59,16 +59,40 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
       }
     }
 
-    return c.json({ config: safeConfig, validation });
+    return c.json({
+      config: safeConfig,
+      validation,
+      enforced: configManager.getEnforcedPaths(),
+    });
   });
 
-  /** PUT / — 更新完整配置 */
+  /** GET /layers — 获取各层配置详情（调试用） */
+  app.get('/layers', (c) => {
+    const layers = configManager.getConfigLayers();
+    // 脱敏 API Key
+    const safe = structuredClone(layers);
+    for (const layer of [safe.managed, safe.dropIn, safe.user, safe.merged]) {
+      if ((layer as any).models?.providers) {
+        for (const entry of Object.values((layer as any).models.providers)) {
+          if ((entry as any).apiKey) (entry as any).apiKey = '***';
+        }
+      }
+    }
+    return c.json(safe);
+  });
+
+  /** PUT / — 更新配置（patch 合并到用户层，非全替换） */
   app.put('/', async (c) => {
-    const body = await c.req.json<EvoClawConfig>();
-    configManager.updateConfig(body);
+    const patch = await c.req.json<EvoClawConfig>();
+    // 将 patch deep merge 到当前用户层配置（而非替换，避免前端发 partial 时丢失其他字段）
+    const { deepMerge } = await import('../infrastructure/config-merge.js');
+    const currentUser = configManager.getConfigLayers().user;
+    const merged = deepMerge(currentUser as Record<string, unknown>, patch as unknown as Record<string, unknown>) as EvoClawConfig;
+    configManager.updateConfig(merged);
     // 同步所有 Provider 到内存注册表
-    if (body.models?.providers) {
-      for (const [id, entry] of Object.entries(body.models.providers)) {
+    const finalConfig = configManager.getConfig();
+    if (finalConfig.models?.providers) {
+      for (const [id, entry] of Object.entries(finalConfig.models.providers)) {
         syncProviderToRegistry(id, entry);
       }
     }
@@ -145,17 +169,18 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     return c.json({ key, value });
   });
 
-  /** PUT /env-vars — 批量更新环境变量 */
+  /** PUT /env-vars — 批量更新环境变量（写入用户层） */
   app.put('/env-vars', async (c) => {
     const body = await c.req.json<{ envVars: Record<string, string> }>();
-    const config = configManager.getConfig();
-    config.envVars = body.envVars;
+    // 使用用户层配置（而非 merged），避免把 managed/drop-in 值写入用户配置
+    const userConfig = structuredClone(configManager.getConfigLayers().user);
+    userConfig.envVars = body.envVars;
     // 向后兼容：同步 BRAVE_API_KEY 到旧 services 结构
     if (body.envVars['BRAVE_API_KEY'] !== undefined) {
-      config.services = config.services ?? {};
-      config.services.brave = { apiKey: body.envVars['BRAVE_API_KEY'] };
+      userConfig.services = userConfig.services ?? {};
+      userConfig.services.brave = { apiKey: body.envVars['BRAVE_API_KEY'] };
     }
-    configManager.updateConfig(config);
+    configManager.updateConfig(userConfig);
     // 立即注入到 process.env
     for (const [key, value] of Object.entries(body.envVars)) {
       if (value) {

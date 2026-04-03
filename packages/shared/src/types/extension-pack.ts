@@ -1,32 +1,15 @@
 /**
  * 扩展包类型定义
  *
- * IT 管理员将 skills + MCP servers + 安全策略打成 ZIP 包，
- * 一键分发到企业内部 Agent。
+ * ExtensionPackManifest 从 Zod Schema 推断（单一事实来源）
+ * 其余类型为纯结构体，手写即可
  */
 
-import type { McpServerConfig } from './mcp.js';
-import type { ExtensionSecurityPolicy } from './extension-security.js';
+import type { z } from 'zod';
+import type { extensionPackManifestSchema } from '../schemas/extension-pack.schema.js';
 
-/** 扩展包 manifest (evoclaw-pack.json) */
-export interface ExtensionPackManifest {
-  /** Manifest 版本（当前固定为 1） */
-  manifestVersion: 1;
-  /** 包名称 */
-  name: string;
-  /** 包描述 */
-  description: string;
-  /** 版本号 (semver) */
-  version: string;
-  /** 作者 */
-  author?: string;
-  /** 包含的 Skills（目录名列表，对应 ZIP 中 skills/ 子目录） */
-  skills?: string[];
-  /** 包含的 MCP Server 配置 */
-  mcpServers?: McpServerConfig[];
-  /** 安全策略覆盖（安装后合并到全局策略） */
-  securityPolicy?: ExtensionSecurityPolicy;
-}
+/** 扩展包 manifest (evoclaw-pack.json) — 从 Schema 推断 */
+export type ExtensionPackManifest = z.infer<typeof extensionPackManifestSchema>;
 
 /** 解析后的扩展包 */
 export interface ParsedExtensionPack {

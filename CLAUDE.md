@@ -44,8 +44,18 @@ docs/                  — PRD, Architecture, AgentSystemDesign, MemorySystemDes
 - **BOOT.md**: 每次 sidecar 启动执行（区别于一次性 BOOTSTRAP.md），空内容跳过，执行失败不阻塞
 - **Lane Queue**: main(4) / subagent(8) / cron(可配置) 并发车道，每 session key 串行
 - **Skill 生态**: ClawHub API (clawhub.ai, `/api/v1/search` 向量搜索 + `/api/v1/download` ZIP 下载) + GitHub URL 直装 (兼容 skills.sh 生态)，遵循 AgentSkills 规范 (SKILL.md)。注意：skills.sh 无公开 REST API，仅有 CLI
-- **Skill 注入**: 渐进式两级注入 — Tier 1: `<available_skills>` XML 目录注入 system prompt (~50-100 tokens/skill)；Tier 2: 模型用 Read 工具按需加载完整 SKILL.md。没有独立 prompt.md 文件，SKILL.md body 就是指令。Skill 不注册新工具，通过指令引导模型使用已有工具
+- **Skill 注入**: 渐进式两级注入 — Tier 1: `<available_skills>` XML 目录注入 system prompt (~50-100 tokens/skill，含 whenToUse/mode 标签)；Tier 2: 模型用 invoke_skill 工具按需加载完整 SKILL.md。Skill 不注册新工具，通过指令引导模型使用已有工具
+- **Skill 执行模式**: inline（默认，指令注入当前上下文）+ fork（子代理独立执行，防止污染主对话）。SKILL.md `execution-mode: fork` 声明或调用时 `mode: "fork"` 覆盖
+- **Skill model 字段**: SKILL.md 可指定 `model: provider/modelId`，fork 执行时优先使用指定模型，未配置时静默降级为当前默认模型
+- **Skill 来源**: 5 种 — bundled（30 个内置技能）/ local（用户级 + Agent 级目录）/ clawhub / github / mcp（MCP prompts 自动转换）
+- **MCP Prompt 桥接**: MCP 服务器 listPrompts() 自动注册为 `mcp:{serverName}:{promptName}` 技能，出现在 available_skills 目录
 - **Skill 门控**: AgentSkills 规范不实现 requires.bins/env/os 门控，EvoClaw 作为自定义扩展实现
+- **扩展安全策略**: 统一 NameSecurityPolicy（allowlist/denylist/disabled）覆盖 Skills + MCP Servers，denylist 绝对优先
+- **企业扩展包**: evoclaw-pack.json manifest + skills/ 子目录 ZIP 打包，一键安装 skills + MCP servers + 安全策略合并
+- **Zod Schema 验证**: 外部输入（配置文件、API 请求、扩展包 manifest、MCP 配置）统一通过 Zod schema 验证，safeParse 不抛异常 + passthrough 向前兼容
+- **多层配置合并**: managed.json（IT 管理员）→ config.d/*.json（drop-in 片段，字母序）→ 用户配置（最高优先级）。enforced 机制：managed.json 中标记的路径强制使用管理员值。denylist 始终取并集。saveToDisk 只写用户层
+- **优雅关闭**: SIGTERM/SIGINT → registerShutdownHandler 按优先级串行执行（调度器→渠道→MCP→数据库→日志）→ 30s 宽限期超时强制退出
+- **PII 脱敏**: 日志 write() 自动 sanitizePII()，替换 API Key (sk-*/sk-ant-*)、Bearer token、JWT、邮箱、手机号、密码字段值。sanitizeObject() 递归脱敏对象中的敏感键值
 - **Permission Model**: 7 类别 × 4 作用域 (once/session/always/deny)，带审计日志
 - **Kernel 双协议**: Anthropic Messages (x-api-key + anthropic-version) + OpenAI Chat Completions (Bearer token)，国产模型统一走 openai-completions + 自定义 baseUrl
 - **Kernel 三层压缩**: Snip (零成本移除旧消息) → Microcompact (零成本截断 tool_result) → Autocompact (LLM 9 段摘要)，熔断器 3 次失败后停止
@@ -105,6 +115,6 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: Sprint 15.10 ⏳ 进行中 — API 集成增强（成本追踪、重试策略增强、Tool Use Summary）
-- **上一冲刺**: Sprint 15.9 ✅ 已完成 — 记忆系统增强（AutoDream 整合、Session Memory、新鲜度警告、互斥防护、Prompt Cache、LLM 精选层）
-- **下一冲刺**: Sprint 16 — 企微 Channel 生产就绪
+- **当前冲刺**: Sprint 16 — 企微 Channel 生产就绪
+- **上一冲刺**: Sprint 15.10 ✅ 已完成 — API 集成增强（成本追踪、重试策略增强、Tool Use Summary）+ 扩展性系统（Bundled Skills、Skill Fork/whenToUse/model、MCP Prompt 桥接、企业扩展包、安全白名单/黑名单、Zod 验证）
+- **上上冲刺**: Sprint 15.9 ✅ 已完成 — 记忆系统增强（AutoDream 整合、Session Memory、新鲜度警告、互斥防护、Prompt Cache、LLM 精选层）

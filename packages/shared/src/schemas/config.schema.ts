@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import { nameSecurityPolicySchema } from './security.schema.js';
 
 /** 模型费用 */
 export const modelCostSchema = z.object({
@@ -29,7 +30,7 @@ export const apiProtocolSchema = z.enum(['openai-completions', 'anthropic-messag
 
 /** Provider 配置条目 */
 export const providerEntrySchema = z.object({
-  baseUrl: z.string().url(),
+  baseUrl: z.string().min(1),
   apiKey: z.string().min(1),
   api: apiProtocolSchema,
   models: z.array(modelEntrySchema),
@@ -42,13 +43,6 @@ export const modelsConfigSchema = z.object({
   providers: z.record(z.string(), providerEntrySchema).optional(),
 }).optional();
 
-/** 安全策略引用（避免循环导入，内联定义） */
-const nameSecurityPolicyInline = z.object({
-  allowlist: z.array(z.string()).optional(),
-  denylist: z.array(z.string()).optional(),
-  disabled: z.array(z.string()).optional(),
-}).optional();
-
 /** EvoClawConfig 完整 schema */
 export const configSchema = z.object({
   models: modelsConfigSchema,
@@ -59,8 +53,8 @@ export const configSchema = z.object({
   language: z.enum(['zh', 'en']).optional(),
   thinking: z.enum(['auto', 'on', 'off']).optional(),
   security: z.object({
-    skills: nameSecurityPolicyInline,
-    mcpServers: nameSecurityPolicyInline,
+    skills: nameSecurityPolicySchema.optional(),
+    mcpServers: nameSecurityPolicySchema.optional(),
   }).optional(),
 }).passthrough();  // 允许未知字段（向前兼容）
 

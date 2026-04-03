@@ -1,71 +1,36 @@
-import type { ExtensionSecurityPolicy } from './extension-security.js';
+/**
+ * 配置类型定义 — 从 Zod Schema 推断（单一事实来源）
+ *
+ * Schema 定义在 schemas/config.schema.ts
+ * 此文件通过 z.infer 导出类型，保持 import 路径不变
+ */
 
+import type { z } from 'zod';
+import type {
+  configSchema,
+  modelsConfigSchema,
+  providerEntrySchema,
+  modelEntrySchema,
+  modelCostSchema,
+  apiProtocolSchema,
+} from '../schemas/config.schema.js';
 /** evo_claw.json 配置文件结构 */
-export interface EvoClawConfig {
-  models?: ModelsConfig;
-  /** 外部服务配置（向后兼容） */
-  services?: {
-    /** Brave Search API */
-    brave?: { apiKey: string };
-  };
-  /** 环境变量（注入到 process.env，供 Skill/工具读取） */
-  envVars?: Record<string, string>;
-  /** 响应语言偏好（前端设置页面选择，优先级高于品牌默认值） */
-  language?: 'zh' | 'en';
-  /** 思考模式: auto=模型支持就开, on=强制开, off=强制关（默认 auto） */
-  thinking?: 'auto' | 'on' | 'off';
-  /** 扩展安全策略（Skill + MCP Server 白名单/黑名单） */
-  security?: ExtensionSecurityPolicy;
-}
+export type EvoClawConfig = z.infer<typeof configSchema>;
 
 /** 模型配置 */
-export interface ModelsConfig {
-  /** 默认对话模型，格式: "providerId/modelId" */
-  default?: string;
-  /** 默认 Embedding 模型，格式: "providerId/modelId" */
-  embedding?: string;
-  /** Provider 配置 */
-  providers?: Record<string, ProviderEntry>;
-}
+export type ModelsConfig = z.infer<typeof modelsConfigSchema>;
 
 /** Provider 配置条目 */
-export interface ProviderEntry {
-  baseUrl: string;
-  apiKey: string;
-  /** API 协议 */
-  api: ApiProtocol;
-  /** 模型列表 */
-  models: ModelEntry[];
-}
-
-/** 支持的 API 协议 */
-export type ApiProtocol = 'openai-completions' | 'anthropic-messages';
+export type ProviderEntry = z.infer<typeof providerEntrySchema>;
 
 /** 模型条目 */
-export interface ModelEntry {
-  id: string;
-  name: string;
-  /** 是否支持推理/思考 */
-  reasoning?: boolean;
-  /** 支持的输入类型 */
-  input?: string[];
-  /** 费用信息 */
-  cost?: ModelCost;
-  /** 上下文窗口大小 */
-  contextWindow?: number;
-  /** 最大输出 token 数 */
-  maxTokens?: number;
-  /** Embedding 维度（仅 Embedding 模型） */
-  dimension?: number;
-}
+export type ModelEntry = z.infer<typeof modelEntrySchema>;
 
 /** 模型费用 */
-export interface ModelCost {
-  input: number;
-  output: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-}
+export type ModelCost = z.infer<typeof modelCostSchema>;
+
+/** 支持的 API 协议 */
+export type ApiProtocol = z.infer<typeof apiProtocolSchema>;
 
 /** 模型引用解析结果 */
 export interface ModelReference {

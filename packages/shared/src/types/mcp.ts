@@ -1,25 +1,17 @@
 /**
  * MCP (Model Context Protocol) 类型定义
  *
- * MCP 允许 Agent 连接外部工具服务器，动态发现和调用工具。
+ * McpServerConfig 从 Zod Schema 推断（单一事实来源）
+ * 其余类型为运行时结构体，手写即可
+ *
  * 参考: https://modelcontextprotocol.io/
  */
 
-/** MCP Server 配置 */
-export interface McpServerConfig {
-  /** 服务器名称（唯一标识） */
-  name: string;
-  /** 启动命令（如 npx, node, python 等） */
-  command: string;
-  /** 命令参数 */
-  args?: string[];
-  /** 环境变量 */
-  env?: Record<string, string>;
-  /** 是否启用（默认 true） */
-  enabled?: boolean;
-  /** 启动超时（毫秒，默认 30000） */
-  startupTimeoutMs?: number;
-}
+import type { z } from 'zod';
+import type { mcpServerConfigSchema } from '../schemas/mcp.schema.js';
+
+/** MCP Server 配置 — 从 Schema 推断 */
+export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
 
 /** MCP 工具定义（从 MCP Server 发现的工具） */
 export interface McpToolInfo {

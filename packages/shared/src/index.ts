@@ -8,6 +8,8 @@ export * from './types/knowledge.js';
 export * from './types/skill.js';
 export * from './types/evolution.js';
 export * from './types/config.js';
+export * from './types/extension-security.js';
+export * from './types/extension-pack.js';
 export * from './types/mcp.js';
 export * from './brand.js';
 export * from './constants.js';

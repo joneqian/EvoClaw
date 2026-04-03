@@ -18,6 +18,12 @@ export interface SkillMetadata {
   metadata?: Record<string, unknown>;
   /** EvoClaw 扩展：门控要求 */
   requires?: SkillRequires;
+  /** 执行模式: inline(注入当前上下文) / fork(子代理独立执行)。默认 inline */
+  executionMode?: SkillExecutionMode;
+  /** 触发条件描述（比 description 更聚焦于使用场景，引导模型精准触发） */
+  whenToUse?: string;
+  /** 建议使用的模型（格式: provider/modelId，未配置时降级为当前默认模型） */
+  model?: string;
 }
 
 /** EvoClaw 扩展门控要求（PI/AgentSkills 规范不定义此字段） */
@@ -31,7 +37,10 @@ export interface SkillRequires {
 }
 
 /** Skill 来源 */
-export type SkillSource = 'clawhub' | 'github' | 'local';
+export type SkillSource = 'clawhub' | 'github' | 'local' | 'bundled' | 'mcp';
+
+/** Skill 执行模式 */
+export type SkillExecutionMode = 'inline' | 'fork';
 
 /** Skill 搜索结果 */
 export interface SkillSearchResult {
@@ -105,4 +114,10 @@ export interface InstalledSkill {
   gatesPassed: boolean;
   /** 是否禁用模型自主调用 */
   disableModelInvocation: boolean;
+  /** 执行模式 */
+  executionMode?: SkillExecutionMode;
+  /** 触发条件描述 */
+  whenToUse?: string;
+  /** 建议使用的模型 (provider/modelId) */
+  model?: string;
 }

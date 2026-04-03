@@ -16,9 +16,10 @@
  */
 
 import type { ContextPlugin, TurnContext, BootstrapContext } from '../plugin.interface.js';
-import type { InstalledSkill } from '@evoclaw/shared';
+import type { InstalledSkill, NameSecurityPolicy } from '@evoclaw/shared';
 import type { ChatMessage } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { filterByPolicy } from '../../security/extension-security.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -51,12 +52,23 @@ interface SkillPaths {
   userDir: string;
   /** Agent 工作区 Skills 目录模板 */
   agentDirTemplate: string;
+  /** Bundled Skills 目录（编译到包内） */
+  bundledDir: string;
 }
+
+/** Bundled Skills 目录（相对于当前文件: context/plugins/ → ../../skill/bundled） */
+export const BUNDLED_SKILLS_DIR = path.resolve(
+  typeof import.meta.dirname === 'string'
+    ? import.meta.dirname
+    : path.dirname(new URL(import.meta.url).pathname),
+  '..', '..', 'skill', 'bundled',
+);
 
 /** 默认路径（由品牌配置决定） */
 const DEFAULT_PATHS: SkillPaths = {
   userDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
   agentDirTemplate: path.join(os.homedir(), DEFAULT_DATA_DIR, 'agents', '{agentId}', 'workspace', 'skills'),
+  bundledDir: BUNDLED_SKILLS_DIR,
 };
 
 /** 禁用技能查询函数（返回该 Agent 禁用的技能名称集合） */
@@ -67,6 +79,10 @@ export interface ToolRegistryOptions {
   paths?: Partial<SkillPaths>;
   /** 查询 Agent 禁用的技能 */
   getDisabledSkills?: DisabledSkillsFn;
+  /** Skill 安全策略（白名单/黑名单，由 IT 管理员配置） */
+  securityPolicy?: NameSecurityPolicy;
+  /** MCP prompts 提供者（返回从 MCP prompts 转换的 InstalledSkill 列表） */
+  mcpPromptsProvider?: () => InstalledSkill[];
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +101,7 @@ export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistr
   const skillPaths: SkillPaths = {
     userDir: opts.paths?.userDir ?? DEFAULT_PATHS.userDir,
     agentDirTemplate: opts.paths?.agentDirTemplate ?? DEFAULT_PATHS.agentDirTemplate,
+    bundledDir: opts.paths?.bundledDir ?? DEFAULT_PATHS.bundledDir,
   };
 
   return {
@@ -106,11 +123,30 @@ export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistr
         skillCache.set(ctx.agentId, skills);
       }
 
+      // 合并 MCP prompt 技能（低优先级 — 同名本地技能覆盖）
+      if (opts.mcpPromptsProvider) {
+        const seen = new Set(skills.map(s => s.name));
+        const mcpSkills = opts.mcpPromptsProvider().filter(s => !seen.has(s.name));
+        if (mcpSkills.length > 0) {
+          skills = [...skills, ...mcpSkills];
+          log.info(`[${ctx.agentId}] 合并 ${mcpSkills.length} 个 MCP prompt 技能`);
+        }
+      }
+
       // 查询该 Agent 禁用的技能
       const disabledSet = opts.getDisabledSkills?.(ctx.agentId) ?? new Set<string>();
 
-      // 过滤：仅包含门控通过 + 非 disableModelInvocation + 未被 Agent 禁用的 Skill
+      // 过滤：门控通过 + 非 disableModelInvocation + 未被 Agent 禁用
       let activeSkills = skills.filter(s => s.gatesPassed && !s.disableModelInvocation && !disabledSet.has(s.name));
+
+      // 安全策略过滤（IT 管理员白名单/黑名单）
+      if (opts.securityPolicy) {
+        const { allowed, denied } = filterByPolicy(activeSkills, s => s.name, opts.securityPolicy);
+        if (denied.length > 0) {
+          log.warn(`[${ctx.agentId}] 安全策略拦截 ${denied.length} 个技能: ${denied.map(d => `${d.item.name}(${d.reason})`).join(', ')}`);
+        }
+        activeSkills = allowed;
+      }
 
       if (activeSkills.length === 0) {
         log.debug(`[${ctx.agentId}] 无活跃技能可注入`);
@@ -150,16 +186,19 @@ function scanSkills(agentId: string, paths: SkillPaths): InstalledSkill[] {
 
   // Agent 工作区优先（覆盖同名）
   const agentDir = paths.agentDirTemplate.replace('{agentId}', agentId);
-  scanDir(agentDir, skills, seen);
+  scanDir(agentDir, skills, seen, 'local');
 
   // 用户级安装
-  scanDir(paths.userDir, skills, seen);
+  scanDir(paths.userDir, skills, seen, 'local');
+
+  // Bundled（最低优先级 — 用户/Agent 同名技能覆盖 bundled）
+  scanDir(paths.bundledDir, skills, seen, 'bundled');
 
   return skills;
 }
 
 /** 扫描单个目录 */
-function scanDir(dirPath: string, skills: InstalledSkill[], seen: Set<string>): void {
+function scanDir(dirPath: string, skills: InstalledSkill[], seen: Set<string>, source: InstalledSkill['source']): void {
   if (!fs.existsSync(dirPath)) return;
 
   try {
@@ -171,14 +210,14 @@ function scanDir(dirPath: string, skills: InstalledSkill[], seen: Set<string>): 
       if (entry.isDirectory()) {
         // 子目录 → 查找 SKILL.md
         const skillMdPath = path.join(fullPath, 'SKILL.md');
-        const skill = tryLoadSkill(skillMdPath, fullPath);
+        const skill = tryLoadSkill(skillMdPath, fullPath, source);
         if (skill && !seen.has(skill.name)) {
           seen.add(skill.name);
           skills.push(skill);
         }
       } else if (entry.isFile() && entry.name.endsWith('.md') && !entry.name.startsWith('.')) {
         // 根目录 .md 文件直接作为 Skill
-        const skill = tryLoadSkill(fullPath, dirPath);
+        const skill = tryLoadSkill(fullPath, dirPath, source);
         if (skill && !seen.has(skill.name)) {
           seen.add(skill.name);
           skills.push(skill);
@@ -191,7 +230,7 @@ function scanDir(dirPath: string, skills: InstalledSkill[], seen: Set<string>): 
 }
 
 /** 尝试加载 Skill */
-function tryLoadSkill(filePath: string, installPath: string): InstalledSkill | null {
+function tryLoadSkill(filePath: string, installPath: string, source: InstalledSkill['source']): InstalledSkill | null {
   try {
     if (!fs.existsSync(filePath)) return null;
 
@@ -206,11 +245,14 @@ function tryLoadSkill(filePath: string, installPath: string): InstalledSkill | n
       description: parsed.metadata.description,
       version: parsed.metadata.version,
       author: parsed.metadata.author,
-      source: 'local',
+      source,
       installPath,
       skillMdPath: filePath,
       gatesPassed: allGatesPassed(gateResults),
       disableModelInvocation: parsed.metadata.disableModelInvocation ?? false,
+      executionMode: parsed.metadata.executionMode,
+      whenToUse: parsed.metadata.whenToUse,
+      model: parsed.metadata.model,
     };
   } catch {
     return null;
@@ -263,11 +305,13 @@ Constraints: never invoke more than one skill up front; only invoke after select
   return header + truncatedCatalog;
 }
 
-/** 完整模式 — name + description（不含文件路径，引导用 invoke_skill） */
+/** 完整模式 — name + description + whenToUse + mode（不含文件路径，引导用 invoke_skill） */
 function formatSkillsFull(skills: InstalledSkill[]): string {
-  const entries = skills.map(s =>
-    `  <skill>\n    <name>${escapeXml(s.name)}</name>\n    <description>${escapeXml(s.description)}</description>\n  </skill>`,
-  );
+  const entries = skills.map(s => {
+    const modeTag = s.executionMode === 'fork' ? '\n    <mode>fork</mode>' : '';
+    const whenTag = s.whenToUse ? `\n    <when>${escapeXml(s.whenToUse)}</when>` : '';
+    return `  <skill>\n    <name>${escapeXml(s.name)}</name>\n    <description>${escapeXml(s.description)}</description>${whenTag}${modeTag}\n  </skill>`;
+  });
   return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
 }
 

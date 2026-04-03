@@ -1,6 +1,7 @@
 ---
 name: marketing-mode
 description: "Marketing Mode combines 23 comprehensive marketing skills covering strategy, psychology, content, SEO, conversion optimization, and paid growth. Use when users need marketing strategy, copywriting, SEO help, conversion optimization, paid advertising, or any marketing tactic."
+whenToUse: "User needs marketing strategy, copywriting, SEO optimization, or conversion advice"
 metadata:
   version: 1.0.0
   tags: ["marketing", "growth", "seo", "copywriting", "cro", "paid-ads", "strategy", "psychology", "launch", "pricing", "email", "social"]

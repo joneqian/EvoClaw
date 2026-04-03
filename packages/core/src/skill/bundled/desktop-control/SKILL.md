@@ -1,5 +1,7 @@
 ---
+name: desktop-control
 description: Advanced desktop automation with mouse, keyboard, and screen control
+whenToUse: "User needs desktop automation: mouse clicks, keyboard input, screenshots, or window management"
 ---
 
 # Desktop Control Skill

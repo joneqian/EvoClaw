@@ -8,6 +8,7 @@ description: |
   inflated symbolism, promotional language, superficial -ing analyses, vague
   attributions, em dash overuse, rule of three, AI vocabulary words, negative
   parallelisms, and excessive conjunctive phrases.
+whenToUse: "User needs to make text sound more natural and remove signs of AI-generated writing"
 allowed-tools:
   - Read
   - Write

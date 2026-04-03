@@ -1,6 +1,7 @@
 ---
 name: baidu-search
 description: Search the web using Baidu AI Search Engine (BDSE). Use for live information, documentation, or research topics.
+whenToUse: "User needs to search Chinese web content or find China-specific information via Baidu"
 metadata: { "openclaw": { "emoji": "🔍︎",  "requires": { "bins": ["python3"], "env":["BAIDU_API_KEY"]},"primaryEnv":"BAIDU_API_KEY" } }
 ---
 

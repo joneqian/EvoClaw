@@ -2,6 +2,7 @@
 name: deep-research-pro
 version: 1.0.0
 description: "Multi-source deep research agent. Searches the web, synthesizes findings, and delivers cited reports. No API keys required."
+whenToUse: "User needs deep research on a topic with multi-source synthesis and cited reports"
 homepage: https://github.com/paragshah/deep-research-pro
 metadata: {"clawdbot":{"emoji":"🔬","category":"research"}}
 ---

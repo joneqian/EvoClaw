@@ -18,6 +18,8 @@ import { createChatRoutes } from './routes/chat.js';
 import { createMemoryRoutes } from './routes/memory.js';
 import { createFeedbackRoutes } from './routes/feedback.js';
 import { createSecurityRoutes } from './routes/security.js';
+import { createSecurityPolicyRoutes } from './routes/security-policy.js';
+import { createExtensionPackRoutes } from './routes/extension-pack-routes.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
 import { VectorStore } from './infrastructure/db/vector-store.js';
 import { createEmbeddingProvider } from './rag/embedding-provider.js';
@@ -299,6 +301,10 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     }
     app.route('/memory', createMemoryRoutes(store, vectorStore));
     app.route('/security', createSecurityRoutes(store));
+    if (configManager) {
+      app.route('/security/policy', createSecurityPolicyRoutes(configManager));
+      app.route('/extension-packs', createExtensionPackRoutes(configManager));
+    }
     if (vectorStore) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }

@@ -23,8 +23,11 @@ describe('tool-registry plugin', () => {
 
   function createPlugin() {
     return createToolRegistryPlugin({
-      userDir: tempUserDir,
-      agentDirTemplate: path.join(tempAgentDir, '{agentId}', 'skills'),
+      paths: {
+        userDir: tempUserDir,
+        agentDirTemplate: path.join(tempAgentDir, '{agentId}', 'skills'),
+        bundledDir: path.join(os.tmpdir(), 'nonexistent-bundled-dir'),
+      },
     });
   }
 

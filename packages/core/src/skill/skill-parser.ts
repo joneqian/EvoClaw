@@ -139,6 +139,15 @@ function parseYamlFrontmatter(yaml: string): SkillMetadata | null {
     if (result['disable-model-invocation'] === true) {
       metadata.disableModelInvocation = true;
     }
+    if (result['execution-mode'] === 'fork' || result['execution-mode'] === 'inline') {
+      metadata.executionMode = result['execution-mode'];
+    }
+    if (result['whenToUse'] || result['when-to-use']) {
+      metadata.whenToUse = String(result['whenToUse'] ?? result['when-to-use']);
+    }
+    if (result['model']) {
+      metadata.model = String(result['model']);
+    }
 
     // EvoClaw 扩展字段：requires
     if (result['requires'] || result['requires.bins'] || result['requires.env'] || result['requires.os']) {

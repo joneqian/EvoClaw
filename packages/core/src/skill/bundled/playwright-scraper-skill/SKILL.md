@@ -1,6 +1,7 @@
 ---
 name: playwright-scraper-skill
 description: Playwright-based web scraping OpenClaw Skill with anti-bot protection. Successfully tested on complex sites like Discuss.com.hk.
+whenToUse: "User needs to scrape data from websites, especially those with anti-bot protection"
 version: 1.2.0
 author: Simon Chan
 ---

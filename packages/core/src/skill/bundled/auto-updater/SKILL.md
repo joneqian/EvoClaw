@@ -1,6 +1,7 @@
 ---
 name: auto-updater
 description: "Automatically update Clawdbot and all installed skills once daily. Runs via cron, checks for updates, applies them, and messages the user with a summary of what changed."
+whenToUse: "Automatically check and update installed skills and tools"
 metadata: {"version":"1.0.0","clawdbot":{"emoji":"🔄","os":["darwin","linux"]}}
 ---
 

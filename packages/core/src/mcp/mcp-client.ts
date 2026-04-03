@@ -11,6 +11,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './mcp-config.js';
+import type { McpPromptInfo } from './mcp-prompt-bridge.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('mcp-client');
@@ -47,6 +48,7 @@ export class McpClient {
   private client: Client | null = null;
   private _status: McpServerStatus = 'stopped';
   private _tools: McpToolInfo[] = [];
+  private _prompts: McpPromptInfo[] = [];
   private _error?: string;
   private _instructions?: string;
 
@@ -54,6 +56,7 @@ export class McpClient {
 
   get status(): McpServerStatus { return this._status; }
   get tools(): ReadonlyArray<McpToolInfo> { return this._tools; }
+  get prompts(): ReadonlyArray<McpPromptInfo> { return this._prompts; }
   get error(): string | undefined { return this._error; }
   get instructions(): string | undefined { return this._instructions; }
   get serverName(): string { return this.config.name; }
@@ -93,8 +96,9 @@ export class McpClient {
       const serverInfo = this.client.getServerVersion();
       log.info(`MCP "${this.config.name}" 已连接: ${serverInfo?.name ?? 'unknown'} v${serverInfo?.version ?? '?'}`);
 
-      // 发现工具
+      // 发现工具和 Prompts
       await this.refreshTools();
+      await this.refreshPrompts();
       this._status = 'running';
     } catch (err) {
       this._status = 'error';
@@ -126,6 +130,47 @@ export class McpClient {
     }
   }
 
+  /** 刷新 Prompts 列表（部分 MCP 服务器不支持，降级为空数组） */
+  async refreshPrompts(): Promise<void> {
+    if (!this.client) return;
+    try {
+      const result = await this.client.listPrompts();
+      this._prompts = (result.prompts ?? []).map(p => ({
+        name: p.name,
+        description: p.description,
+        arguments: p.arguments?.map(a => ({ name: a.name, description: a.description, required: a.required })),
+        serverName: this.config.name,
+      }));
+      if (this._prompts.length > 0) {
+        log.info(`MCP "${this.config.name}" 发现 ${this._prompts.length} 个 prompts`);
+      }
+    } catch {
+      // 部分 MCP 服务器不支持 listPrompts，降级为空
+      this._prompts = [];
+    }
+  }
+
+  /** 获取单个 MCP Prompt 的内容 */
+  async getPrompt(promptName: string, args?: Record<string, string>): Promise<string> {
+    if (!this.client || this._status !== 'running') {
+      return `MCP "${this.config.name}" 未运行`;
+    }
+    try {
+      const result = await this.client.getPrompt({ name: promptName, arguments: args });
+      // 拼接 prompt messages 的文本内容
+      return (result.messages ?? [])
+        .map(m => {
+          if (typeof m.content === 'string') return m.content;
+          if (m.content && typeof m.content === 'object' && 'text' in m.content) return (m.content as { text: string }).text;
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n\n');
+    } catch (err) {
+      return `MCP prompt 获取失败: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
   /** 调用 MCP 工具 */
   async callTool(toolName: string, args: Record<string, unknown>): Promise<McpToolResult> {
     if (!this.client || this._status !== 'running') {
@@ -145,6 +190,7 @@ export class McpClient {
     this.client = null;
     this._status = 'stopped';
     this._tools = [];
+    this._prompts = [];
   }
 }
 
@@ -178,6 +224,22 @@ export class McpManager {
     const client = this.clients.get(serverName);
     if (!client) return { content: [{ type: 'text', text: `MCP "${serverName}" 不存在` }], isError: true };
     return client.callTool(toolName, args);
+  }
+
+  /** 获取所有 MCP 服务器的 Prompts */
+  getAllPrompts(): McpPromptInfo[] {
+    const prompts: McpPromptInfo[] = [];
+    for (const client of this.clients.values()) {
+      if (client.status === 'running') prompts.push(...client.prompts);
+    }
+    return prompts;
+  }
+
+  /** 获取指定 MCP 服务器的 Prompt 内容 */
+  async getPrompt(serverName: string, promptName: string, args?: Record<string, string>): Promise<string> {
+    const client = this.clients.get(serverName);
+    if (!client) return `MCP "${serverName}" 不存在`;
+    return client.getPrompt(promptName, args);
   }
 
   getStates(): Array<{ name: string; status: McpServerStatus; toolCount: number; error?: string }> {

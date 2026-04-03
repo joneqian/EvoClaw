@@ -183,11 +183,41 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   const { DEFAULT_DATA_DIR } = await import('@evoclaw/shared');
   const { createSkillTool } = await import('../skill/skill-tool.js');
   const { createToolSearchTool } = await import('./kernel/tool-search.js');
+  const { BUNDLED_SKILLS_DIR } = await import('../context/plugins/tool-registry.js');
   const skillSearchPaths = [
     path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
     ...(config.workspacePath ? [path.join(config.workspacePath, 'skills')] : []),
+    BUNDLED_SKILLS_DIR,  // Bundled 技能最低优先级
   ];
-  const skillTool = createSkillTool(skillSearchPaths) as import('./kernel/types.js').KernelTool;
+  // Fork 配置（允许技能在子代理中独立执行）
+  const forkConfig = {
+    enabled: true,
+    apiConfig: {
+      protocol: effectiveProtocol ?? 'openai-completions',
+      baseUrl: effectiveBaseUrl,
+      apiKey: effectiveApiKey,
+      modelId: effectiveModelId,
+      contextWindow,
+    },
+  };
+
+  // MCP Prompt 执行器（如果有 McpManager）
+  const mcpManager = (config as unknown as Record<string, unknown>).mcpManager as
+    import('../mcp/mcp-client.js').McpManager | undefined;
+  const mcpPromptExecutor = mcpManager
+    ? (serverName: string, promptName: string, args?: Record<string, string>) =>
+        mcpManager.getPrompt(serverName, promptName, args)
+    : undefined;
+
+  // 模型解析器（将 skill 的 model 字段解析为 API 配置）
+  const modelResolverFn = (config as unknown as Record<string, unknown>).modelResolver as
+    import('../skill/skill-tool.js').ModelResolverFn | undefined;
+
+  const skillTool = createSkillTool(skillSearchPaths, {
+    forkConfig,
+    mcpPromptExecutor,
+    modelResolver: modelResolverFn,
+  }) as import('./kernel/types.js').KernelTool;
 
   // 先构建基础工具池（不含 ToolSearch，因为 ToolSearch 需要完整工具列表）
   const baseTools = buildKernelTools({

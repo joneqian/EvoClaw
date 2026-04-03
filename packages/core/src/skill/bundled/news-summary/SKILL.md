@@ -1,6 +1,7 @@
 ---
 name: news-summary
 description: This skill should be used when the user asks for news updates, daily briefings, or what's happening in the world. Fetches news from trusted international RSS feeds and can create voice summaries.
+whenToUse: "User asks for news updates, daily briefings, or what's happening recently"
 ---
 
 # News Summary

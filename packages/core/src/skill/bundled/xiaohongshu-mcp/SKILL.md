@@ -5,6 +5,7 @@ description: >
   Use for: (1) Publishing image, text, and video content, (2) Searching for notes and trends,
   (3) Analyzing post details and comments, (4) Managing user profiles and content feeds.
   Triggers: xiaohongshu automation, rednote content, publish to xiaohongshu, xiaohongshu search, social media management.
+whenToUse: "User needs to publish content on Xiaohongshu, search notes, or analyze post data"
 ---
 
 # Xiaohongshu MCP Skill (with Python Client)

@@ -1,3 +1,5 @@
+import type { ExtensionSecurityPolicy } from './extension-security.js';
+
 /** evo_claw.json 配置文件结构 */
 export interface EvoClawConfig {
   models?: ModelsConfig;
@@ -12,6 +14,8 @@ export interface EvoClawConfig {
   language?: 'zh' | 'en';
   /** 思考模式: auto=模型支持就开, on=强制开, off=强制关（默认 auto） */
   thinking?: 'auto' | 'on' | 'off';
+  /** 扩展安全策略（Skill + MCP Server 白名单/黑名单） */
+  security?: ExtensionSecurityPolicy;
 }
 
 /** 模型配置 */

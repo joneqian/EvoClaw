@@ -701,6 +701,27 @@ export function createChatRoutes(
             return callLLM(configManager, { systemPrompt: system, userMessage: user, maxTokens: 256 });
           }
         : undefined,
+      // 模型解析器: 将 skill 的 model 字段 "provider/modelId" 解析为 API 配置
+      modelResolver: configManager
+        ? (modelRef: string) => {
+            // 简单解析 "provider/modelId" 格式
+            const slashIdx = modelRef.indexOf('/');
+            if (slashIdx <= 0 || slashIdx === modelRef.length - 1) return undefined;
+            const provId = modelRef.slice(0, slashIdx);
+            const modId = modelRef.slice(slashIdx + 1);
+            const prov = configManager.getProvider(provId);
+            if (!prov?.apiKey || !prov.baseUrl) return undefined;
+            const mod = prov.models.find(m => m.id === modId);
+            if (!mod) return undefined;
+            return {
+              protocol: prov.api ?? 'openai-completions',
+              baseUrl: prov.baseUrl,
+              apiKey: prov.apiKey,
+              modelId: modId,
+              contextWindow: mod.contextWindow ?? 128_000,
+            };
+          }
+        : undefined,
     };
 
     // 审计日志异步队列（内存缓存 + Agent 结束后批量写入）

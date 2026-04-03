@@ -4,6 +4,7 @@ slug: powerpoint-pptx
 version: 1.0.1
 homepage: https://clawic.com/skills/powerpoint-pptx
 description: "Create, inspect, and edit Microsoft PowerPoint presentations and PPTX decks with reliable layouts, templates, placeholders, notes, charts, and visual QA. Use when (1) the task is about PowerPoint or `.pptx`; (2) layouts, placeholders, notes, charts, comments, or template fidelity matter; (3) the deck must render cleanly after edits."
+whenToUse: "User needs to create, edit, or inspect PowerPoint/PPTX presentations"
 changelog: Rebalanced the skill toward template inventory, layout mapping, and higher-signal QA after a stricter external audit.
 metadata: {"clawdbot":{"emoji":"📊","requires":{"bins":[]},"os":["linux","darwin","win32"]}}
 ---

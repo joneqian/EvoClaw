@@ -1,6 +1,7 @@
 ---
 name: agent-browser
 description: Headless browser automation CLI optimized for AI agents with accessibility tree snapshots and ref-based element selection
+whenToUse: "User needs browser automation: navigate pages, fill forms, take screenshots, or extract data"
 metadata: {"clawdbot":{"emoji":"🌐","requires":{"commands":["agent-browser"]},"homepage":"https://github.com/vercel-labs/agent-browser"}}
 ---
 

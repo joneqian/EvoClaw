@@ -4,6 +4,7 @@ description: >-
   Yahoo Finance (yfinance) powered stock analysis skill: quotes, fundamentals,
   ASCII trends, high-resolution charts (RSI/MACD/BB/VWAP/ATR), plus optional
   web add-ons (news + browser-first options/flow).
+whenToUse: "User needs stock quotes, fundamental analysis, or technical indicator charts"
 ---
 
 # Stock Market Pro

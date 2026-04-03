@@ -126,6 +126,62 @@ Body.`;
       expect(parseSkillMd('   ')).toBeNull();
     });
 
+    it('应解析 whenToUse 字段', () => {
+      const content = `---
+name: search-skill
+description: Web search
+whenToUse: 用户需要搜索网页信息、查找新闻、图片或视频时
+---
+
+Search instructions.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.whenToUse).toBe('用户需要搜索网页信息、查找新闻、图片或视频时');
+    });
+
+    it('应解析 when-to-use 连字符格式', () => {
+      const content = `---
+name: alt-skill
+description: Alt format
+when-to-use: When user needs help
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.whenToUse).toBe('When user needs help');
+    });
+
+    it('应解析 model 字段', () => {
+      const content = `---
+name: light-skill
+description: Lightweight skill
+model: openai/gpt-4o-mini
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.model).toBe('openai/gpt-4o-mini');
+    });
+
+    it('应解析 execution-mode 字段', () => {
+      const content = `---
+name: fork-skill
+description: Fork mode skill
+execution-mode: fork
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.executionMode).toBe('fork');
+    });
+
     it('应处理带引号的值', () => {
       const content = `---
 name: "quoted-skill"

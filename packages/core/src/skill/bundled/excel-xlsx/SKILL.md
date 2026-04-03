@@ -4,6 +4,7 @@ slug: excel-xlsx
 version: 1.0.2
 homepage: https://clawic.com/skills/excel-xlsx
 description: "Create, inspect, and edit Microsoft Excel workbooks and XLSX files with reliable formulas, dates, types, formatting, recalculation, and template preservation. Use when (1) the task is about Excel, `.xlsx`, `.xlsm`, `.xls`, `.csv`, or `.tsv`; (2) formulas, formatting, workbook structure, or compatibility matter; (3) the file must stay reliable after edits."
+whenToUse: "User needs to create, edit, or analyze Excel/XLSX spreadsheet files"
 changelog: Tightened formula anchoring, recalculation, and model traceability after a stricter external spreadsheet audit.
 metadata: {"clawdbot":{"emoji":"📗","requires":{"bins":[]},"os":["linux","darwin","win32"]}}
 ---

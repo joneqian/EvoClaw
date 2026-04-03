@@ -13,6 +13,8 @@ import type {
   ProviderEntry,
   ModelEntry,
   ModelReference,
+  ExtensionSecurityPolicy,
+  NameSecurityPolicy,
 } from '@evoclaw/shared';
 import { parseModelRef } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME, BRAND } from '@evoclaw/shared';
@@ -258,6 +260,29 @@ export class ConfigManager {
   /** 获取 Brave Search API Key */
   getBraveApiKey(): string {
     return this.config.services?.brave?.apiKey ?? '';
+  }
+
+  // ─── 安全策略 ───
+
+  /** 获取完整安全策略 */
+  getSecurityPolicy(): ExtensionSecurityPolicy | undefined {
+    return this.config.security;
+  }
+
+  /** 获取 Skill 安全策略 */
+  getSkillSecurityPolicy(): NameSecurityPolicy | undefined {
+    return this.config.security?.skills;
+  }
+
+  /** 获取 MCP Server 安全策略 */
+  getMcpSecurityPolicy(): NameSecurityPolicy | undefined {
+    return this.config.security?.mcpServers;
+  }
+
+  /** 更新安全策略（完整替换） */
+  updateSecurityPolicy(policy: ExtensionSecurityPolicy): void {
+    this.config.security = structuredClone(policy);
+    this.saveToDisk();
   }
 
   /** 配置文件是否存在 */

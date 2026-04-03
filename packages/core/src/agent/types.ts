@@ -56,6 +56,8 @@ export interface AgentRunConfig {
   }>;
   /** Tool Use Summary LLM 调用函数（可选，用于生成工具摘要） */
   toolSummaryGeneratorFn?: (system: string, user: string) => Promise<string>;
+  /** 模型解析器（将 skill 的 model 字段 "provider/modelId" 解析为 API 配置） */
+  modelResolver?: (modelRef: string) => { protocol: string; baseUrl: string; apiKey: string; modelId: string; contextWindow: number } | undefined;
 }
 
 // ─── 单次执行结果 ───

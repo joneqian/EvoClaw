@@ -95,6 +95,9 @@ process.on('uncaughtException', (err) => {
 
 // SIGTERM/SIGINT 由 graceful-shutdown 模块统一管理（在 server 启动后安装）
 
+/** MCP Manager — 异步初始化，通过 getter 延迟获取（模块作用域供 createApp 闭包访问） */
+let sharedMcpManager: import('./mcp/mcp-client.js').McpManager | undefined;
+
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
   return (
@@ -843,9 +846,6 @@ async function main() {
   // 延迟初始化的调度器引用（在 cleanup 中关闭）
   let decayScheduler: DecayScheduler | null = null;
   let consolidator: MemoryConsolidator | null = null;
-
-  // MCP Manager — 异步初始化，通过 getter 延迟获取
-  let sharedMcpManager: import('./mcp/mcp-client.js').McpManager | undefined;
 
   // 优雅关闭 — 注册各资源的关闭处理器（按优先级执行）
   const { registerShutdownHandler, installShutdownHandlers } = await import('./infrastructure/graceful-shutdown.js');

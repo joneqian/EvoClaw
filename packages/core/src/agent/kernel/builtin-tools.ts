@@ -235,15 +235,34 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
           return `${lineNum}\t${line}`;
         }).join('\n');
 
+        // ─── 双层保护: 第二层 token 估算 (参考 Claude Code maxTokens 25K) ───
+        // 注: 不设下限，允许测试使用小 contextWindowTokens 验证截断逻辑
+        const maxTokenEstimate = contextWindowTokens * CONTEXT_SHARE;
+        const estimatedTokens = formatted.length / CHARS_PER_TOKEN;
+
+        let finalFormatted = formatted;
+        let tokenTruncated = false;
+        if (estimatedTokens > maxTokenEstimate) {
+          // 按 token 限制截断到对应字符数
+          const maxChars = Math.floor(maxTokenEstimate * CHARS_PER_TOKEN);
+          // 找到最近的换行符避免断行
+          const cutoff = finalFormatted.lastIndexOf('\n', maxChars);
+          finalFormatted = finalFormatted.slice(0, cutoff > 0 ? cutoff : maxChars);
+          tokenTruncated = true;
+        }
+
         // P0-6: 记录文件读取状态
-        const isPartialView = (offset > 1) || (limit < totalLines);
+        const isPartialView = (offset > 1) || (limit < totalLines) || tokenTruncated;
         fileStateCache.recordRead(filePath, content.length, isPartialView);
 
         // 截断标记
-        const truncated = endIdx < totalLines;
+        const truncated = endIdx < totalLines || tokenTruncated;
+        const truncMsg = tokenTruncated
+          ? `\n\n[... 文件过大，已按 token 限制截断。请用 offset/limit 分段读取（共 ${totalLines} 行）]`
+          : `\n\n[... 文件共 ${totalLines} 行，已显示 ${startIdx + 1}-${endIdx} 行]`;
         const result = truncated
-          ? `${formatted}\n\n[... 文件共 ${totalLines} 行，已显示 ${startIdx + 1}-${endIdx} 行]`
-          : formatted;
+          ? `${finalFormatted}${truncMsg}`
+          : finalFormatted;
 
         return { content: result };
       } catch (err) {

@@ -122,6 +122,15 @@ describe('read tool', () => {
     expect(result.content).toContain('image/png');
   });
 
+  it('超过 token 估算限制时截断内容', async () => {
+    const tinyTool = createReadTool(100, new FileStateCache());
+    const content = 'x'.repeat(200); // 200 chars ≈ 50 tokens, exceeds 20 token limit
+    const fp = writeFile('big-tokens.txt', content);
+    const result = await tinyTool.call({ file_path: fp });
+    // Should contain truncation marker
+    expect(result.content).toContain('token');
+  });
+
   it('should be read-only and concurrency-safe', () => {
     expect(tool.isReadOnly()).toBe(true);
     expect(tool.isConcurrencySafe()).toBe(true);

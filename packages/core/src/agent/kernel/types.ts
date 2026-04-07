@@ -614,6 +614,9 @@ export interface QueryLoopConfig {
     generateAsync(tools: Array<{ toolName: string; toolInput: Record<string, unknown>; toolResult?: string; isError?: boolean }>): Promise<string>;
   };
 
+  // ─── File Attribution (可选: Autocompact 摘要注入修改文件列表) ───
+  readonly getModifiedFiles?: () => string[];
+
   // ─── Incremental Persistence (可选: 流式持久化) ───
   readonly persister?: import('./incremental-persister.js').IncrementalPersister;
 }

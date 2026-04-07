@@ -55,6 +55,9 @@ const MICROCOMPACT_TRUNCATE_THRESHOLD = 5_000;
 /** Microcompact: 截断后的头尾比例 */
 const HEAD_RATIO = 0.7;
 
+/** Time-based Microcompact: 超时阈值 (ms) — 对应 Anthropic Prompt Cache TTL (~5 分钟) */
+const TIME_BASED_MC_THRESHOLD_MS = 5 * 60 * 1000;
+
 /** 粗略 token 估算: 每 token 平均字符数 */
 const CHARS_PER_TOKEN = 4;
 
@@ -235,15 +238,25 @@ export function microcompactToolResults(
   protocol?: import('./types.js').ApiProtocol,
 ): number {
   const useShadow = protocol === 'anthropic-messages';
+  const now = Date.now();
   let truncatedCount = 0;
 
   for (const msg of messages) {
-    let hasOversized = false;
+    let needsMark = false;
+    // Time-based: Anthropic 协议下，超过缓存 TTL 的 tool_result 也应标记
+    const isExpired = useShadow && msg.createdAt !== undefined
+      && (now - msg.createdAt) > TIME_BASED_MC_THRESHOLD_MS;
+
     for (const block of msg.content) {
       if (block.type !== 'tool_result') continue;
-      if (block.content.length <= MICROCOMPACT_TRUNCATE_THRESHOLD) continue;
 
-      hasOversized = true;
+      const oversized = block.content.length > MICROCOMPACT_TRUNCATE_THRESHOLD;
+      // 触发条件: 超大 OR (Anthropic 协议下超时且内容非空)
+      const shouldTruncate = oversized || (isExpired && block.content.length > 500);
+
+      if (!shouldTruncate) continue;
+
+      needsMark = true;
 
       if (!useShadow) {
         // 直接截断 (OpenAI 协议: 无 cache 机制)
@@ -260,7 +273,7 @@ export function microcompactToolResults(
     }
 
     // Shadow 模式: 仅标记消息，不修改 content
-    if (useShadow && hasOversized) {
+    if (useShadow && needsMark) {
       (msg as { microcompacted: boolean }).microcompacted = true;
     }
   }
@@ -599,6 +612,18 @@ export async function autocompact(
 
   if (!summary) {
     throw new Error('Autocompact 摘要为空');
+  }
+
+  // 注入文件操作列表（通过可选回调获取修改文件列表）
+  if (config.getModifiedFiles) {
+    try {
+      const modifiedFiles = config.getModifiedFiles();
+      if (modifiedFiles.length > 0) {
+        summary += `\n\n**本次会话修改的文件:**\n${modifiedFiles.map(f => `- ${f}`).join('\n')}`;
+      }
+    } catch {
+      // 非关键，静默跳过
+    }
   }
 
   // 替换消息: 保留最后 4 条，前面替换为摘要

@@ -236,7 +236,12 @@ async function streamOneRound(
             ttfbMs: event.metrics.latency.headersReceivedAt && event.metrics.latency.requestSentAt
               ? event.metrics.latency.headersReceivedAt - event.metrics.latency.requestSentAt
               : undefined,
+            firstChunkMs: event.metrics.latency.firstChunkAt && event.metrics.latency.requestSentAt
+              ? event.metrics.latency.firstChunkAt - event.metrics.latency.requestSentAt
+              : undefined,
             fallbackUsed: event.metrics.fallbackUsed,
+            abortExitDelayMs: event.metrics.abortExitDelayMs,
+            abortExitPath: event.metrics.abortExitPath,
           },
         });
         break;

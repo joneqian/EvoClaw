@@ -13,10 +13,10 @@
  */
 
 // 避免循环依赖: agent/types.ts → prompt-override.ts → kernel/types.ts → agent/types.ts
-// 使用轻量接口替代 import
+// 使用轻量接口替代 import（与 SystemPromptBlock 保持一致）
 interface PromptBlock {
   text: string;
-  cacheControl?: { type: 'ephemeral' } | null;
+  cacheControl?: { type: 'ephemeral'; scope?: 'global' | 'org' } | null;
   label?: string;
 }
 

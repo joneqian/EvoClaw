@@ -47,6 +47,19 @@ export class PromptCacheMonitor {
   private suppressNextCheck = false;
 
   /**
+   * Latch 锁存: 首次构建的静态段落 hash
+   *
+   * 参考 Claude Code 的 TTL Latch 机制:
+   * 首次计算后锁存，防止 session 中途 system prompt 意外变化导致缓存击穿。
+   * 一次击穿约浪费整个 system prompt 的 token 重写费用。
+   *
+   * 用法: 首次 recordPreCallState 时锁存 systemPromptHash，
+   * 后续调用若 hash 变化则记录警告（可选锁存阻止变化）。
+   */
+  private latchedSystemPromptHash: string | null = null;
+  private latchedToolSchemaHash: string | null = null;
+
+  /**
    * Phase 1: API 调用前记录状态
    */
   recordPreCallState(params: {
@@ -65,9 +78,30 @@ export class PromptCacheMonitor {
       toolParts.push(hash);
     }
 
+    const systemPromptHash = fastHash(params.systemPrompt);
+    const toolSchemaHash = fastHash(toolParts.join('|'));
+
+    // Latch 锁存: 首次调用时记录基准 hash
+    if (this.latchedSystemPromptHash === null) {
+      this.latchedSystemPromptHash = systemPromptHash;
+      this.latchedToolSchemaHash = toolSchemaHash;
+    } else {
+      // 后续调用: 检测意外变化
+      if (systemPromptHash !== this.latchedSystemPromptHash) {
+        log.warn(
+          'Latch 警告: system prompt 在 session 中途发生变化（可能导致缓存击穿）',
+        );
+      }
+      if (toolSchemaHash !== this.latchedToolSchemaHash) {
+        log.warn(
+          'Latch 警告: 工具 schema 在 session 中途发生变化（可能导致缓存击穿）',
+        );
+      }
+    }
+
     this.prevState = {
-      systemPromptHash: fastHash(params.systemPrompt),
-      toolSchemaHash: fastHash(toolParts.join('|')),
+      systemPromptHash,
+      toolSchemaHash,
       toolCount: params.tools.length,
       modelId: params.modelId,
       thinkingEnabled: params.thinkingEnabled,
@@ -141,6 +175,16 @@ export class PromptCacheMonitor {
     this.prevCacheReadTokens = null;
     this.prevState = null;
     this.suppressNextCheck = false;
+    this.latchedSystemPromptHash = null;
+    this.latchedToolSchemaHash = null;
+  }
+
+  /** 获取 Latch 状态（调试用） */
+  getLatchState(): { systemPromptHash: string | null; toolSchemaHash: string | null } {
+    return {
+      systemPromptHash: this.latchedSystemPromptHash,
+      toolSchemaHash: this.latchedToolSchemaHash,
+    };
   }
 
   // ─── Private ───

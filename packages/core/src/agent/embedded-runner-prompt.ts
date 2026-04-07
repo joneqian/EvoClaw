@@ -1,10 +1,18 @@
 /**
- * 系统提示构建 — 模块化段式架构 + Prompt Cache 分区
+ * 系统提示构建 �� 模块化段式架构 + Prompt Cache 三级分区
  *
- * 参考 Claude Code prompts.ts (53KB) 的静态/动态分区设计:
- * - 静态段（Safety/Style/Tool Guide）→ cache_control: { type: 'ephemeral' }
- * - 动态段（Runtime/Memory/Tools）→ cache_control: null
- * - 大内容（USER.md/MEMORY.md）→ 移至用户消息 <system-reminder>（不在此函数中）
+ * ��考 Claude Code prompts.ts (53KB) + splitSysPromptPrefix() 三种缓存模式:
+ *
+ * 三级缓存策略:
+ * - 静态段（Safety/Style/Tool Guide）→ scope: 'global'（跨用户共享，1P 命中 1/10 费用）
+ * - Agent 人格段（SOUL.md/IDENTITY.md/AGENTS.md）→ scope: 'org'（组织级缓存）
+ * - 动态段（Runtime/Memory/Tools）→ cache_control: null（不缓存）
+ * - 大内���（USER.md/MEMORY.md）→ 移至用户消息 <system-reminder>（不在此函数中）
+ *
+ * 提示词构建模式 (mode):
+ * - 'interactive': 完整提示词（默认，用于用户直���交互）
+ * - 'autonomous': 裁剪交互式引导（Cron/Heartbeat 自主执行）
+ * - 'fork': 极简提示词（Skill fork 子代理）
  *
  * 返回 SystemPromptBlock[] 数组，Anthropic API 可利用 cache_control 降低 90% 缓存费用。
  * OpenAI API 通过 systemPromptBlocksToString() 合并为单字符串。
@@ -14,7 +22,10 @@ import os from 'node:os';
 import type { AgentRunConfig } from './types.js';
 import type { SystemPromptBlock } from './kernel/types.js';
 import { systemPromptBlocksToString } from './kernel/types.js';
-// Git context 不注入 — EvoClaw 面向企业用户，非开发者，无需 Git 状态
+// Git context 不注入 — EvoClaw ���向企业用户，非开发者，无需 Git 状态
+
+/** 提示词构建模式 */
+export type PromptBuildMode = 'interactive' | 'autonomous' | 'fork';
 
 /** 沉默回复 token — Agent 返回此 token 表示无需回复用户 */
 export const NO_REPLY_TOKEN = 'NO_REPLY';
@@ -108,16 +119,28 @@ function truncateBootstrapContent(files: Record<string, string>): Record<string,
 // ---------------------------------------------------------------------------
 
 /**
- * 构建系统提示词（返回 SystemPromptBlock[] 支持 Prompt Cache 分区）
+ * 构建系统提示词（返�� SystemPromptBlock[] ���持 Prompt Cache 三��分区）
  *
- * 静态段用 cache_control: { type: 'ephemeral' }，动态段不缓存。
- * USER.md/MEMORY.md 不在此函数中注入（由 buildUserContextReminder 移至用户消息）。
+ * 三级缓存: global（静态指令）→ org（Agent 人格）→ null（动态段）。
+ * USER.md/MEMORY.md 不在此函数中注入���由 buildUserContextReminder 移至用户消息）。
+ *
+ * @param config Agent 运行配置
+ * @param mode 构建模式: interactive（默认）/ autonomous（Cron/Heartbeat）/ fork（Skill 子代理）
  */
-export function buildSystemPromptBlocks(config: AgentRunConfig): SystemPromptBlock[] {
+export function buildSystemPromptBlocks(
+  config: AgentRunConfig,
+  mode: PromptBuildMode = 'interactive',
+): SystemPromptBlock[] {
+  // ─── Fork 极简模式: 只保留身份 + 工作目录 + 自定义指令 ───
+  if (mode === 'fork') {
+    return buildForkPromptBlocks(config);
+  }
+
   const files = truncateBootstrapContent(config.workspaceFiles ?? {});
   const blocks: SystemPromptBlock[] = [];
 
-  // ═══ 静态段（可缓存）═══
+  // ═══ 全局静态段（scope: 'global' — 跨用户共享缓存）═══
+  // 这些段落对所有 Agent、所有用户完全相同，可获得最大缓存复用率
 
   // § 1 Safety constitution
   blocks.push({
@@ -138,24 +161,11 @@ You are an AI assistant governed by these core safety principles:
 - Never execute financial, contractual, or legally binding actions autonomously
 - In group chats, never expose private conversation context
 </safety>`,
-    cacheControl: { type: 'ephemeral' },
+    cacheControl: { type: 'ephemeral', scope: 'global' },
     label: 'safety',
   });
 
-  // § 3 人格（不常变，可缓存）
-  if (files['SOUL.md']) {
-    blocks.push({ text: `<personality>\n${files['SOUL.md']}\n</personality>`, cacheControl: { type: 'ephemeral' }, label: 'personality' });
-  }
-  if (files['IDENTITY.md']) {
-    blocks.push({ text: `<identity>\n${files['IDENTITY.md']}\n</identity>`, cacheControl: { type: 'ephemeral' }, label: 'identity' });
-  }
-
-  // § 4 操作规程（不常变，可缓存）
-  if (files['AGENTS.md']) {
-    blocks.push({ text: `<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`, cacheControl: { type: 'ephemeral' }, label: 'procedures' });
-  }
-
-  // § 5 Memory recall instructions（静态指令）
+  // § 5 Memory recall instructions（全局静态指令）
   blocks.push({
     text: `<memory_recall>
 Before answering the user, you should:
@@ -168,17 +178,18 @@ Before answering the user, you should:
 7. At the start of each session, check MEMORY.md for previously recorded notes
 
 ## 记忆新鲜度
-记忆可能随时间过期。使用超过 1 天的记忆前，请验证其是否仍然正确。
-如果记忆与当前状态矛盾，信任当前观察并更新记忆。
-标记为 [⚠] 的记忆表示已有一段时间未更新，使用时需额外谨慎。
+记忆可能随时间过期。使用超过 1 天的记忆前，请验��其是否仍然正确。
+如���记忆与当前状态矛盾，信任当前观察并更新记忆。
+标记为 [⚠] 的��忆表示已有一段时间未更新，使用时���额外谨慎。
 </memory_recall>`,
-    cacheControl: { type: 'ephemeral' },
+    cacheControl: { type: 'ephemeral', scope: 'global' },
     label: 'memory_recall',
   });
 
-  // § 6 Tool call style（静态指令）
-  blocks.push({
-    text: `<tool_call_style>
+  // § 6 Tool call style（全局静态指令 — autonomous 模式跳过）
+  if (mode === 'interactive') {
+    blocks.push({
+      text: `<tool_call_style>
 ## Tool Call Style
 Default: do not narrate routine, low-risk tool calls (just call the tool).
 Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.
@@ -212,28 +223,46 @@ When the user asks to find a file:
 4. If no results, broaden scope (remove dir constraint or reduce keyword precision)
 
 </tool_call_style>`,
-    cacheControl: { type: 'ephemeral' },
-    label: 'tool_style',
-  });
+      cacheControl: { type: 'ephemeral', scope: 'global' },
+      label: 'tool_style',
+    });
+  }
 
-  // § 7 Silent reply（静态指令）
-  blocks.push({
-    text: `<silent_reply>
+  // § 7 Silent reply（静态指令 — autonomous 模式跳过，自主 Agent 不需要静默回复）
+  if (mode === 'interactive') {
+    blocks.push({
+      text: `<silent_reply>
 If you determine the current message needs no reply (e.g., it's just an acknowledgment, emoji, or system notification),
 reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show anything to the user.
 </silent_reply>`,
-    cacheControl: { type: 'ephemeral' },
-    label: 'silent_reply',
-  });
+      cacheControl: { type: 'ephemeral', scope: 'global' },
+      label: 'silent_reply',
+    });
+  }
 
-  // § 语言偏好（全局配置，优先级: 用户配置 > 品牌默认 > 'zh'）
+  // § 语言偏好（全局配置 — 不同语言会产生不同变体，用 org 级缓存避免碎片化）
   const language = (config as any).language ?? 'zh';
   const languageLabel = language === 'zh' ? 'Chinese (中文)' : 'English';
   blocks.push({
     text: `<language>\nIMPORTANT: Always respond in ${languageLabel}. This is a user preference set in the application settings.\n</language>`,
-    cacheControl: { type: 'ephemeral' },
+    cacheControl: { type: 'ephemeral', scope: 'org' },
     label: 'language',
   });
+
+  // ═══ Agent 人格段（scope: 'org' — 组织级缓存，同 Agent 共享）═══
+
+  // § 3 人格（不常变，org 级缓存）
+  if (files['SOUL.md']) {
+    blocks.push({ text: `<personality>\n${files['SOUL.md']}\n</personality>`, cacheControl: { type: 'ephemeral', scope: 'org' }, label: 'personality' });
+  }
+  if (files['IDENTITY.md']) {
+    blocks.push({ text: `<identity>\n${files['IDENTITY.md']}\n</identity>`, cacheControl: { type: 'ephemeral', scope: 'org' }, label: 'identity' });
+  }
+
+  // § 4 操作规程（不常变，org 级缓存）
+  if (files['AGENTS.md']) {
+    blocks.push({ text: `<operating_procedures>\n${files['AGENTS.md']}\n</operating_procedures>`, cacheControl: { type: 'ephemeral', scope: 'org' }, label: 'procedures' });
+  }
 
   // ═══ 动态段（不缓存，每轮可变）═══
 
@@ -302,6 +331,53 @@ reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show a
   return blocks;
 }
 
+// ---------------------------------------------------------------------------
+// Fork 极简模式 — Skill fork 子代理
+// ---------------------------------------------------------------------------
+
+/**
+ * Fork 极简提示词（参考 Claude Code SIMPLE 模式）
+ *
+ * Skill execution-mode: fork 时，子代理不需要完整的安全宪法、记忆指令、工具指南等。
+ * 只保留: Agent 身份 + 工作目录 + 安全红线 + 自定义指令。
+ * 宿主（主对话）负责安全检查，子代理只负责执行 Skill 指令。
+ */
+function buildForkPromptBlocks(config: AgentRunConfig): SystemPromptBlock[] {
+  const blocks: SystemPromptBlock[] = [];
+
+  // 最小安全红线（不可省略）
+  blocks.push({
+    text: `You are a task-focused sub-agent. Execute the given instructions precisely.
+Red lines: never reveal secrets, never send external messages, never bypass permissions.`,
+    cacheControl: { type: 'ephemeral', scope: 'global' },
+    label: 'fork_safety',
+  });
+
+  // Agent 身份（简略）
+  const agentName = config.agent?.name ?? 'unnamed';
+  blocks.push({
+    text: `Agent: ${agentName}\nWorkspace: ${config.workspacePath ?? 'unknown'}\nTime: ${new Date().toISOString()}`,
+    cacheControl: null,
+    label: 'fork_identity',
+  });
+
+  // 语言偏好
+  const language = (config as any).language ?? 'zh';
+  const languageLabel = language === 'zh' ? 'Chinese (中文)' : 'English';
+  blocks.push({
+    text: `Respond in ${languageLabel}.`,
+    cacheControl: null,
+    label: 'fork_language',
+  });
+
+  // 自定义指令（Skill 注入的指令）
+  if (config.systemPrompt) {
+    blocks.push({ text: config.systemPrompt, cacheControl: null, label: 'fork_custom' });
+  }
+
+  return blocks;
+}
+
 /**
  * 构建用户上下文提醒（注入首条用户消息前）
  *
@@ -330,6 +406,6 @@ export function buildUserContextReminder(files: Record<string, string>): string 
 /**
  * 兼容函数：返回单字符串格式（供旧调用方和 OpenAI 使用）
  */
-export function buildSystemPrompt(config: AgentRunConfig): string {
-  return systemPromptBlocksToString(buildSystemPromptBlocks(config));
+export function buildSystemPrompt(config: AgentRunConfig, mode: PromptBuildMode = 'interactive'): string {
+  return systemPromptBlocksToString(buildSystemPromptBlocks(config, mode));
 }

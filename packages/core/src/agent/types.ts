@@ -160,7 +160,13 @@ export interface RuntimeEvent {
     totalDurationMs: number;
     /** TTFB (ms) — HTTP 响应头到达延迟 */
     ttfbMs?: number;
+    /** 首个 SSE 事件延迟 (ms) — 从请求发出到首个内容事件 */
+    firstChunkMs?: number;
     /** 是否使用了非流式回退 */
     fallbackUsed: boolean;
+    /** abort 传播延迟 (ms)，仅超时时有值 */
+    abortExitDelayMs?: number;
+    /** abort 退出路径 */
+    abortExitPath?: 'clean' | 'catch';
   };
 }

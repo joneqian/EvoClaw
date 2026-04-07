@@ -23,6 +23,7 @@ import type {
   KernelMessage,
   ContentBlock,
   ToolUseBlock,
+  KernelTool,
 } from './types.js';
 import { ApiError, systemPromptBlocksToString } from './types.js';
 import type { SystemPromptBlock } from './types.js';
@@ -51,6 +52,8 @@ interface IdleWatchdog {
   reset(): void;
   clear(): void;
   readonly aborted: boolean;
+  /** 看门狗触发的高精度时间戳（用于计算 abort 传播延迟） */
+  readonly firedAt: number | null;
 }
 
 function createIdleWatchdog(
@@ -60,6 +63,7 @@ function createIdleWatchdog(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let warningTimer: ReturnType<typeof setTimeout> | null = null;
   let _aborted = false;
+  let _firedAt: number | null = null;
 
   function clearTimers(): void {
     if (timer) { clearTimeout(timer); timer = null; }
@@ -74,6 +78,7 @@ function createIdleWatchdog(
       }, STREAM_IDLE_WARNING_MS);
       timer = setTimeout(() => {
         _aborted = true;
+        _firedAt = performance.now();
         log.error(`流式空闲超时: ${timeoutMs / 1000}s 无数据，中断流`);
         onTimeout();
       }, timeoutMs);
@@ -82,8 +87,66 @@ function createIdleWatchdog(
       clearTimers();
     },
     get aborted() { return _aborted; },
+    get firedAt() { return _firedAt; },
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tool Schema Cache — 参考 Claude Code toolSchemaCache.ts
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 工具 Schema 会话缓存
+ *
+ * 缓存 key = 工具名 + inputSchema JSON（因为 StructuredOutput 工具可能共享名称但 schema 不同）
+ * 目的：防止 mid-session 工具数组字节变化破坏 Anthropic prompt cache
+ */
+class ToolSchemaCache {
+  private readonly anthropicCache = new Map<string, object>();
+  private readonly openaiCache = new Map<string, object>();
+
+  private cacheKey(tool: KernelTool): string {
+    return `${tool.name}:${JSON.stringify(tool.inputSchema)}`;
+  }
+
+  getAnthropicTools(tools: readonly KernelTool[]): object[] {
+    return tools.map(t => {
+      const key = this.cacheKey(t);
+      let cached = this.anthropicCache.get(key);
+      if (!cached) {
+        cached = Object.freeze({
+          name: t.name,
+          description: t.description,
+          input_schema: t.inputSchema,
+        });
+        this.anthropicCache.set(key, cached);
+      }
+      return cached;
+    });
+  }
+
+  getOpenAITools(tools: readonly KernelTool[]): object[] {
+    return tools.map(t => {
+      const key = this.cacheKey(t);
+      let cached = this.openaiCache.get(key);
+      if (!cached) {
+        cached = Object.freeze({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.inputSchema,
+          },
+        });
+        this.openaiCache.set(key, cached);
+      }
+      return cached;
+    });
+  }
+}
+
+/** 模块级单例（per-process = per-session，Sidecar 进程生命周期 = 会话生命周期） */
+const toolSchemaCache = new ToolSchemaCache();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OpenAI ToolCallAccumulator — 处理增量 JSON 拼接
@@ -186,19 +249,23 @@ function buildAnthropicRequest(config: StreamConfig): RequestSpec {
     content: serializeContentForAnthropic(msg.content),
   }));
 
-  // 构建 tools
-  const tools = config.tools.map(t => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.inputSchema,
-  }));
+  // 构建 tools（缓存稳定字节，防止破坏 prompt cache）
+  const tools = toolSchemaCache.getAnthropicTools(config.tools);
 
-  // Anthropic 支持 system 为 TextBlock 数组（含 cache_control）
+  // Anthropic 支持 system 为 TextBlock 数组（含 cache_control + scope）
+  // scope: 'global' → 跨用户共享缓存（1P 专属，命中费用 1/10）
+  // scope: 'org' → 组织级缓存（不传 scope，服务端按 API key 推断）
+  // scope: undefined → 不传 scope（默认 ephemeral 行为）
   const systemParam = Array.isArray(config.systemPrompt)
     ? (config.systemPrompt as readonly SystemPromptBlock[]).map(block => ({
         type: 'text' as const,
         text: block.text,
-        ...(block.cacheControl ? { cache_control: block.cacheControl } : {}),
+        ...(block.cacheControl ? {
+          cache_control: {
+            type: block.cacheControl.type,
+            ...(block.cacheControl.scope === 'global' ? { scope: 'global' } : {}),
+          },
+        } : {}),
       }))
     : config.systemPrompt;
 
@@ -252,15 +319,8 @@ function buildOpenAIRequest(config: StreamConfig): RequestSpec {
     messages.push(...serialized);
   }
 
-  // 构建 tools (OpenAI function calling 格式)
-  const tools = config.tools.map(t => ({
-    type: 'function' as const,
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.inputSchema,
-    },
-  }));
+  // 构建 tools（缓存稳定字节，防止破坏 prompt cache）
+  const tools = toolSchemaCache.getOpenAITools(config.tools);
 
   const body: Record<string, unknown> = {
     model: config.modelId,
@@ -661,6 +721,8 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
   let totalStallMs = 0;
   let eventCount = 0;
   let fallbackUsed = false;
+  /** abort 退出路径追踪 — 参考 Claude Code exit_path */
+  let exitPath: 'clean' | 'catch' = 'clean';
 
   // 看门狗
   const abortController = new AbortController();
@@ -687,6 +749,11 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
         protocol,
         fallbackUsed,
         latency,
+        // abort 传播追踪 — 参考 Claude Code streamWatchdogFiredAt + exit_delay_ms
+        ...(watchdog.aborted && watchdog.firedAt != null ? {
+          abortExitDelayMs: Math.round(performance.now() - watchdog.firedAt),
+          abortExitPath: exitPath,
+        } : {}),
       },
     };
   }
@@ -757,7 +824,11 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
   } catch (err) {
     // ─── 双重回退: 流式 → 非流式 → yield error（不 throw） ───
     if (watchdog.aborted) {
-      log.warn('流式超时，尝试非流式回退');
+      exitPath = 'catch';
+      const exitDelayMs = watchdog.firedAt != null
+        ? Math.round(performance.now() - watchdog.firedAt)
+        : -1;
+      log.warn(`流式超时，尝试非流式回退 (exit_path=catch, exit_delay_ms=${exitDelayMs})`);
       fallbackUsed = true;
       try {
         yield* nonStreamingFallback(config);

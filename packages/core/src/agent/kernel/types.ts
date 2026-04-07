@@ -297,6 +297,10 @@ export interface StreamingMetrics {
   fallbackUsed: boolean;
   /** 延迟检查点 */
   latency: StreamLatencyCheckpoints;
+  /** abort 传播延迟 (ms)，仅超时时有值 — 参考 Claude Code exit_delay_ms */
+  abortExitDelayMs?: number;
+  /** abort 退出路径: clean=正常循环退出后检测, catch=异常捕获 */
+  abortExitPath?: 'clean' | 'catch';
 }
 
 export type StreamEvent =
@@ -336,13 +340,30 @@ export type ThinkingConfig =
   | { type: 'enabled'; budgetTokens?: number }    // 固定预算模式
   | { type: 'disabled' };                         // 禁用
 
-/** 系统提示词分块（支持 Anthropic cache_control） */
+/**
+ * Prompt Cache 作用域
+ *
+ * 参考 Claude Code splitSysPromptPrefix() 的三种缓存模式:
+ * - 'global': 跨用户共享（Anthropic 1P 专属，命中费用 1/10）
+ * - 'org': 组织级缓存（Anthropic 默认，无需传 scope）
+ * - null/undefined: 不缓存
+ *
+ * OpenAI 协议路径忽略 scope（API 不支持）。
+ */
+export type CacheScope = 'global' | 'org';
+
+/** 系统提示词分块（支持 Anthropic cache_control + 三级 scope） */
 export interface SystemPromptBlock {
   /** 文本内容 */
   text: string;
-  /** Anthropic cache 控制。undefined = 不设置，ephemeral = 可缓存 */
-  cacheControl?: { type: 'ephemeral' } | null;
-  /** 段落标识（用于调试） */
+  /**
+   * Anthropic cache 控制
+   * - undefined/null = 不缓存（动态段落）
+   * - { type: 'ephemeral' } = 可缓存，org 级（默认）
+   * - { type: 'ephemeral', scope: 'global' } = 全局缓存（静态段落，1P 专属）
+   */
+  cacheControl?: { type: 'ephemeral'; scope?: CacheScope } | null;
+  /** 段落标识（用于调试和缓存击穿根因分析） */
   label?: string;
 }
 

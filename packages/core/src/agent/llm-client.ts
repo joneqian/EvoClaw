@@ -128,7 +128,7 @@ async function callAnthropic(
  */
 export async function callLLMWithBlocks(
   configManager: ConfigManager,
-  systemBlocks: Array<{ text: string; cacheControl?: { type: string } | null }>,
+  systemBlocks: Array<{ text: string; cacheControl?: { type: string; scope?: string } | null }>,
   userMessage: string,
   maxTokens = 4096,
 ): Promise<string> {
@@ -146,11 +146,16 @@ export async function callLLMWithBlocks(
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;
 
-    // Anthropic: 传递 system blocks 含 cache_control
+    // Anthropic: 传递 system blocks 含 cache_control + scope
     const systemContent = systemBlocks.map(b => ({
       type: 'text' as const,
       text: b.text,
-      ...(b.cacheControl ? { cache_control: b.cacheControl } : {}),
+      ...(b.cacheControl ? {
+        cache_control: {
+          type: b.cacheControl.type,
+          ...(b.cacheControl.scope === 'global' ? { scope: 'global' } : {}),
+        },
+      } : {}),
     }));
 
     const response = await fetch(`${anthropicUrl}/messages`, {

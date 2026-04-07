@@ -80,11 +80,51 @@ export function bridgeAllMcpTools(
   existingToolNames?: Set<string>,
 ): ToolDefinition[] {
   const allMcpTools = manager.getAllTools();
+  return bridgeMcpToolList(allMcpTools, manager, existingToolNames);
+}
+
+/**
+ * 桥接指定 MCP 服务器的工具（Agent 级 MCP 过滤）
+ * @param manager - MCP Manager 实例
+ * @param serverNames - 允许的 MCP 服务器名称列表（undefined/空 = 全部）
+ * @param existingToolNames - 已存在的工具名称集合
+ * @returns 过滤后的 ToolDefinition 列表
+ */
+export function bridgeMcpToolsForAgent(
+  manager: McpManager,
+  serverNames: string[] | undefined,
+  existingToolNames?: Set<string>,
+): ToolDefinition[] {
+  const allMcpTools = manager.getAllTools();
+
+  // undefined 或空数组 = 使用全部可用服务器
+  if (!serverNames || serverNames.length === 0) {
+    return bridgeMcpToolList(allMcpTools, manager, existingToolNames);
+  }
+
+  const allowedServers = new Set(serverNames);
+  const filtered = allMcpTools.filter((t) => allowedServers.has(t.serverName));
+
+  if (filtered.length < allMcpTools.length) {
+    log.info(
+      `Agent MCP 过滤: ${filtered.length}/${allMcpTools.length} 工具 ` +
+      `(允许服务器: ${serverNames.join(', ')})`,
+    );
+  }
+
+  return bridgeMcpToolList(filtered, manager, existingToolNames);
+}
+
+/** 内部: 将 MCP 工具列表转为 ToolDefinition 列表 */
+function bridgeMcpToolList(
+  mcpTools: readonly import('@evoclaw/shared').McpToolInfo[],
+  manager: McpManager,
+  existingToolNames?: Set<string>,
+): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
   const seen = new Set<string>();
 
-  for (const mcpTool of allMcpTools) {
-    // 检查原始名称是否与保留名冲突
+  for (const mcpTool of mcpTools) {
     if (RESERVED_TOOL_NAMES.has(mcpTool.name)) {
       log.warn(
         `MCP 工具 "${mcpTool.name}" (from ${mcpTool.serverName}) 与保留工具名冲突，` +
@@ -94,7 +134,6 @@ export function bridgeAllMcpTools(
 
     const definition = mcpToolToDefinition(mcpTool, manager);
 
-    // 检查 qualified name 冲突
     if (seen.has(definition.name) || existingToolNames?.has(definition.name)) {
       log.warn(`MCP 工具名称冲突，跳过: ${definition.name}`);
       continue;

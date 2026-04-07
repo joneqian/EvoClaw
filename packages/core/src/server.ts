@@ -304,7 +304,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance, sessionSummarizer),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance, sessionSummarizer, () => sharedMcpManager),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -844,6 +844,9 @@ async function main() {
   let decayScheduler: DecayScheduler | null = null;
   let consolidator: MemoryConsolidator | null = null;
 
+  // MCP Manager — 异步初始化，通过 getter 延迟获取
+  let sharedMcpManager: import('./mcp/mcp-client.js').McpManager | undefined;
+
   // 优雅关闭 — 注册各资源的关闭处理器（按优先级执行）
   const { registerShutdownHandler, installShutdownHandlers } = await import('./infrastructure/graceful-shutdown.js');
 
@@ -923,6 +926,8 @@ async function main() {
         const { applySecurityPolicy } = await import('./mcp/mcp-security.js');
 
         const mcpManager = new McpManager();
+        // 存储到闭包变量，供 getMcpManager getter 访问
+        sharedMcpManager = mcpManager;
 
         // 注册 MCP shutdown handler
         registerShutdownHandler({ name: 'MCP', priority: 30, handler: () => mcpManager.disposeAll() });

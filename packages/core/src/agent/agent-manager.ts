@@ -74,19 +74,20 @@ export class AgentManager {
   }
 
   /** 更新 Agent 配置 */
-  updateAgent(id: string, updates: Partial<Pick<AgentConfig, 'name' | 'emoji' | 'modelId' | 'provider' | 'permissionMode'>>): void {
+  updateAgent(id: string, updates: Partial<Pick<AgentConfig, 'name' | 'emoji' | 'modelId' | 'provider' | 'permissionMode' | 'mcpServers'>>): void {
     const agent = this.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
 
     const now = new Date().toISOString();
     if (updates.name) this.store.run('UPDATE agents SET name = ?, updated_at = ? WHERE id = ?', updates.name, now, id);
     if (updates.emoji) this.store.run('UPDATE agents SET emoji = ?, updated_at = ? WHERE id = ?', updates.emoji, now, id);
-    if (updates.modelId || updates.provider || updates.permissionMode !== undefined) {
+    if (updates.modelId || updates.provider || updates.permissionMode !== undefined || updates.mcpServers !== undefined) {
       const configRow = this.store.get<any>('SELECT config_json FROM agents WHERE id = ?', id);
       const config = JSON.parse(configRow?.config_json ?? '{}');
       if (updates.modelId) config.modelId = updates.modelId;
       if (updates.provider) config.provider = updates.provider;
       if (updates.permissionMode !== undefined) config.permissionMode = updates.permissionMode;
+      if (updates.mcpServers !== undefined) config.mcpServers = updates.mcpServers;
       this.store.run('UPDATE agents SET config_json = ?, updated_at = ? WHERE id = ?', JSON.stringify(config), now, id);
     }
   }
@@ -203,6 +204,7 @@ export class AgentManager {
       modelId: config.modelId,
       provider: config.provider,
       permissionMode: config.permissionMode,
+      mcpServers: config.mcpServers,
       bindings: config.bindings,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

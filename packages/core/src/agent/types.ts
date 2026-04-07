@@ -1,6 +1,7 @@
 import type { AgentConfig, ChatMessage, ThinkLevel } from '@evoclaw/shared';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { ErrorType } from './embedded-runner-errors.js';
+import type { McpManager } from '../mcp/mcp-client.js';
 
 // ─── Provider Failover 配置 ───
 
@@ -66,6 +67,8 @@ export interface AgentRunConfig {
   postCompactHook?: import('./kernel/types.js').PostCompactHookFn;
   /** SQLite store（可选: 用于增量持久化） */
   store?: import('../infrastructure/db/sqlite-store.js').SqliteStore;
+  /** MCP Manager 实例（可选: 用于 MCP 工具执行和 Prompt 桥接） */
+  mcpManager?: McpManager;
 }
 
 // ─── 单次执行结果 ───

@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { runEmbeddedAgent } from './embedded-runner.js';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import type { LaneQueue } from './lane-queue.js';
-import { DEFAULT_MAX_SPAWN_DEPTH, type AgentConfig } from '@evoclaw/shared';
+import { DEFAULT_MAX_SPAWN_DEPTH, type AgentConfig, type ChatMessage } from '@evoclaw/shared';
 
 /** 附件 */
 export interface SpawnAttachment {
@@ -34,6 +34,65 @@ export const DEFAULT_SUBAGENT_TIMEOUT_MS = 300_000;
 /** 子 Agent 结果不可信标记（防提示注入） */
 const UNTRUSTED_BEGIN = '<<<BEGIN_UNTRUSTED_CHILD_RESULT>>>';
 const UNTRUSTED_END = '<<<END_UNTRUSTED_CHILD_RESULT>>>';
+
+/** Fork 子 Agent 标记（用于递归防护检测） */
+const FORK_BOILERPLATE_TAG = '<fork-boilerplate>';
+
+/** Fork 子 Agent 结构化输出模板 */
+const FORK_DIRECTIVE_TEMPLATE = `${FORK_BOILERPLATE_TAG}
+你是一个 Fork Worker 进程，不是主 Agent。
+规则：
+1. 不要创建子 Agent，直接使用工具执行
+2. 不要闲聊或提问
+3. 直接使用你的工具：read, write, edit, bash, grep 等
+4. 保持报告简洁（不超过 500 字）
+5. 响应必须以 "Scope:" 开头
+
+输出格式：
+  Scope: <回显任务范围>
+  Result: <发现/成果>
+  Key files: <涉及的关键文件路径>
+  Changes: <修改的文件列表（如有）>
+  Issues: <发现的问题（如有）>
+</fork-boilerplate>`;
+
+/**
+ * 构建 Cache-Safe 的 Fork 消息
+ *
+ * 策略: 使用 parent 的最后 N 条消息 + fork 指令消息
+ * 确保系统提示词完全一致 → prompt cache 命中
+ *
+ * @param parentMessages - 父 Agent 当前消息历史
+ * @param directive - fork 任务指令
+ * @returns 构建好的消息列表
+ */
+export function buildCacheSafeForkedMessages(
+  parentMessages: ReadonlyArray<ChatMessage>,
+  directive: string,
+): ChatMessage[] {
+  // 取最后 10 条消息（避免 token 爆炸，同时保持足够上下文）
+  const recentMessages = parentMessages.slice(-10);
+
+  // 追加 fork 指令作为用户消息
+  const forkUserMessage: ChatMessage = {
+    id: crypto.randomUUID(),
+    conversationId: recentMessages[0]?.conversationId ?? '',
+    role: 'user',
+    content: `${FORK_DIRECTIVE_TEMPLATE}\n<fork-directive>${directive}</fork-directive>`,
+    createdAt: new Date().toISOString(),
+  };
+
+  return [...recentMessages, forkUserMessage];
+}
+
+/**
+ * 检测消息历史中是否已有 fork 标记（递归 fork 防护）
+ */
+export function isInForkChild(messages: ReadonlyArray<{ role: string; content: string }>): boolean {
+  return messages.some(
+    m => m.role === 'user' && m.content.includes(FORK_BOILERPLATE_TAG),
+  );
+}
 
 /** 所有子代理始终禁止的工具（安全降权 + 防泄露） */
 const DENIED_TOOLS_FOR_ALL_CHILDREN = new Set([
@@ -136,6 +195,8 @@ export class SubAgentSpawner {
     private allowAgents?: string[],
     /** 最大嵌套深度（默认 DEFAULT_MAX_SPAWN_DEPTH） */
     maxSpawnDepth?: number,
+    /** 获取父 Agent 当前消息历史（用于 Fork Cache-Safe） */
+    private getParentMessages?: () => ReadonlyArray<import('@evoclaw/shared').ChatMessage>,
   ) {
     this.maxSpawnDepth = maxSpawnDepth ?? DEFAULT_MAX_SPAWN_DEPTH;
   }
@@ -235,6 +296,12 @@ export class SubAgentSpawner {
     if (entry.isFork) {
       // Fork: 继承父 prompt（缓存命中最大化）
       systemPrompt = this.parentConfig.systemPrompt;
+
+      // 递归 fork 防护：检测是否已在 fork child 中
+      const parentMsgs = this.getParentMessages?.() ?? [];
+      if (isInForkChild(parentMsgs)) {
+        throw new Error('已在 Fork 子 Agent 中，禁止递归 Fork');
+      }
     } else if (entry.agentType) {
       // 预定义类型
       let typeDef: any = null;
@@ -265,6 +332,13 @@ export class SubAgentSpawner {
       systemPrompt = this.buildMinimalPrompt(task, context, childRole, options?.attachments);
     }
 
+    // Fork Cache-Safe: 传递父消息给 fork child（系统提示一致 → prompt cache 命中）
+    let childMessages: ChatMessage[] = [];
+    if (entry.isFork && this.getParentMessages) {
+      const parentMsgs = this.getParentMessages();
+      childMessages = buildCacheSafeForkedMessages(parentMsgs, task);
+    }
+
     const childConfig: AgentRunConfig = {
       agent: targetAgent,
       systemPrompt,
@@ -278,7 +352,8 @@ export class SubAgentSpawner {
       baseUrl: this.parentConfig.baseUrl,
       apiProtocol: this.parentConfig.apiProtocol,
       tools: effectiveTools,
-      messages: [],
+      messages: childMessages,
+      mcpManager: this.parentConfig.mcpManager,
     };
 
     // 计算超时

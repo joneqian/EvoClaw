@@ -63,7 +63,7 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
       return c.json({ error: 'Agent 不存在' }, 404);
     }
 
-    type AgentPatchBody = { name?: string; emoji?: string; modelId?: string; provider?: string; permissionMode?: 'default' | 'strict' | 'permissive' };
+    type AgentPatchBody = { name?: string; emoji?: string; modelId?: string; provider?: string; permissionMode?: 'default' | 'strict' | 'permissive'; mcpServers?: string[] };
     const body: AgentPatchBody = await c.req.json<AgentPatchBody>().catch(() => ({}));
     agentManager.updateAgent(id, body);
 

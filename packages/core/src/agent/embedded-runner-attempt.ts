@@ -203,8 +203,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   };
 
   // MCP Prompt 执行器（如果有 McpManager）
-  const mcpManager = (config as unknown as Record<string, unknown>).mcpManager as
-    import('../mcp/mcp-client.js').McpManager | undefined;
+  const mcpManager = config.mcpManager;
   const mcpPromptExecutor = mcpManager
     ? (serverName: string, promptName: string, args?: Record<string, string>) =>
         mcpManager.getPrompt(serverName, promptName, args)

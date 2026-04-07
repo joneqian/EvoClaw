@@ -41,6 +41,8 @@ export interface AgentConfig {
   toolProfile?: 'minimal' | 'coding' | 'messaging' | 'full';
   /** 权限模式覆盖（未设置时使用全局默认） */
   permissionMode?: PermissionMode;
+  /** 绑定的 MCP 服务器名称列表 — 为空/undefined 表示使用全部可用服务器 */
+  mcpServers?: string[];
   /** 绑定关系 */
   bindings?: Binding[];
   /** 创建时间 ISO string */

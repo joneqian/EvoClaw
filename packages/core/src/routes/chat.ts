@@ -50,6 +50,7 @@ import { emitServerEvent } from '../infrastructure/event-bus.js';
 import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
 import { detectHeartbeatAck } from '../scheduler/heartbeat-utils.js';
 import { IncrementalPersister } from '../agent/kernel/incremental-persister.js';
+import { bridgeMcpToolsForAgent } from '../mcp/mcp-tool-bridge.js';
 
 const log = createLogger('chat');
 
@@ -231,6 +232,7 @@ export function createChatRoutes(
   cronRunner?: import('../scheduler/cron-runner.js').CronRunner,
   costTracker?: import('../cost/cost-tracker.js').CostTracker,
   sessionSummarizer?: import('../memory/session-summarizer.js').SessionSummarizer,
+  getMcpManager?: () => import('../mcp/mcp-client.js').McpManager | undefined,
 ) {
   const app = new Hono();
 
@@ -712,6 +714,14 @@ export function createChatRoutes(
       enhancedTools.push(...afterChannelDeny);
     }
 
+    // ─── MCP 工具桥接（按 Agent 配置过滤） ───
+    const mcpManager = getMcpManager?.();
+    if (mcpManager) {
+      const existingNames = new Set(enhancedTools.map(t => t.name));
+      const mcpTools = bridgeMcpToolsForAgent(mcpManager, agent.mcpServers, existingNames);
+      enhancedTools.push(...mcpTools);
+    }
+
     // 配置工具注入
     setToolInjectorConfig({ agentId, evoClawTools: enhancedTools });
     const tools = getInjectedTools();
@@ -810,6 +820,7 @@ export function createChatRoutes(
       tools,
       messages,
       store,
+      mcpManager,
       contextWindow: modelDef?.contextWindow,
       maxTokens: modelDef?.maxTokens,
       promptOverrides: (body as any).promptOverrides,

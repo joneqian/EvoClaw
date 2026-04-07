@@ -23,12 +23,14 @@ const bunBanner = [
 
 // Feature Flag — 编译时常量注入
 // 环境变量 ENABLE_* 控制功能开关，esbuild 替换为 true/false 常量后 tree shake 移除未启用分支
-const featureFlags: Record<string, string> = {
-  'FEATURE_SANDBOX': JSON.stringify(process.env.ENABLE_SANDBOX === 'true'),
-  'FEATURE_WEIXIN': JSON.stringify(process.env.ENABLE_WEIXIN === 'true'),
-  'FEATURE_MCP': JSON.stringify(process.env.ENABLE_MCP === 'true'),
-  'FEATURE_SILK_VOICE': JSON.stringify(process.env.ENABLE_SILK_VOICE === 'true'),
-};
+// 名称列表必须与 FEATURE_REGISTRY (src/infrastructure/feature.ts) 保持同步
+// CI 脚本 scripts/check-feature-flags.ts 校验一致性
+const FEATURE_NAMES = ['SANDBOX', 'WEIXIN', 'MCP', 'SILK_VOICE', 'WECOM', 'FEISHU'] as const;
+
+const featureFlags: Record<string, string> = {};
+for (const name of FEATURE_NAMES) {
+  featureFlags[`FEATURE_${name}`] = JSON.stringify(process.env[`ENABLE_${name}`] === 'true');
+}
 
 await build({
   entryPoints: ['src/server.ts'],

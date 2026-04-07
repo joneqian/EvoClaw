@@ -27,12 +27,16 @@ describe('Feature Flag', () => {
     delete process.env.ENABLE_WEIXIN;
     delete process.env.ENABLE_MCP;
     delete process.env.ENABLE_SILK_VOICE;
+    delete process.env.ENABLE_WECOM;
+    delete process.env.ENABLE_FEISHU;
 
     const { Feature } = await import('../../infrastructure/feature.js');
     expect(Feature.SANDBOX).toBe(false);
     expect(Feature.WEIXIN).toBe(false);
     expect(Feature.MCP).toBe(false);
     expect(Feature.SILK_VOICE).toBe(false);
+    expect(Feature.WECOM).toBe(false);
+    expect(Feature.FEISHU).toBe(false);
   });
 
   it('ENABLE_WEIXIN=true 应启用 WEIXIN Feature', async () => {
@@ -75,18 +79,24 @@ describe('Feature Flag', () => {
     expect(Feature.MCP).toBe(false);
   });
 
-  it('getFeatureStatus 应返回所有 Flag 状态', async () => {
+  it('getFeatureStatus 应返回所有 Flag 状态（含描述和模块信息）', async () => {
     process.env.ENABLE_WEIXIN = 'true';
     delete process.env.ENABLE_SANDBOX;
 
-    const { getFeatureStatus } = await import('../../infrastructure/feature.js');
+    const { getFeatureStatus, FEATURE_NAMES } = await import('../../infrastructure/feature.js');
     const status = getFeatureStatus();
 
-    expect(status).toHaveProperty('SANDBOX', false);
-    expect(status).toHaveProperty('WEIXIN', true);
-    expect(status).toHaveProperty('MCP', false);
-    expect(status).toHaveProperty('SILK_VOICE', false);
-    expect(Object.keys(status)).toHaveLength(4);
+    // 数量与 FEATURE_REGISTRY 一致
+    expect(Object.keys(status)).toHaveLength(FEATURE_NAMES.length);
+
+    // 验证结构
+    expect(status.WEIXIN.enabled).toBe(true);
+    expect(status.WEIXIN.desc).toBeTruthy();
+    expect(status.WEIXIN.modules).toBeInstanceOf(Array);
+
+    expect(status.SANDBOX.enabled).toBe(false);
+    expect(status.MCP.enabled).toBe(false);
+    expect(status.SILK_VOICE.enabled).toBe(false);
   });
 
   it('多个 Feature 可同时启用', async () => {
@@ -99,5 +109,33 @@ describe('Feature Flag', () => {
     expect(Feature.MCP).toBe(true);
     expect(Feature.SILK_VOICE).toBe(true);
     expect(Feature.SANDBOX).toBe(false);
+  });
+
+  it('ENABLE_WECOM=true 应启用 WECOM Feature', async () => {
+    process.env.ENABLE_WECOM = 'true';
+
+    const { Feature } = await import('../../infrastructure/feature.js');
+    expect(Feature.WECOM).toBe(true);
+    expect(Feature.FEISHU).toBe(false);
+  });
+
+  it('ENABLE_FEISHU=true 应启用 FEISHU Feature', async () => {
+    process.env.ENABLE_FEISHU = 'true';
+
+    const { Feature } = await import('../../infrastructure/feature.js');
+    expect(Feature.FEISHU).toBe(true);
+    expect(Feature.WECOM).toBe(false);
+  });
+
+  it('FEATURE_REGISTRY 应包含所有 Flag 的元数据', async () => {
+    const { FEATURE_REGISTRY, FEATURE_NAMES } = await import('../../infrastructure/feature.js');
+
+    expect(FEATURE_NAMES.length).toBeGreaterThanOrEqual(6);
+    for (const name of FEATURE_NAMES) {
+      const meta = FEATURE_REGISTRY[name];
+      expect(meta.desc).toBeTruthy();
+      expect(meta.modules).toBeInstanceOf(Array);
+      expect(meta.modules.length).toBeGreaterThan(0);
+    }
   });
 });

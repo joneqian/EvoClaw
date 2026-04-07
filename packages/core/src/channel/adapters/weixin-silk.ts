@@ -5,6 +5,7 @@
  * 依赖 silk-wasm (可选)，不可用时返回 null。
  */
 
+import { Feature } from '../../infrastructure/feature.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
 const log = createLogger('weixin-silk');
@@ -54,6 +55,11 @@ export function isSilkFormat(buffer: Buffer): boolean {
  * @returns WAV Buffer，失败或 silk-wasm 不可用时返回 null
  */
 export async function silkToWav(silkBuffer: Buffer): Promise<Buffer | null> {
+  if (!Feature.SILK_VOICE) {
+    log.debug('SILK 语音转码已禁用 (Feature.SILK_VOICE=false)，跳过转码');
+    return null;
+  }
+
   try {
     const { decode } = await import('silk-wasm');
 

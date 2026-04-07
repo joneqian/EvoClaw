@@ -88,7 +88,9 @@ describe('Doctor 自诊断', () => {
     expect(report.system.memoryUsage.heapTotal).toBeGreaterThan(0);
     expect(report.system.memoryUsage.external).toBeGreaterThanOrEqual(0);
     expect(report.system.featureFlags).toBeDefined();
-    expect(typeof report.system.featureFlags.SANDBOX).toBe('boolean');
+    expect(typeof report.system.featureFlags.SANDBOX.enabled).toBe('boolean');
+    expect(report.system.featureFlags.SANDBOX.desc).toBeTruthy();
+    expect(report.system.featureFlags.SANDBOX.modules).toBeInstanceOf(Array);
   });
 
   it('Lane 队列检查无 queue 时应 warn', () => {

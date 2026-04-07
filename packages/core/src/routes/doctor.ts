@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import { isBun, bunVersion, bunGC, bunHeapSnapshot } from '../infrastructure/runtime.js';
-import { getFeatureStatus } from '../infrastructure/feature.js';
+import { getFeatureStatus, type FeatureInfo, type FeatureName } from '../infrastructure/feature.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { MemoryMonitor } from '../infrastructure/memory-monitor.js';
 
@@ -34,7 +34,7 @@ export interface DiagnosticReport {
     uptime: number;
     memoryUsage: { rss: number; heapUsed: number; heapTotal: number; external: number };
     cpuCount: number;
-    featureFlags: Record<string, boolean>;
+    featureFlags: Record<FeatureName, FeatureInfo>;
   };
 }
 

@@ -36,7 +36,6 @@ import { HeartbeatManager } from './scheduler/heartbeat-manager.js';
 import { createHeartbeatExecuteFn } from './scheduler/heartbeat-execute.js';
 import { ChannelManager } from './channel/channel-manager.js';
 import { DesktopAdapter } from './channel/adapters/desktop.js';
-import { WeixinAdapter } from './channel/adapters/weixin.js';
 import { ChannelStateRepo } from './channel/channel-state-repo.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
@@ -69,9 +68,7 @@ import { KnowledgeGraphStore } from './memory/knowledge-graph.js';
 import { FtsStore } from './infrastructure/db/fts-store.js';
 import { StartupProfiler } from './infrastructure/startup-profiler.js';
 import { BootstrapState } from './infrastructure/bootstrap-state.js';
-import { McpManager } from './mcp/mcp-client.js';
-import { discoverMcpConfigs } from './mcp/mcp-config.js';
-import { createMcpRoutes } from './routes/mcp.js';
+import { Feature } from './infrastructure/feature.js';
 import { preconnectProviders } from './infrastructure/preconnect.js';
 
 const log = createLogger('server');
@@ -303,8 +300,8 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }
     app.route('/skill', createSkillRoutes());
-    if ((options as any).mcpManager) {
-      app.route('/mcp', createMcpRoutes((options as any).mcpManager));
+    if (Feature.MCP && (options as any).mcpManager && (options as any).createMcpRoutes) {
+      app.route('/mcp', (options as any).createMcpRoutes((options as any).mcpManager));
     }
     app.route('/evolution', createEvolutionRoutes({ db: store, getHeartbeatManager: options.getHeartbeatManager }));
     app.route('/provider', createProviderRoutes(store, configManager));
@@ -644,8 +641,11 @@ async function main() {
   channelManager.registerAdapter(desktopAdapter);
   desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
   const channelStateRepo = new ChannelStateRepo(db);
-  const weixinAdapter = new WeixinAdapter(channelStateRepo);
-  channelManager.registerAdapter(weixinAdapter);
+  if (Feature.WEIXIN) {
+    const { WeixinAdapter } = await import('./channel/adapters/weixin.js');
+    const weixinAdapter = new WeixinAdapter(channelStateRepo);
+    channelManager.registerAdapter(weixinAdapter);
+  }
   const bindingRouter = new BindingRouter(db);
 
   profiler.checkpoint('systems_ready');
@@ -744,7 +744,7 @@ async function main() {
     memoryMonitor.stop();
   }});
   registerShutdownHandler({ name: '渠道', priority: 20, handler: () => { channelManager.disconnectAll(); }});
-  registerShutdownHandler({ name: 'MCP', priority: 30, handler: () => mcpManager.disposeAll() });
+  // MCP shutdown handler 在 mcpManager 初始化后注册（见 Phase 3a.5）
   if (db) {
     registerShutdownHandler({ name: '数据库', priority: 80, handler: () => { db.close(); }});
   }
@@ -788,39 +788,51 @@ async function main() {
   preconnectProviders(configManager);
 
   // 3a.5. MCP 服务器发现 + 安全过滤 + 重连机制（异步，不阻塞）
-  const mcpManager = new McpManager();
-  (async () => {
-    try {
-      const { applySecurityPolicy } = await import('./mcp/mcp-security.js');
+  if (Feature.MCP) {
+    (async () => {
+      try {
+        const { McpManager } = await import('./mcp/mcp-client.js');
+        const { discoverMcpConfigs } = await import('./mcp/mcp-config.js');
+        const { applySecurityPolicy } = await import('./mcp/mcp-security.js');
 
-      let mcpConfigs = discoverMcpConfigs();
-      if (mcpConfigs.length === 0) return;
+        const mcpManager = new McpManager();
 
-      // 安全策略过滤
-      const mcpPolicy = (configManager.getConfig() as any).mcpSecurity;
-      if (mcpPolicy) {
-        mcpConfigs = applySecurityPolicy(mcpConfigs, mcpPolicy);
+        // 注册 MCP shutdown handler
+        registerShutdownHandler({ name: 'MCP', priority: 30, handler: () => mcpManager.disposeAll() });
+
+        let mcpConfigs = discoverMcpConfigs();
+        if (mcpConfigs.length === 0) return;
+
+        // 安全策略过滤
+        const mcpPolicy = (configManager.getConfig() as any).mcpSecurity;
+        if (mcpPolicy) {
+          mcpConfigs = applySecurityPolicy(mcpConfigs, mcpPolicy);
+        }
+
+        // 连接已启用的服务器（内置重连）
+        for (const config of mcpConfigs) {
+          if (config.enabled === false) continue;
+          await mcpManager.addServer(config);
+        }
+
+        const states = mcpManager.getStates();
+        const running = states.filter((s: { status: string }) => s.status === 'running').length;
+        if (running > 0 || mcpConfigs.length > 0) {
+          log.info(`MCP: ${running}/${mcpConfigs.filter((c: { enabled?: boolean }) => c.enabled !== false).length} 服务器已连接, ${mcpManager.getAllTools().length} 个工具`);
+        }
+      } catch (err) {
+        log.warn(`MCP 初始化失败: ${err instanceof Error ? err.message : err}`);
       }
-
-      // 连接已启用的服务器（内置重连）
-      for (const config of mcpConfigs) {
-        if (config.enabled === false) continue;
-        await mcpManager.addServer(config);
-      }
-
-      const states = mcpManager.getStates();
-      const running = states.filter(s => s.status === 'running').length;
-      if (running > 0 || mcpConfigs.length > 0) {
-        log.info(`MCP: ${running}/${mcpConfigs.filter(c => c.enabled !== false).length} 服务器已连接, ${mcpManager.getAllTools().length} 个工具`);
-      }
-    } catch (err) {
-      log.warn(`MCP 初始化失败: ${err instanceof Error ? err.message : err}`);
-    }
-  })();
+    })();
+  }
 
   // 3b. Channel 自动恢复（可能涉及网络 I/O，不阻塞服务启动）
   const recoverChannels = async () => {
-    const channelTypes = ['weixin', 'feishu', 'wecom'] as const;
+    const channelTypes = [
+      ...(Feature.WEIXIN ? ['weixin' as const] : []),
+      ...(Feature.FEISHU ? ['feishu' as const] : []),
+      ...(Feature.WECOM ? ['wecom' as const] : []),
+    ];
     for (const chType of channelTypes) {
       const savedCreds = channelStateRepo.getState(chType as any, 'credentials');
       const savedName = channelStateRepo.getState(chType as any, 'name');

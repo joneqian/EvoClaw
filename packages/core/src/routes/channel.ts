@@ -10,7 +10,7 @@ import type { BindingRouter } from '../routing/binding-router.js';
 import type { ChannelStateRepo } from '../channel/channel-state-repo.js';
 import type { FeishuAdapter } from '../channel/adapters/feishu.js';
 import type { WecomAdapter } from '../channel/adapters/wecom.js';
-import { getQrCode, pollQrStatus } from '../channel/adapters/weixin-api.js';
+import { Feature } from '../infrastructure/feature.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('channel-webhook');
@@ -160,36 +160,40 @@ export function createChannelRoutes(
   });
 
   // ---------------------------------------------------------------------------
-  // 微信 QR 码登录代理 (避免前端 CORS)
+  // 微信 QR 码登录代理 (避免前端 CORS) — Feature.WEIXIN 门控
   // ---------------------------------------------------------------------------
 
-  /** GET /weixin/qrcode — 获取微信登录二维码 */
-  app.get('/weixin/qrcode', async (c) => {
-    try {
-      const data = await getQrCode();
-      return c.json(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error('获取微信二维码失败', err);
-      return c.json({ error: message }, 500);
-    }
-  });
+  if (Feature.WEIXIN) {
+    /** GET /weixin/qrcode — 获取微信登录二维码 */
+    app.get('/weixin/qrcode', async (c) => {
+      try {
+        const { getQrCode } = await import('../channel/adapters/weixin-api.js');
+        const data = await getQrCode();
+        return c.json(data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error('获取微信二维码失败', err);
+        return c.json({ error: message }, 500);
+      }
+    });
 
-  /** GET /weixin/qrcode-status — 轮询二维码扫描状态 */
-  app.get('/weixin/qrcode-status', async (c) => {
-    const qrcode = c.req.query('qrcode');
-    if (!qrcode) {
-      return c.json({ error: '缺少 qrcode 参数' }, 400);
-    }
-    try {
-      const data = await pollQrStatus(undefined, qrcode);
-      return c.json(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error('轮询微信 QR 状态失败', err);
-      return c.json({ error: message }, 500);
-    }
-  });
+    /** GET /weixin/qrcode-status — 轮询二维码扫描状态 */
+    app.get('/weixin/qrcode-status', async (c) => {
+      const qrcode = c.req.query('qrcode');
+      if (!qrcode) {
+        return c.json({ error: '缺少 qrcode 参数' }, 400);
+      }
+      try {
+        const { pollQrStatus } = await import('../channel/adapters/weixin-api.js');
+        const data = await pollQrStatus(undefined, qrcode);
+        return c.json(data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error('轮询微信 QR 状态失败', err);
+        return c.json({ error: message }, 500);
+      }
+    });
+  }
 
   return app;
 }

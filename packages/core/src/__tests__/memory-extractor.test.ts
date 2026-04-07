@@ -16,6 +16,7 @@ const MIGRATION_FILES = [
   '002_memory_units.sql',
   '003_knowledge_graph.sql',
   '004_conversation_log.sql',
+  '021_conversation_log_hierarchy.sql',
   '005_capability_graph.sql',
   '006_tool_audit_log.sql',
 ];

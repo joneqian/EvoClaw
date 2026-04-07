@@ -1,6 +1,15 @@
 import crypto from 'node:crypto';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 
+/** 日志条目类型 — 区分普通消息和系统事件 */
+export type LogEntryType =
+  | 'message'              // 普通对话消息
+  | 'compaction_boundary'  // Autocompact/Snip/Microcompact 压缩边界
+  | 'memory_saved'         // 记忆保存事件
+  | 'agent_spawned'        // 子代理启动
+  | 'agent_completed'      // 子代理完成
+  | 'error_snapshot';      // 错误快照
+
 /**
  * 对话日志条目 — 记录每一轮会话消息，用于后续记忆提取
  */
@@ -14,6 +23,12 @@ export interface ConversationLogEntry {
   toolInput?: string;
   toolOutput?: string;
   tokenCount: number;
+  /** 父消息 ID — 子代理结果关联到父上下文（多 Agent 消息追踪） */
+  parentMessageId?: string;
+  /** 是否子代理侧链消息（区分主链和子代理消息流） */
+  isSidechain?: boolean;
+  /** 日志条目类型（默认 'message'） */
+  entryType?: LogEntryType;
 }
 
 /** DB 行类型（snake_case） */
@@ -29,6 +44,9 @@ interface ConversationLogRow {
   token_count: number;
   compaction_status: string;
   compaction_ref: string | null;
+  parent_message_id: string | null;
+  is_sidechain: number;  // SQLite boolean: 0/1
+  entry_type: string;
   created_at: string;
 }
 
@@ -44,6 +62,9 @@ function rowToEntry(row: ConversationLogRow): ConversationLogEntry {
     toolInput: row.tool_input ?? undefined,
     toolOutput: row.tool_output ?? undefined,
     tokenCount: row.token_count,
+    parentMessageId: row.parent_message_id ?? undefined,
+    isSidechain: row.is_sidechain === 1 ? true : undefined,
+    entryType: (row.entry_type ?? 'message') as LogEntryType,
   };
 }
 
@@ -63,8 +84,8 @@ export class ConversationLogger {
 
     this.db.run(
       `INSERT INTO conversation_log
-        (id, agent_id, session_key, role, content, tool_name, tool_input, tool_output, token_count, compaction_status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'raw', ?)`,
+        (id, agent_id, session_key, role, content, tool_name, tool_input, tool_output, token_count, compaction_status, parent_message_id, is_sidechain, entry_type, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'raw', ?, ?, ?, ?)`,
       entry.id,
       entry.agentId,
       entry.sessionKey,
@@ -74,6 +95,9 @@ export class ConversationLogger {
       entry.toolInput ?? null,
       entry.toolOutput ?? null,
       entry.tokenCount,
+      entry.parentMessageId ?? null,
+      entry.isSidechain ? 1 : 0,
+      entry.entryType ?? 'message',
       now,
     );
   }

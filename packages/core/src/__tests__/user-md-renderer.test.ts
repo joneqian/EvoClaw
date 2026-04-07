@@ -20,6 +20,10 @@ const MIGRATION_004 = fs.readFileSync(
   path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '004_conversation_log.sql'),
   'utf-8',
 );
+const MIGRATION_021 = fs.readFileSync(
+  path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '021_conversation_log_hierarchy.sql'),
+  'utf-8',
+);
 
 /** 测试用 Agent ID */
 const TEST_AGENT_ID = 'test-agent-renderer-001';
@@ -82,6 +86,7 @@ describe('UserMdRenderer', () => {
     store.exec(MIGRATION_001);
     store.exec(MIGRATION_002);
     store.exec(MIGRATION_004);
+    store.exec(MIGRATION_021);
     // 插入测试 Agent
     store.run(
       `INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`,

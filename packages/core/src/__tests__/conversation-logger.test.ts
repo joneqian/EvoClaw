@@ -15,6 +15,10 @@ const MIGRATION_004 = fs.readFileSync(
   path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '004_conversation_log.sql'),
   'utf-8'
 );
+const MIGRATION_021 = fs.readFileSync(
+  path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '021_conversation_log_hierarchy.sql'),
+  'utf-8'
+);
 
 /** 创建测试用 Agent 记录 */
 function insertTestAgent(store: SqliteStore, agentId: string): void {
@@ -52,6 +56,7 @@ describe('ConversationLogger', () => {
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_001);
     store.exec(MIGRATION_004);
+    store.exec(MIGRATION_021);
     insertTestAgent(store, agentId);
 
     logger = new ConversationLogger(store);

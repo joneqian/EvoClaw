@@ -169,6 +169,11 @@ async function streamOneRound(
         break;
       }
 
+      case 'redacted_thinking':
+        // 已编辑思考块 — 原样存入 content blocks，后续轮次回传给 API
+        blocks.push({ type: 'redacted_thinking' as const, data: event.data });
+        break;
+
       case 'tool_use_start':
         pendingToolUses.set(event.id, { id: event.id, name: event.name });
         config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: {}, timestamp: Date.now() });

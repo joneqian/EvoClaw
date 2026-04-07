@@ -43,6 +43,18 @@ export interface ThinkingBlock {
   signature?: string;
 }
 
+/**
+ * 已编辑思考块 — Anthropic API 在多轮对话中返回，必须原样回传
+ *
+ * 参考 Claude Code: RedactedThinkingBlock { type: 'redacted_thinking', data: string }
+ * API 合约要求: 后续轮次的 messages 中必须包含此块，否则报错
+ */
+export interface RedactedThinkingBlock {
+  readonly type: 'redacted_thinking';
+  /** 不透明数据（不可解码，仅需原样回传） */
+  readonly data: string;
+}
+
 export interface ImageBlock {
   readonly type: 'image';
   readonly source: {
@@ -57,6 +69,7 @@ export type ContentBlock =
   | ToolUseBlock
   | ToolResultBlock
   | ThinkingBlock
+  | RedactedThinkingBlock
   | ImageBlock;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -88,6 +101,10 @@ export interface KernelMessage {
   isMeta?: boolean;
   /** 压缩摘要消息（由 autocompact 生成） */
   isCompactSummary?: boolean;
+  /** API 请求 ID — 生产调试用 (Anthropic: request-id, OpenAI: x-request-id) */
+  requestId?: string;
+  /** 虚拟消息 — 系统注入的非真实用户输入，前端可区分展示 */
+  isVirtual?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -143,6 +160,39 @@ export interface ToolUseSummaryMessage {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Progress Message — 工具执行进度（长时间运行工具的实时状态）
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ProgressMessage {
+  readonly type: 'progress';
+  readonly id: string;
+  /** 关联的工具调用 ID */
+  readonly parentToolUseId: string;
+  /** 进度数据（工具特定） */
+  data: { message: string; percentage?: number; [key: string]: unknown };
+  timestamp: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Attachment Message — 附件（Hook 结果、任务输出、记忆提取等）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 附件来源 */
+export type AttachmentSource = 'hook' | 'task' | 'memory' | 'channel';
+
+export interface AttachmentMessage {
+  readonly type: 'attachment';
+  readonly id: string;
+  /** 附件来源 */
+  source: AttachmentSource;
+  /** 附件内容 */
+  content: string;
+  /** 结构化数据（可选） */
+  data?: Record<string, unknown>;
+  timestamp: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Message Union — 所有消息类型的联合
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -150,7 +200,9 @@ export type Message =
   | KernelMessage
   | SystemMessage
   | TombstoneMessage
-  | ToolUseSummaryMessage;
+  | ToolUseSummaryMessage
+  | ProgressMessage
+  | AttachmentMessage;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Tool Interface — 统一签名，参考 Claude Code Tool 接口
@@ -250,6 +302,7 @@ export interface StreamingMetrics {
 export type StreamEvent =
   | { readonly type: 'text_delta'; readonly delta: string }
   | { readonly type: 'thinking_delta'; readonly delta: string }
+  | { readonly type: 'redacted_thinking'; readonly data: string }
   | { readonly type: 'tool_use_start'; readonly id: string; readonly name: string }
   | { readonly type: 'tool_use_delta'; readonly id: string; readonly delta: string }
   | { readonly type: 'tool_use_end'; readonly id: string; readonly name: string; readonly input: Record<string, unknown> }

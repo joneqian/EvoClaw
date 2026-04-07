@@ -11,6 +11,7 @@ import { AgentManager } from '../agent/agent-manager.js';
 const migrationsDir = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
 const MIGRATION_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'), 'utf-8');
 const MIGRATION_CONVLOG_SQL = fs.readFileSync(path.join(migrationsDir, '004_conversation_log.sql'), 'utf-8');
+const MIGRATION_021_SQL = fs.readFileSync(path.join(migrationsDir, '021_conversation_log_hierarchy.sql'), 'utf-8');
 const MIGRATION_WORKSPACE_STATE_SQL = fs.readFileSync(path.join(migrationsDir, '014_workspace_state.sql'), 'utf-8');
 
 const TEST_TOKEN = 'test-token-for-routes';
@@ -34,6 +35,7 @@ describe('Agent CRUD 路由', () => {
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_SQL);
     store.exec(MIGRATION_CONVLOG_SQL);
+    store.exec(MIGRATION_021_SQL);
     store.exec(MIGRATION_WORKSPACE_STATE_SQL);
     try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }
     manager = new AgentManager(store, agentsDir);
@@ -168,6 +170,7 @@ describe('Chat 路由', () => {
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_SQL);
     store.exec(MIGRATION_CONVLOG_SQL);
+    store.exec(MIGRATION_021_SQL);
     store.exec(MIGRATION_WORKSPACE_STATE_SQL);
     try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }
     manager = new AgentManager(store, agentsDir);

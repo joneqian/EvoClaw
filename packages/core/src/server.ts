@@ -249,9 +249,23 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     });
   });
 
-  // Bearer Token 认证 — 跳过 /health 和 /events（SSE 用 query param 验证）
+  // Liveness 探针 — 零依赖，Docker/K8s 用
+  app.get('/healthz', (c) => c.json({ status: 'alive', uptime: process.uptime() }));
+
+  // Readiness 探针 — 检查子系统就绪状态
+  app.get('/readyz', (c) => {
+    const checks: Record<string, boolean> = {
+      db: !!store,
+      config: configManager?.validate()?.valid !== false,
+      agents: !!agentManager,
+    };
+    const ready = Object.values(checks).every(Boolean);
+    return c.json({ status: ready ? 'ready' : 'not-ready', checks }, ready ? 200 : 503);
+  });
+
+  // Bearer Token 认证 — 跳过健康探针和 /events（SSE 用 query param 验证）
   app.use('/*', async (c, next) => {
-    if (c.req.path === '/health') return next();
+    if (c.req.path === '/health' || c.req.path === '/healthz' || c.req.path === '/readyz') return next();
     if (c.req.path === '/events') {
       // SSE 端点：EventSource 不支持 Authorization header，用 query param 验证
       const queryToken = c.req.query('token');
@@ -579,74 +593,91 @@ async function main() {
   log.info(`日志文件: ${LOG_PATH}`);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Phase 1（并行）: Config 加载 + DB 初始化 + Skills 预装
-  // ConfigManager 和 SqliteStore 互不依赖，可以并行执行
+  // Phase 1（真正并行）: Config 加载 + DB 初始化 + Skills 预装
+  // 三路 Promise.all — Config/DB/Skills 互不依赖，同时执行
   // ═══════════════════════════════════════════════════════════════════════
 
-  const configManager = new ConfigManager();
-  syncProvidersFromConfig(configManager);
-  syncEnvVarsFromConfig(configManager);
-  profiler.checkpoint('config_loaded');
-
-  // DB 初始化 + Skills 预装并行执行
-  const [db] = await Promise.all([
-    // Group A: 数据库初始化 + 迁移
+  const [configManager, db] = await Promise.all([
+    // Group A: Config 加载 + Provider 注册（同步，但包装为 async 参与并行）
+    (async () => {
+      const cm = new ConfigManager();
+      syncProvidersFromConfig(cm);
+      syncEnvVarsFromConfig(cm);
+      profiler.checkpoint('config_loaded');
+      return cm;
+    })(),
+    // Group B: 数据库初始化 + 迁移（耗时最长 ~50-100ms）
     (async () => {
       const store = new SqliteStore();
       const migrationRunner = new MigrationRunner(store);
       await migrationRunner.run();
+      profiler.checkpoint('db_ready');
       return store;
     })(),
-    // Group B: Skills 预装（独立，无依赖）
-    Promise.resolve(seedBundledSkills()),
+    // Group C: Skills 预装（独立 I/O）
+    new Promise<void>((resolve) => {
+      queueMicrotask(() => { seedBundledSkills(); resolve(); });
+    }),
   ]);
 
-  profiler.checkpoint('db_ready');
-  log.info('数据库迁移完成');
+  log.info('Phase 1 完成: Config + DB + Skills 并行初始化');
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Phase 2（并行）: Memory 系统 + Agent 系统 + Channel 系统
-  // 这三个子系统都依赖 Phase 1 的 DB + Config，但彼此独立
+  // Phase 2（真正并行）: Memory 系统 + Agent 系统 + Channel 系统
+  // 三路 Promise.all — 都依赖 Phase 1 的 DB + Config，但彼此独立
   // ═══════════════════════════════════════════════════════════════════════
 
-  // --- Memory 子系统（同步创建，无需 await）---
-  const vectorStore = initVectorStore(db, configManager);
-  const memoryStore = new MemoryStore(db, vectorStore);
-  const knowledgeGraph = new KnowledgeGraphStore(db);
-  const ftsStore = new FtsStore(db);
   const llmCallFn = async (system: string, user: string) => callLLM(configManager, { systemPrompt: system, userMessage: user });
-  const llmReranker = new LlmReranker(llmCallFn);
-  const hybridSearcher = new HybridSearcher(ftsStore, vectorStore, knowledgeGraph, memoryStore, llmReranker);
-  const memoryExtractor = new MemoryExtractor(
-    db,
-    llmCallFn,
-    vectorStore,
-    ftsStore,
-  );
-  const sessionSummarizer = new SessionSummarizer(db, llmCallFn);
-  const userMdRenderer = new UserMdRenderer(db);
-  const skillDiscoverer = new SkillDiscoverer();
-  log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
 
-  // --- Agent + Scheduler 子系统 ---
-  const agentManager = new AgentManager(db);
-  const laneQueue = new LaneQueue();
-  const cronRunner = new CronRunner(db, laneQueue);
-  cronRunner.start();
-  log.info('CronRunner 已启动');
+  const [memorySys, agentSys, channelSys] = await Promise.all([
+    // Group A: Memory 子系统
+    (async () => {
+      const vectorStore = initVectorStore(db, configManager);
+      const memoryStore = new MemoryStore(db, vectorStore);
+      const knowledgeGraph = new KnowledgeGraphStore(db);
+      const ftsStore = new FtsStore(db);
+      const llmReranker = new LlmReranker(llmCallFn);
+      const hybridSearcher = new HybridSearcher(ftsStore, vectorStore, knowledgeGraph, memoryStore, llmReranker);
+      const memoryExtractor = new MemoryExtractor(db, llmCallFn, vectorStore, ftsStore);
+      const sessionSummarizer = new SessionSummarizer(db, llmCallFn);
+      const userMdRenderer = new UserMdRenderer(db);
+      const skillDiscoverer = new SkillDiscoverer();
+      profiler.checkpoint('memory_ready');
+      log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
+      return { vectorStore, memoryStore, ftsStore, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer };
+    })(),
 
-  // --- Channel 子系统（注册适配器，但不恢复连接 — 延迟到 Phase 3）---
-  const channelManager = new ChannelManager();
-  const desktopAdapter = new DesktopAdapter();
-  channelManager.registerAdapter(desktopAdapter);
-  desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
-  const channelStateRepo = new ChannelStateRepo(db);
-  if (Feature.WEIXIN) {
-    const { WeixinAdapter } = await import('./channel/adapters/weixin.js');
-    const weixinAdapter = new WeixinAdapter(channelStateRepo);
-    channelManager.registerAdapter(weixinAdapter);
-  }
-  const bindingRouter = new BindingRouter(db);
+    // Group B: Agent + Scheduler（CronRunner.start() 延迟到 Phase 3）
+    (async () => {
+      const agentManager = new AgentManager(db);
+      const laneQueue = new LaneQueue();
+      const cronRunner = new CronRunner(db, laneQueue);
+      profiler.checkpoint('agent_ready');
+      return { agentManager, laneQueue, cronRunner };
+    })(),
+
+    // Group C: Channel 子系统（含 WeixinAdapter 动态导入，与其他构造并行）
+    (async () => {
+      const channelManager = new ChannelManager();
+      const desktopAdapter = new DesktopAdapter();
+      channelManager.registerAdapter(desktopAdapter);
+      desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
+      const channelStateRepo = new ChannelStateRepo(db);
+      if (Feature.WEIXIN) {
+        const { WeixinAdapter } = await import('./channel/adapters/weixin.js');
+        const weixinAdapter = new WeixinAdapter(channelStateRepo);
+        channelManager.registerAdapter(weixinAdapter);
+      }
+      const bindingRouter = new BindingRouter(db);
+      profiler.checkpoint('channel_ready');
+      return { channelManager, channelStateRepo, bindingRouter };
+    })(),
+  ]);
+
+  // 解构并行结果
+  const { vectorStore, ftsStore, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
+  const { agentManager, laneQueue, cronRunner } = agentSys;
+  const { channelManager, channelStateRepo, bindingRouter } = channelSys;
 
   profiler.checkpoint('systems_ready');
 
@@ -701,9 +732,8 @@ async function main() {
     }
   });
 
-  // 内存监控
+  // 内存监控（start() 延迟到 Phase 3，构造器提前创建供 doctor 路由使用）
   const memoryMonitor = new MemoryMonitor();
-  memoryMonitor.start();
 
   // ═══════════════════════════════════════════════════════════════════════
   // 创建 HTTP 应用 + 启动服务器
@@ -784,8 +814,24 @@ async function main() {
   // 这些操作不影响服务接收请求，异步执行
   // ═══════════════════════════════════════════════════════════════════════
 
-  // 3a. API 预连接 — 提前建立 TCP+TLS，减少首次 LLM 调用延迟
+  // 3a. 延迟启动：调度器 + 内存监控（从 Phase 2 移出，不阻塞 HTTP 就绪）
+  cronRunner.start();
+  memoryMonitor.start();
+  log.info('CronRunner + MemoryMonitor 已启动（Phase 3 延迟）');
+
+  // 3a.1. API 预连接 — 提前建立 TCP+TLS，减少首次 LLM 调用延迟
   preconnectProviders(configManager);
+
+  // 3a.2. 活跃 Agent 工作区文件预读 — 减少首次对话的文件 I/O
+  (async () => {
+    try {
+      const agents = agentManager.listAgents('active');
+      for (const agent of agents) {
+        agentManager.readWorkspaceFile(agent.id, 'SOUL.md');
+        agentManager.readWorkspaceFile(agent.id, 'IDENTITY.md');
+      }
+    } catch { /* 预读失败不影响运行 */ }
+  })();
 
   // 3a.5. MCP 服务器发现 + 安全过滤 + 重连机制（异步，不阻塞）
   if (Feature.MCP) {
@@ -809,17 +855,18 @@ async function main() {
           mcpConfigs = applySecurityPolicy(mcpConfigs, mcpPolicy);
         }
 
-        // 连接已启用的服务器（内置重连）
-        for (const config of mcpConfigs) {
-          if (config.enabled === false) continue;
-          await mcpManager.addServer(config);
-        }
+        // 并行连接已启用的服务器（串行→并行，多 MCP 场景大幅提速）
+        const enabledConfigs = mcpConfigs.filter((c: { enabled?: boolean }) => c.enabled !== false);
+        await Promise.allSettled(
+          enabledConfigs.map((config: any) => mcpManager.addServer(config)),
+        );
 
         const states = mcpManager.getStates();
         const running = states.filter((s: { status: string }) => s.status === 'running').length;
-        if (running > 0 || mcpConfigs.length > 0) {
-          log.info(`MCP: ${running}/${mcpConfigs.filter((c: { enabled?: boolean }) => c.enabled !== false).length} 服务器已连接, ${mcpManager.getAllTools().length} 个工具`);
+        if (running > 0 || enabledConfigs.length > 0) {
+          log.info(`MCP: ${running}/${enabledConfigs.length} 服务器已连接, ${mcpManager.getAllTools().length} 个工具`);
         }
+        profiler.checkpoint('mcp_ready');
       } catch (err) {
         log.warn(`MCP 初始化失败: ${err instanceof Error ? err.message : err}`);
       }

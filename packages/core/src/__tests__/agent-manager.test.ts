@@ -11,6 +11,7 @@ import { AGENT_WORKSPACE_FILES } from '@evoclaw/shared';
 const migrationsDir = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
 const MIGRATION_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'), 'utf-8');
 const MIGRATION_CONVLOG_SQL = fs.readFileSync(path.join(migrationsDir, '004_conversation_log.sql'), 'utf-8');
+const MIGRATION_021_SQL = fs.readFileSync(path.join(migrationsDir, '021_conversation_log_hierarchy.sql'), 'utf-8');
 const MIGRATION_WORKSPACE_STATE_SQL = fs.readFileSync(path.join(migrationsDir, '014_workspace_state.sql'), 'utf-8');
 
 describe('AgentManager', () => {
@@ -28,6 +29,7 @@ describe('AgentManager', () => {
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_SQL);
     store.exec(MIGRATION_CONVLOG_SQL);
+    store.exec(MIGRATION_021_SQL);
     store.exec(MIGRATION_WORKSPACE_STATE_SQL);
     // 011: agents 表新增 last_chat_at 字段
     try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }

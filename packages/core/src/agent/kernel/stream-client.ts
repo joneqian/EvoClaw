@@ -295,6 +295,8 @@ function serializeContentForAnthropic(
         return { type: 'tool_result', tool_use_id: block.tool_use_id, content: block.content, is_error: block.is_error };
       case 'thinking':
         return { type: 'thinking', thinking: block.thinking, ...((block as any).signature ? { signature: (block as any).signature } : {}) };
+      case 'redacted_thinking':
+        return { type: 'redacted_thinking', data: block.data };
       case 'image':
         return { type: 'image', source: block.source };
       default:
@@ -375,7 +377,7 @@ async function* processAnthropicStream(
   watchdog: IdleWatchdog,
 ): AsyncGenerator<StreamEvent> {
   // 累积中的 content blocks (按 index)
-  const contentBlocks = new Map<number, { type: string; id?: string; name?: string; input: string; text: string; thinking: string }>();
+  const contentBlocks = new Map<number, { type: string; id?: string; name?: string; input: string; text: string; thinking: string; redactedData?: string }>();
 
   watchdog.reset();
 
@@ -418,6 +420,7 @@ async function* processAnthropicStream(
           input: '',
           text: '',
           thinking: '',
+          redactedData: blockType === 'redacted_thinking' ? (block?.data as string ?? '') : undefined,
         });
 
         if (blockType === 'tool_use') {
@@ -477,6 +480,9 @@ async function* processAnthropicStream(
             name: block.name ?? '',
             input,
           };
+        } else if (block.type === 'redacted_thinking' && block.redactedData) {
+          // 已编辑思考块 — 原样传递，后续轮次需回传
+          yield { type: 'redacted_thinking', data: block.redactedData };
         }
 
         contentBlocks.delete(index);
@@ -852,6 +858,9 @@ async function* nonStreamingFallback(config: StreamConfig): AsyncGenerator<Strea
             break;
           case 'thinking':
             yield { type: 'thinking_delta', delta: block.thinking as string };
+            break;
+          case 'redacted_thinking':
+            yield { type: 'redacted_thinking', data: block.data as string };
             break;
           case 'tool_use':
             yield { type: 'tool_use_start', id: block.id as string, name: block.name as string };

@@ -14,6 +14,7 @@ const MIGRATION_002 = fs.readFileSync(path.join(migrationsDir, '002_memory_units
 const MIGRATION_003 = fs.readFileSync(path.join(migrationsDir, '003_knowledge_graph.sql'), 'utf-8');
 const MIGRATION_004 = fs.readFileSync(path.join(migrationsDir, '004_conversation_log.sql'), 'utf-8');
 const MIGRATION_005 = fs.readFileSync(path.join(migrationsDir, '005_capability_graph.sql'), 'utf-8');
+const MIGRATION_021 = fs.readFileSync(path.join(migrationsDir, '021_conversation_log_hierarchy.sql'), 'utf-8');
 const MIGRATION_006 = fs.readFileSync(path.join(migrationsDir, '006_tool_audit_log.sql'), 'utf-8');
 
 /** 测试用 Agent ID */
@@ -51,6 +52,7 @@ describe('MemoryExtension', () => {
     store.exec(MIGRATION_002);
     store.exec(MIGRATION_003);
     store.exec(MIGRATION_004);
+    store.exec(MIGRATION_021);
     store.exec(MIGRATION_005);
     store.exec(MIGRATION_006);
 

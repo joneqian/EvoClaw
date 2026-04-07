@@ -13,6 +13,10 @@ import type {
   ToolUseBlock,
   ToolResultBlock,
   ToolUseSummaryMessage,
+  SystemMessage,
+  SystemMessageSubtype,
+  TombstoneMessage,
+  MessageOrigin,
 } from './types.js';
 import type { ToolCallRecord } from '../types.js';
 
@@ -29,6 +33,8 @@ export interface MessageLookups {
   resolvedToolUseIds: Set<string>;
   /** 执行出错的 tool_use_id */
   erroredToolUseIds: Set<string>;
+  /** tool_use_id → 同一条 assistant 消息中的所有 tool_use_id（并行工具分组，UI 展示用） */
+  siblingToolUseIds: Map<string, Set<string>>;
 }
 
 /**
@@ -42,11 +48,16 @@ export function buildMessageLookups(messages: readonly KernelMessage[]): Message
   const toolUseById = new Map<string, ToolUseBlock>();
   const resolvedToolUseIds = new Set<string>();
   const erroredToolUseIds = new Set<string>();
+  const siblingToolUseIds = new Map<string, Set<string>>();
 
   for (const msg of messages) {
+    // 收集同一条消息中的所有 tool_use_id（并行工具分组）
+    const msgToolUseIds: string[] = [];
+
     for (const block of msg.content) {
       if (block.type === 'tool_use') {
         toolUseById.set(block.id, block);
+        msgToolUseIds.push(block.id);
       } else if (block.type === 'tool_result') {
         toolResultByUseId.set(block.tool_use_id, block);
         resolvedToolUseIds.add(block.tool_use_id);
@@ -55,9 +66,17 @@ export function buildMessageLookups(messages: readonly KernelMessage[]): Message
         }
       }
     }
+
+    // 构建 sibling 关系：每个 tool_use_id 指向同消息中的所有兄弟
+    if (msgToolUseIds.length > 1) {
+      const siblingSet = new Set(msgToolUseIds);
+      for (const id of msgToolUseIds) {
+        siblingToolUseIds.set(id, siblingSet);
+      }
+    }
   }
 
-  return { toolResultByUseId, toolUseById, resolvedToolUseIds, erroredToolUseIds };
+  return { toolResultByUseId, toolUseById, resolvedToolUseIds, erroredToolUseIds, siblingToolUseIds };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -205,7 +224,10 @@ export function filterEmptyMessages(messages: KernelMessage[]): KernelMessage[] 
   return messages.filter(isNotEmptyMessage);
 }
 
-/** 移除 ThinkingBlock（发送给 API 前，某些模型不支持） */
+/**
+ * 移除 ThinkingBlock（发送给 API 前，某些模型不支持）
+ * 注意: 保留 RedactedThinkingBlock — Anthropic API 要求后续轮次原样回传
+ */
 export function stripThinkingBlocks(message: KernelMessage): KernelMessage {
   const filtered = message.content.filter(b => b.type !== 'thinking');
   return { ...message, content: filtered };
@@ -227,4 +249,124 @@ export function createToolUseSummaryMessage(
     precedingToolUseIds: toolUseIds,
     timestamp: new Date().toISOString(),
   };
+}
+
+/** 创建用户消息 */
+export function createUserMessage(
+  content: ContentBlock[] | string,
+  options?: { origin?: MessageOrigin; isMeta?: boolean; isVirtual?: boolean; isCompactSummary?: boolean },
+): KernelMessage {
+  const blocks: ContentBlock[] = typeof content === 'string'
+    ? [{ type: 'text' as const, text: content }]
+    : content;
+  return {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: blocks,
+    ...options,
+  };
+}
+
+/** 创建助手消息 */
+export function createAssistantMessage(
+  content: ContentBlock[] | string,
+  options?: { requestId?: string; isVirtual?: boolean },
+): KernelMessage {
+  const blocks: ContentBlock[] = typeof content === 'string'
+    ? [{ type: 'text' as const, text: content }]
+    : content;
+  return {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content: blocks,
+    ...options,
+  };
+}
+
+/** 创建系统消息 */
+export function createSystemMessage(
+  subtype: SystemMessageSubtype,
+  content: string,
+  level: 'info' | 'warning' | 'error' = 'info',
+  detail?: Record<string, unknown>,
+): SystemMessage {
+  return {
+    type: 'system',
+    subtype,
+    id: crypto.randomUUID(),
+    content,
+    level,
+    timestamp: new Date().toISOString(),
+    ...(detail ? { detail } : {}),
+  };
+}
+
+/** 创建墓碑消息（流式回退场景，标记移除的原始消息） */
+export function createTombstone(original: KernelMessage, reason: string): TombstoneMessage {
+  return {
+    type: 'tombstone',
+    id: crypto.randomUUID(),
+    original,
+    reason,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 消息规范化 — 拆分多块消息为 UI 渲染单元
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 规范化消息 — 将多 ContentBlock 的消息拆分为单块 UI 单元
+ *
+ * 参考 Claude Code normalizeMessages():
+ * - 原始: AssistantMessage { content: [ThinkingBlock, TextBlock, ToolUseBlock, TextBlock] }
+ * - 规范化: 4 条 NormalizedMessage，每条只含一个主块
+ * - ToolResultBlock 附着到对应的 ToolUseBlock 上（通过 lookups O(1) 查找）
+ *
+ * 用途: 前端逐块独立渲染（thinking 折叠、工具调用权限对话框、消息级操作）
+ */
+export interface NormalizedMessage {
+  /** 原始消息 ID */
+  readonly parentId: string;
+  /** 在原始消息 content 中的索引 */
+  readonly index: number;
+  /** 原始消息角色 */
+  readonly role: 'user' | 'assistant';
+  /** 主内容块 */
+  readonly block: ContentBlock;
+  /** 工具执行结果（仅 ToolUseBlock 有，附着的 ToolResultBlock） */
+  readonly toolResult?: ToolResultBlock;
+}
+
+export function normalizeMessages(
+  messages: readonly KernelMessage[],
+  lookups?: MessageLookups,
+): NormalizedMessage[] {
+  const effectiveLookups = lookups ?? buildMessageLookups(messages);
+  const normalized: NormalizedMessage[] = [];
+
+  for (const msg of messages) {
+    let index = 0;
+    for (const block of msg.content) {
+      // 跳过 ToolResultBlock — 它们会被附着到对应的 ToolUseBlock 上
+      if (block.type === 'tool_result') {
+        index++;
+        continue;
+      }
+
+      const entry: NormalizedMessage = {
+        parentId: msg.id,
+        index,
+        role: msg.role,
+        block,
+        toolResult: block.type === 'tool_use'
+          ? effectiveLookups.toolResultByUseId.get(block.id)
+          : undefined,
+      };
+      normalized.push(entry);
+      index++;
+    }
+  }
+
+  return normalized;
 }

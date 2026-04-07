@@ -106,23 +106,21 @@ function resolveThinkingConfig(
 ): ThinkingConfig {
   if (thinkLevel === 'off') return { type: 'disabled' };
 
-  // 检测是否支持 adaptive（Anthropic 4.6+ 模型）
+  // 检测是否支持 adaptive（仅 Anthropic 4.6+ 模型支持 adaptive thinking）
+  // 4.5 及以下仅支持 enabled（固定预算）模式
   const modelDef = lookupModelDefinition(provider, modelId);
   const isAdaptiveCapable = provider === 'anthropic' && (
     modelId.includes('opus-4-6') ||
-    modelId.includes('sonnet-4-6') ||
-    modelId.includes('opus-4-5') ||
-    modelId.includes('sonnet-4-5')
+    modelId.includes('sonnet-4-6')
   );
 
   if (isAdaptiveCapable) {
     return { type: 'adaptive' };
   }
 
-  // 固定预算模式
-  const budget = modelDef?.maxTokens
-    ? Math.max(modelDef.maxTokens - 1, 1024)
-    : Math.max(maxTokens - 1, 1024);
+  // 固定预算模式 — 使用模型最大输出能力上限（而非默认 maxTokens）
+  const outputLimit = modelDef?.maxOutputLimit ?? modelDef?.maxTokens ?? maxTokens;
+  const budget = Math.max(outputLimit - 1, 1024);
   return { type: 'enabled', budgetTokens: budget };
 }
 

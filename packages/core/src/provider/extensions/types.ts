@@ -17,8 +17,10 @@ export interface ModelDefinition {
   name: string;
   /** 最大上下文窗口 (tokens) */
   contextWindow: number;
-  /** 最大输出 tokens */
+  /** 默认输出 tokens（API 请求中的 max_tokens） */
   maxTokens: number;
+  /** 模型最大输出能力上限（用于 thinking budget 计算，省略时等于 maxTokens） */
+  maxOutputLimit?: number;
   /** 支持的输入模态 */
   input: ModelInputModality[];
   /** 是否支持 thinking/reasoning（默认 false） */

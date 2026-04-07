@@ -46,7 +46,7 @@ export { StreamingToolExecutor } from './streaming-tool-executor.js';
 export { queryLoop, queryLoopGenerator } from './query-loop.js';
 
 // Context Compaction
-export { maybeCompress, estimateTokens, snipOldMessages, microcompactToolResults, resetCompactorState } from './context-compactor.js';
+export { maybeCompress, estimateTokens, snipOldMessages, microcompactToolResults, stripOldThinkingBlocks, resetCompactorState } from './context-compactor.js';
 
 // Error Recovery
 export { classifyApiError, isRecoverableInLoop, isAbortLike } from './error-recovery.js';

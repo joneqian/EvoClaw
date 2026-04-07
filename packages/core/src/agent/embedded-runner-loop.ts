@@ -12,7 +12,7 @@
  */
 
 import type { AgentRunConfig, ProviderConfig, MessageSnapshot, RuntimeEvent } from './types.js';
-import { type ThinkLevel, degradeThinkLevel } from '@evoclaw/shared';
+import { type ThinkLevel, degradeThinkLevel, hasUltrathinkKeyword } from '@evoclaw/shared';
 import { runSingleAttempt } from './embedded-runner-attempt.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -163,6 +163,12 @@ export async function runEmbeddedLoop(
     const modelDef = lookupModelDefinition(config.provider, config.modelId);
     return modelDef?.reasoning ? 'high' : 'off';
   })();
+  // Ultrathink 关键词检测：用户消息中包含 "ultrathink" 时强制深度思考
+  if (hasUltrathinkKeyword(message)) {
+    thinkLevel = 'high';
+    log.info('检测到 ultrathink 关键词，thinkLevel 提升为 high');
+  }
+
   let messages: MessageSnapshot[] | undefined;
   let overloadAttempts = 0;
   let overflowCompactionAttempts = 0;

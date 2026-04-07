@@ -162,6 +162,54 @@ export function snipOldMessages(messages: KernelMessage[]): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Layer 1.5: Strip Old Thinking Blocks (零成本)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 清除旧 assistant 消息中的 thinking/redacted_thinking 块
+ *
+ * Anthropic API 约束: thinking 块只需在最近的 tool_use 链路中保留。
+ * 压缩时清除旧 turn 的 thinking 块可回收大量 token。
+ *
+ * 策略: 仅保留最后一条 assistant 消息的 thinking 块，其余全部移除。
+ *
+ * @returns 清除的 thinking 块数量
+ */
+export function stripOldThinkingBlocks(messages: KernelMessage[]): number {
+  let stripped = 0;
+  // 找到最后一条 assistant 消息的索引
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === 'assistant') {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!;
+    if (msg.role !== 'assistant' || i === lastAssistantIdx) continue;
+
+    const filtered = msg.content.filter(b => {
+      if (b.type === 'thinking' || b.type === 'redacted_thinking') {
+        stripped++;
+        return false;
+      }
+      return true;
+    });
+
+    if (filtered.length !== msg.content.length) {
+      messages[i] = { ...msg, content: filtered };
+    }
+  }
+
+  if (stripped > 0) {
+    log.info(`Strip thinking: 清除 ${stripped} 个旧 thinking 块`);
+  }
+  return stripped;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Layer 2: Microcompact (零成本)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -572,6 +620,12 @@ export async function maybeCompress(
     return true;
   }
 
+  // Layer 1.5: Strip old thinking blocks (零成本)
+  const thinkingStripped = stripOldThinkingBlocks(messages);
+  if (thinkingStripped > 0 && estimateTokens(messages) < threshold) {
+    return true;
+  }
+
   // Layer 2: Microcompact (零成本)
   const truncated = microcompactToolResults(messages);
   if (truncated > 0) {
@@ -665,6 +719,12 @@ export async function maybeCompressPhased(
     config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
   }
+  if (estimateTokens(messages) < contextWindow - AUTOCOMPACT_BUFFER_TOKENS) {
+    return { ...collapseState, phase: 'autocompact' };
+  }
+
+  // Layer 1.5: Strip old thinking blocks (零成本)
+  stripOldThinkingBlocks(messages);
   if (estimateTokens(messages) < contextWindow - AUTOCOMPACT_BUFFER_TOKENS) {
     return { ...collapseState, phase: 'autocompact' };
   }

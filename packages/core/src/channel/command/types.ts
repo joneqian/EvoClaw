@@ -4,11 +4,26 @@
 
 import type { ChannelType } from '@evoclaw/shared';
 import type { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
-import type { AgentManager } from '../../agent/agent-manager.js';
 import type { ChannelManager } from '../channel-manager.js';
 import type { ConfigManager } from '../../infrastructure/config-manager.js';
 import type { ChannelStateRepo } from '../channel-state-repo.js';
-import type { SkillDiscoverer } from '../../skill/skill-discoverer.js';
+
+/**
+ * 精简版 AgentManager 接口，仅暴露命令系统所需方法，
+ * 避免直接依赖 agent 层（架构守卫: channel 不可依赖 agent）
+ */
+export interface IAgentManager {
+  getAgent(agentId: string): { id: string; name: string; modelId?: string; provider?: string } | undefined;
+  updateAgent(agentId: string, updates: { modelId?: string; name?: string; emoji?: string; provider?: string }): void;
+}
+
+/**
+ * 精简版 SkillDiscoverer 接口，仅暴露命令系统所需方法，
+ * 避免直接依赖 skill 层（架构守卫: channel 不可依赖 skill）
+ */
+export interface ISkillDiscoverer {
+  listLocal(): Array<{ name: string; description?: string }>;
+}
 
 /** 命令执行上下文 */
 export interface CommandContext {
@@ -25,11 +40,11 @@ export interface CommandContext {
 
   // 服务依赖
   readonly store: SqliteStore;
-  readonly agentManager: AgentManager;
+  readonly agentManager: IAgentManager;
   readonly channelManager: ChannelManager;
   readonly configManager?: ConfigManager;
   readonly stateRepo?: ChannelStateRepo;
-  readonly skillDiscoverer?: SkillDiscoverer;
+  readonly skillDiscoverer?: ISkillDiscoverer;
 }
 
 /** 渠道命令定义 */

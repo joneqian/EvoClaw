@@ -43,6 +43,15 @@ import { BindingRouter } from './routing/binding-router.js';
 import { generateSessionKey } from './routing/session-key.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
+import { CommandRegistry } from './channel/command/command-registry.js';
+import { createCommandDispatcher, isSlashCommand } from './channel/command/command-dispatcher.js';
+import { echoCommand } from './channel/command/builtin/echo.js';
+import { debugCommand } from './channel/command/builtin/debug.js';
+import { createHelpCommand } from './channel/command/builtin/help.js';
+import { costCommand } from './channel/command/builtin/cost.js';
+import { modelCommand } from './channel/command/builtin/model.js';
+import { memoryCommand } from './channel/command/builtin/memory.js';
+import { statusCommand } from './channel/command/builtin/status.js';
 import { createDoctorRoutes } from './routes/doctor.js';
 import { MemoryMonitor } from './infrastructure/memory-monitor.js';
 import {
@@ -684,6 +693,18 @@ async function main() {
   // HeartbeatManager — 延迟到 HTTP 服务就绪后初始化（需要实际 port）
   let heartbeatManager: HeartbeatManager | null = null;
 
+  // --- 渠道命令系统 ---
+  const commandRegistry = new CommandRegistry();
+  commandRegistry.register(echoCommand);
+  commandRegistry.register(debugCommand);
+  commandRegistry.register(costCommand);
+  commandRegistry.register(modelCommand);
+  commandRegistry.register(memoryCommand);
+  commandRegistry.register(statusCommand);
+  commandRegistry.register(createHelpCommand(commandRegistry));
+
+  const dispatchCommand = createCommandDispatcher(commandRegistry);
+
   // 渠道消息处理依赖
   const channelMsgDeps: ChannelMessageDeps = {
     store: db,
@@ -710,6 +731,66 @@ async function main() {
       return;
     }
 
+    // --- 渠道命令拦截 ---
+    if (isSlashCommand(msg.content)) {
+      const cmdCtx = {
+        agentId: targetAgentId,
+        channel: msg.channel,
+        peerId: msg.peerId,
+        senderId: msg.senderId,
+        accountId: msg.accountId,
+        store: db,
+        agentManager,
+        channelManager,
+        configManager,
+        stateRepo: channelStateRepo,
+        skillDiscoverer,
+      };
+
+      const result = await dispatchCommand(msg.content, cmdCtx);
+      if (result.handled) {
+        if (result.injectToConversation) {
+          // 技能 fallback — 转为自然语言传给 AI
+          const skillMessage = result.skillArgs
+            ? `请执行技能 ${result.skillName}，参数: ${result.skillArgs}`
+            : `请执行技能 ${result.skillName}`;
+
+          const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
+          const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId);
+
+          try {
+            await handleChannelMessage(
+              {
+                agentId: targetAgentId,
+                sessionKey,
+                message: skillMessage,
+                channel: msg.channel,
+                peerId: msg.peerId,
+                chatType: msg.chatType,
+                mediaPath: msg.mediaPath,
+                mediaType: msg.mediaType,
+              },
+              channelMsgDeps,
+            );
+          } catch (err) {
+            log.error(`技能 fallback 处理失败: ${err}`);
+          }
+          return;
+        }
+
+        // 内置命令 — 直接回复
+        if (result.response) {
+          try {
+            await channelManager.sendMessage(msg.channel, msg.peerId, result.response, msg.chatType);
+          } catch (err) {
+            log.error(`命令回复发送失败: ${err}`);
+          }
+        }
+        return;
+      }
+    }
+
+    // --- 正常 AI 管线 ---
     const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
     const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId);
 

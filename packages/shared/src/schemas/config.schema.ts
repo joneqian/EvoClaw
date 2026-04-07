@@ -58,6 +58,13 @@ export const configSchema = z.object({
     skills: nameSecurityPolicySchema.optional(),
     mcpServers: nameSecurityPolicySchema.optional(),
   }).optional(),
+  /** Hook 策略 — managed.json 中的 IT 管理员控制 */
+  hooks: z.object({
+    /** 禁用所有非系统 Hook */
+    disableAllHooks: z.boolean().optional(),
+    /** 仅允许管理员 (managed.json) 配置的 Hook */
+    allowManagedHooksOnly: z.boolean().optional(),
+  }).optional(),
 }).passthrough();  // 允许未知字段（向前兼容）
 
 /** 安全解析 EvoClawConfig（不抛异常） */

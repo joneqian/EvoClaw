@@ -26,6 +26,13 @@ export type {
   TransitionReason,
   ExitReason,
   FallbackModelConfig,
+  StopHookResult,
+  StopHookFn,
+  CompactTrigger,
+  PreCompactHookResult,
+  PreCompactHookFn,
+  PostCompactHookResult,
+  PostCompactHookFn,
 } from './types.js';
 
 export { ApiError, IdleTimeoutError, AbortError } from './types.js';
@@ -38,6 +45,19 @@ export { streamLLM } from './stream-client.js';
 export { createBuiltinTools } from './builtin-tools.js';
 export { adaptEvoclawTool, buildKernelTools } from './tool-adapter.js';
 export type { AuditLogEntry, ToolAdapterDeps, BuildToolsConfig } from './tool-adapter.js';
+
+// Tool Hooks
+export { ToolHookRegistry, stricterPermission } from './tool-hooks.js';
+export type {
+  ToolHookContext,
+  HookPolicy,
+  PreToolUseHookResult,
+  PreToolUseHook,
+  PostToolUseHookResult,
+  PostToolUseHook,
+  PostToolUseFailureHookResult,
+  PostToolUseFailureHook,
+} from './tool-hooks.js';
 
 // Tool Executor
 export { StreamingToolExecutor } from './streaming-tool-executor.js';

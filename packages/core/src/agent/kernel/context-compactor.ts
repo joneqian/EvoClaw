@@ -15,7 +15,7 @@
  */
 
 import crypto from 'node:crypto';
-import type { KernelMessage, QueryLoopConfig } from './types.js';
+import type { KernelMessage, QueryLoopConfig, CompactTrigger } from './types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { Feature } from '../../infrastructure/feature.js';
 
@@ -607,7 +607,21 @@ export async function maybeCompress(
 
   const threshold = contextWindow - AUTOCOMPACT_BUFFER_TOKENS;
   const msgCountBefore = messages.length;
+  const trigger: CompactTrigger = estimated >= hardLimitThreshold ? 'hard_limit' : 'auto';
   log.info(`压缩触发: estimated=${estimated}, threshold=${threshold}, messages=${msgCountBefore}`);
+
+  // PreCompact Hook — 压缩前检查
+  if (config.preCompactHook) {
+    try {
+      const preResult = await config.preCompactHook(trigger, estimated, contextWindow);
+      if (preResult.blockCompaction && trigger !== 'hard_limit') {
+        log.info('PreCompact Hook 阻止了本次压缩');
+        return false;
+      }
+    } catch (err) {
+      log.warn(`PreCompact Hook 执行失败，继续压缩: ${err instanceof Error ? err.message : err}`);
+    }
+  }
 
   // Layer 1: Snip (零成本)
   const snipped = snipOldMessages(messages);
@@ -649,7 +663,17 @@ export async function maybeCompress(
     await autocompact(messages, config);
     consecutiveAutocompactFailures = 0;
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    const tokensAfter = estimateTokens(messages);
     log.info(`Autocompact 边界: ${msgCountBefore} → ${messages.length} 消息`);
+
+    // PostCompact Hook — 压缩后通知
+    if (config.postCompactHook) {
+      try {
+        await config.postCompactHook(trigger, estimated, tokensAfter);
+      } catch (err) {
+        log.warn(`PostCompact Hook 执行失败: ${err instanceof Error ? err.message : err}`);
+      }
+    }
     return true;
   } catch (err) {
     consecutiveAutocompactFailures++;

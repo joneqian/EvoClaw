@@ -480,6 +480,41 @@ export type StopHookFn = (
   messages: readonly KernelMessage[],
 ) => Promise<StopHookResult>;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Compact Hook — 压缩前后钩子
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 压缩触发来源 */
+export type CompactTrigger = 'auto' | 'manual' | 'hard_limit';
+
+/** PreCompact Hook 结果 */
+export interface PreCompactHookResult {
+  /** true = 阻止本次压缩 */
+  blockCompaction?: boolean;
+  /** 附加指令注入压缩过程 (如 "保留最近 3 条消息") */
+  additionalInstructions?: string;
+}
+
+/** PreCompact Hook 回调类型 */
+export type PreCompactHookFn = (
+  trigger: CompactTrigger,
+  estimatedTokens: number,
+  contextWindow: number,
+) => Promise<PreCompactHookResult>;
+
+/** PostCompact Hook 结果 */
+export interface PostCompactHookResult {
+  /** 压缩后附加上下文 (如摘要说明) */
+  additionalContext?: string;
+}
+
+/** PostCompact Hook 回调类型 */
+export type PostCompactHookFn = (
+  trigger: CompactTrigger,
+  tokensBefore: number,
+  tokensAfter: number,
+) => Promise<PostCompactHookResult>;
+
 /** Token Budget 检查结果 */
 export interface TokenBudgetDecision {
   action: 'continue' | 'stop';
@@ -551,6 +586,10 @@ export interface QueryLoopConfig {
 
   // ─── Stop Hook (可选: assistant 响应后执行检查) ───
   readonly stopHook?: StopHookFn;
+
+  // ─── Compact Hooks (可选: 压缩前后钩子) ───
+  readonly preCompactHook?: PreCompactHookFn;
+  readonly postCompactHook?: PostCompactHookFn;
 
   // ─── Token Budget (可选: 无工具调用时检查是否自动续行) ───
   readonly tokenBudget?: TokenBudgetFn;

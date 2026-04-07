@@ -266,12 +266,22 @@ export function adaptEvoclawTool(
         return result;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+
+        // PostToolUseFailure hooks — 错误恢复链
+        let failureContent = msg;
+        if (deps.hookRegistry) {
+          const failResult = await deps.hookRegistry.runFailureHooks(tool.name, effectiveInput, msg, hookCtx);
+          if (failResult?.additionalContexts?.length) {
+            failureContent = msg + '\n\n' + failResult.additionalContexts.join('\n');
+          }
+        }
+
         deps.auditFn?.({
           toolName: tool.name, args: effectiveInput,
           result: msg, status: 'error',
           durationMs: Date.now() - start,
         });
-        return { content: msg, isError: true };
+        return { content: failureContent, isError: true };
       }
     },
 

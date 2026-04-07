@@ -177,6 +177,65 @@ describe('PermissionInterceptor', () => {
     });
   });
 
+  describe('权限模式 (PermissionMode)', () => {
+    it('strict 模式: 未授权操作自动拒绝（不弹窗）', () => {
+      interceptor.setMode('strict');
+      const result = interceptor.intercept(TEST_AGENT_ID, 'custom_tool', {});
+      expect(result.allowed).toBe(false);
+      expect(result.requiresConfirmation).toBeUndefined();
+      expect(result.reason).toContain('严格模式');
+    });
+
+    it('strict 模式: 已显式授权的操作仍然放行', () => {
+      interceptor.setMode('strict');
+      security.grantPermission(TEST_AGENT_ID, 'shell', 'always');
+      const result = interceptor.intercept(TEST_AGENT_ID, 'bash', { command: 'docker ps' });
+      expect(result.allowed).toBe(true);
+    });
+
+    it('strict 模式: 显式 deny 仍然拒绝', () => {
+      interceptor.setMode('strict');
+      security.grantPermission(TEST_AGENT_ID, 'shell', 'deny');
+      const result = interceptor.intercept(TEST_AGENT_ID, 'bash', { command: 'docker ps' });
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('shell');
+    });
+
+    it('strict 模式: 危险命令仍然需要确认（不被 strict 模式覆盖）', () => {
+      interceptor.setMode('strict');
+      const result = interceptor.intercept(TEST_AGENT_ID, 'bash', { command: 'rm -rf /tmp/data' });
+      expect(result.allowed).toBe(false);
+      expect(result.requiresConfirmation).toBe(true);
+    });
+
+    it('permissive 模式: 工作区内安全 shell 命令自动放行', () => {
+      const wsInterceptor = new PermissionInterceptor(security, () => '/tmp/workspace');
+      wsInterceptor.setMode('permissive');
+      const result = wsInterceptor.intercept(TEST_AGENT_ID, 'bash', { command: 'ls -la' });
+      expect(result.allowed).toBe(true);
+    });
+
+    it('permissive 模式: 工作区内危险命令仍被拦截', () => {
+      const wsInterceptor = new PermissionInterceptor(security, () => '/tmp/workspace');
+      wsInterceptor.setMode('permissive');
+      const result = wsInterceptor.intercept(TEST_AGENT_ID, 'bash', { command: 'rm -rf /' });
+      expect(result.allowed).toBe(false);
+    });
+
+    it('default 模式: 未授权操作需要确认（现有行为）', () => {
+      interceptor.setMode('default');
+      const result = interceptor.intercept(TEST_AGENT_ID, 'custom_tool', {});
+      expect(result.allowed).toBe(false);
+      expect(result.requiresConfirmation).toBe(true);
+    });
+
+    it('getMode 返回当前模式', () => {
+      expect(interceptor.getMode()).toBe('default');
+      interceptor.setMode('strict');
+      expect(interceptor.getMode()).toBe('strict');
+    });
+  });
+
   describe('isSafeBinCommand', () => {
     it('识别基本安全命令', () => {
       expect(isSafeBinCommand('git status')).toBe(true);

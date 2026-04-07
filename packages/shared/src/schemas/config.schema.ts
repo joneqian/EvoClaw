@@ -52,6 +52,8 @@ export const configSchema = z.object({
   envVars: z.record(z.string(), z.string()).optional(),
   language: z.enum(['zh', 'en']).optional(),
   thinking: z.enum(['auto', 'on', 'off']).optional(),
+  /** 权限模式（全局默认） — default | strict | permissive */
+  permissionMode: z.enum(['default', 'strict', 'permissive']).optional(),
   security: z.object({
     skills: nameSecurityPolicySchema.optional(),
     mcpServers: nameSecurityPolicySchema.optional(),

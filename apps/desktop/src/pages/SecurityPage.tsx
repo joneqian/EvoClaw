@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
-import { get, del, post } from '../lib/api';
+import { get, del, post, put, patch } from '../lib/api';
 import { syncPermissionsToRust } from '../lib/api';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -628,11 +628,99 @@ const GUARD_PROTECTIONS = [
   },
 ];
 
+/** 权限模式配置 */
+const PERMISSION_MODES = [
+  {
+    key: 'default' as const,
+    label: '标准模式',
+    desc: '工具执行前需要用户确认授权，提供安全与效率的平衡',
+    icon: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286z',
+    color: 'text-brand', bg: 'bg-brand/10', ring: 'ring-brand/30',
+  },
+  {
+    key: 'strict' as const,
+    label: '严格模式',
+    desc: '未明确授权的操作自动拒绝，适合生产环境和无人值守场景',
+    icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
+    color: 'text-red-600', bg: 'bg-red-50', ring: 'ring-red-300',
+  },
+  {
+    key: 'permissive' as const,
+    label: '宽松模式',
+    desc: '工作区内的文件修改和命令执行自动放行，适合开发测试',
+    icon: 'M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
+    color: 'text-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-300',
+  },
+];
+
 function GuardTab() {
   const enabledMap: Record<string, boolean> = { env: true, info: true, skill: true };
+  const [permissionMode, setPermissionMode] = useState<'default' | 'strict' | 'permissive'>('default');
+  const [saving, setSaving] = useState(false);
+
+  // 加载全局权限模式
+  useEffect(() => {
+    get<{ config: { permissionMode?: string } }>('/config')
+      .then((data) => {
+        const mode = data.config?.permissionMode;
+        if (mode === 'default' || mode === 'strict' || mode === 'permissive') {
+          setPermissionMode(mode);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleModeChange = async (mode: 'default' | 'strict' | 'permissive') => {
+    setPermissionMode(mode);
+    setSaving(true);
+    try {
+      await put('/config', { permissionMode: mode });
+    } catch { /* 静默失败 */ }
+    setSaving(false);
+  };
 
   return (
     <div className="w-full px-6 py-6 space-y-5">
+      {/* 权限模式选择 */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Icon d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" className="w-5 h-5 text-slate-600" />
+          <h3 className="text-sm font-bold text-slate-800">权限模式</h3>
+          {saving && <span className="text-xs text-slate-400 animate-pulse">保存中...</span>}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {PERMISSION_MODES.map((m) => {
+            const active = permissionMode === m.key;
+            return (
+              <button
+                key={m.key}
+                onClick={() => handleModeChange(m.key)}
+                className={`relative p-4 rounded-xl border text-left transition-all ${
+                  active
+                    ? `border-transparent ring-2 ${m.ring} ${m.bg}`
+                    : 'border-slate-200/60 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center`}>
+                    <Icon d={m.icon} className={`w-4 h-4 ${m.color}`} />
+                  </div>
+                  <span className={`text-sm font-semibold ${active ? m.color : 'text-slate-700'}`}>{m.label}</span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">{m.desc}</p>
+                {active && (
+                  <div className="absolute top-2.5 right-2.5">
+                    <svg className={`w-5 h-5 ${m.color}`} fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 防护开关卡片 */}
       <div className="space-y-3">
         {GUARD_PROTECTIONS.map((item) => {

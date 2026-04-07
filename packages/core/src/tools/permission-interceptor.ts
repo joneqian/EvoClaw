@@ -1,8 +1,11 @@
 import type { SecurityExtension } from '../bridge/security-extension.js';
-import type { PermissionCategory } from '@evoclaw/shared';
+import type { PermissionCategory, PermissionMode } from '@evoclaw/shared';
 import { detectUnicodeConfusion } from '../security/unicode-detector.js';
 import { analyzeCommand } from '../security/bash-parser/security-analyzer.js';
 import { isPreapprovedURL } from './preapproved-domains.js';
+import { validateCommandPaths, checkDangerousRemovalPaths, getBaseCommand } from '../security/path-validation.js';
+import { detectDestructive, type DestructiveCategory } from '../security/destructive-detector.js';
+import { checkCommandFlags } from '../security/command-allowlist.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -98,6 +101,12 @@ export interface InterceptResult {
   reason?: string;
   requiresConfirmation?: boolean;
   permissionCategory?: PermissionCategory;
+  /** 破坏性操作标记 — 允许执行但需要用户确认 */
+  isDestructive?: boolean;
+  /** 破坏性类别 */
+  destructiveCategory?: DestructiveCategory;
+  /** 破坏性警告信息 */
+  destructiveWarning?: string;
 }
 
 /**
@@ -105,11 +114,24 @@ export interface InterceptResult {
  * 检查工具执行的安全性和权限
  */
 export class PermissionInterceptor {
+  /** 当前权限模式 */
+  private mode: PermissionMode = 'default';
+
   constructor(
     private security: SecurityExtension,
     /** 获取 Agent 工作区路径（用于安全区自动放行） */
     private getWorkspacePath?: (agentId: string) => string,
   ) {}
+
+  /** 设置权限模式 */
+  setMode(mode: PermissionMode): void {
+    this.mode = mode;
+  }
+
+  /** 获取当前权限模式 */
+  getMode(): PermissionMode {
+    return this.mode;
+  }
 
   /**
    * 拦截工具调用
@@ -137,6 +159,14 @@ export class PermissionInterceptor {
       if (wsFilePath && this.isInWorkspace(agentId, wsFilePath)) {
         return { allowed: true };
       }
+      // permissive 模式扩展：工作区内 shell 命令也自动放行（仍需通过危险命令检测）
+      if (this.mode === 'permissive' && (toolName === 'bash' || toolName === 'shell')) {
+        const command = (params['command'] as string) ?? '';
+        // 仅当命令不包含危险模式时才自动放行
+        if (command && !this.isDangerousCommand(command)) {
+          return { allowed: true };
+        }
+      }
     }
 
     // 1. 确定权限类别
@@ -152,9 +182,30 @@ export class PermissionInterceptor {
       }
     }
 
-    // 2.5 safeBins 白名单：安全二进制命令免授权执行
+    // 2.5 命令级路径验证（AST 解析后，利用 argv 提取路径参数）
     if (category === 'shell') {
       const command = (params['command'] as string) ?? '';
+      const pathResult = this.validateShellPaths(command);
+      if (pathResult) return pathResult;
+    }
+
+    // 2.6 flag 级白名单 + safeBins：安全命令免授权执行
+    if (category === 'shell') {
+      const command = (params['command'] as string) ?? '';
+      const flagResult = checkCommandFlags(command);
+      if (flagResult === 'ask') {
+        // flag 级检测到危险 flag — 需要确认
+        return {
+          allowed: false,
+          reason: `命令包含危险参数，需要确认`,
+          requiresConfirmation: true,
+          permissionCategory: 'shell',
+        };
+      }
+      if (flagResult === 'safe') {
+        return { allowed: true };
+      }
+      // flagResult === 'skip' — 不在 flag 白名单中，退回 safeBins
       if (isSafeBinCommand(command)) {
         return { allowed: true };
       }
@@ -229,11 +280,33 @@ export class PermissionInterceptor {
       return { allowed: false, reason: `Agent 没有 ${category} 权限` };
     }
     if (result === 'ask') {
+      // strict 模式: ask → 自动 deny（无需用户确认）
+      if (this.mode === 'strict') {
+        return {
+          allowed: false,
+          reason: `[严格模式] 未授权的 ${category} 操作被自动拒绝`,
+          permissionCategory: category,
+        };
+      }
       return {
         allowed: false,
         requiresConfirmation: true,
         permissionCategory: category,
       };
+    }
+
+    // 7. 破坏性操作检测（信息性标记，不阻断）
+    if (category === 'shell') {
+      const command = (params['command'] as string) ?? '';
+      const destructive = detectDestructive(command);
+      if (destructive.isDestructive) {
+        return {
+          allowed: true,
+          isDestructive: true,
+          destructiveCategory: destructive.category,
+          destructiveWarning: destructive.warning,
+        };
+      }
     }
 
     return { allowed: true };
@@ -304,6 +377,48 @@ export class PermissionInterceptor {
         permissionCategory: 'shell',
       };
     }
+    return null;
+  }
+
+  /**
+   * 命令级路径安全验证
+   *
+   * 从 shell 命令中提取路径参数，做受限路径 + 危险删除检查。
+   * 利用简单的 split 提取 argv（AST 解析已在 step 2 完成）。
+   *
+   * @returns InterceptResult 如果需要拦截，null 如果通过
+   */
+  private validateShellPaths(command: string): InterceptResult | null {
+    const trimmed = command.trim();
+    if (!trimmed) return null;
+
+    // 简单 split 提取 argv（空格分割，不处理引号 — 引号场景已由 AST 处理）
+    const tokens = trimmed.split(/\s+/);
+    const cmdName = getBaseCommand(tokens[0] ?? '');
+    const args = tokens.slice(1);
+
+    // 1. 危险删除路径保护（即使有 allow 也拦截）
+    const removalCheck = checkDangerousRemovalPaths(cmdName, args);
+    if (!removalCheck.safe) {
+      return {
+        allowed: false,
+        reason: removalCheck.reason ?? '尝试删除关键系统路径',
+        requiresConfirmation: true,
+        permissionCategory: 'shell',
+      };
+    }
+
+    // 2. 命令路径参数的受限路径检查
+    const pathCheck = validateCommandPaths(cmdName, args);
+    if (!pathCheck.safe) {
+      return {
+        allowed: false,
+        reason: pathCheck.reason ?? '访问受限路径',
+        requiresConfirmation: true,
+        permissionCategory: 'shell',
+      };
+    }
+
     return null;
   }
 

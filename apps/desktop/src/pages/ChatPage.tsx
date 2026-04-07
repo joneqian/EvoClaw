@@ -235,6 +235,15 @@ function ChatView() {
                   const summary = formatToolSummary(toolName, args);
                   const displayName = TOOL_DISPLAY_NAMES[toolName] ?? toolName;
                   addToolSegment({ type: 'tool', name: toolName, displayName, summary, status: 'running' });
+
+                  // 破坏性操作检测 — 弹出确认对话框
+                  if (payload.isDestructive) {
+                    setDestructiveConfirm({
+                      toolName,
+                      args: args ?? {},
+                      resolve: () => {},
+                    });
+                  }
                   break;
                 }
                 case 'tool_end': {

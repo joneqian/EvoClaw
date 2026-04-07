@@ -1,4 +1,5 @@
 import type { ChannelType } from './channel.js';
+import type { PermissionMode } from './permission.js';
 
 /** Thinking 级别（渐进降级: high → medium → low → off） */
 export type ThinkLevel = 'off' | 'low' | 'medium' | 'high';
@@ -38,6 +39,8 @@ export interface AgentConfig {
   systemPromptTemplate?: string;
   /** 工具 Profile — 按场景预配置工具集 */
   toolProfile?: 'minimal' | 'coding' | 'messaging' | 'full';
+  /** 权限模式覆盖（未设置时使用全局默认） */
+  permissionMode?: PermissionMode;
   /** 绑定关系 */
   bindings?: Binding[];
   /** 创建时间 ISO string */

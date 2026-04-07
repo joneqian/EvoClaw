@@ -40,6 +40,7 @@ import { SecurityExtension } from '../bridge/security-extension.js';
 import { createPermissionPlugin } from '../context/plugins/permission.js';
 import { createSecurityPlugin } from '../context/plugins/security.js';
 import { PermissionInterceptor } from '../tools/permission-interceptor.js';
+import { DenialTracker } from '../security/denial-tracker.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
@@ -629,6 +630,16 @@ export function createChatRoutes(
       (aId) => agentManager.getWorkspacePath(aId),
     );
 
+    // 权限模式: Agent 级覆盖 → 全局配置 → 默认
+    const permissionMode = agent.permissionMode
+      ?? configManager?.getConfig().permissionMode
+      ?? 'default';
+    interceptor.setMode(permissionMode);
+
+    // 拒绝追踪器 — 防止工具无限循环
+    const denialTracker = new DenialTracker();
+    denialTracker.setMode(permissionMode);
+
     // 记录本次对话中需要弹窗的权限请求（流结束后随最后一批 SSE 事件到达前端）
     const pendingPermissions: Array<{
       requestId: string; toolName: string; category: string; resource: string; reason?: string;
@@ -637,10 +648,20 @@ export function createChatRoutes(
     // 自主执行会话标记（heartbeat/cron/boot）— 无人值守，权限策略不同
     const isAutonomousSession = isHeartbeat || isCron || sessionKey.includes(':boot');
 
+    // 破坏性操作待发通知（permissionInterceptFn 设置，onEvent 消费）
+    let pendingDestructive: { toolName: string; category?: string; warning: string } | null = null;
+
     const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
       const result = interceptor.intercept(agentId, toolName, args);
 
       if (!result.allowed && result.requiresConfirmation) {
+        // 拒绝追踪
+        const denialResult = denialTracker.recordDenial();
+        if (denialResult.limitReached) {
+          log.warn(`[拒绝上限] 连续 ${denialResult.count} 次拒绝，session=${sessionKey}`);
+          return `连续 ${denialResult.count} 次权限拒绝，已达上限。请检查权限配置或切换权限模式。`;
+        }
+
         if (isAutonomousSession) {
           // 自主执行会话：无人值守，静默跳过需授权的工具（不弹窗）
           const category = result.permissionCategory ?? 'skill';
@@ -661,7 +682,20 @@ export function createChatRoutes(
       }
 
       if (!result.allowed && !result.requiresConfirmation) {
+        denialTracker.recordDenial();
         return result.reason ?? '操作被拒绝';
+      }
+
+      // 成功 — 重置拒绝计数器
+      denialTracker.recordSuccess();
+
+      // 破坏性操作标记 — 附加到待发 SSE 事件供前端确认
+      if (result.isDestructive) {
+        pendingDestructive = {
+          toolName,
+          category: result.destructiveCategory,
+          warning: result.destructiveWarning ?? '此操作可能造成不可逆影响',
+        };
       }
 
       return null; // 允许
@@ -766,6 +800,11 @@ export function createChatRoutes(
               latencyMs: Date.now() - startTime,
               turnCount: event.usage.turnCount,
             });
+          }
+          // 破坏性操作标记注入 tool_start 事件
+          if (event.type === 'tool_start' && pendingDestructive && event.toolName === pendingDestructive.toolName) {
+            event.isDestructive = true;
+            pendingDestructive = null; // 消费一次
           }
           await stream.writeSSE({ data: JSON.stringify(event) });
         }, abortSignal);

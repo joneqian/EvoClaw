@@ -898,9 +898,12 @@ const BUILTIN_SEARCH_HINTS: Record<string, string> = {
   ls: 'list directory contents files',
 };
 
-export function createBuiltinTools(contextWindowTokens: number): KernelTool[] {
-  // 共享文件状态缓存 (read/edit/write 用于先读后写校验)
-  const fileStateCache = new FileStateCache();
+export function createBuiltinTools(
+  contextWindowTokens: number,
+  externalFileStateCache?: FileStateCache,
+): KernelTool[] {
+  // 使用外部缓存（子代理 clone 的）或创建新缓存
+  const fileStateCache = externalFileStateCache ?? new FileStateCache();
 
   const tools = [
     createReadTool(contextWindowTokens, fileStateCache),

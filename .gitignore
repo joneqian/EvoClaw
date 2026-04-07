@@ -62,6 +62,7 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.brand
 
 # Docker
 *.log

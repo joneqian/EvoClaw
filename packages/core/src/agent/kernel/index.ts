@@ -22,6 +22,10 @@ export type {
   StreamConfig,
   QueryLoopConfig,
   QueryLoopResult,
+  LoopState,
+  TransitionReason,
+  ExitReason,
+  FallbackModelConfig,
 } from './types.js';
 
 export { ApiError, IdleTimeoutError, AbortError } from './types.js';
@@ -39,7 +43,7 @@ export type { AuditLogEntry, ToolAdapterDeps, BuildToolsConfig } from './tool-ad
 export { StreamingToolExecutor } from './streaming-tool-executor.js';
 
 // Query Loop
-export { queryLoop } from './query-loop.js';
+export { queryLoop, queryLoopGenerator } from './query-loop.js';
 
 // Context Compaction
 export { maybeCompress, estimateTokens, snipOldMessages, microcompactToolResults, resetCompactorState } from './context-compactor.js';

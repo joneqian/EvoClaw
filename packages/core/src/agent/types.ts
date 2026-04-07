@@ -114,7 +114,9 @@ export type RuntimeEventType =
   | 'message_end'
   | 'compaction_start'
   | 'compaction_end'
-  | 'usage';
+  | 'usage'
+  | 'stream_metrics'
+  | 'tombstone';
 
 /** Agent 运行时事件 */
 export interface RuntimeEvent {
@@ -145,5 +147,20 @@ export interface RuntimeEvent {
     totalTokens: number;
     estimatedCostMilli: number;
     turnCount: number;
+  };
+  /** 流式指标（type='stream_metrics' 时） */
+  streamMetrics?: {
+    /** 卡顿次数 (>30s 事件间隔) */
+    stallCount: number;
+    /** 卡顿总时长 (ms) */
+    totalStallMs: number;
+    /** SSE 事件总数 */
+    eventCount: number;
+    /** 总耗时 (ms) */
+    totalDurationMs: number;
+    /** TTFB (ms) — HTTP 响应头到达延迟 */
+    ttfbMs?: number;
+    /** 是否使用了非流式回退 */
+    fallbackUsed: boolean;
   };
 }

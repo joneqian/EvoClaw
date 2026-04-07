@@ -57,6 +57,8 @@ export interface BrandConfig {
   defaultEnv?: Record<string, string>;
   /** 品牌级默认语言 */
   defaultLanguage?: 'zh' | 'en';
+  /** 品牌级 Feature Flag 默认值 */
+  features?: Record<string, boolean>;
 }
 
 /** 当前品牌配置 */
@@ -214,5 +216,23 @@ indexCss = indexCss.replace(
 
 writeFileSync(indexCssPath, indexCss, 'utf-8');
 console.log(`  ✅ ${indexCssPath} (brand: ${brandPrimary})`);
+
+// ─── 7. 生成 Feature Flag 环境变量文件 ───
+
+const features = config.features || {};
+const envLines = [
+  `# ⚠️ 由 brand-apply.mjs 自动生成，请勿手动编辑`,
+  `# 品牌: ${config.name} | 生成时间: ${new Date().toISOString()}`,
+  ``,
+];
+for (const [key, value] of Object.entries(features)) {
+  envLines.push(`ENABLE_${key}=${value}`);
+}
+envLines.push('');
+
+// 写入项目根目录 .env.brand（开发模式 + 构建脚本均读取）
+const envBrandPath = join(ROOT, 'packages', 'core', '.env.brand');
+writeFileSync(envBrandPath, envLines.join('\n'), 'utf-8');
+console.log(`  ✅ ${envBrandPath}`);
 
 console.log(`\n✨ 品牌 ${config.name} 已应用完成`);

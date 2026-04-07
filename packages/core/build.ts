@@ -22,14 +22,34 @@ const bunBanner = [
 ].join('\n');
 
 // Feature Flag — 编译时常量注入
-// 环境变量 ENABLE_* 控制功能开关，esbuild 替换为 true/false 常量后 tree shake 移除未启用分支
+// 优先级: 环境变量 ENABLE_* > .env.brand (品牌默认值) > false
 // 名称列表必须与 FEATURE_REGISTRY (src/infrastructure/feature.ts) 保持同步
 // CI 脚本 scripts/check-feature-flags.ts 校验一致性
-const FEATURE_NAMES = ['SANDBOX', 'WEIXIN', 'MCP', 'SILK_VOICE', 'WECOM', 'FEISHU'] as const;
+const FEATURE_NAMES = ['WEIXIN', 'MCP', 'SILK_VOICE', 'WECOM', 'FEISHU', 'CACHED_MICROCOMPACT', 'REACTIVE_COMPACT'] as const;
+
+// 读取品牌默认 Feature Flag（由 brand-apply.mjs 生成）
+const brandDefaults: Record<string, boolean> = {};
+const envBrandPath = path.join(import.meta.dirname ?? '.', '.env.brand');
+if (fs.existsSync(envBrandPath)) {
+  const content = fs.readFileSync(envBrandPath, 'utf-8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const [key, value] = trimmed.split('=');
+    if (key && value !== undefined) {
+      brandDefaults[key] = value === 'true';
+    }
+  }
+}
 
 const featureFlags: Record<string, string> = {};
 for (const name of FEATURE_NAMES) {
-  featureFlags[`FEATURE_${name}`] = JSON.stringify(process.env[`ENABLE_${name}`] === 'true');
+  const envKey = `ENABLE_${name}`;
+  // 环境变量优先，其次品牌默认值，最后 false
+  const enabled = process.env[envKey] !== undefined
+    ? process.env[envKey] === 'true'
+    : brandDefaults[envKey] ?? false;
+  featureFlags[`FEATURE_${name}`] = JSON.stringify(enabled);
 }
 
 await build({

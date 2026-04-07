@@ -126,6 +126,16 @@ export class PromptCacheMonitor {
     this.suppressNextCheck = true;
   }
 
+  /**
+   * 缓存前内容修改通知 — 抑制因修改缓存前消息导致的断裂报警
+   *
+   * 当 microcompactCacheAware Phase 2 修改了缓存断点前的消息时调用。
+   * 与 notifyCompaction() 类似，但不清除 prevCacheReadTokens（仅抑制检测）。
+   */
+  notifyCacheDeletion(): void {
+    this.suppressNextCheck = true;
+  }
+
   /** 重置状态（新会话） */
   reset(): void {
     this.prevCacheReadTokens = null;

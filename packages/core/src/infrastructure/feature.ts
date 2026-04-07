@@ -35,12 +35,15 @@ export interface FeatureMeta {
  * scripts/check-feature-flags.ts 校验与 feature-flags.d.ts 一致。
  */
 export const FEATURE_REGISTRY = {
-  SANDBOX:    { desc: '沙箱模式（Docker 隔离执行）',    modules: ['sandbox/*'] },
   WEIXIN:     { desc: '微信个人号渠道',                  modules: ['channel/adapters/weixin*'] },
   MCP:        { desc: 'MCP 服务器集成',                  modules: ['mcp/*', 'routes/mcp*'] },
   SILK_VOICE: { desc: 'SILK 语音转码（微信语音消息）',   modules: ['channel/adapters/weixin-silk*'] },
   WECOM:      { desc: '企业微信渠道',                    modules: ['channel/adapters/wecom*'] },
   FEISHU:     { desc: '飞书渠道',                        modules: ['channel/adapters/feishu*'] },
+
+  // ─── Kernel 能力 Flag（仅门控未验证的新行为） ───
+  CACHED_MICROCOMPACT: { desc: '缓存感知微压缩',      modules: ['agent/kernel/context-compactor*'] },
+  REACTIVE_COMPACT:    { desc: '响应式渐进压缩',      modules: ['agent/kernel/context-compactor*'] },
 } as const satisfies Record<string, FeatureMeta>;
 
 /** 所有 Feature Flag 名称 */
@@ -52,11 +55,49 @@ export const FEATURE_NAMES = Object.keys(FEATURE_REGISTRY) as FeatureName[];
 // ─── Feature Flag 运行时查询 ─────────────────────────────────────
 
 /**
- * 开发模式回退：从环境变量 ENABLE_{name} 读取
+ * 品牌默认值缓存（从 .env.brand 读取，仅开发模式）
+ *
+ * 优先级: 环境变量 ENABLE_* > .env.brand 品牌默认值 > false
+ */
+let _brandDefaults: Record<string, boolean> | null = null;
+
+function loadBrandDefaults(): Record<string, boolean> {
+  if (_brandDefaults) return _brandDefaults;
+  _brandDefaults = {};
+  try {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    // .env.brand 位于 packages/core/ 根目录
+    const envPath = path.resolve(import.meta.dirname ?? __dirname, '..', '.env.brand');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf-8') as string;
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx);
+          const value = trimmed.slice(eqIdx + 1);
+          _brandDefaults![key] = value === 'true';
+        }
+      }
+    }
+  } catch {
+    // 生产构建中此分支被 tree-shake，失败时静默
+  }
+  return _brandDefaults;
+}
+
+/**
+ * 开发模式回退：环境变量 > .env.brand 品牌默认值 > false
  * 仅当编译时常量不存在时使用（tsx watch 场景）
  */
 function devFallback(name: string): boolean {
-  return process.env[`ENABLE_${name}`] === 'true';
+  const envKey = `ENABLE_${name}`;
+  if (process.env[envKey] !== undefined) {
+    return process.env[envKey] === 'true';
+  }
+  return loadBrandDefaults()[envKey] ?? false;
 }
 
 /**
@@ -67,11 +108,6 @@ function devFallback(name: string): boolean {
  * - 不存在 → 回退到环境变量（开发模式）
  */
 export const Feature = {
-  /** 沙箱模式（Docker 隔离执行） */
-  get SANDBOX(): boolean {
-    return typeof FEATURE_SANDBOX !== 'undefined' ? FEATURE_SANDBOX : devFallback('SANDBOX');
-  },
-
   /** 微信个人号渠道 */
   get WEIXIN(): boolean {
     return typeof FEATURE_WEIXIN !== 'undefined' ? FEATURE_WEIXIN : devFallback('WEIXIN');
@@ -96,7 +132,19 @@ export const Feature = {
   get FEISHU(): boolean {
     return typeof FEATURE_FEISHU !== 'undefined' ? FEATURE_FEISHU : devFallback('FEISHU');
   },
-} as const;
+
+  // ─── Kernel 能力 Flag ───
+
+  /** 缓存感知微压缩 */
+  get CACHED_MICROCOMPACT(): boolean {
+    return typeof FEATURE_CACHED_MICROCOMPACT !== 'undefined' ? FEATURE_CACHED_MICROCOMPACT : devFallback('CACHED_MICROCOMPACT');
+  },
+
+  /** 响应式渐进压缩 */
+  get REACTIVE_COMPACT(): boolean {
+    return typeof FEATURE_REACTIVE_COMPACT !== 'undefined' ? FEATURE_REACTIVE_COMPACT : devFallback('REACTIVE_COMPACT');
+  },
+} satisfies Record<FeatureName, boolean>;
 
 // ─── 诊断 ─────────────────────────────────────────────────────────
 

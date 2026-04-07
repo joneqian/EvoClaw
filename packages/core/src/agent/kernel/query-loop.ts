@@ -35,15 +35,19 @@ import type {
   QueryLoopConfig,
   QueryLoopResult,
   ExitReason,
+  LoopState,
+  TransitionReason,
 } from './types.js';
 import { ApiError } from './types.js';
 import { streamLLM } from './stream-client.js';
 import { StreamingToolExecutor } from './streaming-tool-executor.js';
-import { maybeCompress, contextCollapseDrain } from './context-compactor.js';
-import { classifyApiError, isRecoverableInLoop, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
+import { maybeCompress, maybeCompressPhased, contextCollapseDrain, createCollapseState } from './context-compactor.js';
+import type { CollapseState } from './context-compactor.js';
+import { Feature } from '../../infrastructure/feature.js';
+import { classifyApiError, isRecoverableInLoop, isFallbackTrigger, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
 import { PromptCacheMonitor } from './prompt-cache-monitor.js';
 import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage, stripThinkingBlocks, ensureToolResultPairing } from './message-utils.js';
-import type { ToolCallRecord } from '../types.js';
+import type { ToolCallRecord, RuntimeEvent } from '../types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
 const log = createLogger('query-loop');
@@ -124,6 +128,8 @@ async function streamOneRound(
   messages: readonly KernelMessage[],
   executor: StreamingToolExecutor,
   maxTokensOverride?: number,
+  /** 模型覆盖（模型回退时使用 fallbackModel 的配置） */
+  modelOverride?: { modelId: string; protocol?: string; baseUrl?: string; apiKey?: string },
 ): Promise<RoundResult> {
   const blocks: ContentBlock[] = [];
   let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
@@ -132,16 +138,22 @@ async function streamOneRound(
   // 当前累积中的 tool_use (用于跨事件追踪)
   const pendingToolUses = new Map<string, { id: string; name: string }>();
 
+  // 模型回退时覆盖连接参数
+  const effectiveModelId = modelOverride?.modelId ?? config.modelId;
+  const effectiveProtocol = (modelOverride?.protocol ?? config.protocol) as import('./types.js').ApiProtocol;
+  const effectiveBaseUrl = modelOverride?.baseUrl ?? config.baseUrl;
+  const effectiveApiKey = modelOverride?.apiKey ?? config.apiKey;
+
   // Thinking 块跨轮次清理：如果 thinking 已禁用，从历史消息中剥离 thinking 块避免 API 错误
   const messagesForApi = config.thinkingConfig.type === 'disabled'
     ? messages.map(stripThinkingBlocks)
     : messages;
 
   for await (const event of streamLLM({
-    protocol: config.protocol,
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
-    modelId: config.modelId,
+    protocol: effectiveProtocol,
+    baseUrl: effectiveBaseUrl,
+    apiKey: effectiveApiKey,
+    modelId: effectiveModelId,
     systemPrompt: config.systemPrompt,
     messages: messagesForApi,
     tools: config.tools,
@@ -211,6 +223,27 @@ async function streamOneRound(
       case 'done':
         stopReason = event.stopReason;
         break;
+
+      case 'metrics':
+        config.onEvent({
+          type: 'stream_metrics',
+          timestamp: Date.now(),
+          streamMetrics: {
+            stallCount: event.metrics.stallCount,
+            totalStallMs: event.metrics.totalStallMs,
+            eventCount: event.metrics.eventCount,
+            totalDurationMs: event.metrics.totalDurationMs,
+            ttfbMs: event.metrics.latency.headersReceivedAt && event.metrics.latency.requestSentAt
+              ? event.metrics.latency.headersReceivedAt - event.metrics.latency.requestSentAt
+              : undefined,
+            fallbackUsed: event.metrics.fallbackUsed,
+          },
+        });
+        break;
+
+      case 'latency':
+        // 延迟检查点已包含在 metrics 事件中，无需单独转发
+        break;
     }
   }
 
@@ -239,29 +272,40 @@ async function streamOneRound(
  * - 其他错误抛出，由外层 embedded-runner-attempt.ts 捕获
  */
 export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResult> {
-  const messages: KernelMessage[] = [...config.messages];
-  let turnCount = 0;
-  let maxOutputRecoveryCount = 0;
-  let effectiveMaxTokens = config.maxTokens;
+  // ─── 不可变状态快照（参考 Claude Code query.ts State 模式） ───
+  let state: LoopState = {
+    messages: [...config.messages],
+    turnCount: 0,
+    transition: null,
+    overflowRetries: 0,
+    maxOutputRecoveryCount: 0,
+    effectiveMaxTokens: config.maxTokens,
+    effectiveModelId: config.modelId,
+  };
+
   let fullResponse = '';
   const allToolCalls: ToolCallRecord[] = [];
   let totalInput = 0;
   let totalOutput = 0;
-  let overflowRetries = 0;
   let exitReason: ExitReason = 'completed';
+  let fallbackActivated = false;
+  let collapseState: CollapseState = createCollapseState();
+  /** 缓存断点索引 — 最后一次 cacheWriteTokens > 0 时的消息数组长度 */
+  let cacheBreakpointIndex = 0;
   const cacheMonitor = new PromptCacheMonitor();
 
-  log.info(`queryLoop 开始: model=${config.modelId}, maxTurns=${config.maxTurns}, tools=${config.tools.length}`);
+  log.info(`queryLoop 开始: model=${state.effectiveModelId}, maxTurns=${config.maxTurns}, tools=${config.tools.length}`);
 
   const buildResult = (): QueryLoopResult => ({
     fullResponse,
     toolCalls: allToolCalls,
     // 确保每个 tool_use 都有配对的 tool_result（中断时补占位符）
-    messages: ensureToolResultPairing(messages),
+    messages: ensureToolResultPairing(state.messages),
     totalInputTokens: totalInput,
     totalOutputTokens: totalOutput,
     exitReason,
-    turnCount,
+    turnCount: state.turnCount,
+    lastTransition: state.transition,
   });
 
   while (true) {
@@ -271,18 +315,27 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       log.info('外部中止');
       return buildResult();
     }
-    if (turnCount >= config.maxTurns) {
+    if (state.turnCount >= config.maxTurns) {
       exitReason = 'max_turns';
       log.info(`达到最大 turn 数 (${config.maxTurns})，退出`);
       return buildResult();
     }
 
     // ─── 2. 上下文压缩 (turn > 0 时检查) ───
-    if (turnCount > 0) {
+    if (state.turnCount > 0) {
       try {
-        // 压缩边界事件由 context-compactor 内部发射（每层独立发射 start/end）
-        const compressed = await maybeCompress(messages, config);
-        if (compressed) cacheMonitor.notifyCompaction();
+        if (Feature.REACTIVE_COMPACT) {
+          // 渐进式压缩（按阈值分阶段，含主动 snip）
+          const prevPhase = collapseState.phase;
+          collapseState = await maybeCompressPhased(state.messages, config, collapseState);
+          if (collapseState.phase !== 'normal' && collapseState.phase !== 'warning' && collapseState.phase !== prevPhase) {
+            cacheMonitor.notifyCompaction();
+          }
+        } else {
+          // 传统压缩（全有全无）
+          const compressed = await maybeCompress(state.messages, config);
+          if (compressed) cacheMonitor.notifyCompaction();
+        }
       } catch (err) {
         log.warn(`压缩失败，继续: ${err instanceof Error ? err.message : err}`);
       }
@@ -300,40 +353,48 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     cacheMonitor.recordPreCallState({
       systemPrompt: systemPromptStr,
       tools: config.tools,
-      modelId: config.modelId,
+      modelId: state.effectiveModelId,
       thinkingEnabled: config.thinkingConfig.type !== 'disabled',
     });
 
     let roundResult: RoundResult;
     try {
-      roundResult = await streamOneRound(config, messages, executor, effectiveMaxTokens);
-      overflowRetries = 0;
+      // 模型回退时传递 fallback 配置
+      const modelOverride = fallbackActivated && config.fallbackModel
+        ? { modelId: config.fallbackModel.modelId, protocol: config.fallbackModel.protocol, baseUrl: config.fallbackModel.baseUrl, apiKey: config.fallbackModel.apiKey }
+        : undefined;
+      roundResult = await streamOneRound(config, state.messages, executor, state.effectiveMaxTokens, modelOverride);
+      state = { ...state, overflowRetries: 0 };
     } catch (err) {
       // 413 overflow → Context Collapse Drain (轻量) → 完整压缩 (重量)
       const classified = classifyApiError(err);
-      if (isRecoverableInLoop(classified) && overflowRetries < MAX_OVERFLOW_RETRIES) {
-        overflowRetries++;
+      if (isRecoverableInLoop(classified) && state.overflowRetries < MAX_OVERFLOW_RETRIES) {
+        const nextOverflowRetries = state.overflowRetries + 1;
         executor.discard();
 
         // 第 1 次: 尝试轻量 Context Collapse Drain（零 API 成本）
-        if (overflowRetries === 1) {
-          log.warn(`413 overflow, 尝试 Context Collapse Drain (${overflowRetries}/${MAX_OVERFLOW_RETRIES})`);
-          const collapsed = contextCollapseDrain(messages);
+        if (nextOverflowRetries === 1) {
+          log.warn(`413 overflow, 尝试 Context Collapse Drain (${nextOverflowRetries}/${MAX_OVERFLOW_RETRIES})`);
+          const collapsed = contextCollapseDrain(state.messages);
           if (collapsed) {
             cacheMonitor.notifyCompaction();
+            state = { ...state, overflowRetries: nextOverflowRetries, transition: 'overflow_retry' };
+            log.info(`transition: ${state.transition}`);
             continue;
           }
         }
 
         // 第 2 次或 collapse 无效: 完整压缩
-        log.warn(`413 overflow, 完整压缩重试 (${overflowRetries}/${MAX_OVERFLOW_RETRIES})`);
+        log.warn(`413 overflow, 完整压缩重试 (${nextOverflowRetries}/${MAX_OVERFLOW_RETRIES})`);
         try {
-          await maybeCompress(messages, config);
+          await maybeCompress(state.messages, config);
           cacheMonitor.notifyCompaction();
         } catch {
           throw err;
         }
-        continue; // transition: overflow_retry
+        state = { ...state, overflowRetries: nextOverflowRetries, transition: 'overflow_retry' };
+        log.info(`transition: ${state.transition}`);
+        continue;
       }
 
       if (isAbortLike(err)) {
@@ -341,24 +402,42 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
         return buildResult();
       }
 
+      // ─── 模型回退 (参考 Claude Code attemptWithFallback) ───
+      if (config.fallbackModel && !fallbackActivated && isFallbackTrigger(classified)) {
+        fallbackActivated = true;
+        executor.discard();
+
+        // Tombstone: 通知 UI 丢弃本轮已发送的 partial text_delta
+        config.onEvent({ type: 'tombstone', timestamp: Date.now() });
+
+        state = { ...state, effectiveModelId: config.fallbackModel.modelId, transition: 'model_fallback' };
+        log.warn(`模型回退: ${config.modelId} → ${config.fallbackModel.modelId}, 原因: ${classified.type}`);
+        continue;
+      }
+
       exitReason = 'error';
       throw err;
     }
 
-    messages.push(roundResult.assistantMessage);
-    turnCount++;
+    state.messages.push(roundResult.assistantMessage);
+    state = { ...state, turnCount: state.turnCount + 1 };
     totalInput += roundResult.usage.inputTokens;
     totalOutput += roundResult.usage.outputTokens;
 
-    // Cache Monitor: 检测断裂
+    // Cache Monitor: 检测断裂 + 追踪缓存断点
     cacheMonitor.checkForBreak({
       cacheReadTokens: roundResult.usage.cacheReadTokens ?? 0,
       cacheWriteTokens: roundResult.usage.cacheWriteTokens ?? 0,
       systemPrompt: systemPromptStr,
       tools: config.tools,
-      modelId: config.modelId,
+      modelId: state.effectiveModelId,
       thinkingEnabled: config.thinkingConfig.type !== 'disabled',
     });
+    // 追踪缓存断点（用于缓存感知微压缩）
+    if ((roundResult.usage.cacheWriteTokens ?? 0) > 0) {
+      cacheBreakpointIndex = state.messages.length;
+      collapseState = { ...collapseState, cacheBreakpointIndex };
+    }
 
     // ─── 4. 累积文本 ───
     for (const block of roundResult.assistantMessage.content) {
@@ -376,7 +455,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       // ─── 5a. Stop Hook 检查 (参考 Claude Code query.ts stopHookResult) ───
       if (config.stopHook) {
         try {
-          const hookResult = await config.stopHook(roundResult.assistantMessage, messages);
+          const hookResult = await config.stopHook(roundResult.assistantMessage, state.messages);
           if (hookResult.preventContinuation) {
             exitReason = 'stop_hook_prevented';
             log.info('Stop Hook 阻止继续');
@@ -385,13 +464,15 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
           if (hookResult.blockingErrors.length > 0) {
             // Hook 报告阻断性错误 → 注入错误信息，继续循环修复
             log.info(`Stop Hook 报告 ${hookResult.blockingErrors.length} 个阻断性错误，继续修复`);
-            messages.push({
+            state.messages.push({
               id: crypto.randomUUID(),
               role: 'user',
               content: [{ type: 'text', text: `以下检查未通过，请修复:\n${hookResult.blockingErrors.join('\n')}` }],
               isMeta: true,
             });
-            continue; // transition: stop_hook_blocking
+            state = { ...state, transition: 'stop_hook_blocking' };
+            log.info(`transition: ${state.transition}`);
+            continue;
           }
         } catch (err) {
           log.warn(`Stop Hook 执行失败，忽略: ${err instanceof Error ? err.message : err}`);
@@ -399,23 +480,25 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       }
 
       // ─── 5b. max_output_tokens 恢复 ───
-      if (roundResult.stopReason === 'max_tokens' && maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
-        maxOutputRecoveryCount++;
+      if (roundResult.stopReason === 'max_tokens' && state.maxOutputRecoveryCount < MAX_OUTPUT_RECOVERY_LIMIT) {
+        const nextRecoveryCount = state.maxOutputRecoveryCount + 1;
 
-        if (maxOutputRecoveryCount === 1 && effectiveMaxTokens < ESCALATED_MAX_TOKENS) {
-          effectiveMaxTokens = ESCALATED_MAX_TOKENS;
-          log.info(`max_output_tokens 恢复: 升级到 ${ESCALATED_MAX_TOKENS} tokens (attempt ${maxOutputRecoveryCount})`);
+        if (nextRecoveryCount === 1 && state.effectiveMaxTokens < ESCALATED_MAX_TOKENS) {
+          state = { ...state, effectiveMaxTokens: ESCALATED_MAX_TOKENS, maxOutputRecoveryCount: nextRecoveryCount, transition: 'max_tokens_recovery' };
+          log.info(`max_output_tokens 恢复: 升级到 ${ESCALATED_MAX_TOKENS} tokens (attempt ${nextRecoveryCount})`);
         } else {
-          log.info(`max_output_tokens 恢复: 注入 Resume 消息 (attempt ${maxOutputRecoveryCount})`);
+          state = { ...state, maxOutputRecoveryCount: nextRecoveryCount, transition: 'max_tokens_recovery' };
+          log.info(`max_output_tokens 恢复: 注入 Resume 消息 (attempt ${nextRecoveryCount})`);
         }
 
-        messages.push({
+        state.messages.push({
           id: crypto.randomUUID(),
           role: 'user',
           content: [{ type: 'text', text: MAX_OUTPUT_RECOVERY_MESSAGE }],
           isMeta: true,
         });
-        continue; // transition: max_tokens_recovery
+        log.info(`transition: ${state.transition}`);
+        continue;
       }
 
       if (roundResult.stopReason === 'max_tokens') {
@@ -426,16 +509,18 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
 
       // ─── 5c. Token Budget 连续执行 (参考 Claude Code TOKEN_BUDGET feature) ───
       if (config.tokenBudget) {
-        const decision = config.tokenBudget(turnCount, totalInput, totalOutput);
+        const decision = config.tokenBudget(state.turnCount, totalInput, totalOutput);
         if (decision.action === 'continue' && decision.nudgeMessage) {
           log.info(`Token Budget 续行: ${decision.nudgeMessage.slice(0, 50)}...`);
-          messages.push({
+          state.messages.push({
             id: crypto.randomUUID(),
             role: 'user',
             content: [{ type: 'text', text: decision.nudgeMessage }],
             isMeta: true,
           });
-          continue; // transition: token_budget_continue
+          state = { ...state, transition: 'token_budget_continue' };
+          log.info(`transition: ${state.transition}`);
+          continue;
         }
         if (decision.action === 'stop' && decision.stopReason === 'budget_exhausted') {
           exitReason = 'token_budget_exhausted';
@@ -446,7 +531,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
 
       // 模型完成，无工具调用
       exitReason = 'completed';
-      log.info(`模型完成 (turn ${turnCount})，无工具调用`);
+      log.info(`模型完成 (turn ${state.turnCount})，无工具调用`);
       return buildResult();
     }
 
@@ -460,7 +545,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     const lookups = buildMessageLookups([roundResult.assistantMessage, toolResultMsg]);
     allToolCalls.push(...mapToolCalls(toolUseBlocks, lookups));
 
-    messages.push(toolResultMsg);
+    state.messages.push(toolResultMsg);
 
     // ─── 6b. 工具调用摘要 (参考 Claude Code ToolUseSummaryMessage) ───
     // 生成 git-commit-subject 风格的简短摘要，用于上下文压缩和 UI 展示
@@ -491,9 +576,9 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     // ─── 7. 附件收集 (参考 Claude Code 附件与延续阶段) ───
     if (config.attachmentCollector) {
       try {
-        const attachment = await config.attachmentCollector(allToolCalls, messages);
+        const attachment = await config.attachmentCollector(allToolCalls, state.messages);
         if (attachment) {
-          messages.push({
+          state.messages.push({
             id: crypto.randomUUID(),
             role: 'user',
             content: [{ type: 'text', text: attachment }],
@@ -506,8 +591,94 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       }
     }
 
+    // ─── 8. 工具结果后渐进式压缩检查 ───
+    // 大工具结果可能导致 token 突破阈值，提前压缩避免下轮 413
+    if (Feature.REACTIVE_COMPACT) {
+      try {
+        collapseState = await maybeCompressPhased(state.messages, config, collapseState);
+        if (collapseState.phase !== 'normal' && collapseState.phase !== 'warning') {
+          cacheMonitor.notifyCompaction();
+        }
+      } catch {
+        // 非关键，忽略
+      }
+    }
+
     const calledTools = toolUseBlocks.map(b => b.name).join(', ');
-    log.info(`turn ${turnCount}: ${toolUseBlocks.length} 个工具调用完成 [${calledTools}]，继续`);
-    // transition: tool_use → continue
+    log.info(`turn ${state.turnCount}: ${toolUseBlocks.length} 个工具调用完成 [${calledTools}]，继续`);
+    state = { ...state, transition: 'tool_use' };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AsyncIterableQueue — 有界背压队列
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 简单的 push/pull 异步队列
+ *
+ * - push 侧: 事件入队（同步，无阻塞）
+ * - pull 侧: for-await 消费，队列空时等待
+ * - done(): 标记生产者结束
+ */
+class AsyncIterableQueue<T> implements AsyncIterable<T> {
+  private queue: T[] = [];
+  private resolve: (() => void) | null = null;
+  private finished = false;
+
+  push(item: T): void {
+    this.queue.push(item);
+    this.resolve?.();
+    this.resolve = null;
+  }
+
+  done(): void {
+    this.finished = true;
+    this.resolve?.();
+    this.resolve = null;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<T> {
+    while (true) {
+      while (this.queue.length > 0) {
+        yield this.queue.shift()!;
+      }
+      if (this.finished) return;
+      await new Promise<void>(r => { this.resolve = r; });
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// queryLoopGenerator — Async Generator 兼容层
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * queryLoop 的 async generator 包装
+ *
+ * 通过 AsyncIterableQueue 提供有界背压。
+ * 不改变现有 queryLoop 实现，仅包装事件流。
+ *
+ * 用法:
+ * ```
+ * for await (const event of queryLoopGenerator(config)) {
+ *   res.write(`data: ${JSON.stringify(event)}\n\n`);
+ * }
+ * ```
+ */
+export async function* queryLoopGenerator(
+  config: Omit<QueryLoopConfig, 'onEvent'>,
+): AsyncGenerator<RuntimeEvent, QueryLoopResult, undefined> {
+  const queue = new AsyncIterableQueue<RuntimeEvent>();
+
+  const resultPromise = queryLoop({
+    ...config,
+    onEvent: (event: RuntimeEvent) => queue.push(event),
+  } as QueryLoopConfig).finally(() => queue.done());
+
+  for await (const event of queue) {
+    yield event;
+  }
+
+  return await resultPromise;
 }

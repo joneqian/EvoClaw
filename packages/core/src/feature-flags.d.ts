@@ -9,9 +9,6 @@
  * CI 脚本 scripts/check-feature-flags.ts 校验一致性。
  */
 
-/** 沙箱模式（Docker 隔离执行） */
-declare const FEATURE_SANDBOX: boolean;
-
 /** 微信个人号渠道 */
 declare const FEATURE_WEIXIN: boolean;
 
@@ -26,3 +23,11 @@ declare const FEATURE_WECOM: boolean;
 
 /** 飞书渠道 */
 declare const FEATURE_FEISHU: boolean;
+
+// ─── Kernel 能力 Flag（仅门控未验证的新行为） ───
+
+/** 缓存感知微压缩 */
+declare const FEATURE_CACHED_MICROCOMPACT: boolean;
+
+/** 响应式渐进压缩 */
+declare const FEATURE_REACTIVE_COMPACT: boolean;

@@ -388,7 +388,26 @@ export type TransitionReason =
   | 'max_tokens_recovery'   // max_output_tokens 恢复重试
   | 'overflow_retry'        // 413 压缩重试
   | 'stop_hook_blocking'    // Stop Hook 报告阻断性错误，继续修复
-  | 'token_budget_continue'; // Token Budget 有余额，自动续行
+  | 'token_budget_continue' // Token Budget 有余额，自动续行
+  | 'model_fallback';       // 模型回退（主模型失败，切换备用）
+
+/**
+ * 循环状态快照 — 每轮结束时构建新对象，不可变追踪
+ *
+ * 参考 Claude Code query.ts 的 State 对象:
+ * 每轮迭代结束后构建新 state 赋值回变量，循环继续。
+ * messages 数组本身保持 mutable（性能），LoopState 对象每轮重建。
+ */
+export interface LoopState {
+  readonly messages: KernelMessage[];
+  readonly turnCount: number;
+  readonly transition: TransitionReason | null;
+  readonly overflowRetries: number;
+  readonly maxOutputRecoveryCount: number;
+  readonly effectiveMaxTokens: number;
+  /** 当前生效的模型 ID（模型回退时会变化） */
+  readonly effectiveModelId: string;
+}
 
 export interface QueryLoopResult {
   readonly fullResponse: string;
@@ -400,6 +419,8 @@ export interface QueryLoopResult {
   readonly exitReason: ExitReason;
   /** 轮次数 */
   readonly turnCount: number;
+  /** 最后一次转换原因（调试用） */
+  readonly lastTransition: TransitionReason | null;
 }
 
 /** Stop Hook 检查结果 */
@@ -479,6 +500,9 @@ export interface QueryLoopConfig {
     readonly modelId: string;
   };
 
+  // ─── Model Fallback (可选: 主模型失败时循环内切换) ───
+  readonly fallbackModel?: FallbackModelConfig;
+
   // ─── Stop Hook (可选: assistant 响应后执行检查) ───
   readonly stopHook?: StopHookFn;
 
@@ -497,6 +521,14 @@ export interface QueryLoopConfig {
 // ═══════════════════════════════════════════════════════════════════════════
 // Error Types
 // ═══════════════════════════════════════════════════════════════════════════
+
+/** 模型回退配置（循环内切换备用模型） */
+export interface FallbackModelConfig {
+  readonly modelId: string;
+  readonly protocol?: ApiProtocol;
+  readonly baseUrl?: string;
+  readonly apiKey?: string;
+}
 
 /** API 调用错误 (携带 HTTP 状态码) */
 export class ApiError extends Error {

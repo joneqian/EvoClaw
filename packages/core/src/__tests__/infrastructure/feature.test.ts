@@ -23,20 +23,22 @@ describe('Feature Flag', () => {
   });
 
   it('默认所有 Feature 应为 false（开发模式，无环境变量）', async () => {
-    delete process.env.ENABLE_SANDBOX;
     delete process.env.ENABLE_WEIXIN;
     delete process.env.ENABLE_MCP;
     delete process.env.ENABLE_SILK_VOICE;
     delete process.env.ENABLE_WECOM;
     delete process.env.ENABLE_FEISHU;
+    delete process.env.ENABLE_CACHED_MICROCOMPACT;
+    delete process.env.ENABLE_REACTIVE_COMPACT;
 
     const { Feature } = await import('../../infrastructure/feature.js');
-    expect(Feature.SANDBOX).toBe(false);
     expect(Feature.WEIXIN).toBe(false);
     expect(Feature.MCP).toBe(false);
     expect(Feature.SILK_VOICE).toBe(false);
     expect(Feature.WECOM).toBe(false);
     expect(Feature.FEISHU).toBe(false);
+    expect(Feature.CACHED_MICROCOMPACT).toBe(false);
+    expect(Feature.REACTIVE_COMPACT).toBe(false);
   });
 
   it('ENABLE_WEIXIN=true 应启用 WEIXIN Feature', async () => {
@@ -44,14 +46,7 @@ describe('Feature Flag', () => {
 
     const { Feature } = await import('../../infrastructure/feature.js');
     expect(Feature.WEIXIN).toBe(true);
-    expect(Feature.SANDBOX).toBe(false); // 其他不受影响
-  });
-
-  it('ENABLE_SANDBOX=true 应启用 SANDBOX Feature', async () => {
-    process.env.ENABLE_SANDBOX = 'true';
-
-    const { Feature } = await import('../../infrastructure/feature.js');
-    expect(Feature.SANDBOX).toBe(true);
+    expect(Feature.MCP).toBe(false); // 其他不受影响
   });
 
   it('ENABLE_MCP=true 应启用 MCP Feature', async () => {
@@ -70,18 +65,17 @@ describe('Feature Flag', () => {
 
   it('非 "true" 字符串不应启用 Feature', async () => {
     process.env.ENABLE_WEIXIN = 'yes';
-    process.env.ENABLE_SANDBOX = '1';
     process.env.ENABLE_MCP = 'TRUE'; // 大写
+    process.env.ENABLE_CACHED_MICROCOMPACT = '1';
 
     const { Feature } = await import('../../infrastructure/feature.js');
     expect(Feature.WEIXIN).toBe(false);
-    expect(Feature.SANDBOX).toBe(false);
     expect(Feature.MCP).toBe(false);
+    expect(Feature.CACHED_MICROCOMPACT).toBe(false);
   });
 
   it('getFeatureStatus 应返回所有 Flag 状态（含描述和模块信息）', async () => {
     process.env.ENABLE_WEIXIN = 'true';
-    delete process.env.ENABLE_SANDBOX;
 
     const { getFeatureStatus, FEATURE_NAMES } = await import('../../infrastructure/feature.js');
     const status = getFeatureStatus();
@@ -94,9 +88,10 @@ describe('Feature Flag', () => {
     expect(status.WEIXIN.desc).toBeTruthy();
     expect(status.WEIXIN.modules).toBeInstanceOf(Array);
 
-    expect(status.SANDBOX.enabled).toBe(false);
     expect(status.MCP.enabled).toBe(false);
     expect(status.SILK_VOICE.enabled).toBe(false);
+    expect(status.CACHED_MICROCOMPACT.enabled).toBe(false);
+    expect(status.REACTIVE_COMPACT.enabled).toBe(false);
   });
 
   it('多个 Feature 可同时启用', async () => {
@@ -108,7 +103,7 @@ describe('Feature Flag', () => {
     expect(Feature.WEIXIN).toBe(true);
     expect(Feature.MCP).toBe(true);
     expect(Feature.SILK_VOICE).toBe(true);
-    expect(Feature.SANDBOX).toBe(false);
+    expect(Feature.WECOM).toBe(false);
   });
 
   it('ENABLE_WECOM=true 应启用 WECOM Feature', async () => {
@@ -127,10 +122,19 @@ describe('Feature Flag', () => {
     expect(Feature.WECOM).toBe(false);
   });
 
+  it('Kernel Flag: CACHED_MICROCOMPACT + REACTIVE_COMPACT', async () => {
+    process.env.ENABLE_CACHED_MICROCOMPACT = 'true';
+    process.env.ENABLE_REACTIVE_COMPACT = 'true';
+
+    const { Feature } = await import('../../infrastructure/feature.js');
+    expect(Feature.CACHED_MICROCOMPACT).toBe(true);
+    expect(Feature.REACTIVE_COMPACT).toBe(true);
+  });
+
   it('FEATURE_REGISTRY 应包含所有 Flag 的元数据', async () => {
     const { FEATURE_REGISTRY, FEATURE_NAMES } = await import('../../infrastructure/feature.js');
 
-    expect(FEATURE_NAMES.length).toBeGreaterThanOrEqual(6);
+    expect(FEATURE_NAMES.length).toBe(7);
     for (const name of FEATURE_NAMES) {
       const meta = FEATURE_REGISTRY[name];
       expect(meta.desc).toBeTruthy();

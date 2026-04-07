@@ -20,5 +20,14 @@
     "DEEP_HEALTH_AI_COMPANY_CODE": "",
     "DEEP_HEALTH_AI_EMPLOYEE_CODE": ""
   },
-  "defaultLanguage": "zh"
+  "defaultLanguage": "zh",
+  "features": {
+    "WEIXIN": true,
+    "MCP": true,
+    "SILK_VOICE": true,
+    "WECOM": false,
+    "FEISHU": false,
+    "CACHED_MICROCOMPACT": false,
+    "REACTIVE_COMPACT": false
+  }
 }

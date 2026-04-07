@@ -17,6 +17,7 @@
 import crypto from 'node:crypto';
 import type { KernelMessage, QueryLoopConfig } from './types.js';
 import { createLogger } from '../../infrastructure/logger.js';
+import { Feature } from '../../infrastructure/feature.js';
 
 const log = createLogger('context-compactor');
 
@@ -54,6 +55,38 @@ const HEAD_RATIO = 0.7;
 
 /** 粗略 token 估算: 每 token 平均字符数 */
 const CHARS_PER_TOKEN = 4;
+
+/** 主动 Snip 阈值 (91%) — 渐进式折叠新增 */
+const PROACTIVE_SNIP_THRESHOLD = 0.91;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Collapse State — 渐进式折叠状态追踪
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 折叠阶段 */
+export type CollapsePhase =
+  | 'normal'          // < 90%
+  | 'warning'         // 90-91%
+  | 'proactive_snip'  // 91-93% — 主动 snip（不等 413）
+  | 'autocompact'     // 93%+ — 完整压缩
+  | 'emergency'       // 413 后
+  | 'exhausted';      // 多次 emergency 仍失败
+
+/** 折叠状态快照 */
+export interface CollapseState {
+  readonly phase: CollapsePhase;
+  readonly emergencyCount: number;
+  readonly lastCompactionTurn: number;
+  /** 连续 autocompact 失败次数（从模块级变量迁移至此） */
+  readonly consecutiveFailures: number;
+  /** 缓存断点索引（用于缓存感知微压缩） */
+  readonly cacheBreakpointIndex: number;
+}
+
+/** 创建初始折叠状态 */
+export function createCollapseState(): CollapseState {
+  return { phase: 'normal', emergencyCount: 0, lastCompactionTurn: 0, consecutiveFailures: 0, cacheBreakpointIndex: 0 };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Token Estimation
@@ -175,6 +208,63 @@ export function microcompactToolResults(messages: KernelMessage[]): number {
   }
 
   return truncatedCount;
+}
+
+/**
+ * 缓存感知微压缩 — 优先截断缓存断点之后的 tool_result
+ *
+ * Phase 1: 截断 cacheBreakpointIndex 之后的消息（不影响 Prompt Cache 前缀）
+ * Phase 2: 仅在 Phase 1 不够时，截断之前的消息（导致缓存失效）
+ *
+ * @param cacheBreakpointIndex 最后一次 cacheWriteTokens > 0 时的消息数组长度
+ * @returns 截断的 block 数
+ */
+export function microcompactCacheAware(
+  messages: KernelMessage[],
+  cacheBreakpointIndex: number,
+): number {
+  let truncatedCount = 0;
+
+  // Phase 1: 截断缓存断点之后的 tool_result（这些不在缓存前缀中）
+  for (let m = cacheBreakpointIndex; m < messages.length; m++) {
+    truncatedCount += truncateToolResultsInMessage(messages[m]!);
+  }
+
+  // Phase 2: 如果仍然超标，截断缓存断点之前的 tool_result
+  const estimated = estimateTokens(messages);
+  if (estimated > messages.length * CHARS_PER_TOKEN) { // 仍然过大
+    for (let m = 0; m < cacheBreakpointIndex && m < messages.length; m++) {
+      truncatedCount += truncateToolResultsInMessage(messages[m]!);
+    }
+  }
+
+  if (truncatedCount > 0) {
+    log.info(`缓存感知 Microcompact: 截断 ${truncatedCount} 个 tool_result (breakpoint=${cacheBreakpointIndex})`);
+  }
+
+  return truncatedCount;
+}
+
+/** 截断单条消息中的超标 tool_result blocks */
+function truncateToolResultsInMessage(msg: KernelMessage): number {
+  let count = 0;
+  for (let i = 0; i < msg.content.length; i++) {
+    const block = msg.content[i]!;
+    if (block.type !== 'tool_result') continue;
+    if (block.content.length <= MICROCOMPACT_TRUNCATE_THRESHOLD) continue;
+
+    const original = block.content;
+    const headBudget = Math.floor(MICROCOMPACT_TRUNCATE_THRESHOLD * HEAD_RATIO);
+    const tailBudget = MICROCOMPACT_TRUNCATE_THRESHOLD - headBudget;
+    const head = original.slice(0, headBudget);
+    const tail = original.slice(-tailBudget);
+    const omitted = original.length - headBudget - tailBudget;
+
+    (block as { content: string }).content =
+      `${head}\n\n... [省略 ${omitted} 字符] ...\n\n${tail}`;
+    count++;
+  }
+  return count;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -518,4 +608,95 @@ export async function maybeCompress(
 /** 重置熔断器状态 (新会话时调用) */
 export function resetCompactorState(): void {
   consecutiveAutocompactFailures = 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phased Compression — 渐进式压缩（Feature.REACTIVE_COMPACT 门控）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 渐进式压缩入口 — 按 token 占比分阶段执行
+ *
+ * 相比 maybeCompress() 的改进:
+ * - 91-93% 区间主动 Snip（不等 413）
+ * - CollapseState 追踪折叠阶段（消除模块级全局状态）
+ * - 工具结果收集后可再次调用检查
+ *
+ * @returns 更新后的 CollapseState
+ */
+export async function maybeCompressPhased(
+  messages: KernelMessage[],
+  config: QueryLoopConfig,
+  collapseState: CollapseState,
+): Promise<CollapseState> {
+  const estimated = estimateTokens(messages);
+  const contextWindow = config.contextWindow;
+  const ratio = estimated / contextWindow;
+
+  // < 90%: 正常
+  if (ratio < TOKEN_THRESHOLDS.warning) {
+    return { ...collapseState, phase: 'normal' };
+  }
+
+  // 90-91%: 警告
+  if (ratio < PROACTIVE_SNIP_THRESHOLD) {
+    log.warn(`Token 警告: ${estimated}/${contextWindow} (${(ratio * 100).toFixed(0)}%)`);
+    return { ...collapseState, phase: 'warning' };
+  }
+
+  // 91-93%: 主动 Snip（不等 413）
+  if (ratio < TOKEN_THRESHOLDS.autoCompact) {
+    const snipped = snipOldMessages(messages);
+    if (snipped > 0) {
+      config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+      config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+      log.info(`主动 Snip: 移除 ${snipped} 条消息 (${(ratio * 100).toFixed(0)}% → 缓解中)`);
+    }
+    return { ...collapseState, phase: 'proactive_snip' };
+  }
+
+  // >= 93%: 完整三层压缩
+  const msgCountBefore = messages.length;
+  log.info(`渐进压缩触发: estimated=${estimated}, ratio=${(ratio * 100).toFixed(0)}%, messages=${msgCountBefore}`);
+
+  // Layer 1: Snip
+  const snipped = snipOldMessages(messages);
+  if (snipped > 0) {
+    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+  }
+  if (estimateTokens(messages) < contextWindow - AUTOCOMPACT_BUFFER_TOKENS) {
+    return { ...collapseState, phase: 'autocompact' };
+  }
+
+  // Layer 2: Microcompact（缓存感知版或标准版）
+  const truncated = Feature.CACHED_MICROCOMPACT
+    ? microcompactCacheAware(messages, collapseState.cacheBreakpointIndex)
+    : microcompactToolResults(messages);
+  if (truncated > 0) {
+    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+  }
+  if (estimateTokens(messages) < contextWindow - AUTOCOMPACT_BUFFER_TOKENS) {
+    return { ...collapseState, phase: 'autocompact' };
+  }
+
+  // Layer 3: Autocompact（含熔断器）
+  if (collapseState.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+    log.warn(`Autocompact 熔断器: 连续 ${collapseState.consecutiveFailures} 次失败，跳过`);
+    return { ...collapseState, phase: 'exhausted' };
+  }
+
+  try {
+    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await autocompact(messages, config);
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    log.info(`Autocompact: ${msgCountBefore} → ${messages.length} 消息`);
+    return { ...collapseState, phase: 'autocompact', consecutiveFailures: 0 };
+  } catch (err) {
+    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    const nextFailures = collapseState.consecutiveFailures + 1;
+    log.warn(`Autocompact 失败 (${nextFailures}/${MAX_CONSECUTIVE_FAILURES}): ${err instanceof Error ? err.message : err}`);
+    return { ...collapseState, phase: 'autocompact', consecutiveFailures: nextFailures };
+  }
 }

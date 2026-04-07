@@ -13,5 +13,14 @@
     "gradient": ["#00d4aa", "#00a88a"]
   },
   "windowTitle": "EvoClaw",
-  "defaultLanguage": "zh"
+  "defaultLanguage": "zh",
+  "features": {
+    "WEIXIN": true,
+    "MCP": true,
+    "SILK_VOICE": true,
+    "WECOM": false,
+    "FEISHU": false,
+    "CACHED_MICROCOMPACT": false,
+    "REACTIVE_COMPACT": false
+  }
 }

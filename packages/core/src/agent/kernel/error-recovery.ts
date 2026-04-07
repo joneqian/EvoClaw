@@ -137,6 +137,16 @@ export function isRecoverableInLoop(classified: ClassifiedApiError): boolean {
 }
 
 /**
+ * 判断错误是否应触发循环内模型回退
+ *
+ * timeout 和 overload 在有 fallbackModel 时尝试循环内回退，
+ * 避免抛给外层丢失当前 turn 上下文。
+ */
+export function isFallbackTrigger(classified: ClassifiedApiError): boolean {
+  return classified.type === 'timeout' || classified.type === 'overload';
+}
+
+/**
  * 判断错误是否是中止错误
  */
 export function isAbortLike(err: unknown): boolean {

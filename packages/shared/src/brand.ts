@@ -1,5 +1,5 @@
 // ⚠️ 此文件由 scripts/brand-apply.mjs 自动生成，请勿手动编辑
-// 品牌: HealthClaw | 生成时间: 2026-04-07T02:44:28.182Z
+// 品牌: HealthClaw | 生成时间: 2026-04-07T03:36:35.370Z
 
 /** 品牌配置类型 */
 export interface BrandConfig {
@@ -20,6 +20,8 @@ export interface BrandConfig {
   defaultEnv?: Record<string, string>;
   /** 品牌级默认语言 */
   defaultLanguage?: 'zh' | 'en';
+  /** 品牌级 Feature Flag 默认值 */
+  features?: Record<string, boolean>;
 }
 
 /** 当前品牌配置 */
@@ -48,7 +50,16 @@ export const BRAND: BrandConfig = {
     "DEEP_HEALTH_AI_COMPANY_CODE": "",
     "DEEP_HEALTH_AI_EMPLOYEE_CODE": ""
   },
-  "defaultLanguage": "zh"
+  "defaultLanguage": "zh",
+  "features": {
+    "WEIXIN": true,
+    "MCP": true,
+    "SILK_VOICE": true,
+    "WECOM": false,
+    "FEISHU": false,
+    "CACHED_MICROCOMPACT": false,
+    "REACTIVE_COMPACT": false
+  }
 } as const;
 
 // 便捷导出

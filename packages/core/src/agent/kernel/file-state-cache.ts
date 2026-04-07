@@ -20,7 +20,7 @@ import fs from 'node:fs';
 // Types
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface FileState {
+export interface FileState {
   /** 文件 mtime (ms) at read time */
   mtimeMs: number;
   /** 读取时间戳 */
@@ -131,6 +131,50 @@ export class FileStateCache {
   clear(): void {
     this.cache.clear();
     this.totalBytes = 0;
+  }
+
+  /**
+   * 迭代所有缓存条目（用于 clone/merge）
+   */
+  entries(): IterableIterator<[string, FileState]> {
+    return this.cache.entries();
+  }
+
+  /**
+   * 创建独立副本（用于子代理隔离）
+   *
+   * 子代理启动时 clone 父缓存，获得独立的读写状态。
+   * 参考 Claude Code: cloneFileStateCache()
+   */
+  clone(): FileStateCache {
+    const cloned = new FileStateCache();
+    for (const [filePath, state] of this.cache) {
+      cloned.cache.set(filePath, { ...state });
+      cloned.totalBytes += state.contentLength;
+    }
+    return cloned;
+  }
+
+  /**
+   * 合并另一个缓存（基于 readAt 时间戳，新覆盖旧）
+   *
+   * 子代理完成后 merge 回父缓存，保证最新读取状态优先。
+   * 返回新实例，不修改 this 或 other。
+   * 参考 Claude Code: mergeFileStateCaches()
+   */
+  merge(other: FileStateCache): FileStateCache {
+    const merged = this.clone();
+    for (const [filePath, otherState] of other.entries()) {
+      const existing = merged.cache.get(filePath);
+      if (!existing || otherState.readAt > existing.readAt) {
+        if (existing) {
+          merged.totalBytes -= existing.contentLength;
+        }
+        merged.cache.set(filePath, { ...otherState });
+        merged.totalBytes += otherState.contentLength;
+      }
+    }
+    return merged;
   }
 
   /** 缓存条目数 */

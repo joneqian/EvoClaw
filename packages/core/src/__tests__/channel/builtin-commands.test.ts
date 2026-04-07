@@ -252,7 +252,7 @@ describe('model command', () => {
       getAgent: vi.fn().mockReturnValue({ name: 'Bot', modelId: 'gpt-4o' }),
       updateAgent: vi.fn(),
     };
-    const result = await modelCommand.execute('  claude-haiku-4-5  ', makeCtx({
+    await modelCommand.execute('  claude-haiku-4-5  ', makeCtx({
       agentManager: agentManager as any,
     }));
     expect(agentManager.updateAgent).toHaveBeenCalledWith('agent-1', {

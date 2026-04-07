@@ -56,7 +56,7 @@ export async function callLLM(
 
   const maxTokens = options.maxTokens ?? 4096;
 
-  log.info(`调用 LLM: model=${modelId} protocol=${protocol} baseUrl=${baseUrl}`);
+  log.info(`调用 LLM (主模型): model=${modelId} protocol=${protocol} baseUrl=${baseUrl}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     // 兼容第三方 Anthropic 端点（如 MiniMax）：baseUrl 不含 /v1 时自动补上
@@ -91,7 +91,7 @@ export async function callLLMSecondary(
   const secondaryModelId = resolveSecondaryModelId(configManager, provider, primaryModelId);
   const maxTokens = options.maxTokens ?? 4096;
 
-  log.info(`调用二级 LLM: model=${secondaryModelId} (primary=${primaryModelId}) protocol=${protocol}`);
+  log.info(`调用 LLM (辅助/低成本): model=${secondaryModelId} (主模型=${primaryModelId}) protocol=${protocol}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;

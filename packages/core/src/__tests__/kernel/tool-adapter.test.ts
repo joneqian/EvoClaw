@@ -49,7 +49,10 @@ describe('adaptEvoclawTool', () => {
     const result = await tool.call({ input: 'hello' });
     expect(result.content).toBe('result text');
     expect(result.isError).toBeFalsy();
-    expect(def.execute).toHaveBeenCalledWith({ input: 'hello' });
+    expect(def.execute).toHaveBeenCalledWith(
+      { input: 'hello' },
+      expect.objectContaining({ signal: undefined, onProgress: undefined }),
+    );
   });
 
   it('should set fail-closed defaults for unknown tools', () => {

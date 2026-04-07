@@ -177,12 +177,20 @@ export class ToolAuditQueue {
   }
 }
 
+/** 工具执行上下文 (可选，由 tool-adapter 传入) */
+export interface ToolExecContext {
+  /** 外部取消信号 */
+  signal?: AbortSignal;
+  /** 流式进度回调 */
+  onProgress?: (progress: { message: string; data?: unknown }) => void;
+}
+
 /** 工具定义（简化版，兼容 PI AgentTool 接口） */
 export interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => Promise<string>;
+  execute: (args: Record<string, unknown>, ctx?: ToolExecContext) => Promise<string>;
 }
 
 /** 注入器配置 */

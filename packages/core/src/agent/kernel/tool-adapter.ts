@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import type { ToolDefinition } from '../../bridge/tool-injector.js';
+import type { ToolDefinition, ToolExecContext } from '../../bridge/tool-injector.js';
 // SkillTool 由调用方注入（避免 agent → skill 层级违反）
 import type { KernelTool, ToolCallResult } from './types.js';
 import type { ToolSafetyGuard } from '../tool-safety.js';
@@ -154,7 +154,7 @@ export function adaptEvoclawTool(
       deps.provider,
     ),
 
-    async call(input: Record<string, unknown>): Promise<ToolCallResult> {
+    async call(input: Record<string, unknown>, signal?: AbortSignal, onProgress?: (p: { message: string; data?: unknown }) => void): Promise<ToolCallResult> {
       const start = Date.now();
       let effectiveInput = input;
 
@@ -221,9 +221,10 @@ export function adaptEvoclawTool(
         }
       }
 
-      // 4. 执行
+      // 4. 执行 (传递 signal/onProgress 给支持上下文的工具，如 bash)
+      const execCtx: ToolExecContext = { signal, onProgress };
       try {
-        const rawResult = await tool.execute(effectiveInput);
+        const rawResult = await tool.execute(effectiveInput, execCtx);
         let result: ToolCallResult = { content: rawResult };
 
         // 5. PostToolUse hooks

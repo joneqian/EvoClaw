@@ -1,6 +1,7 @@
-import type { SecurityExtension, PermissionResult } from '../bridge/security-extension.js';
+import type { SecurityExtension } from '../bridge/security-extension.js';
 import type { PermissionCategory } from '@evoclaw/shared';
 import { detectUnicodeConfusion } from '../security/unicode-detector.js';
+import { analyzeCommand } from '../security/bash-parser/security-analyzer.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -26,10 +27,11 @@ const DANGEROUS_PATTERNS = [
   /(?:rm\s+-rf|mkfs|dd\s+if=|chmod\s+777).*&\s*$/i,          // 后台执行危险命令
   /[><]\(.*(?:rm\s+-rf|mkfs|dd\s+if=)/i,                     // 进程替换
   /crontab\s+-[re]/i,                                         // 定时任务篡改
-  // 补充安全检查（参考 Claude Code bashSecurity.ts 21 项）
-  /[\x00-\x08\x0b\x0c\x0e-\x1f]/,                            // 控制字符（排除 \t\n\r）
-  /[\u00A0\u2000-\u200B\u2028\u2029\u202F\u205F\u3000]/,      // Unicode 伪空格
-  /\{[^}]*,[^}]*\}/,                                          // 花括号展开 {a,b}
+  // Legacy 降级路径保留 — AST 主路径的 pre-checks 已覆盖以下 3 项，
+  // 但 parse-unavailable 降级时仍需要这些正则兜底
+  /[\x00-\x08\x0b\x0c\x0e-\x1f]/,                            // 控制字符（排除 \t\n\r）→ pre-checks: control_characters
+  /[\u00A0\u2000-\u200B\u2028\u2029\u202F\u205F\u3000]/,      // Unicode 伪空格 → pre-checks: unicode_whitespace
+  /\{[^}]*,[^}]*\}/,                                          // 花括号展开 {a,b} → pre-checks: brace_expansion_with_quotes
   /(?:^|[;&|])\s*['"][^'"]*$/,                                // 不完整命令（未闭合引号）
 ];
 
@@ -139,16 +141,13 @@ export class PermissionInterceptor {
     // 1. 确定权限类别
     const category = this.resolveCategory(toolName);
 
-    // 2. 检查危险命令
+    // 2. 双路径安全检查 (AST 主路径 + Legacy 正则降级)
     if (toolName === 'bash' || toolName === 'shell') {
       const command = (params['command'] as string) ?? '';
-      if (this.isDangerousCommand(command)) {
-        return {
-          allowed: false,
-          reason: `检测到危险命令: ${command.slice(0, 100)}`,
-          requiresConfirmation: true,
-          permissionCategory: 'shell',
-        };
+      const securityResult = this.analyzeShellCommand(command);
+
+      if (securityResult) {
+        return securityResult;
       }
     }
 
@@ -220,7 +219,75 @@ export class PermissionInterceptor {
     return { allowed: true };
   }
 
-  /** 检测危险命令 */
+  /**
+   * 双路径安全分析
+   *
+   * 主路径 (AST): analyzeCommand → 白名单制分析 + 变量追踪 + pre-checks
+   * 降级路径 (Legacy): 解析失败时回退到正则黑名单
+   *
+   * @returns InterceptResult 如果需要拦截，null 如果通过（继续后续检查）
+   */
+  private analyzeShellCommand(command: string): InterceptResult | null {
+    // AST 主路径
+    const analysis = analyzeCommand(command);
+
+    if (analysis.kind === 'deny') {
+      return {
+        allowed: false,
+        reason: analysis.reason ?? '命令被安全分析拒绝',
+        requiresConfirmation: false,
+        permissionCategory: 'shell',
+      };
+    }
+
+    if (analysis.kind === 'ask') {
+      // Misparsing → 阻断整个流程，不能走 safeBins 绕过
+      if (analysis.isMisparsing) {
+        return {
+          allowed: false,
+          reason: `⚠️ 命令解析差异检测: ${analysis.reason}`,
+          requiresConfirmation: true,
+          permissionCategory: 'shell',
+        };
+      }
+
+      // AST 分析返回 too-complex → 降级到 legacy 正则路径
+      if (analysis.parseResult.kind === 'too-complex' || analysis.parseResult.kind === 'parse-unavailable') {
+        return this.legacyDangerousCheck(command);
+      }
+
+      // Non-misparsing pre-check 警告 → 需要确认但非阻断
+      return {
+        allowed: false,
+        reason: analysis.reason,
+        requiresConfirmation: true,
+        permissionCategory: 'shell',
+      };
+    }
+
+    // AST 分析通过 → 仍然对原始命令做 legacy 正则双保险
+    // （legacy 正则可检测跨管道的组合攻击如 curl|sh）
+    const legacyResult = this.legacyDangerousCheck(command);
+    if (legacyResult) return legacyResult;
+
+    // 安全 → 返回 null（继续后续 safeBins/权限检查）
+    return null;
+  }
+
+  /** Legacy 降级路径 — 对原始命令字符串做正则匹配 */
+  private legacyDangerousCheck(command: string): InterceptResult | null {
+    if (this.isDangerousCommand(command)) {
+      return {
+        allowed: false,
+        reason: `检测到危险命令: ${command.slice(0, 100)}`,
+        requiresConfirmation: true,
+        permissionCategory: 'shell',
+      };
+    }
+    return null;
+  }
+
+  /** 检测危险命令 (Legacy 正则路径) */
   isDangerousCommand(command: string): boolean {
     return DANGEROUS_PATTERNS.some(pattern => pattern.test(command));
   }

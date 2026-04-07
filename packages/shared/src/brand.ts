@@ -1,5 +1,5 @@
 // ⚠️ 此文件由 scripts/brand-apply.mjs 自动生成，请勿手动编辑
-// 品牌: HealthClaw | 生成时间: 2026-04-07T06:54:04.961Z
+// 品牌: HealthClaw | 生成时间: 2026-04-07T07:56:00.340Z
 
 /** 品牌配置类型 */
 export interface BrandConfig {

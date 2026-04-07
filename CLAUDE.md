@@ -64,6 +64,7 @@ docs/                  — PRD, Architecture, AgentSystemDesign, MemorySystemDes
 - **模块化系统提示**: 安全宪法 + 记忆召回指令 + 运行时信息 + 工具使用指导 + 技能扫描（参考 OpenClaw 22 段式架构）
 - **多级错误恢复**: Auth 轮转 → overload 退避 → thinking 降级 → context overflow compaction → 模型降级
 - **工具安全**: 循环检测（重复/乒乓/熔断器阈值 30）+ 结果截断（超 context budget 50% 自动截断）
+- **Bash 安全体系**: 双路径架构 — AST 主路径（纯 TS bash 解析器 → 白名单制 FAIL-CLOSED 分析 → 变量作用域追踪 → pre-check 差异检测 → sed 专项验证）+ Legacy 正则降级路径（parse-unavailable 时回退到 23 条正则）。异步执行引擎（spawn 非阻塞 → AbortController → 超时 SIGTERM/SIGKILL → 大输出持久化 → 图片检测）
 - **微信个人号渠道**: iLink Bot 长轮询 (vs webhook)，QR 扫码登录 (vs AppID/Secret)，CDN + AES-128-ECB 媒体加解密管线，context_token 回传，Markdown→纯文本，/echo + /toggle-debug Slash 命令，全链路 Debug 追踪，SILK 语音转码 (可选)
 
 ## 开发命令

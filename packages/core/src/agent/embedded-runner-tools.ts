@@ -2,7 +2,7 @@
  * 工具构建模块 — 自研 Kernel 版本
  *
  * 保留:
- * - createEnhancedExecTool() — 增强版 bash 工具 (独立于 PI)
+ * - createEnhancedExecTool() — 增强版 bash 工具 (异步执行，基于 asyncExec)
  * - AuditLogEntry 类型 — 审计接口
  *
  * 移除 (PI 相关):
@@ -13,6 +13,15 @@
  * - PIToolResult 类型 — 不再需要
  * - runGuards() / postProcess() — 移入 kernel/tool-adapter.ts
  */
+
+import {
+  asyncExec,
+  truncateOutput,
+  maybePersistOutput,
+  type AsyncExecOptions,
+  type DetectedImage,
+} from '../infrastructure/async-exec.js';
+import type { ToolExecContext } from '../bridge/tool-injector.js';
 
 // ─── Types ───
 
@@ -25,17 +34,26 @@ export interface AuditLogEntry {
   durationMs: number;
 }
 
+// BashExecContext 已统一为 ToolExecContext (bridge/tool-injector.ts)
+
 // ─── createEnhancedExecTool ───
 
+const DEFAULT_TIMEOUT_SEC = 120;
+const MAX_OUTPUT_CHARS = 200_000;
+
 /**
- * 增强版 exec 工具（替代 PI 内置 bash，参考 OpenClaw exec-tool）
- * 增强点: 超时控制、工作目录、输出限制、退出码格式化
+ * 增强版 exec 工具（异步执行，替代旧版 execSync 实现）
+ *
+ * 增强点:
+ * - 异步执行 (不阻塞事件循环)
+ * - AbortController 支持
+ * - 流式进度回调
+ * - 超时 → SIGTERM → 3s grace → SIGKILL
+ * - 大输出持久化到磁盘 (>30K)
+ * - 图片输出检测
+ * - 自动后台化 (>15s 阻塞)
  */
 export function createEnhancedExecTool() {
-  const { execSync } = require('node:child_process') as typeof import('node:child_process');
-  const DEFAULT_TIMEOUT_SEC = 120;
-  const MAX_OUTPUT_CHARS = 200_000;
-
   return {
     name: 'bash',  // 保持名称为 bash，模型更熟悉
     description: `执行 shell 命令。输出截断到 ${MAX_OUTPUT_CHARS / 1000}K 字符。大输出请重定向到文件再用 read 查看。长时间任务用 exec_background 工具。`,
@@ -45,80 +63,96 @@ export function createEnhancedExecTool() {
         command: { type: 'string', description: '要执行的 shell 命令' },
         workdir: { type: 'string', description: '工作目录（默认当前目录）' },
         timeout: { type: 'number', description: `超时秒数（默认 ${DEFAULT_TIMEOUT_SEC}）` },
+        run_in_background: { type: 'boolean', description: '在后台运行命令（不阻塞）' },
       },
       required: ['command'],
     },
-    execute: async (args: Record<string, unknown>): Promise<string> => {
+    execute: async (args: Record<string, unknown>, ctx?: ToolExecContext): Promise<string> => {
       const command = args.command as string;
       const workdir = (args.workdir as string) || process.cwd();
       const timeoutSec = (args.timeout as number) || DEFAULT_TIMEOUT_SEC;
+      const runInBackground = args.run_in_background as boolean | undefined;
 
       if (!command) return '错误：缺少 command 参数';
 
-      // P0-4: 危险命令检测 (参考 Claude Code destructiveCommandWarning.ts)
+      // 危险命令检测 (参考 Claude Code destructiveCommandWarning.ts)
       const destructiveWarning = detectDestructiveCommand(command);
       if (destructiveWarning) {
         return `⚠️ 危险命令检测: ${destructiveWarning}\n命令: ${command}\n\n如需执行，请通过权限系统确认。`;
       }
 
-
-
-      try {
-        const output = execSync(command, {
-          cwd: workdir,
-          timeout: timeoutSec * 1000,
-          maxBuffer: 10 * 1024 * 1024,  // 10MB buffer
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, EVOCLAW_SHELL: 'exec' },
-        });
-
-        const result = (output ?? '').toString();
-
-        if (result.length > MAX_OUTPUT_CHARS) {
-          // 头尾保留截断
-          const head = result.slice(0, Math.floor(MAX_OUTPUT_CHARS * 0.7));
-          const tail = result.slice(-Math.floor(MAX_OUTPUT_CHARS * 0.3));
-          return `${head}\n\n... [省略 ${result.length - MAX_OUTPUT_CHARS} 字符] ...\n\n${tail}`;
-        }
-
-        return result || '(无输出)';
-      } catch (err: unknown) {
-        const e = err as { status?: number; stdout?: string; stderr?: string; message?: string; killed?: boolean };
-
-        if (e.killed) {
-          // 超时后自动转后台继续执行（参考 Claude Code BashTool 超时→后台）
-          try {
-            const { spawn } = require('node:child_process') as typeof import('node:child_process');
-            const bg = spawn(command, [], {
-              cwd: workdir,
-              shell: true,
-              detached: true,
-              stdio: 'ignore',
-              env: { ...process.env, EVOCLAW_SHELL: 'background' },
-            });
-            bg.unref();
-            const partialOut = (e.stdout?.toString() ?? '').slice(0, 2000);
-            return `命令超时（${timeoutSec} 秒），已自动转为后台继续执行 (PID: ${bg.pid})。\n${partialOut ? `部分输出:\n${partialOut}\n` : ''}后续输出可通过 process 工具查看。`;
-          } catch {
-            return `命令超时（${timeoutSec} 秒），已终止。转后台执行失败，请使用 exec_background 工具手动重试。`;
-          }
-        }
-
-        const stdout = e.stdout?.toString() ?? '';
-        const stderr = e.stderr?.toString() ?? '';
-        const combined = [stdout, stderr].filter(Boolean).join('\n');
-        const exitCode = e.status ?? -1;
-
-        // 输出截断
-        const truncated = combined.length > MAX_OUTPUT_CHARS
-          ? combined.slice(0, MAX_OUTPUT_CHARS) + `\n... [输出已截断]`
-          : combined;
-
-        return `${truncated || e.message || '命令执行失败'}\n\n(退出码 ${exitCode})`;
+      // 显式后台执行
+      if (runInBackground) {
+        return runAsBackground(command, workdir);
       }
+
+      // 异步执行
+      const execOptions: AsyncExecOptions = {
+        cwd: workdir,
+        timeoutMs: timeoutSec * 1000,
+        signal: ctx?.signal,
+        maxOutputChars: MAX_OUTPUT_CHARS,
+        onProgress: ctx?.onProgress
+          ? (p) => ctx.onProgress!({ message: p.lastLines, data: { totalLines: p.totalLines, totalBytes: p.totalBytes } })
+          : undefined,
+      };
+
+      const result = await asyncExec(command, execOptions);
+
+      // 取消
+      if (result.aborted) {
+        return '命令已取消。';
+      }
+
+      // 超时 → 自动转后台
+      if (result.timedOut) {
+        const partial = result.stdout.slice(0, 2000);
+        return `命令超时（${timeoutSec} 秒），已终止。\n${partial ? `部分输出:\n${partial}\n` : ''}可使用 exec_background 工具手动重启。`;
+      }
+
+      // 图片输出
+      if (result.detectedImages?.length) {
+        return formatImageResult(result.detectedImages, result.stdout);
+      }
+
+      // 成功
+      if (result.exitCode === 0) {
+        const output = result.stdout || '(无输出)';
+        // 大输出持久化
+        const { text } = await maybePersistOutput(output);
+        return truncateOutput(text, MAX_OUTPUT_CHARS);
+      }
+
+      // 错误
+      const combined = [result.stdout, result.stderr].filter(Boolean).join('\n');
+      const truncated = truncateOutput(combined || '命令执行失败', MAX_OUTPUT_CHARS);
+      return `${truncated}\n\n(退出码 ${result.exitCode})`;
     },
   };
+}
+
+/** 后台执行命令 (detached, unref) */
+function runAsBackground(command: string, cwd: string): string {
+  const { spawn } = require('node:child_process') as typeof import('node:child_process');
+  try {
+    const bg = spawn('bash', ['-c', command], {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, EVOCLAW_SHELL: 'background' },
+    });
+    bg.unref();
+    return `后台进程已启动 (PID: ${bg.pid})。\n使用 process 工具查看输出。`;
+  } catch (err) {
+    return `后台启动失败: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+/** 格式化图片检测结果 */
+function formatImageResult(images: DetectedImage[], rawOutput: string): string {
+  const summary = images.map((img, i) => `[图片 ${i + 1}] ${img.mimeType} (${Math.round(img.base64.length * 0.75 / 1024)}KB)`).join('\n');
+  const textPart = rawOutput.replace(/[A-Za-z0-9+/=]{100,}/g, '[base64 图片数据]');
+  return `检测到 ${images.length} 张图片:\n${summary}\n\n${truncateOutput(textPart, MAX_OUTPUT_CHARS / 2)}`;
 }
 
 // ─── P0-4: 危险命令检测 ───

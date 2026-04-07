@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { CommandRegistry } from '../../channel/command/command-registry.js';
-import type { ChannelCommand, CommandContext } from '../../channel/command/types.js';
+import type { ChannelCommand } from '../../channel/command/types.js';
 
 function makeCommand(name: string, aliases?: string[]): ChannelCommand {
   return {

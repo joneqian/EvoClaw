@@ -1,58 +1,108 @@
 /**
  * Web 抓取工具 — URL → Markdown 转换
- * 纯 regex 实现，不依赖外部库
+ *
+ * 安全特性（参考 Claude Code）：
+ * - URL 校验（协议、格式、凭据、内部域名、私有 IP）
+ * - HTTP → HTTPS 自动升级
+ * - 安全重定向（同主机跟随，跨主机返回 LLM）
+ * - 响应体大小限制
  */
 
 import type { ToolDefinition } from '../bridge/tool-injector.js';
+import {
+  validateWebURL,
+  upgradeToHttps,
+  fetchWithSafeRedirects,
+} from '../security/web-security.js';
+import { urlCache } from './web-cache.js';
 
 /** 最大响应体大小 2MB */
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 /** 默认输出字符上限 */
 const DEFAULT_MAX_LENGTH = 50_000;
-/** 请求超时 15 秒 */
-const FETCH_TIMEOUT_MS = 15_000;
+/** 二级摘要 Markdown 截断阈值（超过此长度先截断再送 LLM） */
+const MAX_MARKDOWN_FOR_SUMMARY = 100_000;
+/** 请求超时 30 秒（升级自 15s，对齐 Claude Code 60s 但保守些） */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/** LLM 调用函数签名（依赖注入，解耦模型选择） */
+export type LLMCallFn = (systemPrompt: string, userMessage: string) => Promise<string>;
+
+export interface WebFetchToolOptions {
+  /**
+   * 二级模型调用函数（可选）
+   * 当 Agent 提供 prompt 参数时，用此函数从页面内容中提取信息
+   * 不提供时退化为截断模式
+   */
+  readonly llmCall?: LLMCallFn;
+}
 
 /** 创建 web_fetch 工具 */
-export function createWebFetchTool(): ToolDefinition {
+export function createWebFetchTool(opts: WebFetchToolOptions = {}): ToolDefinition {
+  const { llmCall } = opts;
   return {
     name: 'web_fetch',
-    description: '抓取指定 URL 的网页内容，转换为 Markdown 格式返回。适用于阅读文章、文档、博客等网页内容。',
+    description: '抓取指定 URL 的网页内容并返回。可提供 prompt 参数指定需要提取的信息，系统会用小型模型从页面中精准提取，大幅减少返回内容量。注意：无法访问需要登录认证的页面。',
     parameters: {
       type: 'object',
       properties: {
         url: { type: 'string', description: '要抓取的网页 URL' },
+        prompt: { type: 'string', description: '指定需要从页面中提取的信息（如"提取所有 API 端点"），系统会用小型模型做摘要。不提供则返回完整内容。' },
         maxLength: { type: 'number', description: '输出最大字符数（默认 50000）' },
       },
       required: ['url'],
     },
     execute: async (args) => {
-      const url = args['url'] as string;
+      const rawUrl = args['url'] as string;
+      const prompt = args['prompt'] as string | undefined;
       const maxLength = (args['maxLength'] as number) ?? DEFAULT_MAX_LENGTH;
 
-      if (!url) return '错误：缺少 url 参数';
+      if (!rawUrl) return '错误：缺少 url 参数';
 
-      // 基本 URL 校验
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        return `错误：无效的 URL "${url}"`;
+      // ── 1. URL 安全校验 ──
+      const validation = validateWebURL(rawUrl);
+      if (!validation.ok) {
+        return `错误：${validation.reason}`;
       }
 
-      // 仅允许 http/https
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        return `错误：仅支持 http/https 协议，收到 "${parsedUrl.protocol}"`;
+      // ── 2. HTTP → HTTPS 升级 ──
+      const url = upgradeToHttps(rawUrl);
+
+      // ── 3. 缓存查询 ──
+      const cached = urlCache.get(url);
+      if (cached !== undefined) {
+        let result = cached;
+        if (result.length > maxLength) {
+          result = result.slice(0, maxLength) +
+            `\n\n...[内容已截断，共 ${result.length} 字符，显示前 ${maxLength} 字符]`;
+        }
+        return result || '（页面内容为空）';
       }
 
       try {
-        const response = await fetch(url, {
+        // ── 4. 安全重定向请求 ──
+        const fetchResult = await fetchWithSafeRedirects(url, {
           headers: {
             'User-Agent': 'EvoClaw/1.0 (Web Fetch Tool)',
-            'Accept': 'text/html,application/xhtml+xml,text/plain,*/*',
+            'Accept': 'text/markdown, text/html, application/xhtml+xml, text/plain, */*',
           },
-          redirect: 'follow',
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
+
+        // 跨主机重定向 → 返回信息让 LLM 决定
+        if (fetchResult.redirect) {
+          return `页面发生了跨域重定向：\n` +
+            `原始 URL: ${fetchResult.redirect.originalUrl}\n` +
+            `重定向到: ${fetchResult.redirect.redirectUrl}\n` +
+            `如需继续访问，请使用新 URL 重新调用 web_fetch。`;
+        }
+
+        // 请求错误
+        if (fetchResult.error) {
+          return `抓取失败: ${fetchResult.error}`;
+        }
+
+        const response = fetchResult.response!;
 
         if (!response.ok) {
           return `抓取失败: HTTP ${response.status} ${response.statusText}`;
@@ -61,30 +111,46 @@ export function createWebFetchTool(): ToolDefinition {
         const contentType = response.headers.get('content-type') ?? '';
         const contentLength = Number(response.headers.get('content-length') ?? '0');
 
-        // 检查响应体大小
+        // ── 5. 响应体大小检查 ──
         if (contentLength > MAX_RESPONSE_BYTES) {
           return `错误：响应体过大（${(contentLength / 1024 / 1024).toFixed(1)}MB），超过 2MB 限制。`;
         }
 
         const text = await response.text();
 
-        // 二次检查实际大小
         if (text.length > MAX_RESPONSE_BYTES) {
           return `错误：响应体过大（${(text.length / 1024 / 1024).toFixed(1)}MB），超过 2MB 限制。`;
         }
 
-        // 根据内容类型决定处理方式
+        // ── 6. 内容处理 ──
         let markdown: string;
         if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
-          markdown = htmlToMarkdown(text);
+          markdown = await htmlToMarkdownAsync(text);
         } else {
-          // 纯文本或其他格式，直接返回
           markdown = text;
         }
 
-        // 截断
+        // ── 7. 写入缓存（截断前的完整内容） ──
+        const byteSize = new TextEncoder().encode(markdown).length;
+        urlCache.set(url, markdown, byteSize);
+
+        // ── 8. 二级模型摘要（可选） ──
+        if (prompt && llmCall && markdown.length > 0) {
+          try {
+            const contentForSummary = markdown.length > MAX_MARKDOWN_FOR_SUMMARY
+              ? markdown.slice(0, MAX_MARKDOWN_FOR_SUMMARY) + '\n\n[内容已截断...]'
+              : markdown;
+            const summary = await applyPromptToContent(llmCall, contentForSummary, prompt);
+            return summary || '（未能从页面中提取到相关信息）';
+          } catch {
+            // 摘要失败 → 降级到截断模式
+          }
+        }
+
+        // ── 9. 截断（无 prompt 或摘要失败时的降级路径） ──
         if (markdown.length > maxLength) {
-          markdown = markdown.slice(0, maxLength) + `\n\n...[内容已截断，共 ${markdown.length} 字符，显示前 ${maxLength} 字符]`;
+          markdown = markdown.slice(0, maxLength) +
+            `\n\n...[内容已截断，共 ${markdown.length} 字符，显示前 ${maxLength} 字符]`;
         }
 
         return markdown || '（页面内容为空）';
@@ -98,11 +164,57 @@ export function createWebFetchTool(): ToolDefinition {
   };
 }
 
+// ── Turndown 延迟加载单例（参考 Claude Code） ──
+
+type TurndownInstance = { turndown(html: string): string };
+let turndownPromise: Promise<TurndownInstance> | undefined;
+
+function getTurndownService(): Promise<TurndownInstance> {
+  return (turndownPromise ??= import('turndown').then((m) => {
+    const Turndown = (m as unknown as {
+      default: new (opts?: { headingStyle?: string }) => TurndownInstance & {
+        remove(filter: string | string[]): void;
+      };
+    }).default;
+    const td = new Turndown({ headingStyle: 'atx' }); // 使用 # 风格标题
+    // 移除 script/style/noscript 标签
+    td.remove(['script', 'style', 'noscript']);
+    return td;
+  }));
+}
+
 /**
- * HTML → Markdown 转换（纯 regex 实现）
- * 参考 OpenClaw web-fetch-utils.ts
+ * HTML → Markdown 转换
+ * 主路径：Turndown（成熟 DOM 解析）
+ * 降级路径：纯 regex（Turndown 加载失败时）
+ */
+export async function htmlToMarkdownAsync(html: string): Promise<string> {
+  try {
+    const td = await getTurndownService();
+    return cleanMarkdown(td.turndown(html));
+  } catch {
+    return htmlToMarkdownRegex(html);
+  }
+}
+
+/**
+ * HTML → Markdown 同步版（纯 regex，用于测试和降级）
+ * 保持向后兼容
  */
 export function htmlToMarkdown(html: string): string {
+  return htmlToMarkdownRegex(html);
+}
+
+/** 清理 Turndown 输出的多余空白 */
+function cleanMarkdown(text: string): string {
+  let result = text;
+  result = result.replace(/\n{3,}/g, '\n\n');
+  result = result.trim();
+  return result;
+}
+
+/** 纯 regex HTML → Markdown（降级路径） */
+function htmlToMarkdownRegex(html: string): string {
   let text = html;
 
   // 删除 script/style/noscript 标签及其内容
@@ -210,4 +322,37 @@ function decodeHtmlEntities(text: string): string {
   );
 
   return result;
+}
+
+// ── 二级模型摘要 ─────────────────────────────────────────────────
+
+const SUMMARY_SYSTEM_PROMPT = `你是一个网页内容分析助手。用户会提供一段网页内容和一个提取指令。
+请根据指令从内容中提取相关信息，返回简洁、结构化的结果。
+
+规则：
+- 只返回与指令相关的信息，忽略无关内容
+- 使用 Markdown 格式组织输出
+- 引用原文时用引号标注，单段引用不超过 125 字符
+- 如果内容中找不到相关信息，明确说明
+- 保持简洁，不要添加与原文无关的内容`;
+
+/**
+ * 用二级模型从页面内容中提取信息
+ * 参考 Claude Code 的 applyPromptToMarkdown 模式
+ */
+async function applyPromptToContent(
+  llmCall: LLMCallFn,
+  content: string,
+  prompt: string,
+): Promise<string> {
+  const userMessage = `以下是网页内容：
+
+---
+${content}
+---
+
+请根据以下指令提取信息：
+${prompt}`;
+
+  return llmCall(SUMMARY_SYSTEM_PROMPT, userMessage);
 }

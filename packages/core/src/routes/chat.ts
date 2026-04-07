@@ -18,6 +18,7 @@ import { setToolInjectorConfig, getInjectedTools, ToolAuditQueue } from '../brid
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
+import { createSecondaryLLMCallFn } from '../agent/llm-client.js';
 import { createImageTool } from '../tools/image-tool.js';
 import { createPdfTool } from '../tools/pdf-tool.js';
 import { createApplyPatchTool } from '../tools/apply-patch.js';
@@ -507,7 +508,8 @@ export function createChatRoutes(
 
     // Web 工具
     if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
-    enhancedTools.push(createWebFetchTool());
+    const secondaryLLMCall = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
+    enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
 
     // 多媒体工具（绕过 PI 直接调用 provider API）
     enhancedTools.push(createImageTool(providerConfig));

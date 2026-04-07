@@ -2,6 +2,7 @@ import type { SecurityExtension } from '../bridge/security-extension.js';
 import type { PermissionCategory } from '@evoclaw/shared';
 import { detectUnicodeConfusion } from '../security/unicode-detector.js';
 import { analyzeCommand } from '../security/bash-parser/security-analyzer.js';
+import { isPreapprovedURL } from './preapproved-domains.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -173,6 +174,14 @@ export class PermissionInterceptor {
       }
     }
 
+    // 3.5 预批准域名自动放行（web_fetch/web_search）
+    if (toolName === 'web_fetch' || toolName === 'web_search') {
+      const url = (params['url'] as string) ?? '';
+      if (url && isPreapprovedURL(url)) {
+        return { allowed: true };
+      }
+    }
+
     // 4. 消息发送类工具强制确认
     if (MESSAGE_TOOLS.has(toolName)) {
       const result = this.security.checkPermission(agentId, 'network', toolName);
@@ -203,7 +212,18 @@ export class PermissionInterceptor {
     }
 
     // 6. 常规权限检查（先查具体资源，再查通配符 — SecurityExtension 内部处理）
-    const resource = (params['command'] as string) ?? (params['path'] as string) ?? (params['file_path'] as string) ?? (params['url'] as string) ?? (params['query'] as string) ?? '*';
+    // web 工具使用 domain:{hostname} 粒度
+    let resource: string;
+    if ((toolName === 'web_fetch' || toolName === 'web_search' || toolName === 'fetch') && params['url']) {
+      try {
+        const hostname = new URL(params['url'] as string).hostname;
+        resource = `domain:${hostname}`;
+      } catch {
+        resource = (params['url'] as string) ?? '*';
+      }
+    } else {
+      resource = (params['command'] as string) ?? (params['path'] as string) ?? (params['file_path'] as string) ?? (params['url'] as string) ?? (params['query'] as string) ?? '*';
+    }
     const result = this.security.checkPermission(agentId, category, resource);
     if (result === 'deny') {
       return { allowed: false, reason: `Agent 没有 ${category} 权限` };

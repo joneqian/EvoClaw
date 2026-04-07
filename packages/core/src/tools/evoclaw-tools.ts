@@ -8,7 +8,7 @@ import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryStore } from '../memory/memory-store.js';
 import type { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
 import { createWebSearchTool } from './web-search.js';
-import { createWebFetchTool } from './web-fetch.js';
+import { createWebFetchTool, type LLMCallFn } from './web-fetch.js';
 
 /** 创建 EvoClaw 工具集 */
 export function createEvoClawTools(deps: {
@@ -18,8 +18,10 @@ export function createEvoClawTools(deps: {
   agentId: string;
   /** Brave Search API Key（可选，有值时注入 web_search 工具） */
   braveApiKey?: string;
+  /** 二级模型调用函数（可选，用于 web_fetch 摘要） */
+  secondaryLLMCall?: LLMCallFn;
 }): ToolDefinition[] {
-  const { searcher, memoryStore, knowledgeGraph, agentId, braveApiKey } = deps;
+  const { searcher, memoryStore, knowledgeGraph, agentId, braveApiKey, secondaryLLMCall } = deps;
 
   const tools: ToolDefinition[] = [];
 
@@ -27,7 +29,7 @@ export function createEvoClawTools(deps: {
   if (braveApiKey) {
     tools.push(createWebSearchTool({ braveApiKey }));
   }
-  tools.push(createWebFetchTool());
+  tools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
 
   // 记忆和知识图谱工具
   tools.push(

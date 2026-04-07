@@ -36,6 +36,7 @@ import { PermissionInterceptor } from '../tools/permission-interceptor.js';
 import { setToolInjectorConfig, getInjectedTools, ToolAuditQueue } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
+import { createSecondaryLLMCallFn } from '../agent/llm-client.js';
 import { createImageTool } from '../tools/image-tool.js';
 import { createPdfTool } from '../tools/pdf-tool.js';
 import { createBrowserTool } from '../tools/browser-tool.js';
@@ -340,7 +341,8 @@ export async function handleChannelMessage(
   const enhancedTools: ToolDefinition[] = [];
 
   if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
-  enhancedTools.push(createWebFetchTool());
+  const secondaryLLMCall = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
+  enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
   enhancedTools.push(createImageTool(providerConfig));
   enhancedTools.push(createPdfTool(providerConfig));
   enhancedTools.push(createBrowserTool());

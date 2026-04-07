@@ -161,11 +161,32 @@ if (existsSync(brandIconsDir)) {
   console.log(`  ⚠️  品牌图标目录不存在: ${brandIconsDir}，跳过`);
 }
 
-// ─── 5. 更新 index.html <title> ───
+// ─── 5. 更新 index.html <title> + 内联 loading ───
 
 const indexHtmlPath = join(ROOT, 'apps', 'desktop', 'index.html');
 let indexHtml = readFileSync(indexHtmlPath, 'utf-8');
 indexHtml = indexHtml.replace(/<title>[^<]*<\/title>/, `<title>${config.name}</title>`);
+
+// 替换内联 loading 块（BRAND_LOADING_START ~ BRAND_LOADING_END）
+const brandColor = config.colors.primary;
+const loadingBlock = `<!-- BRAND_LOADING_START -->
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+        <div style="text-align:center;">
+          <img src="/brand-icon.png" alt="" width="40" height="40" style="margin:0 auto 14px;display:block;border-radius:10px;">
+          <p style="font-size:13px;color:#94a3b8;font-weight:500;margin:0 0 12px;">正在启动 ${config.name}...</p>
+          <div style="display:flex;justify-content:center;gap:4px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:${brandColor};animation:pulse 1.2s ease-in-out infinite;"></span>
+            <span style="width:6px;height:6px;border-radius:50%;background:${brandColor};animation:pulse 1.2s ease-in-out infinite;animation-delay:150ms;"></span>
+            <span style="width:6px;height:6px;border-radius:50%;background:${brandColor};animation:pulse 1.2s ease-in-out infinite;animation-delay:300ms;"></span>
+          </div>
+        </div>
+      </div>
+      <style>@keyframes pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}</style>
+      <!-- BRAND_LOADING_END -->`;
+indexHtml = indexHtml.replace(
+  /<!-- BRAND_LOADING_START -->[\s\S]*?<!-- BRAND_LOADING_END -->/,
+  loadingBlock,
+);
 writeFileSync(indexHtmlPath, indexHtml, 'utf-8');
 console.log(`  ✅ ${indexHtmlPath}`);
 

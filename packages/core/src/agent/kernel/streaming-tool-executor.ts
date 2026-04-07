@@ -62,10 +62,19 @@ export class StreamingToolExecutor {
   private discarded = false;
 
   /**
-   * 兄弟工具取消控制器 (参考 Claude Code siblingAbortController)
-   * Bash 工具执行失败时，通过此 controller 取消其他并行工具
+   * 三层 AbortController 架构 (参考 Claude Code):
+   *
+   * queryAbortSignal (外部传入，query-loop 级)
+   *   └─ siblingAbortController (StreamingToolExecutor 私有)
+   *        └─ toolAbortController (每工具独立，在 startExecution 中创建)
+   *
+   * 取消语义:
+   * - Bash 错误 → abort siblingController → 取消兄弟工具 (不结束 turn)
+   * - 权限拒绝 → 错误冒泡到 query-loop (结束 turn)
+   * - 用户中断 → queryAbortSignal → 取消所有
    */
   private siblingAbortController = new AbortController();
+  private queryAbortSignal?: AbortSignal;
   private hasErrored = false;
   private erroredToolName: string | undefined;
   /** onEvent 回调（在 collectResults 时设置，用于进度桥接） */
@@ -74,9 +83,17 @@ export class StreamingToolExecutor {
   /** Bash 工具名称 — 只有 Bash 错误会取消兄弟 */
   private static readonly BASH_TOOL_NAME = 'bash';
 
-  constructor(tools: readonly KernelTool[], maxConcurrency = 8) {
+  constructor(tools: readonly KernelTool[], maxConcurrency = 8, queryAbortSignal?: AbortSignal) {
     this.toolMap = new Map(tools.map(t => [t.name, t]));
     this.maxConcurrency = maxConcurrency;
+    this.queryAbortSignal = queryAbortSignal;
+
+    // query-level abort → 级联到 sibling level
+    if (queryAbortSignal) {
+      queryAbortSignal.addEventListener('abort', () => {
+        this.siblingAbortController.abort('query_abort');
+      }, { once: true });
+    }
   }
 
   /**
@@ -183,13 +200,27 @@ export class StreamingToolExecutor {
   }
 
   /**
-   * 标记为已丢弃 (流式回退时清理)
+   * 丢弃并清理 (流式回退时)
    *
    * 参考 Claude Code: StreamingToolExecutor.discard()
-   * 防止孤立的 tool_results 泄漏到重试请求中
+   * - 取消所有正在执行的工具
+   * - 为所有 queued 工具生成合成错误
+   * - 防止孤立的 tool_results 泄漏到重试请求中
    */
   discard(): void {
     this.discarded = true;
+    // 取消所有正在执行的工具
+    this.siblingAbortController.abort('streaming_fallback');
+    // 为所有 queued 工具生成合成错误
+    for (const tracked of this.tools) {
+      if (tracked.status === 'queued') {
+        tracked.status = 'completed';
+        tracked.result = {
+          content: `(${tracked.block.name} was not executed — streaming fallback triggered)`,
+          isError: true,
+        };
+      }
+    }
   }
 
   /** 队列中的工具数量 */
@@ -255,19 +286,26 @@ export class StreamingToolExecutor {
       return { content: `未知工具: ${block.name}`, isError: true };
     }
 
+    // 三层 AbortController: 创建工具级 controller，链接 siblingAbortController
+    const toolAbortController = new AbortController();
+    const onSiblingAbort = () => toolAbortController.abort('sibling_error');
+    this.siblingAbortController.signal.addEventListener('abort', onSiblingAbort);
+
     try {
-      // 传递兄弟取消 signal + 进度回调（通过 onEvent 桥接）
+      // 进度回调（通过 onEvent 桥接）
       const onProgress = this.onEvent
         ? (progress: { message: string; data?: unknown }) => {
             this.onEvent!({ type: 'tool_update', toolName: block.name, toolResult: progress.message, timestamp: Date.now() });
           }
         : undefined;
-      return await tool.call(block.input, this.siblingAbortController.signal, onProgress);
+      return await tool.call(block.input, toolAbortController.signal, onProgress);
     } catch (err) {
       return {
         content: err instanceof Error ? err.message : String(err),
         isError: true,
       };
+    } finally {
+      this.siblingAbortController.signal.removeEventListener('abort', onSiblingAbort);
     }
   }
 }

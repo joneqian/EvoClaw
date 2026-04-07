@@ -241,6 +241,14 @@ export interface KernelTool {
   /** 是否延迟加载（true = 初始 prompt 不含完整 schema，需通过 ToolSearch 发现） */
   readonly shouldDefer?: boolean;
 
+  /**
+   * 每工具独立的大结果持久化阈值（字符数）
+   * - 超过此大小的结果写入磁盘，只传引用给 LLM
+   * - Infinity = 永不持久化（如 Read 工具，防止 "持久化→Read→又持久化" 循环）
+   * - undefined = 使用全局默认值 (30K)
+   */
+  readonly maxResultSizeChars?: number;
+
   call(input: Record<string, unknown>, signal?: AbortSignal, onProgress?: ToolProgressCallback): Promise<ToolCallResult>;
 
   /** 是否只读 (默认 false — fail-closed) */
@@ -251,6 +259,18 @@ export interface KernelTool {
 
   /** 是否不可逆操作 (默认 false) — true 时前端显示确认对话框 */
   isDestructive?(input: Record<string, unknown>): boolean;
+
+  /**
+   * 输入分叉 — 浅克隆后注入衍生字段给 hooks/观察者看
+   * tool.call() 收到原始输入（保持 transcript hash 稳定），hooks 看到扩展版本
+   */
+  backfillObservableInput?(input: Record<string, unknown>): Record<string, unknown>;
+
+  /**
+   * 自定义输入验证（Zod schema 之外的业务逻辑验证）
+   * 在 schema 验证之后、权限检查之前执行
+   */
+  validateInput?(input: Record<string, unknown>): Promise<{ valid: boolean; error?: string }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -387,6 +407,8 @@ export interface StreamConfig {
   readonly signal?: AbortSignal;
   /** Eager Input Streaming — 允许工具 JSON 输入在完成前开始流式传输（仅 Anthropic 第一方 API） */
   readonly eagerInputStreaming?: boolean;
+  /** 已通过 ToolSearch 发现的工具名称集合 (deferred 工具被发现后发送完整 schema) */
+  readonly discoveredToolNames?: ReadonlySet<string>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -509,6 +531,9 @@ export interface QueryLoopConfig {
 
   // ─── Safety ───
   readonly toolSafety: ToolSafetyGuard;
+
+  // ─── Deferred Tools — ToolSearch 发现后的工具名称集合 ───
+  readonly discoveredToolNames?: Set<string>;
 
   // ─── Abort ───
   readonly abortSignal?: AbortSignal;

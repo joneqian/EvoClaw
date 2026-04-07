@@ -229,7 +229,8 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   });
 
   // ToolSearchTool 需要完整工具列表才能搜索（包含 deferred 工具）
-  const toolSearchTool = createToolSearchTool(baseTools);
+  const deferredTools = baseTools.filter(t => t.shouldDefer);
+  const toolSearchTool = createToolSearchTool(() => deferredTools);
   const kernelTools = [...baseTools, toolSearchTool];
 
   // ─── 消息历史 ───

@@ -16,6 +16,7 @@ import type { ToolDefinition } from '../../bridge/tool-injector.js';
 // SkillTool 由调用方注入（避免 agent → skill 层级违反）
 import type { KernelTool, ToolCallResult } from './types.js';
 import type { ToolSafetyGuard } from '../tool-safety.js';
+import type { ToolHookRegistry, ToolHookContext } from './tool-hooks.js';
 import { normalizeToolSchema } from '../schema-adapter.js';
 import { createBuiltinTools } from './builtin-tools.js';
 import { createEnhancedExecTool } from '../embedded-runner-tools.js';
@@ -44,11 +45,22 @@ const CONCURRENT_SAFE_TOOLS = new Set([
 const LARGE_RESULT_THRESHOLD = 30_000;
 
 /**
+ * 空结果占位 — 防止模型误判 turn boundary 提前结束回复
+ * 参考 Claude Code: processToolResultBlock() 空结果注入
+ */
+function ensureNonEmptyResult(content: string, toolName: string): string {
+  if (!content || content.trim() === '') {
+    return `(${toolName} completed with no output)`;
+  }
+  return content;
+}
+
+/**
  * P2-2: 大结果持久化 — 超过阈值的结果写入临时文件
  * 参考 Claude Code: persistedOutputPath + persistedOutputSize
  */
-function maybePersistLargeResult(content: string, toolName: string): string {
-  if (content.length <= LARGE_RESULT_THRESHOLD) return content;
+function maybePersistLargeResult(content: string, toolName: string, threshold: number): string {
+  if (threshold === Infinity || content.length <= threshold) return content;
 
   try {
     const dir = path.join(os.tmpdir(), '.evoclaw-tool-results');
@@ -86,6 +98,10 @@ export interface ToolAdapterDeps {
   auditFn?: (entry: AuditLogEntry) => void;
   /** Provider ID (用于 schema 适配) */
   provider: string;
+  /** 工具钩子注册表 (PreToolUse / PostToolUse) */
+  hookRegistry?: ToolHookRegistry;
+  /** 钩子执行上下文 */
+  hookContext?: ToolHookContext;
 }
 
 /** buildKernelTools 配置 */
@@ -104,6 +120,10 @@ export interface BuildToolsConfig {
   provider: string;
   /** 额外 KernelTool（如 SkillTool、ToolSearchTool，由调用方创建注入） */
   extraTools?: KernelTool[];
+  /** 工具钩子注册表 */
+  hookRegistry?: ToolHookRegistry;
+  /** 钩子执行上下文 */
+  hookContext?: ToolHookContext;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -114,11 +134,13 @@ export interface BuildToolsConfig {
  * 将 EvoClaw ToolDefinition (1参签名) 适配为 KernelTool
  *
  * 集成层:
- * 1. 权限检查 (permissionFn)
+ * 1. Schema 验证
  * 2. 安全检查 (ToolSafetyGuard.checkBeforeExecution)
- * 3. 执行原始工具
- * 4. 后处理: 无进展检测 + 结果截断
- * 5. 审计日志
+ * 3. PreToolUse hooks → Hook-Rule-Permission 三方协调
+ * 4. 执行原始工具
+ * 5. PostToolUse hooks
+ * 6. 后处理: 无进展检测 + 结果截断 + 空结果占位 + 大结果持久化
+ * 7. 审计日志
  */
 export function adaptEvoclawTool(
   tool: ToolDefinition,
@@ -134,26 +156,13 @@ export function adaptEvoclawTool(
 
     async call(input: Record<string, unknown>): Promise<ToolCallResult> {
       const start = Date.now();
+      let effectiveInput = input;
 
-      // 0. Schema 验证（统一校验 required + 类型）
+      // 1. Schema 验证（统一校验 required + 类型）
       const { validateInput } = await import('./schema-validator.js');
       const validation = validateInput(input, tool.parameters as Record<string, unknown>);
       if (!validation.valid) {
         return { content: `参数校验失败: ${validation.errors.join('; ')}`, isError: true };
-      }
-
-      // 1. 权限检查
-      if (deps.permissionFn) {
-        const rejection = await deps.permissionFn(tool.name, input);
-        if (rejection) {
-          deps.auditFn?.({
-            toolName: tool.name, args: input,
-            result: rejection, status: 'denied',
-            durationMs: Date.now() - start,
-            reason: `permission_denied: ${rejection}`,
-          });
-          return { content: `[权限拒绝] ${rejection}`, isError: true };
-        }
       }
 
       // 2. 安全检查 (循环检测)
@@ -168,38 +177,96 @@ export function adaptEvoclawTool(
         return { content: `⚠️ ${check.reason}`, isError: true };
       }
 
-      // 3. 执行
-      try {
-        const rawResult = await tool.execute(input);
+      // 3. PreToolUse hooks → Hook-Rule-Permission 三方协调
+      const hookCtx = deps.hookContext ?? {};
+      if (deps.hookRegistry) {
+        const hookResult = await deps.hookRegistry.runPreHooks(tool.name, input, hookCtx);
 
-        // 4. 后处理: 无进展检测
-        const noProgress = deps.toolSafety.recordResult(rawResult);
-        if (noProgress.blocked) {
+        // blockingError 立即中断
+        if (hookResult?.blockingError) {
           deps.auditFn?.({
             toolName: tool.name, args: input,
+            result: hookResult.blockingError, status: 'denied',
+            durationMs: Date.now() - start,
+            reason: `hook_blocked: ${hookResult.blockingError}`,
+          });
+          return { content: hookResult.blockingError, isError: true };
+        }
+
+        // 三方协调: hook 的 allow/deny/ask + permissionFn (deny 规则)
+        const permDecision = await resolveHookPermissionDecision(
+          hookResult, deps.permissionFn, tool.name, input,
+        );
+        if (!permDecision.allowed) {
+          deps.auditFn?.({
+            toolName: tool.name, args: input,
+            result: permDecision.reason ?? '', status: 'denied',
+            durationMs: Date.now() - start,
+            reason: `permission_denied: ${permDecision.reason ?? 'unknown'}`,
+          });
+          return { content: `[权限拒绝] ${permDecision.reason}`, isError: true };
+        }
+        effectiveInput = permDecision.input;
+      } else if (deps.permissionFn) {
+        // 无钩子时直接走权限检查
+        const rejection = await deps.permissionFn(tool.name, input);
+        if (rejection) {
+          deps.auditFn?.({
+            toolName: tool.name, args: input,
+            result: rejection, status: 'denied',
+            durationMs: Date.now() - start,
+            reason: `permission_denied: ${rejection}`,
+          });
+          return { content: `[权限拒绝] ${rejection}`, isError: true };
+        }
+      }
+
+      // 4. 执行
+      try {
+        const rawResult = await tool.execute(effectiveInput);
+        let result: ToolCallResult = { content: rawResult };
+
+        // 5. PostToolUse hooks
+        if (deps.hookRegistry) {
+          const postResult = await deps.hookRegistry.runPostHooks(tool.name, effectiveInput, result, hookCtx);
+          if (postResult?.updatedOutput !== undefined && hookCtx.isMcp) {
+            result = { ...result, content: postResult.updatedOutput };
+          }
+          if (postResult?.additionalContexts?.length) {
+            result = {
+              ...result,
+              content: result.content + '\n\n' + postResult.additionalContexts.join('\n'),
+            };
+          }
+        }
+
+        // 6. 后处理: 无进展检测
+        const noProgress = deps.toolSafety.recordResult(result.content);
+        if (noProgress.blocked) {
+          deps.auditFn?.({
+            toolName: tool.name, args: effectiveInput,
             result: noProgress.reason ?? '', status: 'error',
             durationMs: Date.now() - start,
           });
           return { content: `⚠️ ${noProgress.reason}`, isError: true };
         }
 
-        // 5. 结果截断
-        const truncated = deps.toolSafety.truncateResult(rawResult);
-
-        // P2-2: 大结果磁盘持久化 (>30K chars)
-        const finalContent = maybePersistLargeResult(truncated, tool.name);
+        // 7. 结果截断 + 空结果占位 + 大结果持久化
+        result.content = deps.toolSafety.truncateResult(result.content);
+        result.content = ensureNonEmptyResult(result.content, tool.name);
+        result.content = maybePersistLargeResult(result.content, tool.name, LARGE_RESULT_THRESHOLD);
 
         deps.auditFn?.({
-          toolName: tool.name, args: input,
-          result: finalContent.slice(0, 500), status: 'success',
+          toolName: tool.name, args: effectiveInput,
+          result: result.content.slice(0, 500), status: 'success',
           durationMs: Date.now() - start,
         });
 
-        return { content: finalContent };
+        return result;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         deps.auditFn?.({
-          toolName: tool.name, args: input,
+          toolName: tool.name, args: effectiveInput,
           result: msg, status: 'error',
           durationMs: Date.now() - start,
         });
@@ -229,9 +296,54 @@ function wrapBuiltinTool(tool: KernelTool, deps: ToolAdapterDeps): KernelTool {
 
     async call(input: Record<string, unknown>, signal?: AbortSignal): Promise<ToolCallResult> {
       const start = Date.now();
+      let effectiveInput = input;
+      const hookCtx = deps.hookContext ?? {};
 
-      // 权限检查
-      if (deps.permissionFn) {
+      // 1. 安全检查 (循环检测)
+      const check = deps.toolSafety.checkBeforeExecution(tool.name, input);
+      if (check.blocked) {
+        deps.auditFn?.({
+          toolName: tool.name, args: input,
+          result: check.reason ?? '', status: 'denied',
+          durationMs: Date.now() - start,
+          reason: `safety_block: ${check.reason ?? 'unknown'}`,
+        });
+        return { content: `⚠️ ${check.reason}`, isError: true };
+      }
+
+      // 2. backfillObservableInput — hooks 看扩展版，call 看原始版
+      const observableInput = tool.backfillObservableInput
+        ? tool.backfillObservableInput({ ...input })
+        : input;
+
+      // 3. PreToolUse hooks → Hook-Rule-Permission 三方协调
+      if (deps.hookRegistry) {
+        const hookResult = await deps.hookRegistry.runPreHooks(tool.name, observableInput, hookCtx);
+
+        if (hookResult?.blockingError) {
+          deps.auditFn?.({
+            toolName: tool.name, args: input,
+            result: hookResult.blockingError, status: 'denied',
+            durationMs: Date.now() - start,
+            reason: `hook_blocked: ${hookResult.blockingError}`,
+          });
+          return { content: hookResult.blockingError, isError: true };
+        }
+
+        const permDecision = await resolveHookPermissionDecision(
+          hookResult, deps.permissionFn, tool.name, input,
+        );
+        if (!permDecision.allowed) {
+          deps.auditFn?.({
+            toolName: tool.name, args: input,
+            result: permDecision.reason ?? '', status: 'denied',
+            durationMs: Date.now() - start,
+            reason: `permission_denied: ${permDecision.reason ?? 'unknown'}`,
+          });
+          return { content: `[权限拒绝] ${permDecision.reason}`, isError: true };
+        }
+        effectiveInput = permDecision.input;
+      } else if (deps.permissionFn) {
         const rejection = await deps.permissionFn(tool.name, input);
         if (rejection) {
           deps.auditFn?.({
@@ -244,32 +356,42 @@ function wrapBuiltinTool(tool: KernelTool, deps: ToolAdapterDeps): KernelTool {
         }
       }
 
-      // 安全检查
-      const check = deps.toolSafety.checkBeforeExecution(tool.name, input);
-      if (check.blocked) {
-        deps.auditFn?.({
-          toolName: tool.name, args: input,
-          result: check.reason ?? '', status: 'denied',
-          durationMs: Date.now() - start,
-          reason: `safety_block: ${check.reason ?? 'unknown'}`,
-        });
-        return { content: `⚠️ ${check.reason}`, isError: true };
+      // 4. validateInput (自定义业务验证)
+      if (tool.validateInput) {
+        const customValidation = await tool.validateInput(effectiveInput);
+        if (!customValidation.valid) {
+          return { content: customValidation.error ?? 'Input validation failed', isError: true };
+        }
       }
 
-      // 执行
-      const result = await originalCall(input, signal);
+      // 5. 执行
+      const result = await originalCall(effectiveInput, signal);
 
-      // 后处理
+      // 6. PostToolUse hooks
+      if (deps.hookRegistry && !result.isError) {
+        const postResult = await deps.hookRegistry.runPostHooks(tool.name, effectiveInput, result, hookCtx);
+        if (postResult?.updatedOutput !== undefined && hookCtx.isMcp) {
+          result.content = postResult.updatedOutput;
+        }
+        if (postResult?.additionalContexts?.length) {
+          result.content = result.content + '\n\n' + postResult.additionalContexts.join('\n');
+        }
+      }
+
+      // 7. 后处理
       if (!result.isError) {
         const noProgress = deps.toolSafety.recordResult(result.content);
         if (noProgress.blocked) {
           return { content: `⚠️ ${noProgress.reason}`, isError: true };
         }
         result.content = deps.toolSafety.truncateResult(result.content);
+        result.content = ensureNonEmptyResult(result.content, tool.name);
+        const threshold = tool.maxResultSizeChars ?? LARGE_RESULT_THRESHOLD;
+        result.content = maybePersistLargeResult(result.content, tool.name, threshold);
       }
 
       deps.auditFn?.({
-        toolName: tool.name, args: input,
+        toolName: tool.name, args: effectiveInput,
         result: result.content.slice(0, 500),
         status: result.isError ? 'error' : 'success',
         durationMs: Date.now() - start,
@@ -278,6 +400,50 @@ function wrapBuiltinTool(tool: KernelTool, deps: ToolAdapterDeps): KernelTool {
       return result;
     },
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hook-Rule-Permission 三方协调
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 三方协调: Hook 权限建议 + Rule 规则 + PermissionFn
+ *
+ * 核心安全不变式: Hook 的 allow ≠ 绕过规则
+ * - Hook allow 跳过交互提示，但 deny/ask 规则仍然适用
+ * - Hook deny 直接拒绝
+ * - Hook ask 或无 hook → 走正常权限流程
+ *
+ * 参考 Claude Code: resolveHookPermissionDecision()
+ */
+async function resolveHookPermissionDecision(
+  hookResult: import('./tool-hooks.js').PreToolUseHookResult | null,
+  permissionFn: ((toolName: string, args: Record<string, unknown>) => Promise<string | null>) | undefined,
+  toolName: string,
+  input: Record<string, unknown>,
+): Promise<{ allowed: boolean; input: Record<string, unknown>; reason?: string }> {
+  const effectiveInput = hookResult?.updatedInput ?? input;
+
+  // Hook deny → 直接拒绝
+  if (hookResult?.permissionBehavior === 'deny') {
+    return { allowed: false, input: effectiveInput, reason: 'Denied by pre-tool hook' };
+  }
+
+  // Hook allow → 仍需检查 permissionFn (deny 规则优先于 hook allow)
+  if (hookResult?.permissionBehavior === 'allow') {
+    if (permissionFn) {
+      const denied = await permissionFn(toolName, effectiveInput);
+      if (denied) return { allowed: false, input: effectiveInput, reason: denied };
+    }
+    return { allowed: true, input: effectiveInput };
+  }
+
+  // hookResult === null 或 permissionBehavior === 'ask' → 走正常权限流程
+  if (permissionFn) {
+    const denied = await permissionFn(toolName, effectiveInput);
+    if (denied) return { allowed: false, input: effectiveInput, reason: denied };
+  }
+  return { allowed: true, input: effectiveInput };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -301,6 +467,8 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
     toolSafety: config.toolSafety,
     auditFn: config.auditFn,
     provider: config.provider,
+    hookRegistry: config.hookRegistry,
+    hookContext: config.hookContext,
   };
 
   // 1. 内置工具 (包装权限 + 安全)
@@ -324,25 +492,35 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
   // 4. 额外工具（SkillTool、ToolSearchTool 等，由调用方注入）
   const extraTools = config.extraTools ?? [];
 
-  // 合并 (去重: 后注入覆盖先注入, 含别名映射)
-  const allTools = [...builtinTools, bashTool, ...customTools, ...extraTools];
+  // 分区: 内置工具 vs 外部工具 (EvoClaw 自定义 + MCP + extra)
+  const builtinPool = [...builtinTools, bashTool];
+  const externalPool = [...customTools, ...extraTools];
 
-  const toolMap = new Map<string, KernelTool>();
-  for (const tool of allTools) {
-    toolMap.set(tool.name, tool);
-    // 注册别名（旧名称指向同一工具）
-    if (tool.aliases) {
-      for (const alias of tool.aliases) {
-        if (!toolMap.has(alias)) {
-          toolMap.set(alias, tool);
+  // 去重 (内置优先, 同名时内置工具覆盖外部工具 — 参考 Claude Code uniqBy 首次出现)
+  const seen = new Set<string>();
+  const dedup = (tools: KernelTool[]) => {
+    const result: KernelTool[] = [];
+    for (const tool of tools) {
+      if (!seen.has(tool.name)) {
+        seen.add(tool.name);
+        result.push(tool);
+      }
+      // 注册别名（旧名称指向同一工具）
+      if (tool.aliases) {
+        for (const alias of tool.aliases) {
+          if (!seen.has(alias)) {
+            seen.add(alias);
+          }
         }
       }
     }
-  }
+    return result;
+  };
+  const dedupBuiltin = dedup(builtinPool);
+  const dedupExternal = dedup(externalPool);
 
-  // 显式排序: 保持工具列表稳定，避免因注册顺序变化破坏 prompt cache
-  const sorted = [...toolMap.values()];
-  sorted.sort((a, b) => a.name.localeCompare(b.name));
-
-  return sorted;
+  // 分区排序: 内置在前 + 外部在后，各自按 name 排序
+  // 增减外部/MCP 工具不影响内置工具的相对顺序，最大化 prompt cache 命中
+  const byName = (a: KernelTool, b: KernelTool) => a.name.localeCompare(b.name);
+  return [...dedupBuiltin.sort(byName), ...dedupExternal.sort(byName)];
 }

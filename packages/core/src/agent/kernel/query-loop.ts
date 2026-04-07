@@ -160,6 +160,7 @@ async function streamOneRound(
     maxTokens: maxTokensOverride ?? config.maxTokens,
     thinkingConfig: config.thinkingConfig,
     signal: config.abortSignal,
+    discoveredToolNames: config.discoveredToolNames,
   })) {
     switch (event.type) {
       case 'text_delta':
@@ -349,7 +350,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     // ─── 3. 流式 API 调用 + 流中工具预执行 ───
     config.onEvent({ type: 'message_start', timestamp: Date.now() });
 
-    const executor = new StreamingToolExecutor(config.tools);
+    const executor = new StreamingToolExecutor(config.tools, 8, config.abortSignal);
 
     // Cache Monitor: 记录调用前状态
     const systemPromptStr = typeof config.systemPrompt === 'string'

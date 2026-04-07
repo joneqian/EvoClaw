@@ -109,8 +109,23 @@ class ToolSchemaCache {
     return `${tool.name}:${JSON.stringify(tool.inputSchema)}`;
   }
 
-  getAnthropicTools(tools: readonly KernelTool[]): object[] {
+  getAnthropicTools(tools: readonly KernelTool[], discoveredNames?: ReadonlySet<string>): object[] {
     return tools.map(t => {
+      // Deferred 工具: 未被发现时发送精简占位 schema
+      if (t.shouldDefer && discoveredNames && !discoveredNames.has(t.name)) {
+        const deferKey = `defer:${t.name}`;
+        let cached = this.anthropicCache.get(deferKey);
+        if (!cached) {
+          cached = Object.freeze({
+            name: t.name,
+            description: `[Deferred] ${t.searchHint ?? t.description}. Call tool_search with "select:${t.name}" to load.`,
+            input_schema: { type: 'object', properties: {} },
+          });
+          this.anthropicCache.set(deferKey, cached);
+        }
+        return cached;
+      }
+
       const key = this.cacheKey(t);
       let cached = this.anthropicCache.get(key);
       if (!cached) {
@@ -249,8 +264,8 @@ function buildAnthropicRequest(config: StreamConfig): RequestSpec {
     content: serializeContentForAnthropic(msg.content),
   }));
 
-  // 构建 tools（缓存稳定字节，防止破坏 prompt cache）
-  const tools = toolSchemaCache.getAnthropicTools(config.tools);
+  // 构建 tools（缓存稳定字节，防止破坏 prompt cache；deferred 工具发送精简占位）
+  const tools = toolSchemaCache.getAnthropicTools(config.tools, config.discoveredToolNames);
 
   // Anthropic 支持 system 为 TextBlock 数组（含 cache_control + scope）
   // scope: 'global' → 跨用户共享缓存（1P 专属，命中费用 1/10）

@@ -108,6 +108,9 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
   return {
     name: 'read',
     description: '读取文件内容（文本或图片），大文件用 offset/limit 分段',
+    // Read 工具永不持久化 — 持久化后 LLM 会用 Read 读取持久化文件，造成循环引用
+    // Read 通过自身 limit 参数控制大小
+    maxResultSizeChars: Infinity,
     inputSchema: {
       type: 'object',
       properties: {
@@ -116,6 +119,15 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
         limit: { type: 'number', description: '读取的行数' },
       },
       required: ['file_path'],
+    },
+
+    // 输入分叉: hooks 看到展开后的路径，call 看到原始输入
+    backfillObservableInput(input: Record<string, unknown>): Record<string, unknown> {
+      const filePath = input.file_path as string;
+      if (filePath?.startsWith('~/')) {
+        return { ...input, file_path: path.join(process.env.HOME ?? '', filePath.slice(2)) };
+      }
+      return input;
     },
 
     async call(input): Promise<ToolCallResult> {
@@ -415,6 +427,14 @@ function createEditTool(fileStateCache: FileStateCache): KernelTool {
         replace_all: { type: 'boolean', description: '是否替换所有匹配 (默认 false)' },
       },
       required: ['file_path', 'old_string', 'new_string'],
+    },
+
+    // 自定义验证: Zod schema 之外的业务逻辑
+    async validateInput(input: Record<string, unknown>): Promise<{ valid: boolean; error?: string }> {
+      if (input.old_string === input.new_string) {
+        return { valid: false, error: 'old_string and new_string must be different' };
+      }
+      return { valid: true };
     },
 
     async call(input): Promise<ToolCallResult> {

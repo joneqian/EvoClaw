@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 /** Sidecar 连接配置 */
 interface SidecarConfig {
@@ -60,26 +61,62 @@ export async function healthCheck(): Promise<HealthStatus | null> {
   }
 }
 
-/** 初始化 Sidecar 连接（从 Tauri invoke 获取连接信息） */
-export async function initSidecar(): Promise<HealthStatus | null> {
-  // 指数退避重试，Sidecar 启动需要 1-2s
-  const maxRetries = 5;
-  const baseDelay = 500;
-
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const info = await invoke<{ port: number; token: string; running: boolean }>('get_sidecar_info');
-      if (info && info.running) {
-        setSidecarConfig({ port: info.port, token: info.token });
-        const health = await healthCheck();
-        if (health) return health;
-      }
-    } catch {
-      // Sidecar 尚未就绪，等待后重试
+/** 尝试从 Tauri 获取 Sidecar 信息并连接 */
+async function tryConnect(): Promise<HealthStatus | null> {
+  try {
+    const info = await invoke<{ port: number; token: string; running: boolean }>('get_sidecar_info');
+    if (info && info.running) {
+      setSidecarConfig({ port: info.port, token: info.token });
+      return await healthCheck();
     }
-    await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, i)));
-  }
+  } catch { /* Sidecar 尚未就绪 */ }
   return null;
+}
+
+/**
+ * 初始化 Sidecar 连接
+ *
+ * 优先监听 Tauri 'sidecar-ready' 事件（零延迟），
+ * 同时立即尝试连接（sidecar 可能在事件注册前已就绪）。
+ * 最多等待 10 秒超时。
+ */
+export async function initSidecar(): Promise<HealthStatus | null> {
+  // 1. 立即尝试（sidecar 可能已经启动完毕）
+  const immediate = await tryConnect();
+  if (immediate) return immediate;
+
+  // 2. 监听 sidecar-ready 事件 + 短间隔轮询兜底
+  return new Promise<HealthStatus | null>((resolve) => {
+    let resolved = false;
+    let unlisten: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const done = (result: HealthStatus | null) => {
+      if (resolved) return;
+      resolved = true;
+      unlisten?.();
+      if (pollTimer) clearInterval(pollTimer);
+      resolve(result);
+    };
+
+    // 事件驱动：Tauri sidecar-ready 事件触发后立即连接
+    listen<unknown>('sidecar-ready', async () => {
+      const health = await tryConnect();
+      if (health) done(health);
+    }).then(fn => {
+      unlisten = fn;
+      if (resolved) fn(); // 如果已 resolve，立即清理
+    });
+
+    // 兜底轮询：200ms 间隔（防止事件丢失）
+    pollTimer = setInterval(async () => {
+      const health = await tryConnect();
+      if (health) done(health);
+    }, 200);
+
+    // 超时保护：10 秒
+    setTimeout(() => done(null), 10_000);
+  });
 }
 
 /** GET 请求 */

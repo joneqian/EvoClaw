@@ -7,7 +7,19 @@
     <title>HealthClaw</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- 内联 loading：React 渲染前立即可见，hydrate 后自动被替换 -->
+      <div id="pre-react-loader" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;">
+        <div style="text-align:center;">
+          <div style="width:48px;height:48px;margin:0 auto 16px;border-radius:12px;background:linear-gradient(135deg,rgba(0,212,170,0.2),rgba(0,212,170,0.05));display:flex;align-items:center;justify-content:center;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#00d4aa;">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+            </svg>
+          </div>
+          <p style="font-size:14px;color:#94a3b8;font-weight:500;margin:0;">Loading...</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

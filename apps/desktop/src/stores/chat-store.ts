@@ -109,6 +109,8 @@ interface ChatState {
   toggleThinkingExpanded: (messageId: string) => void;
   /** 更新工具实时进度 */
   updateToolProgress: (toolName: string, progressText: string) => void;
+  /** 丢弃最后一条 assistant 消息的 partial 内容（模型回退 tombstone 时调用） */
+  discardLastAssistantMessage: () => void;
   /** 破坏性操作确认状态 */
   destructiveConfirm: DestructiveConfirmState | null;
   setDestructiveConfirm: (state: DestructiveConfirmState | null) => void;
@@ -339,6 +341,16 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         }
       }
       msgs[msgs.length - 1] = { ...last, segments };
+      return { messages: msgs };
+    }),
+
+  discardLastAssistantMessage: () =>
+    set((state) => {
+      const msgs = [...state.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.role === 'assistant') {
+        msgs[msgs.length - 1] = { ...last, content: '', segments: [] };
+      }
       return { messages: msgs };
     }),
 

@@ -47,6 +47,7 @@ function ChatView() {
     addToolSegment,
     updateToolSegment,
     updateToolProgress,
+    discardLastAssistantMessage,
     destructiveConfirm,
     setDestructiveConfirm,
     setStreaming,
@@ -263,6 +264,18 @@ function ChatView() {
                 case 'error':
                   appendTextSegment(`\n[错误] ${payload.message ?? '未知错误'}`);
                   setStreaming(false);
+                  break;
+                case 'tombstone':
+                  // 模型回退: 丢弃本轮 partial 内容，等待 fallback 模型重新填充
+                  discardLastAssistantMessage();
+                  break;
+                case 'stream_metrics':
+                case 'usage':
+                case 'message_start':
+                case 'message_end':
+                case 'compaction_start':
+                case 'compaction_end':
+                  // 后端内部事件，前端静默忽略
                   break;
               }
             } catch {

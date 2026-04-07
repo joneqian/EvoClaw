@@ -12,6 +12,7 @@
 
 import type { RuntimeEvent, ToolCallRecord } from '../types.js';
 import type { ToolSafetyGuard } from '../tool-safety.js';
+import type { FileStateCache } from './file-state-cache.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Content Blocks — 与 Anthropic API 格式对齐
@@ -105,6 +106,10 @@ export interface KernelMessage {
   requestId?: string;
   /** 虚拟消息 — 系统注入的非真实用户输入，前端可区分展示 */
   isVirtual?: boolean;
+  /** 微压缩标记 — Anthropic 协议下不修改 content，仅在 API 发送时创建截断副本 */
+  microcompacted?: boolean;
+  /** 消息创建时间戳 (Date.now()) — 用于 time-based microcompact */
+  createdAt?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -513,6 +518,8 @@ export type PostCompactHookFn = (
   trigger: CompactTrigger,
   tokensBefore: number,
   tokensAfter: number,
+  /** autocompact 产生的 9 段摘要文本（SM Compact / Snip 时为 undefined） */
+  summaryText?: string,
 ) => Promise<PostCompactHookResult>;
 
 /** Token Budget 检查结果 */
@@ -594,6 +601,11 @@ export interface QueryLoopConfig {
   // ─── Token Budget (可选: 无工具调用时检查是否自动续行) ───
   readonly tokenBudget?: TokenBudgetFn;
 
+  // ─── Agent Context (Session Memory Compact + 重注入需要) ───
+  readonly agentId?: string;
+  readonly sessionKey?: string;
+  readonly fileStateCache?: FileStateCache;
+
   // ─── Attachment Collector (可选: 工具执行后收集附件) ───
   readonly attachmentCollector?: AttachmentCollectorFn;
 
@@ -601,6 +613,9 @@ export interface QueryLoopConfig {
   readonly toolSummaryGenerator?: {
     generateAsync(tools: Array<{ toolName: string; toolInput: Record<string, unknown>; toolResult?: string; isError?: boolean }>): Promise<string>;
   };
+
+  // ─── Incremental Persistence (可选: 流式持久化) ───
+  readonly persister?: import('./incremental-persister.js').IncrementalPersister;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

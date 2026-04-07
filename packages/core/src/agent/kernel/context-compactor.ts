@@ -18,6 +18,8 @@ import crypto from 'node:crypto';
 import type { KernelMessage, QueryLoopConfig, CompactTrigger } from './types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 import { Feature } from '../../infrastructure/feature.js';
+import { trySessionMemoryCompact, type MemoryQueryFn } from './session-memory-compact.js';
+import type { FileStateCache } from './file-state-cache.js';
 
 const log = createLogger('context-compactor');
 
@@ -220,39 +222,51 @@ export function stripOldThinkingBlocks(messages: KernelMessage[]): number {
  * - tool_result > 5KB → 头 70% + 尾 30%
  * - 中间插入省略标记
  *
- * @returns 截断的 block 数
+ * Shadow 模式 (Anthropic 协议):
+ * - 不直接截断 content，仅标记 microcompacted=true
+ * - 实际截断延迟到 streamOneRound 构建 messagesForApi 时
+ * - 保护 Prompt Cache 命中率（本地消息结构不变）
+ *
+ * @param protocol API 协议 — anthropic-messages 时使用 Shadow 模式
+ * @returns 截断/标记的 block 数
  */
-export function microcompactToolResults(messages: KernelMessage[]): number {
-  // TODO: Cached Microcompact（参考 Claude Code microCompact.ts）
-  // 当 Anthropic cache_edits API 对所有用户开放后，可以：
-  // 1. 不修改消息内容，仅通过 cache_edits 删除旧工具结果
-  // 2. 调用 notifyCacheDeletion() 抑制缓存断裂误报
-  // 3. 这样可以保留缓存前缀的有效性
-  // 当前实现: 直接截断消息内容（会破坏缓存）
+export function microcompactToolResults(
+  messages: KernelMessage[],
+  protocol?: import('./types.js').ApiProtocol,
+): number {
+  const useShadow = protocol === 'anthropic-messages';
   let truncatedCount = 0;
 
   for (const msg of messages) {
-    for (let i = 0; i < msg.content.length; i++) {
-      const block = msg.content[i]!;
+    let hasOversized = false;
+    for (const block of msg.content) {
       if (block.type !== 'tool_result') continue;
       if (block.content.length <= MICROCOMPACT_TRUNCATE_THRESHOLD) continue;
 
-      const original = block.content;
-      const headBudget = Math.floor(MICROCOMPACT_TRUNCATE_THRESHOLD * HEAD_RATIO);
-      const tailBudget = MICROCOMPACT_TRUNCATE_THRESHOLD - headBudget;
-      const head = original.slice(0, headBudget);
-      const tail = original.slice(-tailBudget);
-      const omitted = original.length - headBudget - tailBudget;
+      hasOversized = true;
 
-      // 直接修改 (mutable — 性能优先)
-      (block as { content: string }).content =
-        `${head}\n\n... [省略 ${omitted} 字符] ...\n\n${tail}`;
+      if (!useShadow) {
+        // 直接截断 (OpenAI 协议: 无 cache 机制)
+        const original = block.content;
+        const headBudget = Math.floor(MICROCOMPACT_TRUNCATE_THRESHOLD * HEAD_RATIO);
+        const tailBudget = MICROCOMPACT_TRUNCATE_THRESHOLD - headBudget;
+        const head = original.slice(0, headBudget);
+        const tail = original.slice(-tailBudget);
+        const omitted = original.length - headBudget - tailBudget;
+        (block as { content: string }).content =
+          `${head}\n\n... [省略 ${omitted} 字符] ...\n\n${tail}`;
+      }
       truncatedCount++;
+    }
+
+    // Shadow 模式: 仅标记消息，不修改 content
+    if (useShadow && hasOversized) {
+      (msg as { microcompacted: boolean }).microcompacted = true;
     }
   }
 
   if (truncatedCount > 0) {
-    log.info(`Microcompact: 截断 ${truncatedCount} 个 tool_result`);
+    log.info(`Microcompact: ${useShadow ? '标记' : '截断'} ${truncatedCount} 个 tool_result`);
   }
 
   return truncatedCount;
@@ -425,18 +439,81 @@ function serializeMessagesForSummary(messages: readonly KernelMessage[]): string
   return parts.join('\n\n---\n\n');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 压缩后重注入 — 精确预算控制
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 重注入总 token 预算 */
+const POST_COMPACT_TOKEN_BUDGET = 50_000;
+/** 单个文件最大 token 数 */
+const POST_COMPACT_MAX_TOKENS_PER_FILE = 5_000;
+/** 最多重注入的文件数 */
+const POST_COMPACT_MAX_FILES = 5;
+/** 每 token 字符数估算（重注入使用） */
+const REINJECTION_CHARS_PER_TOKEN = 4;
+
+/**
+ * 构建压缩后重注入附件
+ *
+ * 参考 Claude Code: compact.ts 重注入机制
+ * 从 FileStateCache 获取最近读取的文件路径，
+ * 重新读取并截断到预算范围内注入。
+ *
+ * @param fileStateCache 文件状态缓存
+ * @returns 重注入消息，无可用文件时返回 null
+ */
+function buildReinjectionAttachment(fileStateCache: FileStateCache): KernelMessage | null {
+  const recentPaths = fileStateCache.getRecentlyReadPaths(POST_COMPACT_MAX_FILES);
+  if (recentPaths.length === 0) return null;
+
+  const fs = require('node:fs') as typeof import('node:fs');
+  const path = require('node:path') as typeof import('node:path');
+  const attachments: string[] = [];
+  let usedTokens = 0;
+
+  for (const filePath of recentPaths) {
+    if (usedTokens >= POST_COMPACT_TOKEN_BUDGET) break;
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const maxChars = POST_COMPACT_MAX_TOKENS_PER_FILE * REINJECTION_CHARS_PER_TOKEN;
+      const truncated = content.length > maxChars
+        ? content.slice(0, maxChars) + `\n... [截断: ${content.length} 字符, 显示前 ${maxChars}]`
+        : content;
+
+      const tokens = Math.ceil(truncated.length / REINJECTION_CHARS_PER_TOKEN);
+      if (usedTokens + tokens > POST_COMPACT_TOKEN_BUDGET) continue;
+
+      attachments.push(`<file path="${path.basename(filePath)}" full_path="${filePath}">\n${truncated}\n</file>`);
+      usedTokens += tokens;
+    } catch {
+      // 文件可能已被删除，跳过
+    }
+  }
+
+  if (attachments.length === 0) return null;
+
+  log.info(`重注入: ${attachments.length} 个文件, ~${usedTokens} tokens`);
+  return {
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: [{ type: 'text', text: `[Post-compaction 文件恢复 — 最近读取的关键文件]\n\n${attachments.join('\n\n')}` }],
+    isMeta: true,
+  };
+}
+
 /**
  * 执行 autocompact
  *
  * 1. 序列化消息为文本
  * 2. 调用 LLM 生成 9 段摘要
  * 3. 替换: 保留最后 4 条消息，前面替换为摘要
- * 4. 注入 post-compaction 恢复指令
+ * 4. 注入 post-compaction 恢复指令 + 文件重注入
  */
 export async function autocompact(
   messages: KernelMessage[],
   config: QueryLoopConfig,
-): Promise<void> {
+): Promise<string> {
   const serialized = serializeMessagesForSummary(messages);
 
   // 限制摘要输入长度 (防止摘要请求本身溢出)
@@ -562,7 +639,33 @@ export async function autocompact(
     isMeta: true,
   });
 
+  // Post-compaction 重注入（如果有 fileStateCache）
+  if (config.fileStateCache) {
+    const reinjection = buildReinjectionAttachment(config.fileStateCache);
+    if (reinjection) {
+      messages.push(reinjection);
+    }
+  }
+
   log.info(`Autocompact: 摘要 ${summary.length} 字符，保留 ${keepCount} 条最近消息`);
+  return summary;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Session Memory Compact — 模块级记忆查询注入
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 注入的记忆查询函数（解耦 MemoryStore 依赖） */
+let _memoryQueryFn: MemoryQueryFn | null = null;
+
+/**
+ * 注入记忆查询函数（在 sidecar 启动时调用一次）
+ *
+ * 用于 SM Compact: 查询本 session 已提取的记忆。
+ * 解耦 kernel 模块与 memory 模块的循环依赖。
+ */
+export function setMemoryQueryFn(fn: MemoryQueryFn): void {
+  _memoryQueryFn = fn;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -573,10 +676,10 @@ export async function autocompact(
 let consecutiveAutocompactFailures = 0;
 
 /**
- * 三层压缩入口
+ * 压缩入口 — 优先级链: SM Compact → 传统三层
  *
- * 触发条件: token 估算超过 contextWindow 的 85%
- * 三层逐级尝试，每层成功后检查是否已降到阈值以下
+ * SM Compact (零 API 成本): 复用已提取的记忆作为摘要
+ * 传统三层: Snip → Microcompact → Autocompact
  *
  * @returns 是否执行了压缩
  */
@@ -605,6 +708,23 @@ export async function maybeCompress(
     log.error(`Token 硬限制: ${estimated}/${contextWindow} (${(estimated / contextWindow * 100).toFixed(0)}%)，强制压缩`);
   }
 
+  // ──── 优先级 1: Session Memory Compact（零 API 成本）────
+  if (Feature.SESSION_MEMORY_COMPACT && _memoryQueryFn && config.agentId && config.sessionKey) {
+    const smResult = trySessionMemoryCompact(
+      messages, config.agentId, config.sessionKey, _memoryQueryFn,
+    );
+    if (smResult.success) {
+      messages.length = 0;
+      messages.push(...smResult.messages);
+      config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+      config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+      log.info(`SM Compact: 释放 ~${smResult.tokensFreed} tokens (零 API 成本)`);
+      return true;
+    }
+    log.debug?.(`SM Compact 跳过: ${smResult.reason}`);
+  }
+
+  // ──── 优先级 2: 传统三层压缩 ────
   const threshold = contextWindow - AUTOCOMPACT_BUFFER_TOKENS;
   const msgCountBefore = messages.length;
   const trigger: CompactTrigger = estimated >= hardLimitThreshold ? 'hard_limit' : 'auto';
@@ -640,8 +760,8 @@ export async function maybeCompress(
     return true;
   }
 
-  // Layer 2: Microcompact (零成本)
-  const truncated = microcompactToolResults(messages);
+  // Layer 2: Microcompact (零成本, Anthropic 协议下使用 Shadow 模式保护缓存)
+  const truncated = microcompactToolResults(messages, config.protocol);
   if (truncated > 0) {
     config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
@@ -660,16 +780,16 @@ export async function maybeCompress(
 
   try {
     config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-    await autocompact(messages, config);
+    const summaryText = await autocompact(messages, config);
     consecutiveAutocompactFailures = 0;
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     const tokensAfter = estimateTokens(messages);
     log.info(`Autocompact 边界: ${msgCountBefore} → ${messages.length} 消息`);
 
-    // PostCompact Hook — 压缩后通知
+    // PostCompact Hook — 压缩后通知（含摘要文本）
     if (config.postCompactHook) {
       try {
-        await config.postCompactHook(trigger, estimated, tokensAfter);
+        await config.postCompactHook(trigger, estimated, tokensAfter, summaryText);
       } catch (err) {
         log.warn(`PostCompact Hook 执行失败: ${err instanceof Error ? err.message : err}`);
       }
@@ -683,9 +803,89 @@ export async function maybeCompress(
   }
 }
 
-/** 重置熔断器状态 (新会话时调用) */
+/** 重置压缩器状态 (新会话时调用) */
 export function resetCompactorState(): void {
   consecutiveAutocompactFailures = 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PTL 紧急降级 — 压缩后仍溢出时的逐轮次删除
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 按 API 轮次分组消息
+ *
+ * 一轮 = 一条 user 消息 + 其后的 assistant 消息（含工具调用/结果对）
+ */
+export function groupMessagesByApiRound(messages: readonly KernelMessage[]): KernelMessage[][] {
+  const groups: KernelMessage[][] = [];
+  let current: KernelMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'user' && current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(msg);
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+/**
+ * PTL 紧急降级 — 按 API 轮次分组，逐组删除最老消息直到覆盖 tokenGap
+ *
+ * 参考 Claude Code: truncateHeadForPTLRetry()
+ *
+ * 比 contextCollapseDrain 更精确:
+ * - 不是一刀切 keep 4，而是基于实际 token 差距删除
+ * - 按轮次分组保持语义完整性
+ * - 支持精确模式（有 tokenGap）和估算模式（删 20%）
+ *
+ * @param messages 当前消息列表
+ * @param tokenGap API 返回的超出 token 数（如果有）
+ * @returns 截断后的消息列表，null 表示无法进一步截断
+ */
+export function truncateHeadForPTLRetry(
+  messages: readonly KernelMessage[],
+  tokenGap?: number,
+): KernelMessage[] | null {
+  const groups = groupMessagesByApiRound(messages);
+  if (groups.length < 2) return null; // 至少保留 1 组
+
+  let dropCount: number;
+  if (tokenGap !== undefined && tokenGap > 0) {
+    // 精确模式: 贪心删除最老的组，直到覆盖 tokenGap
+    let acc = 0;
+    dropCount = 0;
+    for (const g of groups) {
+      acc += estimateTokens(g);
+      dropCount++;
+      if (acc >= tokenGap) break;
+    }
+  } else {
+    // 估算模式: 删除 20% 的组
+    dropCount = Math.max(1, Math.floor(groups.length * 0.2));
+  }
+
+  dropCount = Math.min(dropCount, groups.length - 1); // 至少保留 1 组
+  const sliced = groups.slice(dropCount).flat();
+
+  // 如果结果以 assistant 消息开头，插入合成 user 消息
+  if (sliced.length > 0 && sliced[0]!.role === 'assistant') {
+    return [
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: [{ type: 'text', text: '[earlier conversation truncated for compaction retry]' }],
+        isMeta: true,
+      },
+      ...sliced,
+    ];
+  }
+
+  log.info(`PTL 降级: 删除 ${dropCount}/${groups.length} 组，剩余 ${sliced.length} 条消息`);
+  return sliced;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -753,10 +953,10 @@ export async function maybeCompressPhased(
     return { ...collapseState, phase: 'autocompact' };
   }
 
-  // Layer 2: Microcompact（缓存感知版或标准版）
+  // Layer 2: Microcompact（缓存感知版或标准版, Anthropic 协议下使用 Shadow 模式）
   const truncated = Feature.CACHED_MICROCOMPACT
     ? microcompactCacheAware(messages, collapseState.cacheBreakpointIndex)
-    : microcompactToolResults(messages);
+    : microcompactToolResults(messages, config.protocol);
   if (truncated > 0) {
     config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
@@ -773,9 +973,20 @@ export async function maybeCompressPhased(
 
   try {
     config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-    await autocompact(messages, config);
+    const summaryText = await autocompact(messages, config);
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    const tokensAfter = estimateTokens(messages);
     log.info(`Autocompact: ${msgCountBefore} → ${messages.length} 消息`);
+
+    // PostCompact Hook — 压缩后通知（含摘要文本）
+    if (config.postCompactHook) {
+      try {
+        await config.postCompactHook('auto', estimated, tokensAfter, summaryText);
+      } catch (err) {
+        log.warn(`PostCompact Hook 执行失败: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
     return { ...collapseState, phase: 'autocompact', consecutiveFailures: 0 };
   } catch (err) {
     config.onEvent({ type: 'compaction_end', timestamp: Date.now() });

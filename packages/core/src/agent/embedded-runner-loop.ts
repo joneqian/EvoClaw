@@ -195,6 +195,7 @@ export async function runEmbeddedLoop(
       message,
       onEvent,
       abortSignal,
+      store: config.store,
     });
 
     // ─── 成功 ───

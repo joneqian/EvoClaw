@@ -41,7 +41,7 @@ import type {
 import { ApiError } from './types.js';
 import { streamLLM } from './stream-client.js';
 import { StreamingToolExecutor } from './streaming-tool-executor.js';
-import { maybeCompress, maybeCompressPhased, contextCollapseDrain, createCollapseState } from './context-compactor.js';
+import { maybeCompress, maybeCompressPhased, contextCollapseDrain, createCollapseState, truncateHeadForPTLRetry } from './context-compactor.js';
 import type { CollapseState } from './context-compactor.js';
 import { Feature } from '../../infrastructure/feature.js';
 import { classifyApiError, isRecoverableInLoop, isFallbackTrigger, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
@@ -56,11 +56,23 @@ const log = createLogger('query-loop');
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 413 压缩重试最大次数 */
-const MAX_OVERFLOW_RETRIES = 2;
+/** 413 压缩重试最大次数 — 增加到 3 以支持 PTL 紧急降级作为第三阶段 */
+const MAX_OVERFLOW_RETRIES = 3;
 
 /** P1-1: max_output_tokens 升级目标 (64k) */
 const ESCALATED_MAX_TOKENS = 64_000;
+
+/**
+ * 默认 max_output_tokens 上限 (8K)
+ *
+ * 参考 Claude Code: CAPPED_DEFAULT_MAX_TOKENS = 8_000
+ * P99 输出仅 ~5K tokens，8K 覆盖 >99% 的请求。
+ * 被截断时自动升级到 ESCALATED_MAX_TOKENS (64K)。
+ * 更低的 slot 预留 → 更多并发容量 → 更少排队延迟。
+ *
+ * EvoClaw 通过 model-fetcher.ts maxTokens 默认 8192 实现。
+ */
+const _CAPPED_DEFAULT_MAX_TOKENS = 8_000; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helper: Content Block Accumulation
@@ -106,6 +118,41 @@ function buildToolResultMessage(results: ToolResultBlock[]): KernelMessage {
 // mapToToolCallRecords 已移至 message-utils.ts（使用 MessageLookups O(1) 查找）
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Helper: Shadow Microcompact — 延迟截断
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Microcompact 截断阈值 (5KB) — 与 context-compactor.ts 保持一致 */
+const MC_TRUNCATE_THRESHOLD = 5 * 1024;
+/** 头部保留比例 */
+const MC_HEAD_RATIO = 0.7;
+
+/**
+ * 对标记了 microcompacted 的消息创建截断副本
+ *
+ * Shadow Microcompact: 原始消息 content 不变（保护 Prompt Cache），
+ * 仅在发送给 API 时创建截断版本。
+ */
+function applyDeferredTruncation(msg: KernelMessage): KernelMessage {
+  const newContent = msg.content.map(block => {
+    if (block.type !== 'tool_result') return block;
+    if (block.content.length <= MC_TRUNCATE_THRESHOLD) return block;
+
+    const headBudget = Math.floor(MC_TRUNCATE_THRESHOLD * MC_HEAD_RATIO);
+    const tailBudget = MC_TRUNCATE_THRESHOLD - headBudget;
+    const head = block.content.slice(0, headBudget);
+    const tail = block.content.slice(-tailBudget);
+    const omitted = block.content.length - headBudget - tailBudget;
+
+    return {
+      ...block,
+      content: `${head}\n\n... [省略 ${omitted} 字符] ...\n\n${tail}`,
+    };
+  });
+
+  return { ...msg, content: newContent, microcompacted: undefined };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // streamOneRound — 单轮流式调用 + 流中工具预执行
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -145,9 +192,22 @@ async function streamOneRound(
   const effectiveApiKey = modelOverride?.apiKey ?? config.apiKey;
 
   // Thinking 块跨轮次清理：如果 thinking 已禁用，从历史消息中剥离 thinking 块避免 API 错误
-  const messagesForApi = config.thinkingConfig.type === 'disabled'
-    ? messages.map(stripThinkingBlocks)
-    : messages;
+  // Shadow Microcompact: microcompacted 消息需要创建截断副本发送给 API
+  const messagesForApi = messages.map(msg => {
+    let result = msg;
+
+    // Strip thinking blocks if disabled
+    if (config.thinkingConfig.type === 'disabled') {
+      result = stripThinkingBlocks(result);
+    }
+
+    // Shadow Microcompact: 对标记了 microcompacted 的消息创建截断副本
+    if (result.microcompacted) {
+      result = applyDeferredTruncation(result);
+    }
+
+    return result;
+  });
 
   for await (const event of streamLLM({
     protocol: effectiveProtocol,
@@ -259,6 +319,7 @@ async function streamOneRound(
       role: 'assistant',
       content: blocks,
       usage,
+      createdAt: Date.now(),
     },
     usage,
     stopReason,
@@ -302,17 +363,20 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
 
   log.info(`queryLoop 开始: model=${state.effectiveModelId}, maxTurns=${config.maxTurns}, tools=${config.tools.length}`);
 
-  const buildResult = (): QueryLoopResult => ({
-    fullResponse,
-    toolCalls: allToolCalls,
-    // 确保每个 tool_use 都有配对的 tool_result（中断时补占位符）
-    messages: ensureToolResultPairing(state.messages),
-    totalInputTokens: totalInput,
-    totalOutputTokens: totalOutput,
-    exitReason,
-    turnCount: state.turnCount,
-    lastTransition: state.transition,
-  });
+  const buildResult = (): QueryLoopResult => {
+    config.persister?.finalize();
+    return {
+      fullResponse,
+      toolCalls: allToolCalls,
+      // 确保每个 tool_use 都有配对的 tool_result（中断时补占位符）
+      messages: ensureToolResultPairing(state.messages),
+      totalInputTokens: totalInput,
+      totalOutputTokens: totalOutput,
+      exitReason,
+      turnCount: state.turnCount,
+      lastTransition: state.transition,
+    };
+  };
 
   while (true) {
     // ─── 1. 中止检查 ───
@@ -391,16 +455,31 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
         }
 
         // 第 2 次或 collapse 无效: 完整压缩
-        log.warn(`413 overflow, 完整压缩重试 (${nextOverflowRetries}/${MAX_OVERFLOW_RETRIES})`);
-        try {
-          await maybeCompress(state.messages, config);
-          cacheMonitor.notifyCompaction();
-        } catch {
-          throw err;
+        if (nextOverflowRetries <= 2) {
+          log.warn(`413 overflow, 完整压缩重试 (${nextOverflowRetries}/${MAX_OVERFLOW_RETRIES})`);
+          try {
+            await maybeCompress(state.messages, config);
+            cacheMonitor.notifyCompaction();
+          } catch {
+            throw err;
+          }
+          state = { ...state, overflowRetries: nextOverflowRetries, transition: 'overflow_retry' };
+          log.info(`transition: ${state.transition}`);
+          continue;
         }
-        state = { ...state, overflowRetries: nextOverflowRetries, transition: 'overflow_retry' };
-        log.info(`transition: ${state.transition}`);
-        continue;
+
+        // 第 3 次: PTL 紧急降级 — 按轮次分组精确删除
+        log.warn(`413 overflow, PTL 紧急降级 (${nextOverflowRetries}/${MAX_OVERFLOW_RETRIES})`);
+        const truncated = truncateHeadForPTLRetry(state.messages);
+        if (truncated) {
+          state.messages.length = 0;
+          state.messages.push(...truncated);
+          cacheMonitor.notifyCompaction();
+          state = { ...state, overflowRetries: nextOverflowRetries, transition: 'overflow_retry' };
+          log.info(`transition: ${state.transition} (PTL 降级)`);
+          continue;
+        }
+        throw err; // 无法进一步截断
       }
 
       if (isAbortLike(err)) {
@@ -426,6 +505,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     }
 
     state.messages.push(roundResult.assistantMessage);
+    config.persister?.persistTurn(state.turnCount, [roundResult.assistantMessage]);
     state = { ...state, turnCount: state.turnCount + 1 };
     totalInput += roundResult.usage.inputTokens;
     totalOutput += roundResult.usage.outputTokens;
@@ -552,6 +632,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     allToolCalls.push(...mapToolCalls(toolUseBlocks, lookups));
 
     state.messages.push(toolResultMsg);
+    config.persister?.persistTurn(state.turnCount, [toolResultMsg]);
 
     // ─── 6b. 工具调用摘要 (参考 Claude Code ToolUseSummaryMessage) ───
     // 生成 git-commit-subject 风格的简短摘要，用于上下文压缩和 UI 展示

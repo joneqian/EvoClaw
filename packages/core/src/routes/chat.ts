@@ -49,6 +49,7 @@ import { createLogger } from '../infrastructure/logger.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
 import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
 import { detectHeartbeatAck } from '../scheduler/heartbeat-utils.js';
+import { IncrementalPersister } from '../agent/kernel/incremental-persister.js';
 
 const log = createLogger('chat');
 
@@ -79,15 +80,104 @@ function detectToolNameConflicts(toolList: { name: string }[]): void {
   }
 }
 
-/** 从 conversation_log 加载最近消息历史 */
+/**
+ * 智能会话恢复 — 三级恢复策略
+ *
+ * Level 1: 查找最近 compaction_boundary → 加载 boundary 之后的消息
+ * Level 2: 查找 session_summary → 注入 [摘要] + 最近消息
+ * Level 3: 回退到 last-N 原始消息
+ *
+ * 参考 Claude Code: loadTranscriptFile + buildConversationChain
+ */
 function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
+  // ── Level 0: 恢复崩溃残留的 streaming 消息 ──
+  // 将 streaming → orphaned → final，确保不丢失数据
+  const orphaned = IncrementalPersister.loadOrphaned(db, agentId, sessionKey);
+  if (orphaned.length > 0) {
+    log.info(`恢复 ${orphaned.length} 条 orphaned 消息 (session=${sessionKey})`);
+  }
+
+  // ── Level 1: 查找最近的 compaction_boundary ──
+  const boundary = db.get<{ id: string; created_at: string; content: string }>(
+    `SELECT id, created_at, content FROM conversation_log
+     WHERE agent_id = ? AND session_key = ? AND entry_type = 'compaction_boundary'
+     ORDER BY created_at DESC LIMIT 1`,
+    agentId, sessionKey,
+  );
+
+  if (boundary) {
+    // 加载 boundary 之后的消息
+    const postBoundaryRows = db.all<{
+      id: string; session_key: string; role: string; content: string;
+      tool_calls_json: string | null; created_at: string;
+    }>(
+      `SELECT id, session_key, role, content, tool_calls_json, created_at
+       FROM conversation_log
+       WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
+         AND created_at > ?
+       ORDER BY created_at ASC, rowid ASC`,
+      agentId, sessionKey, boundary.created_at,
+    );
+
+    const recentMessages = postBoundaryRows.map(rowToChatMessage);
+
+    // 尝试加载摘要注入到 boundary 消息前面
+    const summary = db.get<{ summary_markdown: string }>(
+      `SELECT summary_markdown FROM session_summaries WHERE agent_id = ? AND session_key = ?`,
+      agentId, sessionKey,
+    );
+
+    if (summary?.summary_markdown) {
+      const summaryMsg: ChatMessage = {
+        id: `summary-${boundary.id}`,
+        conversationId: sessionKey,
+        role: 'user',
+        content: `[会话摘要 — 由系统在上下文压缩时生成]\n\n${summary.summary_markdown}`,
+        isSummary: true,
+        createdAt: boundary.created_at,
+      };
+      return [summaryMsg, ...recentMessages];
+    }
+
+    return recentMessages;
+  }
+
+  // ── Level 2: 无 boundary，但有 session_summary ──
+  const summary = db.get<{ summary_markdown: string }>(
+    `SELECT summary_markdown FROM session_summaries WHERE agent_id = ? AND session_key = ?`,
+    agentId, sessionKey,
+  );
+
+  if (summary?.summary_markdown) {
+    // 加载最近 N 条消息 + 摘要前缀
+    const recentRows = db.all<{
+      id: string; session_key: string; role: string; content: string;
+      tool_calls_json: string | null; created_at: string;
+    }>(
+      `SELECT id, session_key, role, content, tool_calls_json, created_at
+       FROM conversation_log
+       WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT ?`,
+      agentId, sessionKey, limit,
+    );
+
+    const recentMessages = recentRows.reverse().map(rowToChatMessage);
+    const summaryMsg: ChatMessage = {
+      id: `summary-${agentId}`,
+      conversationId: sessionKey,
+      role: 'user',
+      content: `[会话摘要 — 由系统周期性生成]\n\n${summary.summary_markdown}`,
+      isSummary: true,
+      createdAt: recentMessages[0]?.createdAt ?? new Date().toISOString(),
+    };
+    return [summaryMsg, ...recentMessages];
+  }
+
+  // ── Level 3: 回退到 last-N ──
   const rows = db.all<{
-    id: string;
-    session_key: string;
-    role: string;
-    content: string;
-    tool_calls_json: string | null;
-    created_at: string;
+    id: string; session_key: string; role: string; content: string;
+    tool_calls_json: string | null; created_at: string;
   }>(
     `SELECT id, session_key, role, content, tool_calls_json, created_at
      FROM conversation_log
@@ -97,20 +187,25 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     agentId, sessionKey, limit,
   );
 
-  // 反转为时间正序
-  return rows.reverse().map(row => {
-    const msg: ChatMessage = {
-      id: row.id,
-      conversationId: row.session_key,
-      role: row.role as ChatMessage['role'],
-      content: row.content,
-      createdAt: row.created_at,
-    };
-    if (row.tool_calls_json) {
-      try { (msg as any).toolCalls = JSON.parse(row.tool_calls_json); } catch { /* ignore */ }
-    }
-    return msg;
-  });
+  return rows.reverse().map(rowToChatMessage);
+}
+
+/** 数据库行 → ChatMessage */
+function rowToChatMessage(row: {
+  id: string; session_key: string; role: string; content: string;
+  tool_calls_json: string | null; created_at: string;
+}): ChatMessage {
+  const msg: ChatMessage = {
+    id: row.id,
+    conversationId: row.session_key,
+    role: row.role as ChatMessage['role'],
+    content: row.content,
+    createdAt: row.created_at,
+  };
+  if (row.tool_calls_json) {
+    try { (msg as any).toolCalls = JSON.parse(row.tool_calls_json); } catch { /* ignore */ }
+  }
+  return msg;
 }
 
 /** 存储消息到 conversation_log (使用 ISO 格式时间戳，确保前端时区正确) */
@@ -711,8 +806,10 @@ export function createChatRoutes(
       apiKey,
       baseUrl,
       apiProtocol: apiProtocol as AgentRunConfig['apiProtocol'],
+      sessionKey,
       tools,
       messages,
+      store,
       contextWindow: modelDef?.contextWindow,
       maxTokens: modelDef?.maxTokens,
       promptOverrides: (body as any).promptOverrides,
@@ -737,6 +834,27 @@ export function createChatRoutes(
             return callLLM(configManager, { systemPrompt: system, userMessage: user, maxTokens: 256 });
           }
         : undefined,
+      // Compact 后置钩子: 持久化压缩边界 + 摘要
+      postCompactHook: async (trigger, tokensBefore, tokensAfter, summaryText) => {
+        try {
+          // 1. 写入 compaction_boundary 到 conversation_log
+          store.run(
+            `INSERT INTO conversation_log (id, agent_id, session_key, role, content, compaction_status, entry_type, created_at)
+             VALUES (?, ?, ?, 'system', ?, 'compacted', 'compaction_boundary', ?)`,
+            crypto.randomUUID(), agentId, sessionKey,
+            JSON.stringify({ trigger, tokensBefore, tokensAfter }),
+            new Date().toISOString(),
+          );
+
+          // 2. 持久化摘要到 session_summaries（仅 autocompact 产生摘要时）
+          if (summaryText && sessionSummarizer) {
+            sessionSummarizer.save(agentId, sessionKey, summaryText, tokensAfter, 0, 0);
+          }
+        } catch (err) {
+          log.warn(`PostCompact Hook 持久化失败: ${err instanceof Error ? err.message : err}`);
+        }
+        return {};
+      },
       // 模型解析器: 将 skill 的 model 字段 "provider/modelId" 解析为 API 配置
       modelResolver: configManager
         ? (modelRef: string) => {
@@ -913,6 +1031,25 @@ export function createChatRoutes(
 
     const cancelled = laneQueue.abortRunning(sk);
     return c.json({ cancelled });
+  });
+
+  /** POST /:agentId/fork — Fork 会话（基于现有会话创建独立副本） */
+  app.post('/:agentId/fork', async (c) => {
+    const agentId = c.req.param('agentId');
+    const body = await c.req.json<{ sourceSessionKey: string; newSessionKey?: string }>()
+      .catch((): { sourceSessionKey: string; newSessionKey?: string } => ({ sourceSessionKey: '' }));
+
+    if (!body.sourceSessionKey) {
+      return c.json({ error: '缺少 sourceSessionKey' }, 400);
+    }
+
+    const { forkSession } = await import('./fork-session.js');
+    const result = forkSession(store, agentId, body.sourceSessionKey, body.newSessionKey);
+
+    if (!result.success) {
+      return c.json({ error: result.error }, 500);
+    }
+    return c.json(result);
   });
 
   return app;

@@ -182,6 +182,58 @@ export class FileStateCache {
     return this.cache.size;
   }
 
+  /**
+   * 获取最近读取的文件路径（按 readAt 降序）
+   *
+   * 用于压缩后重注入: 取最近读取的 N 个文件路径，
+   * 在 autocompact 后重新读取并注入上下文。
+   *
+   * @param maxCount 最多返回的文件数
+   * @returns 按最近读取时间排序的文件路径列表
+   */
+  getRecentlyReadPaths(maxCount: number = 5): string[] {
+    return [...this.cache.entries()]
+      .filter(([, s]) => !s.isPartialView) // 仅完整读取的文件
+      .sort(([, a], [, b]) => b.readAt - a.readAt)
+      .slice(0, maxCount)
+      .map(([path]) => path);
+  }
+
+  // ─── Serialization (运行时状态持久化) ───
+
+  /**
+   * 序列化为 JSON 兼容的 Record
+   *
+   * 用于 RuntimeStateStore 持久化到 session_runtime_state 表。
+   */
+  toJSON(): Record<string, FileState> {
+    const result: Record<string, FileState> = {};
+    for (const [path, state] of this.cache) {
+      result[path] = { ...state };
+    }
+    return result;
+  }
+
+  /**
+   * 从 JSON 反序列化恢复 FileStateCache
+   *
+   * 恢复后自动过滤已删除的文件条目。
+   */
+  static fromJSON(data: Record<string, FileState>): FileStateCache {
+    const cache = new FileStateCache();
+    for (const [filePath, state] of Object.entries(data)) {
+      // 跳过不存在的文件（可能在上次 session 后被删除）
+      try {
+        fs.statSync(filePath);
+      } catch {
+        continue;
+      }
+      cache.cache.set(filePath, { ...state });
+      cache.totalBytes += state.contentLength;
+    }
+    return cache;
+  }
+
   // ─── Private ───
 
   private evictIfNeeded(newContentLength: number): void {

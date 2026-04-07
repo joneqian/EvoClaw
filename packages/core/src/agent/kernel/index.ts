@@ -66,7 +66,18 @@ export { StreamingToolExecutor } from './streaming-tool-executor.js';
 export { queryLoop, queryLoopGenerator } from './query-loop.js';
 
 // Context Compaction
-export { maybeCompress, estimateTokens, snipOldMessages, microcompactToolResults, stripOldThinkingBlocks, resetCompactorState } from './context-compactor.js';
+export {
+  maybeCompress, estimateTokens, snipOldMessages, microcompactToolResults,
+  stripOldThinkingBlocks, resetCompactorState, setMemoryQueryFn,
+  truncateHeadForPTLRetry, groupMessagesByApiRound,
+} from './context-compactor.js';
+
+// Session Memory Compact
+export { trySessionMemoryCompact, DEFAULT_SM_COMPACT_CONFIG } from './session-memory-compact.js';
+export type { SMCompactConfig, SMCompactResult, MemoryQueryFn } from './session-memory-compact.js';
+
+// Message Utils (压缩边界保护)
+export { adjustIndexForToolPairing } from './message-utils.js';
 
 // Error Recovery
 export { classifyApiError, isRecoverableInLoop, isAbortLike } from './error-recovery.js';

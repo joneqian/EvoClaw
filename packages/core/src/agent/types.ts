@@ -58,6 +58,14 @@ export interface AgentRunConfig {
   toolSummaryGeneratorFn?: (system: string, user: string) => Promise<string>;
   /** 模型解析器（将 skill 的 model 字段 "provider/modelId" 解析为 API 配置） */
   modelResolver?: (modelRef: string) => { protocol: string; baseUrl: string; apiKey: string; modelId: string; contextWindow: number } | undefined;
+  /** 会话标识（用于 Kernel SM Compact + compact boundary 持久化） */
+  sessionKey?: string;
+  /** Compact 前置钩子（可选: 压缩前检查/阻止） */
+  preCompactHook?: import('./kernel/types.js').PreCompactHookFn;
+  /** Compact 后置钩子（可选: 持久化压缩边界 + 摘要） */
+  postCompactHook?: import('./kernel/types.js').PostCompactHookFn;
+  /** SQLite store（可选: 用于增量持久化） */
+  store?: import('../infrastructure/db/sqlite-store.js').SqliteStore;
 }
 
 // ─── 单次执行结果 ───
@@ -66,6 +74,8 @@ export interface AgentRunConfig {
 export interface MessageSnapshot {
   role: string;
   content: string;
+  /** 标记为压缩摘要消息 */
+  isSummary?: boolean;
 }
 
 /** 工具调用记录（用于消息快照传递） */

@@ -31,3 +31,6 @@ declare const FEATURE_CACHED_MICROCOMPACT: boolean;
 
 /** 响应式渐进压缩 */
 declare const FEATURE_REACTIVE_COMPACT: boolean;
+
+/** Session Memory 零成本压缩 */
+declare const FEATURE_SESSION_MEMORY_COMPACT: boolean;

@@ -42,8 +42,9 @@ export const FEATURE_REGISTRY = {
   FEISHU:     { desc: '飞书渠道',                        modules: ['channel/adapters/feishu*'] },
 
   // ─── Kernel 能力 Flag（仅门控未验证的新行为） ───
-  CACHED_MICROCOMPACT: { desc: '缓存感知微压缩',      modules: ['agent/kernel/context-compactor*'] },
-  REACTIVE_COMPACT:    { desc: '响应式渐进压缩',      modules: ['agent/kernel/context-compactor*'] },
+  CACHED_MICROCOMPACT:    { desc: '缓存感知微压缩',          modules: ['agent/kernel/context-compactor*'] },
+  REACTIVE_COMPACT:       { desc: '响应式渐进压缩',          modules: ['agent/kernel/context-compactor*'] },
+  SESSION_MEMORY_COMPACT: { desc: 'Session Memory 零成本压缩', modules: ['agent/kernel/context-compactor*', 'agent/kernel/session-memory-compact*'] },
 } as const satisfies Record<string, FeatureMeta>;
 
 /** 所有 Feature Flag 名称 */
@@ -143,6 +144,11 @@ export const Feature = {
   /** 响应式渐进压缩 */
   get REACTIVE_COMPACT(): boolean {
     return typeof FEATURE_REACTIVE_COMPACT !== 'undefined' ? FEATURE_REACTIVE_COMPACT : devFallback('REACTIVE_COMPACT');
+  },
+
+  /** Session Memory 零成本压缩 */
+  get SESSION_MEMORY_COMPACT(): boolean {
+    return typeof FEATURE_SESSION_MEMORY_COMPACT !== 'undefined' ? FEATURE_SESSION_MEMORY_COMPACT : devFallback('SESSION_MEMORY_COMPACT');
   },
 } satisfies Record<FeatureName, boolean>;
 

@@ -54,6 +54,8 @@ export interface AttemptParams {
   onEvent: EventCallback;
   /** 外部 abort signal */
   abortSignal?: AbortSignal;
+  /** SQLite store（可选: 用于增量持久化） */
+  store?: import('../infrastructure/db/sqlite-store.js').SqliteStore;
 }
 
 // ─── Protocol Normalization ───
@@ -79,6 +81,7 @@ function snapshotToKernelMessage(snapshot: MessageSnapshot): KernelMessage {
     id: crypto.randomUUID(),
     role: snapshot.role as 'user' | 'assistant',
     content: [{ type: 'text', text: snapshot.content }],
+    ...(snapshot.isSummary ? { isCompactSummary: true } : undefined),
   };
 }
 
@@ -134,7 +137,7 @@ function resolveThinkingConfig(
  * 4. 返回结构化 AttemptResult
  */
 export async function runSingleAttempt(params: AttemptParams): Promise<AttemptResult> {
-  const { config, providerOverride, thinkLevel, messagesOverride, message, onEvent, abortSignal } = params;
+  const { config, providerOverride, thinkLevel, messagesOverride, message, onEvent, abortSignal, store } = params;
 
   // 结果收集器
   let fullResponse = '';
@@ -235,7 +238,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
 
   // ─── 消息历史 ───
   const effectiveMessages: MessageSnapshot[] = messagesOverride
-    ?? (config.messages ?? []).map(m => ({ role: m.role, content: m.content }));
+    ?? (config.messages ?? []).map(m => ({ role: m.role, content: m.content, isSummary: m.isSummary }));
 
   // 转为 KernelMessage + 追加当前用户消息
   const kernelMessages: KernelMessage[] = effectiveMessages.map(snapshotToKernelMessage);
@@ -280,6 +283,24 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   // 重置压缩器状态 (新 attempt)
   resetCompactorState();
 
+  // ─── Runtime State Restore (可选: 恢复 FileStateCache / CollapseState) ───
+  let restoredFileStateCache: import('./kernel/file-state-cache.js').FileStateCache | undefined;
+  if (store && config.agent?.id && config.sessionKey) {
+    const { loadRuntimeState } = await import('./kernel/runtime-state-store.js');
+    const snapshot = loadRuntimeState(store, config.agent.id, config.sessionKey);
+    if (snapshot?.fileStateCache) {
+      const { FileStateCache } = await import('./kernel/file-state-cache.js');
+      restoredFileStateCache = FileStateCache.fromJSON(snapshot.fileStateCache);
+    }
+  }
+
+  // ─── Incremental Persister (可选: 流式持久化) ───
+  let persister: import('./kernel/incremental-persister.js').IncrementalPersister | undefined;
+  if (store && config.agent?.id && config.sessionKey) {
+    const { IncrementalPersister: PersisterClass } = await import('./kernel/incremental-persister.js');
+    persister = new PersisterClass(store, config.agent.id, config.sessionKey);
+  }
+
   // ─── Tool Summary Generator (可选: LLM 驱动工具摘要) ───
   let toolSummaryGenerator: QueryLoopConfig['toolSummaryGenerator'];
   if (config.toolSummaryGeneratorFn) {
@@ -305,6 +326,15 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     toolSafety,
     abortSignal: mergedSignal,
     toolSummaryGenerator,
+    // Compact Hooks — 从 AgentRunConfig 透传到 Kernel
+    preCompactHook: config.preCompactHook,
+    postCompactHook: config.postCompactHook,
+    // Agent Context — SM Compact + 重注入需要
+    agentId: config.agent?.id,
+    sessionKey: config.sessionKey,
+    fileStateCache: restoredFileStateCache,
+    // Incremental Persistence
+    persister,
   };
 
   try {
@@ -370,6 +400,14 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
       } catch (flushErr) {
         log.warn('Memory Flush turn 失败，降级跳过:', flushErr);
       }
+    }
+
+    // ─── Runtime State Save (成功时持久化) ───
+    if (store && config.agent?.id && config.sessionKey && loopConfig.fileStateCache) {
+      const { saveRuntimeState } = await import('./kernel/runtime-state-store.js');
+      saveRuntimeState(store, config.agent.id, config.sessionKey, {
+        fileStateCache: loopConfig.fileStateCache.toJSON(),
+      });
     }
 
     // ─── 成功 ───
@@ -449,5 +487,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     };
   } finally {
     smartTimeout.clear();
+    // 确保异常退出时也 flush 未写入的消息
+    persister?.dispose();
   }
 }

@@ -26,6 +26,9 @@ const GRACE_PERIOD_MS = 30_000;
 /** 已注册的关闭处理器 */
 const handlers: ShutdownHandler[] = [];
 
+/** 活跃的 IncrementalPersister 实例（关闭时 flush） */
+const activePersisters = new Set<{ flush(): void }>();
+
 /** 是否已开始关闭 */
 let shuttingDown = false;
 
@@ -37,6 +40,20 @@ let shuttingDown = false;
  */
 export function registerShutdownHandler(handler: ShutdownHandler): void {
   handlers.push(handler);
+}
+
+/**
+ * 注册活跃的 IncrementalPersister（关闭时自动 flush）
+ */
+export function registerActivePersister(persister: { flush(): void }): void {
+  activePersisters.add(persister);
+}
+
+/**
+ * 注销 IncrementalPersister（正常结束后调用）
+ */
+export function unregisterActivePersister(persister: { flush(): void }): void {
+  activePersisters.delete(persister);
 }
 
 /** 是否正在关闭 */
@@ -63,6 +80,20 @@ export function installShutdownHandlers(): void {
     }, GRACE_PERIOD_MS);
     // 不阻止进程退出
     if (forceTimer.unref) forceTimer.unref();
+
+    // 优先 flush 所有活跃的 IncrementalPersister（在其他 handler 之前）
+    if (activePersisters.size > 0) {
+      log.info(`Flush ${activePersisters.size} 个活跃 persister...`);
+      for (const persister of activePersisters) {
+        try {
+          persister.flush();
+        } catch (err) {
+          log.error(`Persister flush 失败: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      activePersisters.clear();
+      log.info('Persister flush 完成');
+    }
 
     // 按优先级排序执行（数字小的先执行）
     const sorted = [...handlers].sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100));

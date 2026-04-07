@@ -9,6 +9,8 @@ export interface ChatMessage {
   content: string;
   /** 工具调用结果 */
   toolCalls?: ToolCall[];
+  /** 标记为压缩摘要消息（恢复时由 loadMessageHistory 注入，kernel 中映射为 isCompactSummary） */
+  isSummary?: boolean;
   createdAt: string;
 }
 

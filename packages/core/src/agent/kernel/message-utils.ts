@@ -202,6 +202,76 @@ export function mapToToolCallRecordsLinear(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 压缩边界工具对完整性保护
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 修正压缩切割索引，确保不会切断 tool_use/tool_result 对
+ *
+ * 参考 Claude Code: adjustIndexToPreserveAPIInvariants()
+ * API 要求每个 tool_result 都有对应的 tool_use，反之亦然。
+ * 压缩切割可能破坏这个不变量。
+ *
+ * Step 1: 扫描保留范围 [startIndex, end] 内的 tool_result，
+ *         向前查找对应的 tool_use，如果在范围外则前移 startIndex。
+ * Step 2: 扫描保留范围内的 assistant 消息，
+ *         向前查找共享同一 requestId 的 thinking block 消息，前移 startIndex。
+ *         (流式传输会将一个 assistant 响应拆分为多条消息)
+ *
+ * @param messages 完整消息列表
+ * @param startIndex 初始切割索引（保留 [startIndex, end]）
+ * @returns 修正后的切割索引（可能前移）
+ */
+export function adjustIndexForToolPairing(
+  messages: readonly KernelMessage[],
+  startIndex: number,
+): number {
+  if (startIndex <= 0) return 0;
+
+  const lookups = buildMessageLookups(messages);
+  let adjusted = startIndex;
+
+  // Step 1: tool_result → tool_use 回溯
+  for (let i = adjusted; i < messages.length; i++) {
+    const msg = messages[i]!;
+    for (const block of msg.content) {
+      if (block.type !== 'tool_result') continue;
+      // 如果此 tool_result 的 tool_use 不在保留范围内，前移
+      if (!lookups.toolUseById.has(block.tool_use_id)) continue;
+      for (let j = 0; j < adjusted; j++) {
+        const candidate = messages[j]!;
+        if (candidate.role !== 'assistant') continue;
+        if (candidate.content.some(b => b.type === 'tool_use' && b.id === block.tool_use_id)) {
+          adjusted = j;
+          break;
+        }
+      }
+    }
+  }
+
+  // Step 2: thinking block 合并回溯
+  // 流式传输可能将一个 assistant 响应拆分为多条消息（thinking + text + tool_use）
+  const requestIds = new Set<string>();
+  for (let i = adjusted; i < messages.length; i++) {
+    const msg = messages[i]!;
+    if (msg.role === 'assistant' && msg.requestId) {
+      requestIds.add(msg.requestId);
+    }
+  }
+  if (requestIds.size > 0) {
+    for (let i = 0; i < adjusted; i++) {
+      const msg = messages[i]!;
+      if (msg.role === 'assistant' && msg.requestId && requestIds.has(msg.requestId)) {
+        adjusted = i;
+        break; // 找到最前的即可
+      }
+    }
+  }
+
+  return adjusted;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 消息合并 & 清理
 // ═══════════════════════════════════════════════════════════════════════════
 

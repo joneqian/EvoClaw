@@ -11,7 +11,7 @@
  * - 全部失败 → 结构化错误
  */
 
-import type { AgentRunConfig, ProviderConfig, MessageSnapshot, RuntimeEvent } from './types.js';
+import type { AgentRunConfig, ProviderConfig, MessageSnapshot, RuntimeEvent, EmbeddedAgentResult } from './types.js';
 import { type ThinkLevel, degradeThinkLevel, hasUltrathinkKeyword } from '@evoclaw/shared';
 import { runSingleAttempt } from './embedded-runner-attempt.js';
 import { createLogger } from '../infrastructure/logger.js';
@@ -137,7 +137,7 @@ export async function runEmbeddedLoop(
     /** 是否为后台查询（529 时直接放弃，不浪费资源） */
     isBackgroundQuery?: boolean;
   },
-): Promise<void> {
+): Promise<EmbeddedAgentResult | undefined> {
   const providerChain = buildProviderChain(config);
   let providerIndex = 0;
   let currentProvider = providerChain[0];
@@ -182,7 +182,7 @@ export async function runEmbeddedLoop(
     // 检查外部中止
     if (abortSignal?.aborted) {
       log.warn('外部中止，退出循环');
-      return;
+      return { messagesSnapshot: messages };
     }
 
     log.info(`iteration ${iteration}/${maxIterations}: provider=${currentProvider.provider}/${currentProvider.modelId}, thinkLevel=${thinkLevel}`);
@@ -201,7 +201,7 @@ export async function runEmbeddedLoop(
     // ─── 成功 ───
     if (result.success) {
       log.info(`成功完成 (iteration=${iteration})`);
-      return;
+      return { messagesSnapshot: result.messagesSnapshot, fullResponse: result.fullResponse };
     }
 
     // ─── 超时或外部中止 → 不重试 ───
@@ -209,7 +209,7 @@ export async function runEmbeddedLoop(
       if (result.timedOut) {
         emit(onEvent, { type: 'error', error: `Agent 执行超时${result.timedOutDuringCompaction ? '（compaction 期间）' : ''}` });
       }
-      return;
+      return { messagesSnapshot: result.messagesSnapshot };
     }
 
     // ─── 根据错误类型决定恢复策略 ───
@@ -303,11 +303,12 @@ export async function runEmbeddedLoop(
     // ─── 不可恢复 → 返回错误 ───
     log.error(`不可恢复错误: type=${result.errorType}, msg=${result.error}`);
     emit(onEvent, { type: 'error', error: `Agent 执行失败: ${result.error}` });
-    return;
+    return { messagesSnapshot: result.messagesSnapshot };
   }
 
   log.error(`已达最大重试次数 (${maxIterations})`);
   emit(onEvent, { type: 'error', error: `Agent 执行失败: 已达最大重试次数 (${maxIterations})` });
+  return { messagesSnapshot: messages };
 }
 
 /**

@@ -111,6 +111,14 @@ export interface AttemptResult {
   toolCalls: ToolCallRecord[];
 }
 
+/** 嵌入式 Agent 执行结果（abort 时保留上下文供 steer 重执行使用） */
+export interface EmbeddedAgentResult {
+  /** 消息快照（含已积累的对话历史） */
+  messagesSnapshot?: MessageSnapshot[];
+  /** 累积的文本响应 */
+  fullResponse?: string;
+}
+
 /** Agent ��件类型 */
 export type RuntimeEventType =
   | 'queued'

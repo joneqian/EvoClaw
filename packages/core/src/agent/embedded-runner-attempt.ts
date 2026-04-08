@@ -336,9 +336,14 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     persister,
   };
 
+  // 追踪最新的 kernel 消息（catch 块中用于构建 messagesSnapshot）
+  let lastKnownMessages: KernelMessage[] = kernelMessages;
+
   try {
     // ─── 执行 Agent 循环 ───
     const result = await queryLoop(loopConfig);
+    // queryLoop 正常返回（含 abort 在轮次间检测到的情况）→ 更新已知消息
+    lastKnownMessages = result.messages as KernelMessage[];
 
     // 收集工具调用记录
     toolCalls.push(...result.toolCalls);
@@ -420,8 +425,8 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
       toolCalls,
     };
   } catch (err) {
-    // ─── 消息快照 (即使失败也尝试提供) ───
-    const messagesSnapshot = kernelMessages.map(kernelMessageToSnapshot);
+    // ─── 消息快照 (即使失败也尝试提供，使用最新已知消息) ───
+    const messagesSnapshot = lastKnownMessages.map(kernelMessageToSnapshot);
 
     // 超时
     if (smartTimeout.timedOut) {

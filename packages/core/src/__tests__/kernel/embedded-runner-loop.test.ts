@@ -285,3 +285,43 @@ describe('边界', () => {
     expect(events.some(e => e.type === 'error' && e.error?.includes('模型内部错误'))).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 返回值 (EmbeddedAgentResult)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('返回值 EmbeddedAgentResult', () => {
+  it('成功时返回 messagesSnapshot', async () => {
+    const snapshot = [{ role: 'assistant', content: 'done' }];
+    mockAttempt.mockResolvedValueOnce(successResult({ messagesSnapshot: snapshot as any }));
+
+    const onEvent = vi.fn();
+    const result = await runEmbeddedLoop(makeConfig(), 'hello', onEvent);
+
+    expect(result).toBeDefined();
+    expect(result?.messagesSnapshot).toEqual(snapshot);
+  });
+
+  it('abort 时返回 messagesSnapshot', async () => {
+    const snapshot = [{ role: 'user', content: 'hello' }, { role: 'assistant', content: 'partial' }];
+    mockAttempt.mockResolvedValueOnce(errorResult('abort', { aborted: true, messagesSnapshot: snapshot as any }));
+
+    const onEvent = vi.fn();
+    const result = await runEmbeddedLoop(makeConfig(), 'hello', onEvent);
+
+    expect(result).toBeDefined();
+    expect(result?.messagesSnapshot).toEqual(snapshot);
+  });
+
+  it('abortSignal 已 aborted 时返回已积累消息', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const onEvent = vi.fn();
+    const result = await runEmbeddedLoop(makeConfig(), 'hello', onEvent, controller.signal);
+
+    expect(result).toBeDefined();
+    // messages 在第一次循环前为 undefined
+    expect(result?.messagesSnapshot).toBeUndefined();
+  });
+});

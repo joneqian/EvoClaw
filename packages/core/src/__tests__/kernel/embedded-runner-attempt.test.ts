@@ -319,3 +319,36 @@ describe('Finally 清理', () => {
     expect(mockSmartTimeout.clear).toHaveBeenCalled();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// lastKnownMessages 修复验证
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('lastKnownMessages (catch 块消息修复)', () => {
+  it('queryLoop 正常返回后 catch 块使用 kernel 积累的消息', async () => {
+    // queryLoop 正常返回（abort 在轮次间检测到）包含 assistant 消息
+    const accumulatedMessages = [
+      { id: '1', role: 'user', content: [{ type: 'text', text: 'hello' }] },
+      { id: '2', role: 'assistant', content: [{ type: 'text', text: 'thinking...' }] },
+      { id: '3', role: 'user', content: [{ type: 'text', text: 'continue' }] },
+      { id: '4', role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+    ];
+    mockQueryLoop.mockResolvedValue({
+      fullResponse: 'done',
+      toolCalls: [],
+      messages: accumulatedMessages,
+      totalInputTokens: 100,
+      totalOutputTokens: 50,
+      exitReason: 'abort',
+      turnCount: 2,
+    });
+
+    const result = await runSingleAttempt(makeParams());
+
+    // 即使 exitReason='abort'，queryLoop 正常 resolve → try 块执行
+    // messagesSnapshot 应包含 kernel 积累的所有消息
+    expect(result.messagesSnapshot).toBeDefined();
+    expect(result.messagesSnapshot!.length).toBe(4);
+    expect(result.messagesSnapshot![1]!.content).toContain('thinking');
+  });
+});

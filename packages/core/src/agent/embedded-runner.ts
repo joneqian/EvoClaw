@@ -13,7 +13,7 @@
  *   - embedded-runner-prompt.ts — 系统提示构建
  */
 
-import type { AgentRunConfig, RuntimeEvent } from './types.js';
+import type { AgentRunConfig, RuntimeEvent, EmbeddedAgentResult } from './types.js';
 import { runEmbeddedLoop } from './embedded-runner-loop.js';
 import { createLogger } from '../infrastructure/logger.js';
 
@@ -41,12 +41,13 @@ export async function runEmbeddedAgent(
     /** 后台查询（529 时直接放弃） */
     isBackgroundQuery?: boolean;
   },
-): Promise<void> {
+): Promise<EmbeddedAgentResult | undefined> {
   emit(onEvent, { type: 'agent_start' });
 
+  let agentResult: EmbeddedAgentResult | undefined;
   try {
     log.info(`开始运行 Agent: provider=${config.provider}/${config.modelId}`);
-    await runEmbeddedLoop(config, message, onEvent, externalAbortSignal, options);
+    agentResult = await runEmbeddedLoop(config, message, onEvent, externalAbortSignal, options);
     log.info('Agent 运行完成');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -55,6 +56,7 @@ export async function runEmbeddedAgent(
   }
 
   emit(onEvent, { type: 'agent_done' });
+  return agentResult;
 }
 
 // ─── Re-exports ───

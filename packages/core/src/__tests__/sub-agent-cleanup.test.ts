@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 import type { AgentRunConfig } from '../agent/types.js';
 import { LaneQueue } from '../agent/lane-queue.js';
+import { PermissionBubbleManager } from '../agent/permission-bubble.js';
 
 // Mock runEmbeddedAgent — 默认立即成功
 const mockRunEmbeddedAgent = vi.fn().mockResolvedValue(undefined);
@@ -310,5 +311,164 @@ describe('SubAgentSpawner in-place steer', () => {
 
     // 不应新增条目
     expect(spawner.list()).toHaveLength(2);
+  });
+
+  it('spawn 完成后 lastMessagesSnapshot 被填充', async () => {
+    // mock runEmbeddedAgent 返回包含 messagesSnapshot 的结果
+    mockRunEmbeddedAgent.mockResolvedValue({
+      messagesSnapshot: [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi there' },
+      ],
+    });
+
+    const spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+    const taskId = spawner.spawn('测试上下文保留');
+
+    // 等待 LaneQueue 执行完成
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const entry = spawner.get(taskId)!;
+    expect(entry.lastMessagesSnapshot).toBeDefined();
+    expect(entry.lastMessagesSnapshot!.length).toBe(2);
+    expect(entry.lastMessagesSnapshot![1]!.content).toBe('hi there');
+  });
+
+  it('steer 重执行时传入上次的消息历史', async () => {
+    // 第一次执行：延迟 resolve，确保 steer 时还在 running
+    let resolveFirst: ((v: unknown) => void) | undefined;
+    mockRunEmbeddedAgent.mockImplementationOnce(() => new Promise(r => { resolveFirst = r; }));
+    // 第二次执行（steer 后）立即完成
+    mockRunEmbeddedAgent.mockResolvedValueOnce({
+      messagesSnapshot: [
+        { role: 'user', content: 'original' },
+        { role: 'assistant', content: 'corrected' },
+      ],
+    });
+
+    const spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+    const taskId = spawner.spawn('原始任务');
+
+    // 确保第一次执行已开始（状态为 running）
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(spawner.get(taskId)!.status).toBe('running');
+
+    // steer 纠偏（此时第一次执行仍在 running）
+    spawner.steer(taskId, '换个方向');
+
+    // resolve 第一次执行（abort 后返回 messagesSnapshot）
+    resolveFirst!({
+      messagesSnapshot: [
+        { role: 'user', content: 'original' },
+        { role: 'assistant', content: 'thinking...' },
+      ],
+    });
+
+    // 等待 steer 重执行完成（LaneQueue sessionKey 串行：旧任务完成后新任务才开始）
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 验证第二次 runEmbeddedAgent 调用的 config.messages 包含上次历史
+    expect(mockRunEmbeddedAgent).toHaveBeenCalledTimes(2);
+    const secondCallConfig = mockRunEmbeddedAgent.mock.calls[1]![0];
+    expect(secondCallConfig.messages).toBeDefined();
+    expect(secondCallConfig.messages.length).toBeGreaterThan(0);
+  });
+
+  it('resume 完成后 lastMessagesSnapshot 被填充', async () => {
+    mockRunEmbeddedAgent.mockResolvedValue({
+      messagesSnapshot: [{ role: 'user', content: 'resumed' }],
+    });
+
+    const spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+    const taskId = spawner.spawn('session 任务', undefined, undefined, { mode: 'session' });
+
+    // 等待第一次执行完成 → idle
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(spawner.get(taskId)!.status).toBe('idle');
+
+    // resume
+    spawner.resume(taskId, '继续');
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const entry = spawner.get(taskId)!;
+    expect(entry.lastMessagesSnapshot).toBeDefined();
+    expect(entry.lastMessagesSnapshot![0]!.content).toBe('resumed');
+  });
+
+  it('evictCompleted 清理 lastMessagesSnapshot', async () => {
+    mockRunEmbeddedAgent.mockResolvedValue({
+      messagesSnapshot: [{ role: 'assistant', content: 'large snapshot data' }],
+    });
+
+    const spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+    const taskId = spawner.spawn('临时任务');
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const entry = spawner.get(taskId)!;
+    expect(entry.lastMessagesSnapshot).toBeDefined();
+
+    // 标记为已通知，设置完成时间为过去
+    entry.announced = true;
+    entry.completedAt = Date.now() - 10 * 60 * 1000;
+
+    // 驱逐
+    const evicted = spawner.evictCompleted(5 * 60 * 1000);
+    expect(evicted).toBe(1);
+    expect(spawner.get(taskId)).toBeUndefined(); // 条目已删除，lastMessagesSnapshot 随之释放
+  });
+});
+
+// ─── 权限冒泡 + Spawner 集成 ───
+
+describe('SubAgentSpawner 权限冒泡集成', () => {
+  let queue: LaneQueue;
+
+  beforeEach(() => {
+    queue = new LaneQueue();
+    mockRunEmbeddedAgent.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('有 bubbleManager 时 spawn 使用 bubble-aware interceptFn', () => {
+    const parentInterceptFn = vi.fn().mockResolvedValue(null);
+    const bubbleManager = new PermissionBubbleManager();
+    const emitFn = vi.fn();
+
+    const spawner = new SubAgentSpawner(
+      makeConfig({ permissionInterceptFn: parentInterceptFn }),
+      queue, 0,
+      undefined, undefined, undefined, undefined, undefined, undefined,
+      parentInterceptFn,
+      bubbleManager,
+      emitFn,
+    );
+
+    spawner.spawn('权限冒泡任务');
+
+    // runEmbeddedAgent 被调用，config 的 permissionInterceptFn 应不是原始 parentInterceptFn
+    // 而是 bubbleManager 创建的包装函数
+    expect(mockRunEmbeddedAgent).toHaveBeenCalled();
+    const calledConfig = mockRunEmbeddedAgent.mock.calls[0]![0] as AgentRunConfig;
+    expect(calledConfig.permissionInterceptFn).toBeDefined();
+    expect(calledConfig.permissionInterceptFn).not.toBe(parentInterceptFn); // 是包装后的
+
+    bubbleManager.dispose();
+  });
+
+  it('无 bubbleManager 时 spawn 使用原始 interceptFn（阻断模式）', () => {
+    const parentInterceptFn = vi.fn().mockResolvedValue(null);
+
+    const spawner = new SubAgentSpawner(
+      makeConfig({ permissionInterceptFn: parentInterceptFn }),
+      queue, 0,
+      undefined, undefined, undefined, undefined, undefined, undefined,
+      parentInterceptFn,
+      // 无 bubbleManager, 无 emitFn
+    );
+
+    spawner.spawn('阻断模式任务');
+
+    const calledConfig = mockRunEmbeddedAgent.mock.calls[0]![0] as AgentRunConfig;
+    expect(calledConfig.permissionInterceptFn).toBe(parentInterceptFn); // 原始函数
   });
 });

@@ -161,6 +161,8 @@ export interface SubAgentEntry {
   progress: SubAgentProgress;
   /** 是否 Fork 模式（继承父 prompt 缓存） */
   isFork?: boolean;
+  /** 上次执行的消息快照（abort 后保留，供 steer 重执行使用） */
+  lastMessagesSnapshot?: import('./types.js').MessageSnapshot[];
 }
 
 /** 结构化完成通知 */
@@ -402,7 +404,7 @@ export class SubAgentSpawner {
       task: async () => {
         let result = '';
         try {
-          await runEmbeddedAgent(
+          const agentResult = await runEmbeddedAgent(
             childConfig,
             task,
             (event: RuntimeEvent) => {
@@ -423,6 +425,9 @@ export class SubAgentSpawner {
             },
             abortController.signal,
           );
+
+          // 保存消息快照（供 steer 重执行时传入历史上下文）
+          entry.lastMessagesSnapshot = agentResult?.messagesSnapshot;
 
           // 包裹不可信标记（防提示注入）
           const rawResult = result || '（子 Agent 未返回内容）';
@@ -564,12 +569,16 @@ export class SubAgentSpawner {
       sessionKey,
       lane: 'subagent',
       task: async () => {
+        // 恢复上次执行的消息历史（LaneQueue sessionKey 串行保证此时 lastMessagesSnapshot 已被旧任务填充）
+        const previousMessages = entry.lastMessagesSnapshot
+          ?.map(m => ({ role: m.role, content: m.content, isSummary: m.isSummary })) ?? [];
+
         let result = '';
         try {
-          await runEmbeddedAgent(
+          const agentResult = await runEmbeddedAgent(
             {
               ...this.parentConfig,
-              messages: [],
+              messages: previousMessages as import('@evoclaw/shared').ChatMessage[],
               systemPrompt: this.buildMinimalPrompt(steeredTask),
               permissionInterceptFn: steerPermissionFn,
             },
@@ -590,6 +599,9 @@ export class SubAgentSpawner {
             },
             abortController.signal,
           );
+
+          // 保存消息快照（供后续 steer 使用）
+          entry.lastMessagesSnapshot = agentResult?.messagesSnapshot;
 
           const rawResult = result || '（子 Agent 未返回内容）';
           entry.result = `${UNTRUSTED_BEGIN}\n${rawResult}\n${UNTRUSTED_END}`;
@@ -675,7 +687,7 @@ export class SubAgentSpawner {
       task: async () => {
         let result = '';
         try {
-          await runEmbeddedAgent(
+          const agentResult = await runEmbeddedAgent(
             {
               ...this.parentConfig,
               messages: [],
@@ -695,6 +707,8 @@ export class SubAgentSpawner {
             },
             entry.abortController.signal,
           );
+          // 保存消息快照
+          entry.lastMessagesSnapshot = agentResult?.messagesSnapshot;
 
           const rawResult = result || '（子 Agent 未返回内容）';
           entry.result = `${UNTRUSTED_BEGIN}\n${rawResult}\n${UNTRUSTED_END}`;

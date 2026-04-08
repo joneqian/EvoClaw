@@ -14,6 +14,33 @@ interface SubTaskDefinition {
   context?: string;
 }
 
+/** 已完成子 Agent 结果的类型（与 collectCompletedResults 返回值对齐） */
+interface CompletedResult {
+  taskId: string;
+  task: string;
+  result: string;
+  success: boolean;
+}
+
+/** 格式化 yield_agents 的返回文本 */
+function formatYieldResult(
+  completed: CompletedResult[],
+  stillRunning: boolean,
+  runningCount: number,
+): string {
+  const lines = completed.map(r => {
+    const status = r.success ? '✅ 完成' : '❌ 失败';
+    const taskPreview = r.task.length > 80 ? r.task.slice(0, 80) + '...' : r.task;
+    return `[${status}] 任务: ${taskPreview}\nTask ID: ${r.taskId}\n${r.result}`;
+  });
+
+  const footer = stillRunning
+    ? `\n---\n仍有 ${runningCount} 个子 Agent 运行中。请立即再次调用 yield_agents 继续等待剩余结果。`
+    : '\n---\n所有子 Agent 已完成。';
+
+  return `子 Agent 结果推送：\n\n${lines.join('\n\n---\n\n')}${footer}`;
+}
+
 /** 创建子 Agent 工具集 */
 export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] {
   return [
@@ -333,36 +360,66 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
     },
     {
       name: 'yield_agents',
-      description: '让出当前轮次，等待子 Agent 完成。始终在 spawn_agent/decompose_task 后调用此工具。不要用 list_agents 轮询——推送式通知会自动将结果送达。',
+      description:
+        '阻塞等待子 Agent 完成（真正的阻塞，非轮询）。\n\n' +
+        '调用后当前工具会挂起，最多等待 max_wait_seconds 秒（默认 30，范围 5-120）。\n' +
+        '期间任一子 Agent 完成即立即返回结果。\n\n' +
+        '使用规则：\n' +
+        '- 始终在 spawn_agent / decompose_task 之后调用此工具。\n' +
+        '- 若返回 "仍有 N 个运行中"（即等待期内无任一子 Agent 完成），请【立即再次调用 yield_agents】继续等待。\n' +
+        '- **严禁改用 list_agents** — 本工具已阻塞等待，list_agents 只会浪费 token 和上下文。\n' +
+        '- **严禁输出中间文本**（如"还需等待 N 秒"）— 直接再调 yield_agents。\n' +
+        '- 一旦所有子 Agent 完成，工具会返回所有结果 + "所有子 Agent 已完成"标记，此时才能停止等待。',
       parameters: {
         type: 'object',
-        properties: {},
+        properties: {
+          max_wait_seconds: {
+            type: 'number',
+            description: '最大等待秒数（默认 30，范围 5-120）。超时不是错误，只是"本次等待未命中"的信号。',
+          },
+        },
       },
-      execute: async () => {
-        // 收集已完成但未通知的结果
-        const completed = spawner.collectCompletedResults();
+      execute: async (args, ctx) => {
+        // Clamp 到 [5, 120] 秒范围
+        const rawMaxWait = typeof args['max_wait_seconds'] === 'number'
+          ? args['max_wait_seconds']
+          : 30;
+        const maxWaitSec = Math.min(Math.max(rawMaxWait, 5), 120);
+        const maxWaitMs = maxWaitSec * 1000;
 
+        // 快速路径 1：已有未读取的完成结果 → 立即返回
+        let completed = spawner.collectCompletedResults();
         if (completed.length > 0) {
-          // 有已完成的结果，立即返回
-          const lines = completed.map(r => {
-            const status = r.success ? '✅ 完成' : '❌ 失败';
-            return `[${status}] 任务: ${r.task.slice(0, 80)}${r.task.length > 80 ? '...' : ''}\nTask ID: ${r.taskId}\n${r.result}`;
-          });
-
-          const stillRunning = spawner.hasRunning;
-          const footer = stillRunning
-            ? '\n---\n仍有子 Agent 运行中，可再次调用 yield_agents 等待剩余结果。'
-            : '\n---\n所有子 Agent 已完成。';
-
-          return `子 Agent 结果推送：\n\n${lines.join('\n\n---\n\n')}${footer}`;
+          return formatYieldResult(completed, spawner.hasRunning, spawner.activeCount);
         }
 
+        // 快速路径 2：无运行中的子 Agent
         if (!spawner.hasRunning) {
           return '当前没有运行中的子 Agent，无需等待。';
         }
 
-        // 有运行中的子 Agent 但还没完成，返回等待提示
-        return `当前有 ${spawner.activeCount} 个子 Agent 运行中，尚未完成。请稍后再调用 yield_agents 获取结果。\n\n注意：推送式通知已启用，子 Agent 完成后会自动通知你。你可以先继续处理其他事情。`;
+        // 阻塞等待：任一子 Agent 完成 / 超时 / 外部中断
+        try {
+          await spawner.awaitNextCompletion({ maxWaitMs, signal: ctx?.signal });
+        } catch (err) {
+          // AbortError — 主 Agent 被用户中断
+          if (err instanceof Error && err.name === 'AbortError') {
+            return '等待被中断（用户取消）。';
+          }
+          throw err;
+        }
+
+        // 醒来后再 collect 一次
+        completed = spawner.collectCompletedResults();
+        if (completed.length > 0) {
+          return formatYieldResult(completed, spawner.hasRunning, spawner.activeCount);
+        }
+
+        // 超时但未拿到新结果 — 给 LLM 明确指引继续调用（不要改用 list_agents）
+        return (
+          `已阻塞等待 ${maxWaitSec} 秒，${spawner.activeCount} 个子 Agent 仍在运行中。\n` +
+          `请【立即再次调用 yield_agents】继续等待结果。不要改用 list_agents。`
+        );
       },
     },
   ];

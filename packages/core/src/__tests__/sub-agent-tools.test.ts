@@ -552,3 +552,293 @@ describe('decompose_task 工具', () => {
     expect(list[0]!.task).toBe('带上下文的任务');
   });
 });
+
+// ─── yield_agents 阻塞等待测试 ───
+
+/**
+ * 手动注入一个 "永远运行中" 的 entry（不经过 LaneQueue 自动完成）
+ * 用于测试阻塞等待场景，避免 mock runEmbeddedAgent 立即 resolve 的干扰。
+ */
+function injectRunningEntry(spawner: SubAgentSpawner, taskId: string, task: string): any {
+  const entry = {
+    taskId,
+    task,
+    status: 'running' as const,
+    startedAt: Date.now(),
+    abortController: new AbortController(),
+    announced: false,
+    mode: 'run' as const,
+    progress: { toolUseCount: 0, inputTokens: 0, outputTokens: 0, recentActivities: [] },
+  };
+  (spawner as any).agents.set(taskId, entry);
+  return entry;
+}
+
+describe('SubAgentSpawner.awaitNextCompletion', () => {
+  let queue: LaneQueue;
+  let spawner: SubAgentSpawner;
+
+  beforeEach(() => {
+    queue = new LaneQueue();
+    spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+  });
+
+  it('无运行中子 Agent 时立即返回', async () => {
+    const start = Date.now();
+    await spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+    expect(Date.now() - start).toBeLessThan(50);
+  });
+
+  it('已有未读取的完成结果时立即返回', async () => {
+    const entry = injectRunningEntry(spawner, 'task-1', '已完成任务');
+    entry.status = 'completed';
+    entry.result = '结果';
+
+    const start = Date.now();
+    await spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+    expect(Date.now() - start).toBeLessThan(50);
+  });
+
+  it('子 Agent 完成时唤醒 await', async () => {
+    const entry = injectRunningEntry(spawner, 'task-2', '等待测试任务');
+
+    const waitPromise = spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+
+    // 20ms 后模拟子 Agent 完成
+    setTimeout(() => {
+      entry.status = 'completed';
+      entry.result = '结果';
+      entry.completedAt = Date.now();
+      (spawner as any).notifyWaiters();
+    }, 20);
+
+    const start = Date.now();
+    await waitPromise;
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(10);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  it('超时后 resolve 空（不抛异常）', async () => {
+    injectRunningEntry(spawner, 'task-3', '永不完成任务');
+
+    const start = Date.now();
+    await spawner.awaitNextCompletion({ maxWaitMs: 100 });
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(80);
+    expect(elapsed).toBeLessThan(250);
+  });
+
+  it('AbortSignal 取消时抛 AbortError', async () => {
+    injectRunningEntry(spawner, 'task-4', '可取消任务');
+
+    const controller = new AbortController();
+    const waitPromise = spawner.awaitNextCompletion({
+      maxWaitMs: 5000,
+      signal: controller.signal,
+    });
+
+    setTimeout(() => controller.abort(), 20);
+
+    await expect(waitPromise).rejects.toThrow(/aborted/i);
+  });
+
+  it('已取消的 signal 立即抛 AbortError', async () => {
+    injectRunningEntry(spawner, 'task-5', '任务');
+
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      spawner.awaitNextCompletion({ maxWaitMs: 5000, signal: controller.signal }),
+    ).rejects.toThrow(/aborted/i);
+  });
+
+  it('kill 子 Agent 时唤醒 await', async () => {
+    injectRunningEntry(spawner, 'task-6', '可 kill 任务');
+
+    const waitPromise = spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+    setTimeout(() => spawner.kill('task-6'), 20);
+
+    const start = Date.now();
+    await waitPromise;
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(10);
+    expect(elapsed).toBeLessThan(200);
+  });
+
+  it('多个同时等待的 waiter 都能被一次完成唤醒', async () => {
+    const entry = injectRunningEntry(spawner, 'task-7', '多 waiter 任务');
+
+    const p1 = spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+    const p2 = spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+    const p3 = spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+
+    setTimeout(() => {
+      entry.status = 'completed';
+      entry.result = 'ok';
+      entry.completedAt = Date.now();
+      (spawner as any).notifyWaiters();
+    }, 20);
+
+    const start = Date.now();
+    await Promise.all([p1, p2, p3]);
+    expect(Date.now() - start).toBeLessThan(200);
+  });
+
+  it('dispose 时唤醒所有 waiter', async () => {
+    injectRunningEntry(spawner, 'task-8', 'dispose 唤醒测试');
+
+    const waitPromise = spawner.awaitNextCompletion({ maxWaitMs: 5000 });
+    setTimeout(() => spawner.dispose(), 20);
+
+    // dispose 触发 notifyWaiters，waiter 应 resolve（不 reject）
+    await expect(waitPromise).resolves.toBeUndefined();
+  });
+});
+
+describe('yield_agents 工具（阻塞等待）', () => {
+  let queue: LaneQueue;
+  let spawner: SubAgentSpawner;
+
+  beforeEach(() => {
+    queue = new LaneQueue();
+    spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+  });
+
+  it('无运行中子 Agent 时立即返回提示', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+    const result = await yieldTool.execute({});
+    expect(result).toContain('没有运行中的子 Agent');
+  });
+
+  it('已有完成结果时立即返回不阻塞', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    const entry = injectRunningEntry(spawner, 'yield-1', '已完成');
+    entry.status = 'completed';
+    entry.result = '结果内容';
+
+    const start = Date.now();
+    const result = await yieldTool.execute({});
+    expect(Date.now() - start).toBeLessThan(50);
+    expect(result).toContain('子 Agent 结果推送');
+    expect(result).toContain('结果内容');
+  });
+
+  it('阻塞等待到子 Agent 完成后返回', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    const entry = injectRunningEntry(spawner, 'yield-2', '等待测试');
+
+    // 30ms 后模拟完成
+    setTimeout(() => {
+      entry.status = 'completed';
+      entry.result = '成功结果';
+      entry.completedAt = Date.now();
+      (spawner as any).notifyWaiters();
+    }, 30);
+
+    const start = Date.now();
+    const result = await yieldTool.execute({ max_wait_seconds: 5 });
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(20);
+    expect(elapsed).toBeLessThan(500);
+    expect(result).toContain('子 Agent 结果推送');
+    expect(result).toContain('成功结果');
+  });
+
+  it('超时后返回继续等待指引（不是错误）', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    injectRunningEntry(spawner, 'yield-3', '永不完成');
+
+    // Mock awaitNextCompletion 立即 resolve（模拟超时），避免真等 5s
+    const origAwait = spawner.awaitNextCompletion.bind(spawner);
+    spawner.awaitNextCompletion = vi.fn().mockResolvedValue(undefined) as any;
+
+    const result = await yieldTool.execute({ max_wait_seconds: 5 });
+
+    spawner.awaitNextCompletion = origAwait;
+
+    expect(result).toContain('阻塞等待');
+    expect(result).toContain('仍在运行中');
+    expect(result).toContain('再次调用 yield_agents');
+    expect(result).toContain('不要改用 list_agents');
+    expect(spawner.get('yield-3')!.status).toBe('running');
+  });
+
+  it('max_wait_seconds 被 clamp 到 [5, 120] 范围', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    injectRunningEntry(spawner, 'yield-4', 'clamp 测试');
+
+    let capturedMaxWaitMs = -1;
+    spawner.awaitNextCompletion = (async (opts: { maxWaitMs: number }) => {
+      capturedMaxWaitMs = opts.maxWaitMs;
+    }) as any;
+
+    // 太小 → clamp 到 5 秒
+    await yieldTool.execute({ max_wait_seconds: 1 });
+    expect(capturedMaxWaitMs).toBe(5000);
+
+    // 太大 → clamp 到 120 秒
+    await yieldTool.execute({ max_wait_seconds: 500 });
+    expect(capturedMaxWaitMs).toBe(120_000);
+
+    // 默认值 30 秒
+    await yieldTool.execute({});
+    expect(capturedMaxWaitMs).toBe(30_000);
+  });
+
+  it('AbortSignal 触发时返回"等待被中断"', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    injectRunningEntry(spawner, 'yield-5', 'abort 测试');
+
+    const controller = new AbortController();
+    const execPromise = yieldTool.execute(
+      { max_wait_seconds: 10 },
+      { signal: controller.signal },
+    );
+
+    setTimeout(() => controller.abort(), 20);
+    const result = await execPromise;
+    expect(result).toContain('等待被中断');
+  });
+
+  it('返回文本包含明确的继续等待指引（有完成+有运行中）', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    const e1 = injectRunningEntry(spawner, 'yield-6a', '任务 A');
+    e1.status = 'completed';
+    e1.result = '结果 A';
+    injectRunningEntry(spawner, 'yield-6b', '任务 B');
+    // 任务 B 仍在运行
+
+    const result = await yieldTool.execute({});
+    expect(result).toContain('结果 A');
+    expect(result).toContain('仍有');
+    expect(result).toContain('再次调用 yield_agents');
+    expect(spawner.get('yield-6b')!.status).toBe('running');
+  });
+
+  it('所有子 Agent 完成时返回"所有子 Agent 已完成"', async () => {
+    const tools = createSubAgentTools(spawner);
+    const yieldTool = tools.find(t => t.name === 'yield_agents')!;
+
+    const entry = injectRunningEntry(spawner, 'yield-7', '独任务');
+    entry.status = 'completed';
+    entry.result = '最终结果';
+
+    const result = await yieldTool.execute({});
+    expect(result).toContain('所有子 Agent 已完成');
+  });
+});

@@ -226,6 +226,49 @@ describe('IncrementalPersister', () => {
 
     persister.dispose();
   });
+
+  it('created_at 使用 ISO 格式（与 saveMessage 一致）', () => {
+    // 需要禁用 fake timers 才能拿到真实的 ISO 时间戳
+    vi.useRealTimers();
+    const persister = new IncrementalPersister(store as any, 'agent-1', 'session-1');
+
+    persister.persistTurn(0, [makeAssistantMsg('test')]);
+    persister.flush();
+
+    // INSERT 调用的最后一个参数是 createdAt（绑定到第 8 个参数 'streaming' 之后）
+    const insertLog = store.updateLog.find(l => l.sql.includes('INSERT OR IGNORE'));
+    expect(insertLog).toBeDefined();
+    const createdAt = insertLog!.params[insertLog!.params.length - 1] as string;
+    // 应为 ISO 8601 格式（YYYY-MM-DDTHH:MM:SS.mmmZ）
+    expect(createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    // 不应为 SQLite datetime('now') 的空格分隔格式
+    expect(createdAt).not.toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+
+    persister.dispose();
+  });
+
+  it('多轮消息按字符串排序结果与时间顺序一致（Mock 非 fake timers）', async () => {
+    // 验证：两次 persistTurn 的时间戳字符串排序后顺序与插入顺序一致
+    vi.useRealTimers();
+    const persister = new IncrementalPersister(store as any, 'agent-1', 'session-1');
+
+    persister.persistTurn(0, [makeAssistantMsg('first')]);
+    await new Promise(r => setTimeout(r, 5));
+    persister.persistTurn(1, [makeAssistantMsg('second')]);
+    persister.flush();
+
+    const createdAts = store.rows.map(r => {
+      // 从 updateLog 找到对应 row 的 created_at
+      const entry = store.updateLog.find(
+        l => l.sql.includes('INSERT OR IGNORE') && l.params[0] === r.id,
+      );
+      return entry!.params[entry!.params.length - 1] as string;
+    });
+    const sorted = [...createdAts].sort();
+    expect(sorted).toEqual(createdAts);
+
+    persister.dispose();
+  });
 });
 
 describe('IncrementalPersister.loadOrphaned', () => {

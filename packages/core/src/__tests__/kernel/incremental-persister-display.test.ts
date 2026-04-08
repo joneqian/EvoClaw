@@ -9,6 +9,9 @@ import { describe, it, expect } from 'vitest';
 import {
   extractDisplayContent,
   reconstructDisplayContent,
+  shouldDisplayMessage,
+  extractTextOnly,
+  extractToolCallsForUI,
 } from '../../agent/kernel/incremental-persister.js';
 import type { KernelMessage } from '../../agent/kernel/types.js';
 
@@ -219,5 +222,150 @@ describe('reconstructDisplayContent', () => {
 
   it('空字符串应原样返回', () => {
     expect(reconstructDisplayContent('', null)).toBe('');
+  });
+});
+
+describe('shouldDisplayMessage', () => {
+  it('纯 text 消息应展示', () => {
+    const msg = makeMsg('assistant', [{ type: 'text', text: '你好' }]);
+    expect(shouldDisplayMessage(msg)).toBe(true);
+  });
+
+  it('含 tool_use 的 assistant 消息应展示', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'thinking', thinking: '...' } as any,
+      { type: 'tool_use', id: 'tu', name: 'bash', input: {} } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(true);
+  });
+
+  it('纯 tool_result 消息（role=user）应过滤', () => {
+    const msg = makeMsg('user', [
+      { type: 'tool_result', tool_use_id: 'tu', content: '成功' } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(false);
+  });
+
+  it('多个 tool_result 块应过滤', () => {
+    const msg = makeMsg('user', [
+      { type: 'tool_result', tool_use_id: 'tu1', content: '结果 1' } as any,
+      { type: 'tool_result', tool_use_id: 'tu2', content: '结果 2' } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(false);
+  });
+
+  it('纯 thinking 消息应过滤', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'thinking', thinking: '思考中' } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(false);
+  });
+
+  it('纯 redacted_thinking 应过滤', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'redacted_thinking', data: 'x' } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(false);
+  });
+
+  it('空 content 数组应过滤', () => {
+    const msg = makeMsg('assistant', []);
+    expect(shouldDisplayMessage(msg)).toBe(false);
+  });
+
+  it('image 块应展示', () => {
+    const msg = makeMsg('user', [
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: '...' } } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(true);
+  });
+
+  it('混合 text + tool_result 应展示', () => {
+    const msg = makeMsg('user', [
+      { type: 'text', text: '用户消息' },
+      { type: 'tool_result', tool_use_id: 'tu', content: '结果' } as any,
+    ]);
+    expect(shouldDisplayMessage(msg)).toBe(true);
+  });
+});
+
+describe('extractTextOnly', () => {
+  it('只返回 text 块的拼接', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'thinking', thinking: '思考' } as any,
+      { type: 'text', text: '最终答案' },
+      { type: 'tool_use', id: 'tu', name: 'bash', input: { command: 'ls' } } as any,
+    ]);
+    expect(extractTextOnly(msg)).toBe('最终答案');
+  });
+
+  it('无 text 块应返回空字符串', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'thinking', thinking: '思考' } as any,
+      { type: 'tool_use', id: 'tu', name: 'bash', input: {} } as any,
+    ]);
+    expect(extractTextOnly(msg)).toBe('');
+  });
+
+  it('多个 text 块应用换行连接', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'text', text: '第一段' },
+      { type: 'tool_use', id: 'tu', name: 'bash', input: {} } as any,
+      { type: 'text', text: '第二段' },
+    ]);
+    expect(extractTextOnly(msg)).toBe('第一段\n第二段');
+  });
+
+  it('空白 text 块应被过滤', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'text', text: '   ' },
+      { type: 'text', text: '真实内容' },
+      { type: 'text', text: '' },
+    ]);
+    expect(extractTextOnly(msg)).toBe('真实内容');
+  });
+});
+
+describe('extractToolCallsForUI', () => {
+  it('从 tool_use 块生成前端 ToolCall 数组', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'text', text: '我派 3 个子 agent' },
+      { type: 'tool_use', id: 'tu1', name: 'spawn_agent', input: { task: '背静夜思' } } as any,
+      { type: 'tool_use', id: 'tu2', name: 'spawn_agent', input: { task: '背春望' } } as any,
+    ]);
+    const calls = extractToolCallsForUI(msg);
+    expect(calls).toHaveLength(2);
+    expect(calls![0]).toEqual({ name: 'spawn_agent', status: 'done', summary: '背静夜思' });
+    expect(calls![1]).toEqual({ name: 'spawn_agent', status: 'done', summary: '背春望' });
+  });
+
+  it('所有历史 toolCalls 状态都是 done', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'tool_use', id: 'tu', name: 'bash', input: { command: 'ls' } } as any,
+    ]);
+    const calls = extractToolCallsForUI(msg);
+    expect(calls![0]!.status).toBe('done');
+  });
+
+  it('无参数的工具调用 summary 应省略', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'tool_use', id: 'tu', name: 'list_agents', input: {} } as any,
+    ]);
+    const calls = extractToolCallsForUI(msg);
+    expect(calls![0]).toEqual({ name: 'list_agents', status: 'done' });
+    expect(calls![0]).not.toHaveProperty('summary');
+  });
+
+  it('无 tool_use 块应返回 undefined', () => {
+    const msg = makeMsg('assistant', [
+      { type: 'text', text: '纯文本回答' },
+      { type: 'thinking', thinking: '思考' } as any,
+    ]);
+    expect(extractToolCallsForUI(msg)).toBeUndefined();
+  });
+
+  it('空 content 应返回 undefined', () => {
+    const msg = makeMsg('assistant', []);
+    expect(extractToolCallsForUI(msg)).toBeUndefined();
   });
 });

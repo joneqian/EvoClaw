@@ -21,7 +21,13 @@ import type { AgentRunConfig } from '../agent/types.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
-import { reconstructDisplayContent } from '../agent/kernel/incremental-persister.js';
+import {
+  reconstructDisplayContent,
+  shouldDisplayMessage,
+  extractTextOnly,
+  extractToolCallsForUI,
+} from '../agent/kernel/incremental-persister.js';
+import type { KernelMessage } from '../agent/kernel/types.js';
 import { resolveModel } from '../provider/model-resolver.js';
 import { ContextEngine } from '../context/context-engine.js';
 import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js';
@@ -81,9 +87,9 @@ const CHANNEL_TOOL_DENY: Record<string, string[]> = {
   voice: ['tts'],
 };
 
-/** 从 conversation_log 加载最近消息历史 */
+/** 从 conversation_log 加载最近消息历史（UI + LLM 历史共用，过滤纯工具消息） */
 function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
-  const rows = db.all<{
+  const rawRows = db.all<{
     id: string;
     session_key: string;
     role: string;
@@ -99,14 +105,49 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     agentId, sessionKey, limit,
   );
 
-  return rows.reverse().map(row => ({
-    id: row.id,
-    conversationId: row.session_key,
-    role: row.role as ChatMessage['role'],
-    // 从存量占位符重建显示文本（修旧数据）
-    content: reconstructDisplayContent(row.content, row.kernel_message_json),
-    createdAt: row.created_at,
-  }));
+  // 去重：丢弃 saveMessage 写入的冗余 assistant 行（kernel_message_json 为空）
+  // 仅当本 session 存在任何 persister 写入的 assistant 行时生效，保护老数据不误删
+  const hasPersisterAssistant = rawRows.some(
+    r => r.role === 'assistant' && r.kernel_message_json != null,
+  );
+  const rows = hasPersisterAssistant
+    ? rawRows.filter(r => !(r.role === 'assistant' && r.kernel_message_json == null))
+    : rawRows;
+
+  const result: ChatMessage[] = [];
+  for (const row of rows.reverse()) {
+    // 优先：从 kernel_message_json 精确重建
+    if (row.kernel_message_json) {
+      try {
+        const kmsg = JSON.parse(row.kernel_message_json) as KernelMessage;
+        if (!shouldDisplayMessage(kmsg)) continue; // 过滤纯 tool_result / 纯 thinking
+
+        const msg: ChatMessage = {
+          id: row.id,
+          conversationId: row.session_key,
+          role: row.role as ChatMessage['role'],
+          content: extractTextOnly(kmsg),
+          createdAt: row.created_at,
+        };
+        const toolCalls = extractToolCallsForUI(kmsg);
+        if (toolCalls) (msg as any).toolCalls = toolCalls;
+        result.push(msg);
+        continue;
+      } catch {
+        // JSON 损坏 → 降级
+      }
+    }
+
+    // 降级：原样 + 占位符重建
+    result.push({
+      id: row.id,
+      conversationId: row.session_key,
+      role: row.role as ChatMessage['role'],
+      content: reconstructDisplayContent(row.content, row.kernel_message_json),
+      createdAt: row.created_at,
+    });
+  }
+  return result;
 }
 
 /** 工具调用摘要（与前端 ToolCall 一致） */
@@ -495,15 +536,14 @@ export async function handleChannelMessage(
   // 批量写入审计日志
   auditQueue.flush();
 
-  // 9. 存储 assistant 响应（剥离 PI 框架内部的工具调用/响应 XML 标记）
+  // 9. 清理 assistant 响应文本（剥离 PI 框架内部的工具调用/响应 XML 标记，供渠道发送使用）
+  // 注：Assistant 消息已由 IncrementalPersister 在 query-loop 每轮结束后持久化到 conversation_log
+  //    此处不再重复 saveMessage，避免前端历史展示重复和顺序混乱。
   const cleanResponse = fullResponse
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
     .replace(/<function_response>[\s\S]*?<\/function_response>/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  if (cleanResponse) {
-    saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse, collectedToolCalls);
-  }
 
   // 10. 通过 Channel 发送回复（跳过 NO_REPLY 和空响应）
   if (cleanResponse && cleanResponse !== NO_REPLY_TOKEN) {

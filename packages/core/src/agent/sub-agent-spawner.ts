@@ -198,6 +198,14 @@ export class SubAgentSpawner {
   private agents = new Map<string, SubAgentEntry>();
   /** 待推送的子代完成通知 */
   private pendingAnnouncements: SubAgentNotification[] = [];
+  /**
+   * awaitNextCompletion 的等待者列表
+   *
+   * 每个 waiter 在有子 Agent 完成/失败/取消时被 resolve（一次性），
+   * 或在超时/AbortSignal 触发时自行清理。
+   * 设计为单次 resolver 列表（无状态匹配），避免竞态条件。
+   */
+  private waitResolvers: Array<() => void> = [];
   /** 可配置最大嵌套深度 */
   readonly maxSpawnDepth: number;
 
@@ -474,7 +482,7 @@ export class SubAgentSpawner {
             durationMs: entry.completedAt - entry.startedAt,
             tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
           };
-          this.pendingAnnouncements.push(notification);
+          this.enqueueAnnouncement(notification);
           this.onComplete?.(taskId, task, entry.result, true, notification);
         } catch (err) {
           entry.status = 'failed';
@@ -494,7 +502,7 @@ export class SubAgentSpawner {
             durationMs: entry.completedAt - entry.startedAt,
             tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
           };
-          this.pendingAnnouncements.push(notification);
+          this.enqueueAnnouncement(notification);
           this.onComplete?.(taskId, task, entry.error ?? '', false, notification);
           // 不抛出 — 子 Agent 失败不应崩溃父 Agent
         }
@@ -507,6 +515,7 @@ export class SubAgentSpawner {
         entry.error = `子 Agent 执行超时（${Math.round(effectiveTimeout / 1000)}s）`;
         entry.completedAt = Date.now();
         updateTask(taskId, { status: 'timed_out', endedAt: entry.completedAt, error: entry.error });
+        this.notifyWaiters(); // 唤醒 awaitNextCompletion
       }
     });
 
@@ -533,6 +542,7 @@ export class SubAgentSpawner {
       entry.completedAt = Date.now();
       // 同步 TaskRegistry — 供前端任务面板即时反馈
       updateTask(taskId, { status: 'cancelled', endedAt: entry.completedAt });
+      this.notifyWaiters(); // 唤醒 awaitNextCompletion
       return true;
     }
     return false;
@@ -651,7 +661,7 @@ export class SubAgentSpawner {
             durationMs: entry.completedAt - entry.startedAt,
             tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
           };
-          this.pendingAnnouncements.push(notification);
+          this.enqueueAnnouncement(notification);
           this.onComplete?.(taskId, steeredTask, entry.result, true, notification);
         } catch (err) {
           entry.status = 'failed';
@@ -667,7 +677,7 @@ export class SubAgentSpawner {
             durationMs: entry.completedAt - entry.startedAt,
             tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
           };
-          this.pendingAnnouncements.push(notification);
+          this.enqueueAnnouncement(notification);
           this.onComplete?.(taskId, steeredTask, entry.error ?? '', false, notification);
         }
       },
@@ -677,6 +687,7 @@ export class SubAgentSpawner {
         entry.status = 'failed';
         entry.error = `子 Agent steer 执行超时`;
         entry.completedAt = Date.now();
+        this.notifyWaiters();
       }
     });
 
@@ -758,7 +769,7 @@ export class SubAgentSpawner {
             durationMs: entry.completedAt - entry.startedAt,
             tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
           };
-          this.pendingAnnouncements.push(notification);
+          this.enqueueAnnouncement(notification);
           this.onComplete?.(taskId, resumeTask, entry.result, true, notification);
         } catch (err) {
           entry.status = 'failed';
@@ -774,7 +785,7 @@ export class SubAgentSpawner {
             durationMs: entry.completedAt - entry.startedAt,
             tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
           };
-          this.pendingAnnouncements.push(notification);
+          this.enqueueAnnouncement(notification);
           this.onComplete?.(taskId, resumeTask, entry.error ?? '', false, notification);
         }
       },
@@ -784,8 +795,107 @@ export class SubAgentSpawner {
         entry.status = 'failed';
         entry.error = `子 Agent resume 执行超时`;
         entry.completedAt = Date.now();
+        this.notifyWaiters();
       }
     });
+  }
+
+  /**
+   * 入队子 Agent 完成通知（内部 helper）
+   *
+   * 统一 push + notifyWaiters，让所有状态变更点（spawn/steer/resume 的完成/失败/超时）
+   * 都通过此方法更新通知队列，避免遗漏 awaitNextCompletion 的唤醒。
+   */
+  private enqueueAnnouncement(notification: SubAgentNotification): void {
+    this.pendingAnnouncements.push(notification);
+    this.notifyWaiters();
+  }
+
+  /**
+   * 唤醒所有等待中的 awaitNextCompletion 调用
+   *
+   * 一次性唤醒所有 waiter：每个 waiter 的 resolver 执行一次后就被移除。
+   * 即使后续没有新状态变更，已完成的结果也能被 collectCompletedResults 拿到。
+   */
+  private notifyWaiters(): void {
+    const waiters = this.waitResolvers.splice(0);
+    for (const resolve of waiters) {
+      try { resolve(); } catch { /* 防御：resolver 抛异常不影响其他 waiter */ }
+    }
+  }
+
+  /**
+   * 等待任一子 Agent 完成（或超时/取消）
+   *
+   * 行为：
+   * - 若已有未通知的完成结果 → 立即返回
+   * - 若当前无运行中的子 Agent → 立即返回
+   * - 否则阻塞等待，直到任一子 Agent 完成/失败/取消、超时或 signal.abort
+   *
+   * 超时和 abort 都不抛异常（除了 abort 抛 AbortError）。
+   * 调用方应在 await 后再次调用 collectCompletedResults 获取实际结果。
+   *
+   * @param opts.maxWaitMs 最大等待时间（毫秒）
+   * @param opts.signal    外部取消信号（用户中断主 Agent 时触发）
+   */
+  async awaitNextCompletion(opts: {
+    maxWaitMs: number;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    // 快速路径 1：已有未通知的完成结果
+    if (this.hasUnannouncedCompleted()) return;
+    // 快速路径 2：当前没有运行中的子 Agent
+    if (!this.hasRunning) return;
+    // 快速路径 3：signal 已被取消
+    if (opts.signal?.aborted) {
+      throw new DOMException('awaitNextCompletion aborted', 'AbortError');
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        opts.signal?.removeEventListener('abort', onAbort);
+        const idx = this.waitResolvers.indexOf(resolver);
+        if (idx >= 0) this.waitResolvers.splice(idx, 1);
+      };
+
+      const resolver = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new DOMException('awaitNextCompletion aborted', 'AbortError'));
+      };
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(); // 超时 = resolve 空（调用方再 collect 一次检查）
+      }, opts.maxWaitMs);
+
+      opts.signal?.addEventListener('abort', onAbort, { once: true });
+      this.waitResolvers.push(resolver);
+    });
+  }
+
+  /** 是否存在未通知的已完成（completed/failed/idle）子 Agent */
+  private hasUnannouncedCompleted(): boolean {
+    for (const entry of this.agents.values()) {
+      if (entry.announced) continue;
+      if (entry.status === 'completed' || entry.status === 'failed' || entry.status === 'idle') {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -859,6 +969,7 @@ export class SubAgentSpawner {
         }
       }
     }
+    if (cleaned > 0) this.notifyWaiters();
     return cleaned;
   }
 
@@ -907,6 +1018,8 @@ export class SubAgentSpawner {
     }
     this.agents.clear();
     this.pendingAnnouncements = [];
+    // 唤醒所有 awaitNextCompletion 并清空，让它们立即返回（hasRunning 已为 false）
+    this.notifyWaiters();
   }
 
   /** 是否有子 Agent 正在运行 */

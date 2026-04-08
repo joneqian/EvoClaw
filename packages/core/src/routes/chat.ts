@@ -62,7 +62,14 @@ import { emitServerEvent } from '../infrastructure/event-bus.js';
 import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
 import { enqueueTaskNotification } from '../infrastructure/task-notifications.js';
 import { detectHeartbeatAck } from '../scheduler/heartbeat-utils.js';
-import { IncrementalPersister, reconstructDisplayContent } from '../agent/kernel/incremental-persister.js';
+import {
+  IncrementalPersister,
+  reconstructDisplayContent,
+  shouldDisplayMessage,
+  extractTextOnly,
+  extractToolCallsForUI,
+} from '../agent/kernel/incremental-persister.js';
+import type { KernelMessage } from '../agent/kernel/types.js';
 import { bridgeMcpToolsForAgent } from '../mcp/mcp-tool-bridge.js';
 
 const log = createLogger('chat');
@@ -103,6 +110,36 @@ function detectToolNameConflicts(toolList: { name: string }[]): void {
  *
  * 参考 Claude Code: loadTranscriptFile + buildConversationChain
  */
+
+/** 数据库行类型（loadMessageHistory 查询结果） */
+interface ConversationRow {
+  id: string; session_key: string; role: string; content: string;
+  tool_calls_json: string | null; created_at: string;
+  kernel_message_json: string | null;
+}
+
+/**
+ * 去重：丢弃 saveMessage 写入的冗余 assistant 行
+ *
+ * 背景：之前 chat.ts 在 agent 完成后既调用 IncrementalPersister（存带
+ * kernel_message_json 的完整消息），又调用 saveMessage 存一条 cleanResponse
+ * （kernel_message_json 为 NULL），导致 assistant 消息被存 2 次。
+ *
+ * 策略：
+ * - 若 rows 中存在任何 role='assistant' 且 kernel_message_json 非空的行
+ *   → 说明本 session 使用了 persister，丢弃所有 assistant + 空 kernel_message_json 的冗余行
+ * - 否则（老 session 全部是 saveMessage 写的）→ 原样保留，不误删合法老数据
+ */
+function dedupeAssistantRows(rows: ConversationRow[]): ConversationRow[] {
+  const hasPersisterAssistant = rows.some(
+    r => r.role === 'assistant' && r.kernel_message_json != null,
+  );
+  if (!hasPersisterAssistant) return rows;
+  return rows.filter(
+    r => !(r.role === 'assistant' && r.kernel_message_json == null),
+  );
+}
+
 function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
   // ── Level 0: 恢复崩溃残留的 streaming 消息 ──
   // 将 streaming → orphaned → final，确保不丢失数据
@@ -134,7 +171,9 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
       agentId, sessionKey, boundary.created_at,
     );
 
-    const recentMessages = postBoundaryRows.map(rowToChatMessage);
+    const recentMessages = dedupeAssistantRows(postBoundaryRows)
+      .map(rowToChatMessage)
+      .filter((m): m is ChatMessage => m !== null);
 
     // 尝试加载摘要注入到 boundary 消息前面
     const summary = db.get<{ summary_markdown: string }>(
@@ -178,7 +217,9 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
       agentId, sessionKey, limit,
     );
 
-    const recentMessages = recentRows.reverse().map(rowToChatMessage);
+    const recentMessages = dedupeAssistantRows(recentRows.reverse())
+      .map(rowToChatMessage)
+      .filter((m): m is ChatMessage => m !== null);
     const summaryMsg: ChatMessage = {
       id: `summary-${agentId}`,
       conversationId: sessionKey,
@@ -204,16 +245,49 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     agentId, sessionKey, limit,
   );
 
-  return rows.reverse().map(rowToChatMessage);
+  return dedupeAssistantRows(rows.reverse())
+    .map(rowToChatMessage)
+    .filter((m): m is ChatMessage => m !== null);
 }
 
-/** 数据库行 → ChatMessage */
+/**
+ * 数据库行 → ChatMessage
+ *
+ * 返回 null 表示该消息不应在 UI / LLM 历史中展示（如纯 tool_result）。
+ *
+ * 优先路径：若 kernel_message_json 可解析 → 精确重建
+ *   - shouldDisplayMessage 过滤纯 tool_result / 纯 thinking
+ *   - content 只取 text 块（剥离 thinking/tool_use 摘要）
+ *   - toolCalls 从 tool_use 块重建（让前端走工具卡片渲染路径）
+ * 降级路径：row.content 原样 + 占位符重建（修存量无 kernel_message_json 的行）
+ */
 function rowToChatMessage(row: {
   id: string; session_key: string; role: string; content: string;
   tool_calls_json: string | null; created_at: string;
   kernel_message_json?: string | null;
-}): ChatMessage {
-  // 从存量占位符 `[xxx message with N blocks]` 重建显示文本（修旧数据）
+}): ChatMessage | null {
+  // 优先：从 kernel_message_json 精确重建
+  if (row.kernel_message_json) {
+    try {
+      const kmsg = JSON.parse(row.kernel_message_json) as KernelMessage;
+      if (!shouldDisplayMessage(kmsg)) return null; // 过滤纯 tool_result / 空消息
+
+      const msg: ChatMessage = {
+        id: row.id,
+        conversationId: row.session_key,
+        role: row.role as ChatMessage['role'],
+        content: extractTextOnly(kmsg),
+        createdAt: row.created_at,
+      };
+      const toolCalls = extractToolCallsForUI(kmsg);
+      if (toolCalls) (msg as any).toolCalls = toolCalls;
+      return msg;
+    } catch {
+      // JSON 损坏 → 降级
+    }
+  }
+
+  // 降级：原样返回 + 占位符修复（存量无 kernel_message_json 的老数据）
   const displayContent = reconstructDisplayContent(row.content, row.kernel_message_json ?? null);
   const msg: ChatMessage = {
     id: row.id,
@@ -1177,9 +1251,10 @@ export function createChatRoutes(
         if (isHeartbeat) {
           saveMessage(store, agentId, sessionKey, 'user', message);
         }
-        if (cleanResponse) {
-          saveMessage(store, agentId, sessionKey, 'assistant', cleanResponse);
-        }
+        // Assistant 消息由 IncrementalPersister 在 query-loop 每轮结束后逐条持久化
+        // （含 text + tool_use + thinking 完整结构，存于 kernel_message_json 字段）。
+        // 此处不再重复 saveMessage(cleanResponse)，避免产生不含 kernel_message_json 的
+        // 冗余行导致前端消息重复展示和顺序混乱。
         // 通知其他 SSE 监听者（其他页面/窗口）会话已更新
         emitServerEvent({
           type: 'conversations-changed',

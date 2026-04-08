@@ -30,6 +30,8 @@ interface PendingEntry {
   readonly content: string;
   readonly turnIndex: number;
   readonly kernelMessageJson: string;
+  /** ISO 时间戳（与 saveMessage 格式一致：YYYY-MM-DDTHH:MM:SS.mmmZ） */
+  readonly createdAt: string;
 }
 
 /**
@@ -63,6 +65,9 @@ export class IncrementalPersister {
   persistTurn(turnIndex: number, messages: readonly KernelMessage[]): void {
     if (this.disposed) return;
 
+    // 使用 ISO 时间戳（与 saveMessage 格式一致），避免字符串排序错乱。
+    // 同毫秒内多条消息的顺序由 SQL `ORDER BY created_at, rowid` 的 rowid 保证。
+    const createdAt = new Date().toISOString();
     for (const msg of messages) {
       this.queue.push({
         id: `${this.batchId}:${turnIndex}:${msg.id}`,
@@ -72,6 +77,7 @@ export class IncrementalPersister {
         content: extractDisplayContent(msg),
         turnIndex,
         kernelMessageJson: JSON.stringify(msg),
+        createdAt,
       });
     }
 
@@ -206,7 +212,7 @@ export class IncrementalPersister {
           this.store.run(
             `INSERT OR IGNORE INTO conversation_log
              (id, agent_id, session_key, role, content, turn_index, kernel_message_json, persist_status, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'streaming', datetime('now'))`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'streaming', ?)`,
             entry.id,
             entry.agentId,
             entry.sessionKey,
@@ -214,6 +220,7 @@ export class IncrementalPersister {
             entry.content,
             entry.turnIndex,
             entry.kernelMessageJson,
+            entry.createdAt,
           );
         }
       });
@@ -284,6 +291,68 @@ export function reconstructDisplayContent(
   } catch {
     return content;
   }
+}
+
+/**
+ * 判断消息是否应在聊天 UI 中独立展示
+ *
+ * 过滤规则：
+ * - 纯 tool_result 消息（role=user）— 工具执行结果，不应作为用户气泡独立展示
+ * - 纯 thinking 消息 — 没有用户可见内容的空壳 assistant 消息
+ * - 无 content 块的空消息
+ *
+ * 保留规则：
+ * - 含 text / tool_use / image 块的消息
+ */
+export function shouldDisplayMessage(msg: KernelMessage): boolean {
+  if (!msg.content || msg.content.length === 0) return false;
+  return msg.content.some(
+    b => b.type === 'text' || b.type === 'tool_use' || b.type === 'image',
+  );
+}
+
+/**
+ * 仅提取 text 块的内容
+ *
+ * 与 extractDisplayContent 不同：不拼接 thinking / tool_use / tool_result 摘要，
+ * 用于 assistant 消息的 content 字段 — 工具调用通过 toolCalls 字段单独展示。
+ */
+export function extractTextOnly(msg: KernelMessage): string {
+  return msg.content
+    .filter(b => b.type === 'text')
+    .map(b => (b as { text: string }).text)
+    .filter(t => t.trim().length > 0)
+    .join('\n');
+}
+
+/** 前端 ToolCall 格式（与 apps/desktop/src/stores/chat-store.ts 对齐） */
+export interface UIToolCall {
+  name: string;
+  status: 'running' | 'done' | 'error';
+  summary?: string;
+}
+
+/**
+ * 从 KernelMessage 提取前端 ToolCall 数组
+ *
+ * 历史消息的 tool_use 块都是已完成态（status='done'），
+ * summary 从 input 参数中按优先字段提取。
+ */
+export function extractToolCallsForUI(msg: KernelMessage): UIToolCall[] | undefined {
+  const calls: UIToolCall[] = [];
+  for (const block of msg.content) {
+    if (block.type === 'tool_use') {
+      const tu = block as { name: string; input: Record<string, unknown> };
+      const summary = summarizeToolInput(tu.input ?? {});
+      const call: UIToolCall = {
+        name: tu.name,
+        status: 'done',
+      };
+      if (summary) call.summary = summary;
+      calls.push(call);
+    }
+  }
+  return calls.length > 0 ? calls : undefined;
 }
 
 /** 单个块的人类可读摘要 */

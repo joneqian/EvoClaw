@@ -30,6 +30,7 @@ import { createExecBackgroundTool, createProcessTool } from '../tools/background
 import { createTodoWriteTool } from '../tools/todo-tool.js';
 import { createScheduleTool } from '../tools/schedule-tool.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
+import { PermissionBubbleManager } from '../agent/permission-bubble.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryExtractor } from '../memory/memory-extractor.js';
 import { createMemoryRecallPlugin } from '../context/plugins/memory-recall.js';
@@ -651,6 +652,10 @@ export function createChatRoutes(
 
     // 子 Agent 工具（需 laneQueue）
     let spawner: SubAgentSpawner | undefined;
+    // 权限冒泡管理器 — 子 Agent 工具需要用户授权时暂停等待
+    let bubbleManager: PermissionBubbleManager | undefined;
+    // SSE 发射函数引用（在 streamSSE 回调内绑定实际 stream）
+    const permissionEmitter: { emit: ((data: string) => void) | null } = { emit: null };
     if (laneQueue) {
       const runConfigForSpawner: AgentRunConfig = {
         agent,
@@ -677,9 +682,26 @@ export function createChatRoutes(
         }
         return { agent: targetAgent, workspaceFiles: targetWsFiles };
       };
-      spawner = new SubAgentSpawner(runConfigForSpawner, laneQueue, 0, (taskId, task, result, success) => {
-        log.info(`子 Agent ${taskId} ${success ? '完成' : '失败'}: ${task.slice(0, 50)}`);
-      }, workspaceFiles, agentResolver);
+      bubbleManager = new PermissionBubbleManager();
+
+      spawner = new SubAgentSpawner(
+        runConfigForSpawner, laneQueue, 0,
+        (taskId, task, result, success) => {
+          log.info(`子 Agent ${taskId} ${success ? '完成' : '失败'}: ${task.slice(0, 50)}`);
+        },
+        workspaceFiles, agentResolver,
+        undefined,                                     // allowAgents
+        undefined,                                     // maxSpawnDepth（使用默认值）
+        undefined,                                     // getParentMessages
+        runConfigForSpawner.permissionInterceptFn,      // 权限拦截传递给子 Agent
+        bubbleManager,                                 // 权限冒泡管理器
+        (request) => {                                 // 权限冒泡 SSE 发射
+          permissionEmitter.emit?.(JSON.stringify({
+            ...request,
+            isSubagent: true,
+          }));
+        },
+      );
       enhancedTools.push(...createSubAgentTools(spawner));
     }
 
@@ -908,11 +930,21 @@ export function createChatRoutes(
     return streamSSE(c, async (stream) => {
       let fullResponse = '';
 
+      // 绑定权限冒泡 SSE 发射函数
+      permissionEmitter.emit = (data: string) => {
+        stream.writeSSE({ event: 'permission_required', data }).catch(() => { /* SSE 已关闭 */ });
+      };
+
       // ─── Sub-Agent 进度推送定时器 ───
       let progressTimer: ReturnType<typeof setInterval> | undefined;
+      let cleanupCounter = 0;
       const startSubagentProgressPush = () => {
         if (!spawner) return;
         progressTimer = setInterval(async () => {
+          // 每 15 次（约 30s）执行一次资源清理
+          if (++cleanupCounter % 15 === 0) {
+            spawner!.cleanup();
+          }
           const snapshot = spawner!.getProgressSnapshot();
           for (const entry of snapshot) {
             try {
@@ -934,24 +966,23 @@ export function createChatRoutes(
               });
             } catch { /* SSE 已关闭，忽略 */ }
           }
-          // 推送完成通知
-          const announcements = spawner!.collectCompletedResults();
-          for (const a of announcements) {
-            const agentEntry = spawner!.get(a.taskId);
+          // 推送结构化完成通知
+          const notifications = spawner!.drainStructuredAnnouncements();
+          for (const n of notifications) {
             try {
               await stream.writeSSE({
                 data: JSON.stringify({
                   type: 'subagent_notification',
                   timestamp: Date.now(),
                   subagentNotification: {
-                    taskId: a.taskId,
-                    agentType: agentEntry?.agentType,
-                    task: a.task.slice(0, 200),
-                    success: a.success,
-                    result: a.result.slice(0, 1000),
-                    durationMs: agentEntry?.completedAt
-                      ? agentEntry.completedAt - agentEntry.startedAt
-                      : Date.now() - (agentEntry?.startedAt ?? Date.now()),
+                    taskId: n.taskId,
+                    agentType: n.agentType,
+                    task: n.task.slice(0, 200),
+                    status: n.status,
+                    success: n.success,
+                    result: n.result.slice(0, 1000),
+                    durationMs: n.durationMs,
+                    tokenUsage: n.tokenUsage,
                   },
                 }),
               });
@@ -1048,6 +1079,11 @@ export function createChatRoutes(
             laneQueue.cancel(runId);
           }
           stopSubagentProgressPush();
+          // 非后台化时销毁 spawner 释放所有子 Agent 资源
+          if (!isBackgrounded) {
+            spawner?.dispose();
+            bubbleManager?.dispose();
+          }
         });
 
         // 通知前端已入队

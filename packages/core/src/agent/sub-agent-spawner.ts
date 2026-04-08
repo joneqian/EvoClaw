@@ -10,6 +10,7 @@ import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import type { LaneQueue } from './lane-queue.js';
 import { DEFAULT_MAX_SPAWN_DEPTH, type AgentConfig, type ChatMessage } from '@evoclaw/shared';
 import { SAFETY_CONSTITUTION } from './embedded-runner-prompt.js';
+import type { PermissionBubbleManager, PermissionEmitFn } from './permission-bubble.js';
 
 /** 附件 */
 export interface SpawnAttachment {
@@ -162,8 +163,23 @@ export interface SubAgentEntry {
   isFork?: boolean;
 }
 
+/** 结构化完成通知 */
+export interface SubAgentNotification {
+  taskId: string;
+  task: string;
+  agentType?: string;
+  status: 'completed' | 'failed' | 'cancelled';
+  success: boolean;
+  result: string;
+  durationMs: number;
+  tokenUsage: { inputTokens: number; outputTokens: number };
+}
+
 /** 完成通知回调 */
-export type OnSubAgentComplete = (taskId: string, task: string, result: string, success: boolean) => void;
+export type OnSubAgentComplete = (
+  taskId: string, task: string, result: string, success: boolean,
+  notification?: SubAgentNotification,
+) => void;
 
 /** 根据深度确定角色 */
 function resolveRole(depth: number, maxDepth: number): SubAgentRole {
@@ -178,9 +194,7 @@ function resolveRole(depth: number, maxDepth: number): SubAgentRole {
 export class SubAgentSpawner {
   private agents = new Map<string, SubAgentEntry>();
   /** 待推送的子代完成通知 */
-  private pendingAnnouncements: Array<{
-    taskId: string; task: string; result: string; success: boolean;
-  }> = [];
+  private pendingAnnouncements: SubAgentNotification[] = [];
   /** 可配置最大嵌套深度 */
   readonly maxSpawnDepth: number;
 
@@ -198,6 +212,12 @@ export class SubAgentSpawner {
     maxSpawnDepth?: number,
     /** 获取父 Agent 当前消息历史（用于 Fork Cache-Safe） */
     private getParentMessages?: () => ReadonlyArray<import('@evoclaw/shared').ChatMessage>,
+    /** 权限拦截函数 — 子 Agent 工具调用前检查（不传则子 Agent 绕过权限系统） */
+    private permissionInterceptFn?: AgentRunConfig['permissionInterceptFn'],
+    /** 权限冒泡管理器 — 子 Agent 工具需要用户授权时暂停等待（不传则阻断模式） */
+    private permissionBubbleManager?: PermissionBubbleManager,
+    /** 权限冒泡 SSE 事件发射回调 */
+    private onPermissionEmit?: PermissionEmitFn,
   ) {
     this.maxSpawnDepth = maxSpawnDepth ?? DEFAULT_MAX_SPAWN_DEPTH;
   }
@@ -349,6 +369,13 @@ export class SubAgentSpawner {
       ? (targetWorkspaceFiles['TOOLS.md'] ? { 'TOOLS.md': targetWorkspaceFiles['TOOLS.md'] } : {})
       : this.getWorkspaceFilesForRole(childRole, targetWorkspaceFiles);
 
+    // 权限拦截：冒泡模式（有 bubbleManager）或阻断模式（直接拒绝）
+    const childPermissionFn = this.permissionBubbleManager && this.onPermissionEmit && this.permissionInterceptFn
+      ? this.permissionBubbleManager.createSubAgentInterceptFn(
+          this.permissionInterceptFn, taskId, this.onPermissionEmit,
+        )
+      : this.permissionInterceptFn;
+
     const childConfig: AgentRunConfig = {
       agent: targetAgent,
       systemPrompt,
@@ -361,6 +388,7 @@ export class SubAgentSpawner {
       tools: effectiveTools,
       messages: childMessages,
       mcpManager: this.parentConfig.mcpManager,
+      permissionInterceptFn: childPermissionFn,
     };
 
     // 计算超时
@@ -387,6 +415,11 @@ export class SubAgentSpawner {
                 entry.progress.recentActivities.push({ toolName: event.toolName, timestamp: Date.now() });
                 if (entry.progress.recentActivities.length > 5) entry.progress.recentActivities.shift();
               }
+              // Token 用量追踪
+              if (event.type === 'usage' && event.usage) {
+                entry.progress.inputTokens += event.usage.inputTokens ?? 0;
+                entry.progress.outputTokens += event.usage.outputTokens ?? 0;
+              }
             },
             abortController.signal,
           );
@@ -398,17 +431,35 @@ export class SubAgentSpawner {
           // session 模式：完成后进入 idle 而非 completed
           entry.status = spawnMode === 'session' ? 'idle' : 'completed';
 
-          // Push-based 通知：结果入队
-          this.pendingAnnouncements.push({ taskId, task, result: entry.result, success: true });
-          this.onComplete?.(taskId, task, entry.result, true);
+          // Push-based 通知：结构化结果入队
+          const notification: SubAgentNotification = {
+            taskId, task,
+            agentType: entry.agentType,
+            status: 'completed',
+            success: true,
+            result: entry.result,
+            durationMs: entry.completedAt - entry.startedAt,
+            tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
+          };
+          this.pendingAnnouncements.push(notification);
+          this.onComplete?.(taskId, task, entry.result, true, notification);
         } catch (err) {
           entry.status = 'failed';
           entry.error = err instanceof Error ? err.message : String(err);
           entry.completedAt = Date.now();
 
           // Push-based 通知：错误入队
-          this.pendingAnnouncements.push({ taskId, task, result: entry.error ?? '', success: false });
-          this.onComplete?.(taskId, task, entry.error ?? '', false);
+          const notification: SubAgentNotification = {
+            taskId, task,
+            agentType: entry.agentType,
+            status: 'failed',
+            success: false,
+            result: entry.error ?? '',
+            durationMs: entry.completedAt - entry.startedAt,
+            tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
+          };
+          this.pendingAnnouncements.push(notification);
+          this.onComplete?.(taskId, task, entry.error ?? '', false, notification);
           // 不抛出 — 子 Agent 失败不应崩溃父 Agent
         }
       },
@@ -464,8 +515,8 @@ export class SubAgentSpawner {
 
   /**
    * 纠偏子 Agent（steer）
-   * - session 模式：调用 resume(taskId, correction)
-   * - run 模式：终止当前运行 → 用原始任务 + 纠正消息重新生成
+   * - session 模式且 idle：调用 resume(taskId, correction)
+   * - run/session 模式且 running：中止当前执行 → 复用原条目重新启动（保留 Task ID）
    */
   steer(taskId: string, correction: string): string {
     const entry = this.agents.get(taskId);
@@ -483,14 +534,107 @@ export class SubAgentSpawner {
       throw new Error(`子 Agent ${taskId} 当前状态为 "${entry.status}"，仅运行中的子 Agent 可以纠偏`);
     }
 
-    // run 模式：终止当前运行 + 重新 spawn
+    // In-place steer：中止当前执行 → 复用原条目重新启动
     entry.abortController.abort();
-    entry.status = 'cancelled';
-    entry.completedAt = Date.now();
+    entry.abortController = new AbortController();
+    entry.status = 'running';
+    entry.completedAt = undefined;
+    entry.announced = false;
+    entry.result = undefined;
+    entry.error = undefined;
+    entry.progress = { toolUseCount: 0, inputTokens: 0, outputTokens: 0, recentActivities: [] };
 
     const steeredTask = `${entry.task}\n\n[纠偏指令] ${correction}`;
-    const newTaskId = this.spawn(steeredTask);
-    return newTaskId;
+    entry.task = steeredTask;
+
+    // 权限拦截：冒泡模式或阻断模式
+    const steerPermissionFn = this.permissionBubbleManager && this.onPermissionEmit && this.permissionInterceptFn
+      ? this.permissionBubbleManager.createSubAgentInterceptFn(
+          this.permissionInterceptFn, taskId, this.onPermissionEmit,
+        )
+      : this.permissionInterceptFn;
+
+    // 重新入队执行
+    const sessionKey = `agent:${this.parentConfig.agent.id}:local:subagent:${taskId}`;
+    const spawnMode = entry.mode;
+    const abortController = entry.abortController;
+
+    this.laneQueue.enqueue({
+      id: `${taskId}-steer-${Date.now()}`,
+      sessionKey,
+      lane: 'subagent',
+      task: async () => {
+        let result = '';
+        try {
+          await runEmbeddedAgent(
+            {
+              ...this.parentConfig,
+              messages: [],
+              systemPrompt: this.buildMinimalPrompt(steeredTask),
+              permissionInterceptFn: steerPermissionFn,
+            },
+            steeredTask,
+            (event: RuntimeEvent) => {
+              if (event.type === 'text_delta' && event.delta) {
+                result += event.delta;
+              }
+              if (event.type === 'tool_start' && event.toolName) {
+                entry.progress.toolUseCount++;
+                entry.progress.recentActivities.push({ toolName: event.toolName, timestamp: Date.now() });
+                if (entry.progress.recentActivities.length > 5) entry.progress.recentActivities.shift();
+              }
+              if (event.type === 'usage' && event.usage) {
+                entry.progress.inputTokens += event.usage.inputTokens ?? 0;
+                entry.progress.outputTokens += event.usage.outputTokens ?? 0;
+              }
+            },
+            abortController.signal,
+          );
+
+          const rawResult = result || '（子 Agent 未返回内容）';
+          entry.result = `${UNTRUSTED_BEGIN}\n${rawResult}\n${UNTRUSTED_END}`;
+          entry.completedAt = Date.now();
+          entry.status = spawnMode === 'session' ? 'idle' : 'completed';
+
+          const notification: SubAgentNotification = {
+            taskId, task: steeredTask,
+            agentType: entry.agentType,
+            status: 'completed',
+            success: true,
+            result: entry.result,
+            durationMs: entry.completedAt - entry.startedAt,
+            tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
+          };
+          this.pendingAnnouncements.push(notification);
+          this.onComplete?.(taskId, steeredTask, entry.result, true, notification);
+        } catch (err) {
+          entry.status = 'failed';
+          entry.error = err instanceof Error ? err.message : String(err);
+          entry.completedAt = Date.now();
+
+          const notification: SubAgentNotification = {
+            taskId, task: steeredTask,
+            agentType: entry.agentType,
+            status: 'failed',
+            success: false,
+            result: entry.error ?? '',
+            durationMs: entry.completedAt - entry.startedAt,
+            tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
+          };
+          this.pendingAnnouncements.push(notification);
+          this.onComplete?.(taskId, steeredTask, entry.error ?? '', false, notification);
+        }
+      },
+      timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
+    }).catch(() => {
+      if (entry.status === 'running') {
+        entry.status = 'failed';
+        entry.error = `子 Agent steer 执行超时`;
+        entry.completedAt = Date.now();
+      }
+    });
+
+    return taskId;
   }
 
   /**
@@ -517,6 +661,13 @@ export class SubAgentSpawner {
     const sessionKey = `agent:${this.parentConfig.agent.id}:local:subagent:${taskId}`;
     const resumeTask = `${entry.task}\n\n[后续指令] ${followUp}`;
 
+    // 权限拦截：冒泡模式或阻断模式
+    const resumePermissionFn = this.permissionBubbleManager && this.onPermissionEmit && this.permissionInterceptFn
+      ? this.permissionBubbleManager.createSubAgentInterceptFn(
+          this.permissionInterceptFn, taskId, this.onPermissionEmit,
+        )
+      : this.permissionInterceptFn;
+
     this.laneQueue.enqueue({
       id: `${taskId}-resume-${Date.now()}`,
       sessionKey,
@@ -529,11 +680,17 @@ export class SubAgentSpawner {
               ...this.parentConfig,
               messages: [],
               systemPrompt: this.buildMinimalPrompt(resumeTask),
+              permissionInterceptFn: resumePermissionFn,
             },
             resumeTask,
             (event: RuntimeEvent) => {
               if (event.type === 'text_delta' && event.delta) {
                 result += event.delta;
+              }
+              // Token 用量追踪
+              if (event.type === 'usage' && event.usage) {
+                entry.progress.inputTokens += event.usage.inputTokens ?? 0;
+                entry.progress.outputTokens += event.usage.outputTokens ?? 0;
               }
             },
             entry.abortController.signal,
@@ -544,15 +701,33 @@ export class SubAgentSpawner {
           entry.completedAt = Date.now();
           entry.status = 'idle';
 
-          this.pendingAnnouncements.push({ taskId, task: resumeTask, result: entry.result, success: true });
-          this.onComplete?.(taskId, resumeTask, entry.result, true);
+          const notification: SubAgentNotification = {
+            taskId, task: resumeTask,
+            agentType: entry.agentType,
+            status: 'completed',
+            success: true,
+            result: entry.result,
+            durationMs: entry.completedAt - entry.startedAt,
+            tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
+          };
+          this.pendingAnnouncements.push(notification);
+          this.onComplete?.(taskId, resumeTask, entry.result, true, notification);
         } catch (err) {
           entry.status = 'failed';
           entry.error = err instanceof Error ? err.message : String(err);
           entry.completedAt = Date.now();
 
-          this.pendingAnnouncements.push({ taskId, task: resumeTask, result: entry.error ?? '', success: false });
-          this.onComplete?.(taskId, resumeTask, entry.error ?? '', false);
+          const notification: SubAgentNotification = {
+            taskId, task: resumeTask,
+            agentType: entry.agentType,
+            status: 'failed',
+            success: false,
+            result: entry.error ?? '',
+            durationMs: entry.completedAt - entry.startedAt,
+            tokenUsage: { inputTokens: entry.progress.inputTokens, outputTokens: entry.progress.outputTokens },
+          };
+          this.pendingAnnouncements.push(notification);
+          this.onComplete?.(taskId, resumeTask, entry.error ?? '', false, notification);
         }
       },
       timeoutMs: DEFAULT_SUBAGENT_TIMEOUT_MS,
@@ -567,7 +742,7 @@ export class SubAgentSpawner {
 
   /**
    * 获取未通知的已完成结果（auto-announce 模式）
-   * 返回后标记为已通知
+   * 返回后标记为已通知，释放 result 引用以节省内存
    */
   collectCompletedResults(): Array<{ taskId: string; task: string; result: string; success: boolean }> {
     const results: Array<{ taskId: string; task: string; result: string; success: boolean }> = [];
@@ -582,6 +757,7 @@ export class SubAgentSpawner {
           success: true,
         });
         entry.announced = true;
+        entry.result = undefined;  // 结果已复制到返回数组，释放原始引用
       } else if (entry.status === 'failed') {
         results.push({
           taskId: entry.taskId,
@@ -590,6 +766,7 @@ export class SubAgentSpawner {
           success: false,
         });
         entry.announced = true;
+        entry.error = undefined;  // 释放错误引用
       }
     }
 
@@ -597,16 +774,25 @@ export class SubAgentSpawner {
   }
 
   /**
+   * 排空结构化通知（推荐使用）
+   * 返回完整的结构化通知数组
+   */
+  drainStructuredAnnouncements(): SubAgentNotification[] {
+    const notifications = [...this.pendingAnnouncements];
+    this.pendingAnnouncements = [];
+    return notifications;
+  }
+
+  /**
    * 排空待推送通知（Push-based 通知机制）
    * 返回格式化的通知文本，或 null 如果没有待推送通知
    */
   drainAnnouncements(): string | null {
-    if (this.pendingAnnouncements.length === 0) return null;
-    const messages = this.pendingAnnouncements.map(a =>
-      `[子 Agent 完成] Task: ${a.taskId}\n状态: ${a.success ? '成功' : '失败'}\n结果:\n${a.result}`
-    );
-    this.pendingAnnouncements = [];
-    return messages.join('\n\n---\n\n');
+    const notifications = this.drainStructuredAnnouncements();
+    if (notifications.length === 0) return null;
+    return notifications.map(n =>
+      `[子 Agent 完成] Task: ${n.taskId}\n类型: ${n.agentType ?? 'general'}\n状态: ${n.success ? '成功' : '失败'}\n耗时: ${(n.durationMs / 1000).toFixed(1)}s\nTokens: ${n.tokenUsage.inputTokens}/${n.tokenUsage.outputTokens}\n结果:\n${n.result}`
+    ).join('\n\n---\n\n');
   }
 
   /**
@@ -626,6 +812,53 @@ export class SubAgentSpawner {
       }
     }
     return cleaned;
+  }
+
+  /**
+   * 清除已完成/失败/取消且已通知的条目，释放内存
+   * @param retainMs 保留时间（默认 5 分钟，确保 list_agents 有时间读取）
+   * @returns 清除数量
+   */
+  evictCompleted(retainMs: number = 5 * 60 * 1000): number {
+    let evicted = 0;
+    const now = Date.now();
+    for (const [taskId, entry] of this.agents) {
+      const isTerminal = entry.status === 'completed' || entry.status === 'failed' || entry.status === 'cancelled';
+      if (!isTerminal) continue;
+      if (!entry.announced) continue;
+      if (entry.completedAt && now - entry.completedAt < retainMs) continue;
+
+      // 递归清理子代 spawner
+      entry.childSpawner?.dispose();
+      this.agents.delete(taskId);
+      evicted++;
+    }
+    return evicted;
+  }
+
+  /**
+   * 统一清理：idle 超时 + 已完成条目驱逐
+   * 建议在 SSE progress 轮询定时器中每 30s 调用
+   */
+  cleanup(options?: { maxIdleMs?: number; retainMs?: number }): { idleCleaned: number; evicted: number } {
+    const idleCleaned = this.cleanupIdleSessions(options?.maxIdleMs);
+    const evicted = this.evictCompleted(options?.retainMs);
+    return { idleCleaned, evicted };
+  }
+
+  /**
+   * 销毁 spawner：终止所有运行中子 Agent，清理全部条目
+   * 在父 Agent 会话结束时调用
+   */
+  dispose(): void {
+    this.killAll();
+    for (const entry of this.agents.values()) {
+      entry.childSpawner?.dispose();
+      entry.result = undefined;
+      entry.error = undefined;
+    }
+    this.agents.clear();
+    this.pendingAnnouncements = [];
   }
 
   /** 是否有子 Agent 正在运行 */
@@ -749,6 +982,9 @@ export class SubAgentSpawner {
     } else if (role === 'orchestrator') {
       constraints.push('- 你是 orchestrator 子 Agent，可以创建子 Agent 来并行处理子任务');
       constraints.push('- 创建子 Agent 后使用 yield_agents 等待结果，不要轮询');
+      // Anti-lazy-delegation 规则
+      constraints.push('- 收到子 Agent 返回的结果后，你必须阅读并理解内容，基于你的理解生成输出');
+      constraints.push('- 禁止直接将子 Agent 的结果原样转发，禁止使用"根据子 Agent 的结果..."这类惰性表述');
     }
 
     parts.push(`<constraints>\n${constraints.join('\n')}\n</constraints>`);

@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { SecurityExtension } from '../bridge/security-extension.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { PermissionCategory, PermissionScope } from '@evoclaw/shared';
+import { resolvePermissionDecision } from '../agent/permission-bubble.js';
 
 export function createSecurityRoutes(db: SqliteStore): Hono {
   const app = new Hono();
@@ -86,6 +87,27 @@ export function createSecurityRoutes(db: SqliteStore): Hono {
     }
 
     return c.json({ revokedCount });
+  });
+
+  // POST /permission-decision — 解析子 Agent 待决权限请求（全局，不需要 agentId）
+  app.post('/permission-decision', async (c) => {
+    const body = await c.req.json<{
+      requestId: string;
+      decision: 'allow' | 'deny';
+    }>();
+
+    if (!body.requestId || !body.decision) {
+      return c.json({ error: '需要 requestId 和 decision 参数' }, 400);
+    }
+    if (body.decision !== 'allow' && body.decision !== 'deny') {
+      return c.json({ error: 'decision 必须是 "allow" 或 "deny"' }, 400);
+    }
+
+    const resolved = resolvePermissionDecision(body.requestId, body.decision);
+    if (!resolved) {
+      return c.json({ error: '未找到该权限请求（可能已超时或已处理）' }, 404);
+    }
+    return c.json({ success: true });
   });
 
   // GET /:id/audit-log — 审计日志（增强版：支持过滤）

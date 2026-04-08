@@ -20,12 +20,18 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
     {
       name: 'decompose_task',
       description: `将一个复杂任务分解为多个并行子任务，自动创建对应类型的子 Agent 并行执行。
-比逐个 spawn_agent 更高效：一次调用即可启动多个子 Agent。
-适用场景：
-- "分析本月销售数据并生成报告" → researcher(查数据) + analyst(分析) + writer(写报告)
-- "搜索竞品信息并整理文档" → researcher(搜索A) + researcher(搜索B) + writer(整理)
 
-子 Agent 完成后会自动通知你。调用后请使用 yield_agents 等待结果。`,
+使用条件（必须同时满足）：
+- 任务确实有 2 个以上独立子任务可并行
+- 每个子任务至少需要 3+ 次工具调用
+- 并行执行比串行有明显时间收益
+
+不要使用的场景：
+- 单次搜索、单文件读取 → 直接自己做
+- 串行依赖的步骤 → 自己按顺序执行
+
+子 Agent 完成后会自动通知你。调用后请使用 yield_agents 等待结果。
+收到结果后，你必须理解内容并基于你的判断生成最终输出，禁止原样转发。`,
       parameters: {
         type: 'object',
         properties: {
@@ -90,7 +96,19 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
     },
     {
       name: 'spawn_agent',
-      description: '创建一个子 Agent 来并行处理任务。子 Agent 会在后台执行，完成后结果会自动通知你。适用于可以拆分的独立子任务。创建后请使用 yield_agents 等待结果，不要轮询 list_agents。',
+      description: `创建一个子 Agent 来并行处理任务。
+
+何时使用 spawn_agent：
+- 任务独立，不依赖当前对话上下文中的中间结果
+- 任务需要 3+ 次工具调用（否则自己做更快，spawn 开销约 10s）
+- 需要并行执行多个独立任务时
+
+何时不要使用：
+- 简单的搜索、读文件、计算 → 直接自己做
+- 需要你当前上下文才能完成的任务 → 自己做
+
+创建后请使用 yield_agents 等待结果，不要轮询 list_agents。
+收到结果后必须阅读理解，禁止直接转发给用户。`,
       parameters: {
         type: 'object',
         properties: {
@@ -255,7 +273,11 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
     },
     {
       name: 'steer_agent',
-      description: '纠偏一个正在运行的子 Agent。终止当前运行并用纠正指令重新启动。当子 Agent 方向偏离时使用，比 kill + 重新 spawn 更方便。',
+      description: `纠偏一个正在运行的子 Agent。中止当前执行并用纠正指令重新启动，保留原 Task ID。
+
+何时用 steer（而非 kill + spawn）：
+- 方向偏差但基本思路对 → steer（保留 Task ID，更方便跟踪）
+- 完全走错方向 → kill + spawn（全新开始，避免锚定在失败路径）`,
       parameters: {
         type: 'object',
         properties: {
@@ -273,7 +295,7 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
 
         try {
           const newTaskId = spawner.steer(taskId, correction);
-          return `子 Agent 已纠偏。\n原 Task ID: ${taskId}（已终止）\n新 Task ID: ${newTaskId}\n纠正指令: ${correction}`;
+          return `子 Agent 已纠偏。\nTask ID: ${newTaskId}（保持不变）\n纠正指令: ${correction}\n状态: 重新运行中`;
         } catch (err) {
           return `纠偏失败: ${err instanceof Error ? err.message : String(err)}`;
         }
@@ -281,7 +303,11 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
     },
     {
       name: 'resume_agent',
-      description: '恢复一个 idle 状态的 session 模式子 Agent。仅适用于以 mode:"session" 创建的子 Agent，完成后进入 idle 状态可被 resume。',
+      description: `恢复一个 idle 状态的 session 模式子 Agent。仅适用于以 mode:"session" 创建且当前处于 idle 状态的子 Agent。
+
+何时用 resume（而非 spawn 新的）：
+- 上一轮结果需要迭代改进 → resume（延续上下文）
+- 全新任务 → spawn 新 agent（避免上下文污染）`,
       parameters: {
         type: 'object',
         properties: {
@@ -307,7 +333,7 @@ export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] 
     },
     {
       name: 'yield_agents',
-      description: '让出当前轮次，等待子 Agent 完成。创建子 Agent 后调用此工具，系统会在子 Agent 完成时自动将结果推送给你。不要轮询 list_agents，使用此工具等待即可。',
+      description: '让出当前轮次，等待子 Agent 完成。始终在 spawn_agent/decompose_task 后调用此工具。不要用 list_agents 轮询——推送式通知会自动将结果送达。',
       parameters: {
         type: 'object',
         properties: {},

@@ -90,6 +90,11 @@ describe('SubAgentSpawner', () => {
       '回调测试',              // task
       expect.any(String),     // result
       true,                    // success
+      expect.objectContaining({  // notification (结构化通知)
+        status: 'completed',
+        success: true,
+        durationMs: expect.any(Number),
+      }),
     );
   });
 });

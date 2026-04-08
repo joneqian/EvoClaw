@@ -214,14 +214,15 @@ describe('IncrementalPersister', () => {
     expect(store.rows.length).toBe(0);
   });
 
-  it('tool_result 消息的 content 使用占位文本', () => {
+  it('tool_result 消息的 content 使用工具结果摘要（非占位符）', () => {
     const persister = new IncrementalPersister(store as any, 'agent-1', 'session-1');
 
     persister.persistTurn(0, [makeToolResultMsg('tu-1', 'File content here')]);
     persister.flush();
 
-    // tool_result 没有 text block，content 应为占位符
-    expect(store.rows[0]!.content).toContain('[user message with');
+    // tool_result 没有 text block，content 应为可读摘要而非 [xxx message with N blocks] 占位符
+    expect(store.rows[0]!.content).toBe('[工具结果] File content here');
+    expect(store.rows[0]!.content).not.toMatch(/\[\w+ message with \d+ blocks\]/);
 
     persister.dispose();
   });

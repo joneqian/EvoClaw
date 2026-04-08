@@ -3,9 +3,20 @@
  */
 import { describe, it, expect } from 'vitest';
 import { trySessionMemoryCompact, DEFAULT_SM_COMPACT_CONFIG } from '../../agent/kernel/session-memory-compact.js';
-import type { SMCompactConfig, MemoryQueryFn } from '../../agent/kernel/session-memory-compact.js';
+import type { SMCompactConfig, MemoryQueryFn, EstimateTokensFn } from '../../agent/kernel/session-memory-compact.js';
 import type { KernelMessage } from '../../agent/kernel/types.js';
 import type { MemoryUnit } from '@evoclaw/shared';
+
+/** 简单 token 估算（chars / 4） */
+const mockEstimateTokens: EstimateTokensFn = (messages) => {
+  let chars = 0;
+  for (const msg of messages) {
+    for (const block of msg.content) {
+      if (block.type === 'text') chars += block.text.length;
+    }
+  }
+  return Math.ceil(chars / 4);
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -61,7 +72,7 @@ function generateLongMessages(count: number): KernelMessage[] {
 describe('trySessionMemoryCompact', () => {
   it('returns success=false when no memories exist', () => {
     const messages = generateLongMessages(10);
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn([]));
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn([]), mockEstimateTokens);
     expect(result.success).toBe(false);
     expect(result.reason).toContain('无已提取的记忆');
   });
@@ -69,7 +80,7 @@ describe('trySessionMemoryCompact', () => {
   it('returns success=false when memories are too few', () => {
     const messages = generateLongMessages(10);
     const shortMemory = makeMemory({ l1Overview: 'short', l0Index: 'x' });
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn([shortMemory]));
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn([shortMemory]), mockEstimateTokens);
     expect(result.success).toBe(false);
     expect(result.reason).toContain('记忆摘要过短');
   });
@@ -82,7 +93,7 @@ describe('trySessionMemoryCompact', () => {
 
     // Use smaller config so keep window doesn't cover all messages
     const config: SMCompactConfig = { minTokens: 2000, minTextBlockMessages: 3, maxTokens: 5000 };
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), config);
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), mockEstimateTokens, config);
     expect(result.success).toBe(true);
     expect(result.messages.length).toBeGreaterThan(0);
     expect(result.messages.length).toBeLessThan(60); // compressed
@@ -103,7 +114,7 @@ describe('trySessionMemoryCompact', () => {
     );
 
     const config: SMCompactConfig = { minTokens: 500, minTextBlockMessages: 2, maxTokens: 2000 };
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), config);
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), mockEstimateTokens, config);
     expect(result.success).toBe(true);
     expect(result.messages.length).toBeLessThan(60);
     expect(result.messages.length).toBeGreaterThan(1); // at least summary + some kept
@@ -124,7 +135,7 @@ describe('trySessionMemoryCompact', () => {
     );
 
     const config: SMCompactConfig = { minTokens: 1, minTextBlockMessages: 1, maxTokens: 100_000 };
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), config);
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), mockEstimateTokens, config);
 
     if (result.success) {
       // Should not include messages before the compact boundary
@@ -142,7 +153,7 @@ describe('trySessionMemoryCompact', () => {
       makeMemory({ l1Overview: `Memory entry ${i}: detailed description. ` + 'a'.repeat(200) }),
     );
 
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories));
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), mockEstimateTokens);
     expect(result.success).toBe(false);
     // startIndex=0 means we'd keep all messages, so SM compact is pointless
     expect(result.reason).toContain('无需压缩');
@@ -157,7 +168,7 @@ describe('trySessionMemoryCompact', () => {
     const messages = generateLongMessages(30);
     const config: SMCompactConfig = { minTokens: 2000, minTextBlockMessages: 3, maxTokens: 5000 };
 
-    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), config);
+    const result = trySessionMemoryCompact(messages, 'agent-1', 'session-1', makeQueryFn(memories), mockEstimateTokens, config);
     expect(result.success).toBe(true);
 
     const summaryText = (result.messages[0]!.content[0] as { type: 'text'; text: string }).text;

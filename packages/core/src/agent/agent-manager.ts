@@ -94,11 +94,31 @@ export class AgentManager {
 
   /** 删除 Agent */
   deleteAgent(id: string): void {
-    this.store.run('DELETE FROM agents WHERE id = ?', id);
+    // 部分 migration（018/019/020）的子表 FK 没有 ON DELETE CASCADE，
+    // 如果不先手动清理就直接 DELETE FROM agents 会触发 FOREIGN KEY constraint failed。
+    // 在事务里把这些子表的关联行先删掉，再删 agent 本身（其他有 CASCADE 的表会自动连带）。
+    this.store.transaction(() => {
+      this.cleanupNonCascadedChildRows(id);
+      this.store.run('DELETE FROM agents WHERE id = ?', id);
+    });
+
     // 删除整个 Agent 目录 (包含 workspace/ 和其他可能的子目录)
     const agentDir = path.join(this.agentsBaseDir, id);
     if (fs.existsSync(agentDir)) {
       fs.rmSync(agentDir, { recursive: true, force: true });
+    }
+  }
+
+  /** 清理无 ON DELETE CASCADE 的子表行（与 deleteAgent 同事务调用） */
+  private cleanupNonCascadedChildRows(agentId: string): void {
+    // 表名 → 是否存在（避免老库 / 测试库未跑完所有 migration 的情况）
+    const TABLES = ['consolidation_log', 'session_summaries', 'usage_tracking'] as const;
+    for (const table of TABLES) {
+      try {
+        this.store.run(`DELETE FROM ${table} WHERE agent_id = ?`, agentId);
+      } catch {
+        // 表不存在或老 schema 字段缺失 — 忽略，让主删除继续
+      }
     }
   }
 

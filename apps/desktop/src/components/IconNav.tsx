@@ -3,6 +3,7 @@
  */
 
 import { NavLink } from 'react-router-dom';
+import { useSopStore } from '../stores/sop-store';
 
 // ─── SVG Icon 组件 ───
 
@@ -23,6 +24,7 @@ const ICON_PATHS = {
   experts: ['M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z'],
   cron: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z',
   tasks: ['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'],
+  sopTags: ['M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z', 'M6 6h.008v.008H6V6z'],
   connect: ['M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244'],
   memory: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z',
   shield: ['M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'],
@@ -37,6 +39,7 @@ const NAV_ITEMS = [
   { path: '/memory', icon: ICON_PATHS.memory, label: '记忆' },
   { path: '/cron', icon: ICON_PATHS.cron, label: '定时任务' },
   { path: '/tasks', icon: ICON_PATHS.tasks, label: '后台任务' },
+  { path: '/sop-tags', icon: ICON_PATHS.sopTags, label: 'SOP 标签' },
   { path: '/channel', icon: ICON_PATHS.connect, label: '连接' },
   { path: '/security', icon: ICON_PATHS.shield, label: '安全中心' },
 ] as const;
@@ -49,6 +52,9 @@ function isChatRoute(pathname: string): boolean {
 }
 
 export default function IconNav(_props: IconNavProps) {
+  // 全局监听 SOP 草稿生成状态 — 用户离开 SOP 页后仍能感知到后台进度
+  const sopGenerating = useSopStore((s) => s.generating);
+
   return (
     <nav className="w-[88px] bg-[#fafafa] border-r border-slate-200/60 flex flex-col items-center shrink-0 select-none">
       {/* 顶部品牌 logo + 拖拽区域 */}
@@ -63,23 +69,34 @@ export default function IconNav(_props: IconNavProps) {
 
       {/* 导航项 */}
       <div className="flex-1 flex flex-col items-center gap-2 px-1.5 pt-1">
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) => {
-              const active = isActive || (item.path === '/chat' && isChatRoute(window.location.pathname));
-              return `w-[76px] flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl transition-all duration-150 ${
-                active
-                  ? 'bg-brand/10 text-brand-active'
-                  : 'text-slate-700 hover:bg-slate-100'
-              }`;
-            }}
-          >
-            <Icon d={item.icon} className="w-6 h-6" />
-            <span className="text-xs leading-tight font-medium">{item.label}</span>
-          </NavLink>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const showSpinner = item.path === '/sop-tags' && sopGenerating;
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) => {
+                const active = isActive || (item.path === '/chat' && isChatRoute(window.location.pathname));
+                return `relative w-[76px] flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl transition-all duration-150 ${
+                  active
+                    ? 'bg-brand/10 text-brand-active'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`;
+              }}
+            >
+              <div className="relative">
+                <Icon d={item.icon} className="w-6 h-6" />
+                {showSpinner && (
+                  <span
+                    className="absolute -top-1 -right-1 w-3 h-3 border-2 border-brand/30 border-t-brand rounded-full animate-spin"
+                    title="AI 正在生成 SOP 标签草稿"
+                  />
+                )}
+              </div>
+              <span className="text-xs leading-tight font-medium">{item.label}</span>
+            </NavLink>
+          );
+        })}
       </div>
     </nav>
   );

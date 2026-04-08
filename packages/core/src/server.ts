@@ -21,6 +21,9 @@ import { createSecurityRoutes } from './routes/security.js';
 import { createSecurityPolicyRoutes } from './routes/security-policy.js';
 import { createExtensionPackRoutes } from './routes/extension-pack-routes.js';
 import { createKnowledgeRoutes } from './routes/knowledge.js';
+import { createSopRoutes } from './routes/sop.js';
+import { SopDocStore } from './sop/sop-doc-store.js';
+import { SopTagStore } from './sop/sop-tag-store.js';
 import { VectorStore } from './infrastructure/db/vector-store.js';
 import { createEmbeddingProvider } from './rag/embedding-provider.js';
 import { createSkillRoutes } from './routes/skill.js';
@@ -337,6 +340,23 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/system-events', createSystemEventRoutes());
     app.route('/tasks', createTaskRoutes());
     app.route('/binding', createBindingRoutes(store));
+    // SOP 标签设计临时功能 — 文件存储，独立于知识库
+    // /draft/generate 走单次 callLLM 调用（非流式、非 agent loop），避免 60s auto-background 与 idleTimeout 切流
+    // timeoutMs 设 5 分钟：reasoning 模型（GLM-5/Claude thinking）+ 大段 JSON 输出，
+    // 默认 60s 不够。Bun.serve idleTimeout 已设 255s，前端 fetch 无超时，全链路放行。
+    const sopLlmCall = configManager
+      ? (system: string, user: string) => callLLM(configManager, {
+          systemPrompt: system,
+          userMessage: user,
+          maxTokens: 8192,
+          timeoutMs: 300_000,
+        })
+      : undefined;
+    app.route('/sop', createSopRoutes({
+      docStore: new SopDocStore(),
+      tagStore: new SopTagStore(),
+      llmCall: sopLlmCall,
+    }));
     if (channelManager) {
       app.route('/channel', createChannelRoutes(channelManager, bindingRouter, channelStateRepo));
     }
@@ -887,6 +907,10 @@ async function main() {
         },
         port,
         hostname: '127.0.0.1',
+        // SSE 流式 chat 端点 + reasoning 模型（GLM-5/Claude thinking 等）首 token 延迟可能 >10s，
+        // Bun 默认 idleTimeout=10s 会导致流被切断 → 前端只收到部分事件，agent_done 永远不到。
+        // Bun 限制 idleTimeout 上限 255 秒，取最大值。Agent 自身有 90s 看门狗保护，不会真挂死。
+        idleTimeout: 255,
       });
       actualPort = server.port;
     } else {

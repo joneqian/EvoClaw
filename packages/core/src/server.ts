@@ -59,7 +59,7 @@ import {
   closeLogger,
   LOG_PATH,
 } from './infrastructure/logger.js';
-import { callLLM } from './agent/llm-client.js';
+import { callLLM, callLLMSecondaryCached } from './agent/llm-client.js';
 import { registerProvider, registerFromExtension } from './provider/provider-registry.js';
 import { getProviderExtension } from './provider/extensions/index.js';
 import { HybridSearcher } from './memory/hybrid-searcher.js';
@@ -1056,8 +1056,9 @@ async function main() {
   decayScheduler.start();
 
   const memoryDataDir = path.join(os.homedir(), DEFAULT_DATA_DIR);
+  // 记忆整合使用 cache 优化的二级模型调用（summarize 类型 → 固定 system prompt → cache 命中）
   const llmCallForConsolidation = (system: string, user: string) =>
-    callLLM(configManager, { systemPrompt: system, userMessage: user });
+    callLLMSecondaryCached(configManager, 'summarize', user, { appendToSystem: system });
   consolidator = new MemoryConsolidator(db, llmCallForConsolidation, memoryDataDir, undefined, ftsStore);
   consolidator.start();
   log.info('DecayScheduler + MemoryConsolidator 已启动');

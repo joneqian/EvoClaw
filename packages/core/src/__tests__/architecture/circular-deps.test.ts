@@ -23,15 +23,18 @@ function scanTsFiles(dir: string): string[] {
   return results;
 }
 
-/** 提取 import 路径 */
+/** 提取 import 路径（排除 `import type` — type-only 不产生运行时依赖） */
 function extractImports(filePath: string): string[] {
   const content = fs.readFileSync(filePath, 'utf-8');
   const imports: string[] = [];
 
-  // 静态 import: import ... from '...'
+  // 静态 import: import ... from '...'（排除 import type）
   const staticRe = /import\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g;
   let m: RegExpExecArray | null;
   while ((m = staticRe.exec(content))) {
+    // 跳过 import type 和 import { type ... } 形式
+    const fullMatch = m[0];
+    if (/^import\s+type\s/.test(fullMatch)) continue;
     imports.push(m[1]);
   }
 
@@ -41,9 +44,11 @@ function extractImports(filePath: string): string[] {
     imports.push(m[1]);
   }
 
-  // export ... from '...'
+  // export ... from '...'（排除 export type）
   const reExportRe = /export\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g;
   while ((m = reExportRe.exec(content))) {
+    const fullMatch = m[0];
+    if (/^export\s+type\s/.test(fullMatch)) continue;
     imports.push(m[1]);
   }
 

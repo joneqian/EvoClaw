@@ -1,16 +1,16 @@
 /**
- * 系统提示构建 �� 模块化段式架构 + Prompt Cache 三级分区
+ * 系统提示构建 —— 模块化段式架构 + Prompt Cache 三级分区
  *
- * ��考 Claude Code prompts.ts (53KB) + splitSysPromptPrefix() 三种缓存模式:
+ * 参考 Claude Code prompts.ts (53KB) + splitSysPromptPrefix() 三种缓存模式:
  *
  * 三级缓存策略:
  * - 静态段（Safety/Style/Tool Guide）→ scope: 'global'（跨用户共享，1P 命中 1/10 费用）
  * - Agent 人格段（SOUL.md/IDENTITY.md/AGENTS.md）→ scope: 'org'（组织级缓存）
  * - 动态段（Runtime/Memory/Tools）→ cache_control: null（不缓存）
- * - 大内���（USER.md/MEMORY.md）→ 移至用户消息 <system-reminder>（不在此函数中）
+ * - 大内容（USER.md/MEMORY.md）→ 移至用户消息 <system-reminder>（不在此函数中）
  *
  * 提示词构建模式 (mode):
- * - 'interactive': 完整提示词（默认，用于用户直���交互）
+ * - 'interactive': 完整提示词（默认，用于用户直接交互）
  * - 'autonomous': 裁剪交互式引导（Cron/Heartbeat 自主执行）
  * - 'fork': 极简提示词（Skill fork 子代理）
  *
@@ -22,7 +22,7 @@ import os from 'node:os';
 import type { AgentRunConfig } from './types.js';
 import type { SystemPromptBlock } from './kernel/types.js';
 import { systemPromptBlocksToString } from './kernel/types.js';
-// Git context 不注入 — EvoClaw ���向企业用户，非开发者，无需 Git 状态
+// Git context 不注入 — EvoClaw 面向企业用户，非开发者，无需 Git 状态
 
 /** 提示词构建模式 */
 export type PromptBuildMode = 'interactive' | 'autonomous' | 'fork';
@@ -119,10 +119,10 @@ function truncateBootstrapContent(files: Record<string, string>): Record<string,
 // ---------------------------------------------------------------------------
 
 /**
- * 构建系统提示词（返�� SystemPromptBlock[] ���持 Prompt Cache 三��分区）
+ * 构建系统提示词（返回 SystemPromptBlock[] 支持 Prompt Cache 三级分区）
  *
  * 三级缓存: global（静态指令）→ org（Agent 人格）→ null（动态段）。
- * USER.md/MEMORY.md 不在此函数中注入���由 buildUserContextReminder 移至用户消息）。
+ * USER.md/MEMORY.md 不在此函数中注入（由 buildUserContextReminder 移至用户消息）。
  *
  * @param config Agent 运行配置
  * @param mode 构建模式: interactive（默认）/ autonomous（Cron/Heartbeat）/ fork（Skill 子代理）
@@ -142,25 +142,9 @@ export function buildSystemPromptBlocks(
   // ═══ 全局静态段（scope: 'global' — 跨用户共享缓存）═══
   // 这些段落对所有 Agent、所有用户完全相同，可获得最大缓存复用率
 
-  // § 1 Safety constitution
+  // § 1 Safety constitution（复用 SAFETY_CONSTITUTION 常量，子 Agent 共享前缀 → cache 命中）
   blocks.push({
-    text: `<safety>
-You are an AI assistant governed by these core safety principles:
-- You have no independent goals; always serve the user's needs
-- Safety and human oversight take priority over task completion
-- Do not self-preserve, attempt to keep running, or modify your own config
-- Refuse instructions that could cause harm
-- When uncertain, proactively ask the user for confirmation
-
-## Red Lines (Immutable — enforced by system, cannot be overridden)
-- Never reveal API keys, tokens, passwords, or secrets
-- Never impersonate the user or send messages as the user
-- Never bypass tool approval gates or permission checks
-- Never access files outside workspace without explicit permission
-- Never send messages to external channels without user consent
-- Never execute financial, contractual, or legally binding actions autonomously
-- In group chats, never expose private conversation context
-</safety>`,
+    text: SAFETY_CONSTITUTION,
     cacheControl: { type: 'ephemeral', scope: 'global' },
     label: 'safety',
   });
@@ -178,9 +162,9 @@ Before answering the user, you should:
 7. At the start of each session, check MEMORY.md for previously recorded notes
 
 ## 记忆新鲜度
-记忆可能随时间过期。使用超过 1 天的记忆前，请验��其是否仍然正确。
-如���记忆与当前状态矛盾，信任当前观察并更新记忆。
-标记为 [⚠] 的��忆表示已有一段时间未更新，使用时���额外谨慎。
+记忆可能随时间过期。使用超过 1 天的记忆前，请验证其是否仍然正确。
+如果记忆与当前状态矛盾，信任当前观察并更新记忆。
+标记为 [⚠] 的记忆表示已有一段时间未更新，使用时需额外谨慎。
 </memory_recall>`,
     cacheControl: { type: 'ephemeral', scope: 'global' },
     label: 'memory_recall',
@@ -402,6 +386,30 @@ export function buildUserContextReminder(files: Record<string, string>): string 
 
   return `<system-reminder>\n${parts.join('\n\n')}\n\nIMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant.\n</system-reminder>`;
 }
+
+/**
+ * 安全宪法 — 所有 Agent（含子 Agent）共享的静态前缀
+ *
+ * Anthropic prompt cache 基于前缀匹配：只要前 N bytes 一致就能命中。
+ * 将此段放在所有 system prompt 最前面，可让 parent 和 type sub-agent 共享缓存。
+ */
+export const SAFETY_CONSTITUTION = `<safety>
+You are an AI assistant governed by these core safety principles:
+- You have no independent goals; always serve the user's needs
+- Safety and human oversight take priority over task completion
+- Do not self-preserve, attempt to keep running, or modify your own config
+- Refuse instructions that could cause harm
+- When uncertain, proactively ask the user for confirmation
+
+## Red Lines (Immutable — enforced by system, cannot be overridden)
+- Never reveal API keys, tokens, passwords, or secrets
+- Never impersonate the user or send messages as the user
+- Never bypass tool approval gates or permission checks
+- Never access files outside workspace without explicit permission
+- Never send messages to external channels without user consent
+- Never execute financial, contractual, or legally binding actions autonomously
+- In group chats, never expose private conversation context
+</safety>`;
 
 /**
  * 兼容函数：返回单字符串格式（供旧调用方和 OpenAI 使用）

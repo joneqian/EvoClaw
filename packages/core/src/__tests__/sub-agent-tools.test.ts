@@ -103,10 +103,11 @@ describe('子 Agent 工具集', () => {
     spawner = new SubAgentSpawner(makeConfig(), queue, 0);
   });
 
-  it('应该返回 6 个工具', () => {
+  it('应该返回 7 个工具', () => {
     const tools = createSubAgentTools(spawner);
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(7);
     const names = tools.map(t => t.name);
+    expect(names).toContain('decompose_task');
     expect(names).toContain('spawn_agent');
     expect(names).toContain('list_agents');
     expect(names).toContain('kill_agent');
@@ -428,5 +429,121 @@ describe('Sprint 15.7: Session 模式', () => {
     // session 模式的 steer 返回原 taskId（因为用 resume）
     expect(newTaskId).toBe(taskId);
     expect(entry.status).toBe('running');
+  });
+});
+
+// ─── decompose_task 工具测试 ───
+
+describe('decompose_task 工具', () => {
+  let queue: LaneQueue;
+  let spawner: SubAgentSpawner;
+
+  beforeEach(() => {
+    queue = new LaneQueue();
+    spawner = new SubAgentSpawner(makeConfig(), queue, 0);
+  });
+
+  it('应成功创建多个并行子 Agent', async () => {
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    const result = await decompose.execute({
+      subtasks: [
+        { task: '搜索竞品信息', subagent_type: 'researcher' },
+        { task: '分析销售数据', subagent_type: 'analyst' },
+        { task: '撰写报告', subagent_type: 'writer' },
+      ],
+    });
+
+    expect(result).toContain('3 个子 Agent 已启动');
+    expect(result).toContain('[researcher]');
+    expect(result).toContain('[analyst]');
+    expect(result).toContain('[writer]');
+    // mock runEmbeddedAgent 立即完成，activeCount 可能已降为 0
+    // 验证 list 中有 3 条记录即可
+    expect(spawner.list()).toHaveLength(3);
+  });
+
+  it('空 subtasks 应返回错误', async () => {
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    const result = await decompose.execute({ subtasks: [] });
+    expect(result).toContain('错误');
+  });
+
+  it('缺少 subtasks 应返回错误', async () => {
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    const result = await decompose.execute({});
+    expect(result).toContain('错误');
+  });
+
+  it('超过 5 个子任务应返回错误', async () => {
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    const subtasks = Array.from({ length: 6 }, (_, i) => ({
+      task: `任务 ${i + 1}`,
+    }));
+    const result = await decompose.execute({ subtasks });
+    expect(result).toContain('最多 5 个');
+  });
+
+  it('默认 subagent_type 为 general', async () => {
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    const result = await decompose.execute({
+      subtasks: [
+        { task: '通用任务' },
+      ],
+    });
+
+    expect(result).toContain('[general]');
+    expect(result).toContain('1 个子 Agent 已启动');
+  });
+
+  it('部分 spawn 失败时应报告成功和失败数', async () => {
+    // 先占满子 Agent 额度（最多 5 个）
+    for (let i = 0; i < 4; i++) {
+      spawner.spawn(`占位任务 ${i}`);
+    }
+    expect(spawner.activeCount).toBe(4);
+
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    // 尝试创建 3 个 → 只有 1 个能成功（第 5 个），其余超限
+    const result = await decompose.execute({
+      subtasks: [
+        { task: '应成功', subagent_type: 'researcher' },
+        { task: '应失败 1', subagent_type: 'writer' },
+        { task: '应失败 2', subagent_type: 'analyst' },
+      ],
+    });
+
+    expect(result).toContain('1 个子 Agent 已启动');
+    expect(result).toContain('2 个失败');
+    expect(result).toContain('最大子代数');
+  });
+
+  it('context 参数应传递给子 Agent', async () => {
+    const tools = createSubAgentTools(spawner);
+    const decompose = tools.find(t => t.name === 'decompose_task')!;
+
+    const result = await decompose.execute({
+      subtasks: [
+        { task: '带上下文的任务', context: '额外上下文信息', subagent_type: 'researcher' },
+      ],
+    });
+
+    // decompose_task 调用 spawner.spawn(task, context, ...)
+    // spawn 是异步的，但 spawner.list() 同步可见
+    expect(result).toContain('1 个子 Agent 已启动');
+    const list = spawner.list();
+    expect(list).toHaveLength(1);
+    expect(list[0]!.task).toBe('带上下文的任务');
   });
 });

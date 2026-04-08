@@ -111,7 +111,7 @@ export interface AttemptResult {
   toolCalls: ToolCallRecord[];
 }
 
-/** Agent 事件类型 */
+/** Agent ��件类型 */
 export type RuntimeEventType =
   | 'queued'
   | 'agent_start'
@@ -129,7 +129,10 @@ export type RuntimeEventType =
   | 'compaction_end'
   | 'usage'
   | 'stream_metrics'
-  | 'tombstone';
+  | 'tombstone'
+  | 'subagent_progress'
+  | 'auto_backgrounded'
+  | 'subagent_notification';
 
 /** Agent 运行时事件 */
 export interface RuntimeEvent {
@@ -160,6 +163,35 @@ export interface RuntimeEvent {
     totalTokens: number;
     estimatedCostMilli: number;
     turnCount: number;
+  };
+  /** 子 Agent 进度（type='subagent_progress' 时） */
+  subagentProgress?: {
+    taskId: string;
+    agentType?: string;
+    task: string;
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
+    progress: {
+      toolUseCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      recentActivities: Array<{ toolName: string; timestamp: number }>;
+      durationMs: number;
+    };
+  };
+  /** 子 Agent 完成通知（type='subagent_notification' 时） */
+  subagentNotification?: {
+    taskId: string;
+    agentType?: string;
+    task: string;
+    success: boolean;
+    result?: string;
+    durationMs: number;
+  };
+  /** 自动后台化信息（type='auto_backgrounded' 时） */
+  autoBackgrounded?: {
+    taskId: string;
+    reason: 'timeout';
+    elapsedMs: number;
   };
   /** 流式指标（type='stream_metrics' 时） */
   streamMetrics?: {

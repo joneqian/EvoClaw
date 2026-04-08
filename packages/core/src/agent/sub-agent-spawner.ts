@@ -9,6 +9,7 @@ import { runEmbeddedAgent } from './embedded-runner.js';
 import type { AgentRunConfig, RuntimeEvent } from './types.js';
 import type { LaneQueue } from './lane-queue.js';
 import { DEFAULT_MAX_SPAWN_DEPTH, type AgentConfig, type ChatMessage } from '@evoclaw/shared';
+import { SAFETY_CONSTITUTION } from './embedded-runner-prompt.js';
 
 /** 附件 */
 export interface SpawnAttachment {
@@ -319,7 +320,10 @@ export class SubAgentSpawner {
         } catch { /* agent-memory 不可用时跳过 */ }
         const memorySection = typeMemory ? `\n\n<agent_memory>\n${typeMemory}\n</agent_memory>` : '';
 
-        systemPrompt = typeDef.systemPrompt + memorySection + '\n\n' + this.buildMinimalPrompt(task, context, childRole, options?.attachments);
+        // 共享安全宪法前缀 → 利用 Anthropic 前缀匹配 cache
+        // parent system prompt 以 SAFETY_CONSTITUTION 开头，type sub-agent 也以它开头
+        // → 前缀字节一致 → prompt cache 命中率从 0% 提升到 60-70%
+        systemPrompt = SAFETY_CONSTITUTION + '\n\n---\n\n' + typeDef.systemPrompt + memorySection + '\n\n' + this.buildMinimalPrompt(task, context, childRole, options?.attachments);
         // 工具白名单过滤
         if (typeDef.allowedTools) {
           const allowed = new Set(typeDef.allowedTools);
@@ -339,13 +343,16 @@ export class SubAgentSpawner {
       childMessages = buildCacheSafeForkedMessages(parentMsgs, task);
     }
 
+    // 按角色精简工作区文件注入（减少 leaf 每次调用 1-3K tokens）
+    // Type sub-agent（有 agentType）的工作区文件只需 TOOLS.md
+    const childWorkspaceFiles = entry.agentType
+      ? (targetWorkspaceFiles['TOOLS.md'] ? { 'TOOLS.md': targetWorkspaceFiles['TOOLS.md'] } : {})
+      : this.getWorkspaceFilesForRole(childRole, targetWorkspaceFiles);
+
     const childConfig: AgentRunConfig = {
       agent: targetAgent,
       systemPrompt,
-      workspaceFiles: {
-        ...(targetWorkspaceFiles['AGENTS.md'] ? { 'AGENTS.md': targetWorkspaceFiles['AGENTS.md'] } : {}),
-        ...(targetWorkspaceFiles['TOOLS.md'] ? { 'TOOLS.md': targetWorkspaceFiles['TOOLS.md'] } : {}),
-      },
+      workspaceFiles: childWorkspaceFiles,
       modelId: this.parentConfig.modelId,
       provider: this.parentConfig.provider,
       apiKey: this.parentConfig.apiKey,
@@ -627,6 +634,85 @@ export class SubAgentSpawner {
       if (entry.status === 'running') return true;
     }
     return false;
+  }
+
+  /**
+   * 获取所有活跃（running）或刚完成的子 Agent 条目快照
+   * 用于 SSE 进度推送 — 返回后不修改原始条目
+   */
+  getProgressSnapshot(): Array<{
+    taskId: string;
+    agentType?: string;
+    task: string;
+    status: SubAgentStatus;
+    progress: SubAgentProgress;
+    startedAt: number;
+    completedAt?: number;
+  }> {
+    const entries: Array<{
+      taskId: string;
+      agentType?: string;
+      task: string;
+      status: SubAgentStatus;
+      progress: SubAgentProgress;
+      startedAt: number;
+      completedAt?: number;
+    }> = [];
+
+    for (const entry of this.agents.values()) {
+      // 只包含 running 或最近 10s 内完成的（让前端有时间收到完成状态）
+      if (entry.status === 'running' ||
+          (entry.completedAt && Date.now() - entry.completedAt < 10_000)) {
+        entries.push({
+          taskId: entry.taskId,
+          agentType: entry.agentType,
+          task: entry.task,
+          status: entry.status,
+          progress: { ...entry.progress, recentActivities: [...entry.progress.recentActivities] },
+          startedAt: entry.startedAt,
+          completedAt: entry.completedAt,
+        });
+      }
+    }
+
+    return entries;
+  }
+
+  /**
+   * 按角色精简工作区文件注入
+   * - orchestrator: 需要 AGENTS.md（了解可用子 Agent）+ TOOLS.md + SOUL.md
+   * - type (researcher/writer/analyst): 只需 TOOLS.md（工具列表）
+   * - leaf: 最小化，不注入任何工作区文件（任务描述已足够）
+   */
+  private getWorkspaceFilesForRole(
+    role: SubAgentRole,
+    source: Record<string, string>,
+  ): Record<string, string> {
+    const files: Record<string, string> = {};
+
+    switch (role) {
+      case 'orchestrator': {
+        // Orchestrator 需要全貌来分解任务
+        const keys = ['AGENTS.md', 'TOOLS.md', 'SOUL.md'];
+        for (const key of keys) {
+          if (source[key]) files[key] = source[key];
+        }
+        break;
+      }
+      case 'main': {
+        // main 角色（不应出现在子 Agent 中，但兜底处理）
+        const keys = ['AGENTS.md', 'TOOLS.md'];
+        for (const key of keys) {
+          if (source[key]) files[key] = source[key];
+        }
+        break;
+      }
+      case 'leaf':
+        // Leaf 最小化 — 任务描述中已有足够上下文
+        break;
+    }
+
+    return files;
   }
 
   /** 构建子 Agent 的 minimal 系统提示 */

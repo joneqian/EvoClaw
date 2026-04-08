@@ -14,7 +14,6 @@
 import crypto from 'node:crypto';
 import type { KernelMessage } from './types.js';
 import type { MemoryUnit, MemoryCategory } from '@evoclaw/shared';
-import { estimateTokens } from './context-compactor.js';
 import { adjustIndexForToolPairing } from './message-utils.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
@@ -84,11 +83,15 @@ export type MemoryQueryFn = (agentId: string, sessionKey: string) => MemoryUnit[
  * @param config SM Compact 配置
  * @returns 压缩结果（success=false 时消息列表为空数组）
  */
+/** Token 估算函数签名（依赖注入，避免循环导入 context-compactor） */
+export type EstimateTokensFn = (messages: readonly KernelMessage[]) => number;
+
 export function trySessionMemoryCompact(
   messages: readonly KernelMessage[],
   agentId: string,
   sessionKey: string,
   queryMemories: MemoryQueryFn,
+  estimateTokensFn: EstimateTokensFn,
   config: SMCompactConfig = DEFAULT_SM_COMPACT_CONFIG,
 ): SMCompactResult {
   // Step 1: 查询本 session 已提取的记忆
@@ -119,7 +122,7 @@ export function trySessionMemoryCompact(
 
   // Step 5: 构造输出
   const kept = messages.slice(startIndex);
-  const tokensFreed = estimateTokens(messages.slice(0, startIndex));
+  const tokensFreed = estimateTokensFn(messages.slice(0, startIndex));
 
   const summaryMessage: KernelMessage = {
     id: crypto.randomUUID(),

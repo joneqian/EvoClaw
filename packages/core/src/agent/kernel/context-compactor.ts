@@ -736,7 +736,7 @@ export async function maybeCompress(
   // ──── 优先级 1: Session Memory Compact（零 API 成本）────
   if (Feature.SESSION_MEMORY_COMPACT && _memoryQueryFn && config.agentId && config.sessionKey) {
     const smResult = trySessionMemoryCompact(
-      messages, config.agentId, config.sessionKey, _memoryQueryFn,
+      messages, config.agentId, config.sessionKey, _memoryQueryFn, estimateTokens,
     );
     if (smResult.success) {
       messages.length = 0;

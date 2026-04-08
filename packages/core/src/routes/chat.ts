@@ -838,11 +838,11 @@ export function createChatRoutes(
           durationMs: entry.durationMs,
         });
       },
-      // Tool Summary: 使用低成本模型生成工具调用摘要
+      // Tool Summary: 使用低成本模型 + cache_control 生成工具调用摘要
       toolSummaryGeneratorFn: configManager
-        ? async (system: string, user: string) => {
-            const { callLLM } = await import('../agent/llm-client.js');
-            return callLLM(configManager, { systemPrompt: system, userMessage: user, maxTokens: 256 });
+        ? async (_system: string, user: string) => {
+            const { callLLMSecondaryCached } = await import('../agent/llm-client.js');
+            return callLLMSecondaryCached(configManager, 'tool_summary', user, { maxTokens: 256 });
           }
         : undefined,
       // Compact 后置钩子: 持久化压缩边界 + 摘要
@@ -908,45 +908,146 @@ export function createChatRoutes(
     return streamSSE(c, async (stream) => {
       let fullResponse = '';
 
+      // ─── Sub-Agent 进度推送定时器 ───
+      let progressTimer: ReturnType<typeof setInterval> | undefined;
+      const startSubagentProgressPush = () => {
+        if (!spawner) return;
+        progressTimer = setInterval(async () => {
+          const snapshot = spawner!.getProgressSnapshot();
+          for (const entry of snapshot) {
+            try {
+              await stream.writeSSE({
+                data: JSON.stringify({
+                  type: 'subagent_progress',
+                  timestamp: Date.now(),
+                  subagentProgress: {
+                    taskId: entry.taskId,
+                    agentType: entry.agentType,
+                    task: entry.task.slice(0, 200),
+                    status: entry.status,
+                    progress: {
+                      ...entry.progress,
+                      durationMs: Date.now() - entry.startedAt,
+                    },
+                  },
+                }),
+              });
+            } catch { /* SSE 已关闭，忽略 */ }
+          }
+          // 推送完成通知
+          const announcements = spawner!.collectCompletedResults();
+          for (const a of announcements) {
+            const agentEntry = spawner!.get(a.taskId);
+            try {
+              await stream.writeSSE({
+                data: JSON.stringify({
+                  type: 'subagent_notification',
+                  timestamp: Date.now(),
+                  subagentNotification: {
+                    taskId: a.taskId,
+                    agentType: agentEntry?.agentType,
+                    task: a.task.slice(0, 200),
+                    success: a.success,
+                    result: a.result.slice(0, 1000),
+                    durationMs: agentEntry?.completedAt
+                      ? agentEntry.completedAt - agentEntry.startedAt
+                      : Date.now() - (agentEntry?.startedAt ?? Date.now()),
+                  },
+                }),
+              });
+            } catch { /* SSE 已关闭，忽略 */ }
+          }
+        }, 2000);
+      };
+      const stopSubagentProgressPush = () => {
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = undefined;
+        }
+      };
+
+      // ─── 自动后台化机制 ───
+      // 超过 autoBackgroundMs 后，停止向 SSE 推送事件（任务继续在后台完成）
+      // 前端收到 auto_backgrounded 事件后解锁输入框，用户可继续对话
+      const AUTO_BACKGROUND_MS = 60_000; // 60 秒
+      let isBackgrounded = false;
+      let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined;
+
       const runAgent = async (abortSignal?: AbortSignal) => {
-        await runEmbeddedAgent(runConfig, effectiveMessage, async (event) => {
-          if (event.type === 'text_delta' && event.delta) {
-            fullResponse += event.delta;
+        startSubagentProgressPush();
+
+        // 启动自动后台化计时器
+        autoBackgroundTimer = setTimeout(async () => {
+          if (!isBackgrounded) {
+            isBackgrounded = true;
+            stopSubagentProgressPush();
+            try {
+              await stream.writeSSE({
+                data: JSON.stringify({
+                  type: 'auto_backgrounded',
+                  timestamp: Date.now(),
+                  autoBackgrounded: {
+                    taskId: `chat-${agentId}`,
+                    reason: 'timeout' as const,
+                    elapsedMs: Date.now() - startTime,
+                  },
+                }),
+              });
+            } catch { /* SSE 已关闭 */ }
+            log.info(`[自动后台化] Agent ${agentId} 执行超过 ${AUTO_BACKGROUND_MS / 1000}s，已后台化 session=${sessionKey}`);
           }
-          // 成本追踪：捕获 usage 事件并持久化
-          if (event.type === 'usage' && event.usage && costTracker) {
-            costTracker.track({
-              agentId,
-              sessionKey,
-              channel: sessionKey.split(':')[2] ?? 'desktop',
-              provider: runConfig.provider,
-              model: runConfig.modelId,
-              inputTokens: event.usage.inputTokens,
-              outputTokens: event.usage.outputTokens,
-              cacheReadTokens: event.usage.cacheReadTokens,
-              cacheWriteTokens: event.usage.cacheWriteTokens,
-              callType: 'chat',
-              latencyMs: Date.now() - startTime,
-              turnCount: event.usage.turnCount,
-            });
-          }
-          // 破坏性操作标记注入 tool_start 事件
-          if (event.type === 'tool_start' && pendingDestructive && event.toolName === pendingDestructive.toolName) {
-            event.isDestructive = true;
-            pendingDestructive = null; // 消费一次
-          }
-          await stream.writeSSE({ data: JSON.stringify(event) });
-        }, abortSignal);
+        }, AUTO_BACKGROUND_MS);
+
+        try {
+          await runEmbeddedAgent(runConfig, effectiveMessage, async (event) => {
+            if (event.type === 'text_delta' && event.delta) {
+              fullResponse += event.delta;
+            }
+            // 成本追踪：始终捕获（即使已后台化，成本仍需记录）
+            if (event.type === 'usage' && event.usage && costTracker) {
+              costTracker.track({
+                agentId,
+                sessionKey,
+                channel: sessionKey.split(':')[2] ?? 'desktop',
+                provider: runConfig.provider,
+                model: runConfig.modelId,
+                inputTokens: event.usage.inputTokens,
+                outputTokens: event.usage.outputTokens,
+                cacheReadTokens: event.usage.cacheReadTokens,
+                cacheWriteTokens: event.usage.cacheWriteTokens,
+                callType: 'chat',
+                latencyMs: Date.now() - startTime,
+                turnCount: event.usage.turnCount,
+              });
+            }
+            // 后台化后不再向 SSE 推送常规事件（成本追踪除外）
+            if (isBackgrounded) return;
+            // 破坏性操作标记注入 tool_start 事件
+            if (event.type === 'tool_start' && pendingDestructive && event.toolName === pendingDestructive.toolName) {
+              event.isDestructive = true;
+              pendingDestructive = null; // 消费一次
+            }
+            await stream.writeSSE({ data: JSON.stringify(event) });
+          }, abortSignal);
+        } finally {
+          if (autoBackgroundTimer) clearTimeout(autoBackgroundTimer);
+          stopSubagentProgressPush();
+        }
       };
 
       if (laneQueue) {
         const runId = `chat-${crypto.randomUUID()}`;
         const abortController = new AbortController();
 
-        // SSE 连接关闭时，取消排队/中止运行
+        // SSE 连接关闭时：
+        // - 未后台化：取消排队/中止运行
+        // - 已后台化：不中止（任务继续执行，结果仍会写入 DB）
         stream.onAbort(() => {
-          abortController.abort();
-          laneQueue.cancel(runId);
+          if (!isBackgrounded) {
+            abortController.abort();
+            laneQueue.cancel(runId);
+          }
+          stopSubagentProgressPush();
         });
 
         // 通知前端已入队

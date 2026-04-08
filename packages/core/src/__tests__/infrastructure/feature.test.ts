@@ -134,7 +134,7 @@ describe('Feature Flag', () => {
   it('FEATURE_REGISTRY 应包含所有 Flag 的元数据', async () => {
     const { FEATURE_REGISTRY, FEATURE_NAMES } = await import('../../infrastructure/feature.js');
 
-    expect(FEATURE_NAMES.length).toBe(7);
+    expect(FEATURE_NAMES.length).toBe(8);
     for (const name of FEATURE_NAMES) {
       const meta = FEATURE_REGISTRY[name];
       expect(meta.desc).toBeTruthy();

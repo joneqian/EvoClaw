@@ -148,6 +148,69 @@ export function createSecondaryLLMCallFn(
     callLLMSecondary(configManager, { systemPrompt, userMessage, maxTokens: 4096 });
 }
 
+// ── ��助任务固定 System Prompt（启用 Prompt Cache） ──
+
+/**
+ * 辅助任务类型 → 固定 system prompt 映射
+ *
+ * 同类型的连续调用复用相同 system prompt 前缀 → Anthropic prompt cache 命中
+ * 预期收益：辅助调用占总 token 10-15%，cache 命中后输入成本降低 90%
+ */
+const AUXILIARY_SYSTEM_PROMPTS: Record<string, string> = {
+  summarize: `You are a concise summarization assistant.
+Extract the key points and produce a brief summary. Preserve factual accuracy.
+Output in the same language as the input.`,
+
+  extract: `You are a structured data extraction assistant.
+Extract the requested information from the input and return it in the specified format.
+Be precise and complete. Output in the same language as the input.`,
+
+  render: `You are a document rendering assistant.
+Generate well-formatted Markdown content based on the provided data and template.
+Follow the template structure precisely. Output in the same language as the input.`,
+
+  tool_summary: `You are a tool call summarization assistant.
+Given a tool name, arguments, and result, produce a one-line summary of what happened.
+Be concise and factual. Output in the same language as the input.`,
+};
+
+/**
+ * 使用固定 system prompt + cache_control 调用二级 LLM
+ *
+ * 相比 callLLMSecondary:
+ * - system prompt 从预定义常量中取（保证字节一致 → cache 命中）
+ * - Anthropic 协议自动附加 cache_control: ephemeral
+ * - 支持自定义 system prompt 附加内容（追加在固定前缀后面）
+ */
+export async function callLLMSecondaryCached(
+  configManager: ConfigManager,
+  taskType: keyof typeof AUXILIARY_SYSTEM_PROMPTS,
+  userMessage: string,
+  options?: { appendToSystem?: string; maxTokens?: number },
+): Promise<string> {
+  const basePrompt = AUXILIARY_SYSTEM_PROMPTS[taskType];
+  if (!basePrompt) {
+    // 未知类型，降级到普通调用
+    return callLLMSecondary(configManager, {
+      systemPrompt: options?.appendToSystem ?? '',
+      userMessage,
+      maxTokens: options?.maxTokens ?? 4096,
+    });
+  }
+
+  const blocks: Array<{ text: string; cacheControl?: { type: string; scope?: string } | null }> = [
+    // 固定前缀 — 启用 ephemeral cache
+    { text: basePrompt, cacheControl: { type: 'ephemeral' } },
+  ];
+
+  // 可选附加内容（如 Agent 特定上下文）— 不缓存
+  if (options?.appendToSystem) {
+    blocks.push({ text: options.appendToSystem, cacheControl: null });
+  }
+
+  return callLLMWithBlocks(configManager, blocks, userMessage, options?.maxTokens ?? 4096);
+}
+
 /** OpenAI Chat Completions 协议（非流式） */
 async function callOpenAI(
   baseUrl: string,

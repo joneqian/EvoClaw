@@ -7,9 +7,87 @@
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 
+/** 子任务定义（decompose_task 输入） */
+interface SubTaskDefinition {
+  task: string;
+  subagent_type?: string;
+  context?: string;
+}
+
 /** 创建子 Agent 工具集 */
 export function createSubAgentTools(spawner: SubAgentSpawner): ToolDefinition[] {
   return [
+    {
+      name: 'decompose_task',
+      description: `将一个复杂任务分解为多个并行子任务，自动创建对应类型的子 Agent 并行执行。
+比逐个 spawn_agent 更高效：一次调用即可启动多个子 Agent。
+适用场景：
+- "分析本月销售数据并生成报告" → researcher(查数据) + analyst(分析) + writer(写报告)
+- "搜索竞品信息并整理文档" → researcher(搜索A) + researcher(搜索B) + writer(整理)
+
+子 Agent 完成后会自动通知你。调用后请使用 yield_agents 等待结果。`,
+      parameters: {
+        type: 'object',
+        properties: {
+          subtasks: {
+            type: 'array',
+            description: '子任务列表（最多 5 个，会并行执行）',
+            items: {
+              type: 'object',
+              properties: {
+                task: { type: 'string', description: '子任务描述（要详细）' },
+                subagent_type: {
+                  type: 'string',
+                  enum: ['general', 'researcher', 'writer', 'analyst'],
+                  description: '子 Agent 类型（默认 general）',
+                },
+                context: { type: 'string', description: '补充上下文（可选）' },
+              },
+              required: ['task'],
+            },
+          },
+        },
+        required: ['subtasks'],
+      },
+      execute: async (args) => {
+        const subtasks = args['subtasks'] as SubTaskDefinition[];
+        if (!subtasks || !Array.isArray(subtasks) || subtasks.length === 0) {
+          return '错误：subtasks 不能为空';
+        }
+        if (subtasks.length > 5) {
+          return '错误：最多 5 个子任务（当前限制）';
+        }
+
+        const results: string[] = [];
+        const errors: string[] = [];
+
+        for (const sub of subtasks) {
+          try {
+            const taskId = spawner.spawn(sub.task, sub.context, undefined, {
+              agentType: sub.subagent_type ?? 'general',
+            });
+            results.push(`  ✓ [${sub.subagent_type ?? 'general'}] ${sub.task.slice(0, 80)} → ${taskId}`);
+          } catch (err) {
+            errors.push(`  ✗ [${sub.subagent_type ?? 'general'}] ${sub.task.slice(0, 80)} → ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        const lines = [
+          `任务分解完成：${results.length} 个子 Agent 已启动${errors.length > 0 ? `，${errors.length} 个失败` : ''}`,
+          '',
+          ...results,
+        ];
+        if (errors.length > 0) {
+          lines.push('', '失败：', ...errors);
+        }
+        lines.push(
+          '',
+          `活跃子 Agent: ${spawner.activeCount}/${5}`,
+          '使用 yield_agents 等待结果。',
+        );
+        return lines.join('\n');
+      },
+    },
     {
       name: 'spawn_agent',
       description: '创建一个子 Agent 来并行处理任务。子 Agent 会在后台执行，完成后结果会自动通知你。适用于可以拆分的独立子任务。创建后请使用 yield_agents 等待结果，不要轮询 list_agents。',

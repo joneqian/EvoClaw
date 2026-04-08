@@ -71,6 +71,20 @@ function ChatView() {
     resource: string;
     reason?: string;
   } | null>(null);
+  /** 子 Agent 完成通知（浮动 pill，12s 自动消失） */
+  const [subagentNotices, setSubagentNotices] = useState<Array<{
+    id: string;
+    taskId: string;
+    task: string;
+    status: 'completed' | 'failed' | 'cancelled';
+    success: boolean;
+    durationMs: number;
+    agentType?: string;
+  }>>([]);
+  /** 自动后台化提示 banner */
+  const [backgroundedNotice, setBackgroundedNotice] = useState<{
+    elapsedMs: number;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -277,6 +291,40 @@ function ChatView() {
                 case 'tombstone':
                   // 模型回退: 丢弃本轮 partial 内容，等待 fallback 模型重新填充
                   discardLastAssistantMessage();
+                  break;
+                case 'subagent_notification': {
+                  // 子 Agent 完成通知 — 浮动 pill（12s 自动消失）
+                  const n = payload.subagentNotification;
+                  if (n) {
+                    const noticeId = uid();
+                    setSubagentNotices(prev => [
+                      ...prev.slice(-4), // 最多保留 5 条
+                      {
+                        id: noticeId,
+                        taskId: n.taskId,
+                        task: n.task ?? '',
+                        status: n.status,
+                        success: !!n.success,
+                        durationMs: n.durationMs ?? 0,
+                        agentType: n.agentType,
+                      },
+                    ]);
+                    // 12 秒后自动移除
+                    setTimeout(() => {
+                      setSubagentNotices(prev => prev.filter(x => x.id !== noticeId));
+                    }, 12000);
+                  }
+                  break;
+                }
+                case 'subagent_progress':
+                  // 进度事件由任务面板展示，此处不占用聊天流
+                  break;
+                case 'auto_backgrounded':
+                  // 60s 自动后台化 — 显示一个轻量 banner，提醒用户可继续对话
+                  setBackgroundedNotice({
+                    elapsedMs: payload.autoBackgrounded?.elapsedMs ?? 0,
+                  });
+                  setTimeout(() => setBackgroundedNotice(null), 8000);
                   break;
                 case 'stream_metrics':
                 case 'usage':
@@ -575,6 +623,61 @@ function ChatView() {
               <div ref={messagesEndRef} />
             </div>
           </div>
+
+          {/* 子 Agent 完成通知 + 后台化 banner（浮动在输入区上方） */}
+          {(subagentNotices.length > 0 || backgroundedNotice) && (
+            <div className="shrink-0 px-6 pt-1 pb-0 flex flex-col gap-1.5 items-center">
+              {backgroundedNotice && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200
+                                rounded-full text-xs text-amber-700 shadow-sm">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Agent 已转后台运行（{(backgroundedNotice.elapsedMs / 1000).toFixed(0)}s），您可以继续对话</span>
+                  <button
+                    onClick={() => setBackgroundedNotice(null)}
+                    className="ml-1 text-amber-500 hover:text-amber-700"
+                    title="关闭"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+              {subagentNotices.map((n) => {
+                const isOk = n.success && n.status === 'completed';
+                const isCancelled = n.status === 'cancelled';
+                const colorCls = isOk
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  : isCancelled
+                  ? 'bg-slate-50 border-slate-200 text-slate-600'
+                  : 'bg-red-50 border-red-200 text-red-700';
+                const statusText = isOk ? '完成' : isCancelled ? '已取消' : '失败';
+                return (
+                  <div
+                    key={n.id}
+                    className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-xs shadow-sm max-w-full ${colorCls}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      isOk ? 'bg-emerald-500' : isCancelled ? 'bg-slate-400' : 'bg-red-500'
+                    }`} />
+                    <span className="truncate max-w-[320px]">
+                      子任务{statusText}：{n.task.slice(0, 60)}
+                    </span>
+                    <span className="text-slate-400 shrink-0">
+                      {(n.durationMs / 1000).toFixed(1)}s
+                    </span>
+                    <button
+                      onClick={() => setSubagentNotices(prev => prev.filter(x => x.id !== n.id))}
+                      className="ml-0.5 opacity-50 hover:opacity-100 shrink-0"
+                      title="关闭"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* 底部输入 */}
           <div className="px-6 pb-4 pt-2 shrink-0">

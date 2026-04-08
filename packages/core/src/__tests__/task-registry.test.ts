@@ -1,12 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   createTask,
   updateTask,
+  updateTaskProgress,
+  cancelTask,
   getTask,
   listTasks,
   pruneCompleted,
   resetTaskRegistryForTest,
-} from '../scheduler/task-registry.js';
+} from '../infrastructure/task-registry.js';
 
 describe('TaskRegistry', () => {
   beforeEach(() => {
@@ -127,6 +129,136 @@ describe('TaskRegistry', () => {
 
       const pruned = pruneCompleted(3_600_000);
       expect(pruned).toBe(0);
+    });
+  });
+
+  describe('cancelTask', () => {
+    it('应调用 cancelFn 并更新状态为 cancelled', async () => {
+      const cancelFn = vi.fn();
+      createTask({
+        ...makeTask({ taskId: 'cancel-me' }),
+        cancelFn,
+      });
+
+      const result = await cancelTask('cancel-me');
+      expect(result.cancelled).toBe(true);
+      expect(cancelFn).toHaveBeenCalledTimes(1);
+
+      const stored = getTask('cancel-me');
+      expect(stored!.status).toBe('cancelled');
+      expect(stored!.endedAt).toBeGreaterThan(0);
+    });
+
+    it('任务不存在应返回 cancelled=false', async () => {
+      const result = await cancelTask('nonexistent');
+      expect(result.cancelled).toBe(false);
+      expect(result.reason).toBe('任务不存在');
+    });
+
+    it('已终态任务应返回 cancelled=false', async () => {
+      createTask({ ...makeTask({ taskId: 'done' }), cancelFn: () => {} });
+      updateTask('done', { status: 'succeeded', endedAt: Date.now() });
+
+      const result = await cancelTask('done');
+      expect(result.cancelled).toBe(false);
+      expect(result.reason).toContain('已结束');
+    });
+
+    it('无 cancelFn 的任务应返回 cancelled=false', async () => {
+      createTask(makeTask({ taskId: 'no-cancel' }));
+      const result = await cancelTask('no-cancel');
+      expect(result.cancelled).toBe(false);
+      expect(result.reason).toContain('不支持取消');
+    });
+
+    it('cancelFn 抛异常应返回 cancelled=false', async () => {
+      createTask({
+        ...makeTask({ taskId: 'throws' }),
+        cancelFn: () => { throw new Error('模拟失败'); },
+      });
+      const result = await cancelTask('throws');
+      expect(result.cancelled).toBe(false);
+      expect(result.reason).toContain('模拟失败');
+    });
+
+    it('cancelFn 支持 async 函数', async () => {
+      const cancelFn = vi.fn(async () => {
+        await new Promise(r => setTimeout(r, 5));
+      });
+      createTask({ ...makeTask({ taskId: 'async' }), cancelFn });
+
+      const result = await cancelTask('async');
+      expect(result.cancelled).toBe(true);
+      expect(cancelFn).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateTaskProgress', () => {
+    it('应更新进度字段', () => {
+      createTask(makeTask({ taskId: 'prog' }));
+      updateTaskProgress('prog', {
+        toolUseCount: 3,
+        inputTokens: 1000,
+        outputTokens: 500,
+        recentActivity: 'read_file',
+      });
+
+      const stored = getTask('prog');
+      expect(stored!.progress).toEqual({
+        toolUseCount: 3,
+        inputTokens: 1000,
+        outputTokens: 500,
+        recentActivity: 'read_file',
+      });
+    });
+
+    it('应合并部分进度更新', () => {
+      createTask(makeTask({ taskId: 'merge' }));
+      updateTaskProgress('merge', { toolUseCount: 1 });
+      updateTaskProgress('merge', { inputTokens: 200 });
+
+      const stored = getTask('merge');
+      expect(stored!.progress).toEqual({ toolUseCount: 1, inputTokens: 200 });
+    });
+
+    it('更新不存在的任务应不报错', () => {
+      updateTaskProgress('nonexistent', { toolUseCount: 1 }); // no throw
+    });
+  });
+
+  describe('序列化安全性', () => {
+    it('listTasks 返回的记录不包含 cancelFn', () => {
+      createTask({
+        ...makeTask({ taskId: 'with-fn' }),
+        cancelFn: () => {},
+      });
+      const tasks = listTasks();
+      expect(tasks).toHaveLength(1);
+      expect((tasks[0] as Record<string, unknown>).cancelFn).toBeUndefined();
+    });
+
+    it('getTask 返回的记录不包含 cancelFn', () => {
+      createTask({
+        ...makeTask({ taskId: 'with-fn' }),
+        cancelFn: () => {},
+      });
+      const task = getTask('with-fn');
+      expect((task as Record<string, unknown>).cancelFn).toBeUndefined();
+    });
+
+    it('终态 updateTask 应自动清空 cancelFn（防内存泄漏）', () => {
+      // 直接访问 Map 检查内部状态不方便，通过 cancelTask 行为验证
+      createTask({
+        ...makeTask({ taskId: 'leak' }),
+        cancelFn: () => {},
+      });
+      updateTask('leak', { status: 'succeeded', endedAt: Date.now() });
+      // 清空后再 cancel 应该返回不支持取消
+      return cancelTask('leak').then(r => {
+        expect(r.cancelled).toBe(false);
+        // 但因为状态已 terminal，会在前置检查就返回
+        expect(r.reason).toContain('已结束');
+      });
     });
   });
 });

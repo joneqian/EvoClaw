@@ -15,6 +15,7 @@ import SetupPage from './pages/SetupPage';
 import CronPage from './pages/CronPage';
 import AlertPage from './pages/AlertPage';
 import AgentEditPage from './pages/AgentEditPage';
+import TasksPage from './pages/TasksPage';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
@@ -25,6 +26,8 @@ import { useAgentStore } from './stores/agent-store';
 import IconNav from './components/IconNav';
 import ExpertPanel from './components/ExpertPanel';
 import AgentCreationModal from './components/AgentCreationModal';
+import TaskBadge from './components/TaskBadge';
+import { useTasksStore } from './stores/tasks-store';
 
 // ─── SVG Icon 组件 ───
 
@@ -298,6 +301,14 @@ export default function App() {
     if (initState === 'connected') fetchRecents();
   }, [initState, fetchRecents]);
 
+  // 全局任务轮询 — 支撑顶部 TaskBadge + 后续 TasksPage 共享数据
+  useEffect(() => {
+    if (initState !== 'connected') return;
+    const { startPolling, stopPolling } = useTasksStore.getState();
+    startPolling(5000);
+    return () => stopPolling();
+  }, [initState]);
+
   useEffect(() => {
     if (initState === 'connected' && !isChatRoute(location.pathname)) {
       fetchRecents();
@@ -487,6 +498,9 @@ export default function App() {
         <main className="flex-1 overflow-hidden flex flex-col">
           {/* 顶部标题栏 */}
           <div className="h-[42px] shrink-0 flex items-center justify-end" data-tauri-drag-region>
+            {/* 后台任务 pill（仅当有活跃任务时显示） */}
+            <TaskBadge />
+
             <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
               {/* 品牌头像 */}
               <div className="w-10 h-[42px] flex items-center justify-center">
@@ -558,6 +572,7 @@ export default function App() {
               <Route path="/models" element={<ModelsPage />} />
               <Route path="/evolution" element={<EvolutionPage />} />
               <Route path="/cron" element={<CronPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
               <Route path="/alert" element={<AlertPage />} />
               <Route path="/channel" element={<ChannelPage />} />
               <Route path="/security" element={<SecurityPage />} />

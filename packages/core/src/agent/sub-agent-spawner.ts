@@ -11,6 +11,7 @@ import type { LaneQueue } from './lane-queue.js';
 import { DEFAULT_MAX_SPAWN_DEPTH, type AgentConfig, type ChatMessage } from '@evoclaw/shared';
 import { SAFETY_CONSTITUTION } from './embedded-runner-prompt.js';
 import type { PermissionBubbleManager, PermissionEmitFn } from './permission-bubble.js';
+import { createTask, updateTask, updateTaskProgress } from '../infrastructure/task-registry.js';
 
 /** 附件 */
 export interface SpawnAttachment {
@@ -298,6 +299,21 @@ export class SubAgentSpawner {
     };
     this.agents.set(taskId, entry);
 
+    // 注册到 TaskRegistry — 让前端任务面板可见 + 可中止
+    createTask({
+      taskId,
+      runtime: 'subagent',
+      sourceId: targetAgent.id,
+      status: 'running',
+      label: task.slice(0, 100),
+      agentId: this.parentConfig.agent.id,
+      sessionKey,
+      startedAt: entry.startedAt,
+      cancelFn: () => {
+        this.kill(taskId);
+      },
+    });
+
     // 确定子 Agent 角色
     const childDepth = this.currentDepth + 1;
     const childRole = resolveRole(childDepth, this.maxSpawnDepth);
@@ -416,11 +432,20 @@ export class SubAgentSpawner {
                 entry.progress.toolUseCount++;
                 entry.progress.recentActivities.push({ toolName: event.toolName, timestamp: Date.now() });
                 if (entry.progress.recentActivities.length > 5) entry.progress.recentActivities.shift();
+                // 同步到 TaskRegistry 供前端任务面板展示
+                updateTaskProgress(taskId, {
+                  toolUseCount: entry.progress.toolUseCount,
+                  recentActivity: event.toolName,
+                });
               }
               // Token 用量追踪
               if (event.type === 'usage' && event.usage) {
                 entry.progress.inputTokens += event.usage.inputTokens ?? 0;
                 entry.progress.outputTokens += event.usage.outputTokens ?? 0;
+                updateTaskProgress(taskId, {
+                  inputTokens: entry.progress.inputTokens,
+                  outputTokens: entry.progress.outputTokens,
+                });
               }
             },
             abortController.signal,
@@ -435,6 +460,9 @@ export class SubAgentSpawner {
           entry.completedAt = Date.now();
           // session 模式：完成后进入 idle 而非 completed
           entry.status = spawnMode === 'session' ? 'idle' : 'completed';
+
+          // 同步 TaskRegistry 状态
+          updateTask(taskId, { status: 'succeeded', endedAt: entry.completedAt });
 
           // Push-based 通知：结构化结果入队
           const notification: SubAgentNotification = {
@@ -452,6 +480,9 @@ export class SubAgentSpawner {
           entry.status = 'failed';
           entry.error = err instanceof Error ? err.message : String(err);
           entry.completedAt = Date.now();
+
+          // 同步 TaskRegistry 状态
+          updateTask(taskId, { status: 'failed', endedAt: entry.completedAt, error: entry.error });
 
           // Push-based 通知：错误入队
           const notification: SubAgentNotification = {
@@ -475,6 +506,7 @@ export class SubAgentSpawner {
         entry.status = 'failed';
         entry.error = `子 Agent 执行超时（${Math.round(effectiveTimeout / 1000)}s）`;
         entry.completedAt = Date.now();
+        updateTask(taskId, { status: 'timed_out', endedAt: entry.completedAt, error: entry.error });
       }
     });
 
@@ -499,6 +531,8 @@ export class SubAgentSpawner {
       entry.abortController.abort();
       entry.status = 'cancelled';
       entry.completedAt = Date.now();
+      // 同步 TaskRegistry — 供前端任务面板即时反馈
+      updateTask(taskId, { status: 'cancelled', endedAt: entry.completedAt });
       return true;
     }
     return false;

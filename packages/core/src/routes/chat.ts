@@ -60,8 +60,9 @@ import { parseSessionKey } from '../routing/session-key.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
 import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
+import { enqueueTaskNotification } from '../infrastructure/task-notifications.js';
 import { detectHeartbeatAck } from '../scheduler/heartbeat-utils.js';
-import { IncrementalPersister } from '../agent/kernel/incremental-persister.js';
+import { IncrementalPersister, reconstructDisplayContent } from '../agent/kernel/incremental-persister.js';
 import { bridgeMcpToolsForAgent } from '../mcp/mcp-tool-bridge.js';
 
 const log = createLogger('chat');
@@ -123,8 +124,9 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     const postBoundaryRows = db.all<{
       id: string; session_key: string; role: string; content: string;
       tool_calls_json: string | null; created_at: string;
+      kernel_message_json: string | null;
     }>(
-      `SELECT id, session_key, role, content, tool_calls_json, created_at
+      `SELECT id, session_key, role, content, tool_calls_json, created_at, kernel_message_json
        FROM conversation_log
        WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
          AND created_at > ?
@@ -166,8 +168,9 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     const recentRows = db.all<{
       id: string; session_key: string; role: string; content: string;
       tool_calls_json: string | null; created_at: string;
+      kernel_message_json: string | null;
     }>(
-      `SELECT id, session_key, role, content, tool_calls_json, created_at
+      `SELECT id, session_key, role, content, tool_calls_json, created_at, kernel_message_json
        FROM conversation_log
        WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
        ORDER BY created_at DESC, rowid DESC
@@ -191,8 +194,9 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
   const rows = db.all<{
     id: string; session_key: string; role: string; content: string;
     tool_calls_json: string | null; created_at: string;
+    kernel_message_json: string | null;
   }>(
-    `SELECT id, session_key, role, content, tool_calls_json, created_at
+    `SELECT id, session_key, role, content, tool_calls_json, created_at, kernel_message_json
      FROM conversation_log
      WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
      ORDER BY created_at DESC, rowid DESC
@@ -207,12 +211,15 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
 function rowToChatMessage(row: {
   id: string; session_key: string; role: string; content: string;
   tool_calls_json: string | null; created_at: string;
+  kernel_message_json?: string | null;
 }): ChatMessage {
+  // 从存量占位符 `[xxx message with N blocks]` 重建显示文本（修旧数据）
+  const displayContent = reconstructDisplayContent(row.content, row.kernel_message_json ?? null);
   const msg: ChatMessage = {
     id: row.id,
     conversationId: row.session_key,
     role: row.role as ChatMessage['role'],
-    content: row.content,
+    content: displayContent,
     createdAt: row.created_at,
   };
   if (row.tool_calls_json) {
@@ -644,7 +651,7 @@ export function createChatRoutes(
     }
 
     // 进程管理工具
-    enhancedTools.push(createExecBackgroundTool());
+    enhancedTools.push(createExecBackgroundTool({ agentId, sessionKey }));
     enhancedTools.push(createProcessTool());
 
     // TodoWrite 约束工具 — 结构化任务追踪
@@ -986,6 +993,7 @@ export function createChatRoutes(
           // 推送结构化完成通知
           const notifications = spawner!.drainStructuredAnnouncements();
           for (const n of notifications) {
+            // 1. 推 SSE 给前端（前端 UX）
             try {
               await stream.writeSSE({
                 data: JSON.stringify({
@@ -1004,6 +1012,31 @@ export function createChatRoutes(
                 }),
               });
             } catch { /* SSE 已关闭，忽略 */ }
+
+            // 2. 入队 SystemEvent — 下一次 user turn 时 LLM 可通过
+            //    drainFormattedSystemEvents 看到 <task-notification>，
+            //    实现多 Agent 自动协作汇总（无需用户手动追问）。
+            //    SSE 关闭（auto_backgrounded）后该入队仍会执行。
+            try {
+              enqueueTaskNotification(
+                {
+                  taskId: n.taskId,
+                  kind: 'subagent',
+                  status:
+                    n.status === 'completed' ? 'completed' :
+                    n.status === 'cancelled' ? 'cancelled' : 'failed',
+                  title: n.task,
+                  result: n.success ? n.result : undefined,
+                  error: n.success ? undefined : n.result,
+                  durationMs: n.durationMs,
+                  tokenUsage: n.tokenUsage,
+                  agentType: n.agentType,
+                },
+                sessionKey,
+              );
+            } catch (err) {
+              log.warn(`入队 task-notification 失败 taskId=${n.taskId}: ${err instanceof Error ? err.message : err}`);
+            }
           }
         }, 2000);
       };

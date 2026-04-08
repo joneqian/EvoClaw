@@ -21,6 +21,7 @@ import type { AgentRunConfig } from '../agent/types.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
+import { reconstructDisplayContent } from '../agent/kernel/incremental-persister.js';
 import { resolveModel } from '../provider/model-resolver.js';
 import { ContextEngine } from '../context/context-engine.js';
 import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js';
@@ -88,8 +89,9 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     role: string;
     content: string;
     created_at: string;
+    kernel_message_json: string | null;
   }>(
-    `SELECT id, session_key, role, content, created_at
+    `SELECT id, session_key, role, content, created_at, kernel_message_json
      FROM conversation_log
      WHERE agent_id = ? AND session_key = ? AND role IN ('user', 'assistant')
      ORDER BY created_at DESC, rowid DESC
@@ -101,7 +103,8 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
     id: row.id,
     conversationId: row.session_key,
     role: row.role as ChatMessage['role'],
-    content: row.content,
+    // 从存量占位符重建显示文本（修旧数据）
+    content: reconstructDisplayContent(row.content, row.kernel_message_json),
     createdAt: row.created_at,
   }));
 }

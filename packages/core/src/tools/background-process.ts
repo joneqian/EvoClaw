@@ -6,6 +6,8 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
+import { createTask, updateTask } from '../infrastructure/task-registry.js';
+import { enqueueTaskNotification } from '../infrastructure/task-notifications.js';
 
 /** 后台进程条目 */
 interface BackgroundProcess {
@@ -20,13 +22,19 @@ interface BackgroundProcess {
   process: ChildProcess;
 }
 
+/** 进程上下文：用于关联到 TaskRegistry + 通知回流 */
+interface ProcessContext {
+  agentId: string;
+  sessionKey: string;
+}
+
 /** 进程管理器 — 追踪后台进程生命周期 */
 class ProcessManager {
   private processes = new Map<string, BackgroundProcess>();
   private nextId = 1;
 
   /** 启动后台命令 */
-  start(command: string): BackgroundProcess {
+  start(command: string, ctx?: ProcessContext): BackgroundProcess {
     const id = `bg-${this.nextId++}`;
     const child = spawn('sh', ['-c', command], {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -43,6 +51,23 @@ class ProcessManager {
       maxBufferLines: 200,
       process: child,
     };
+
+    // 注册到 TaskRegistry — 供前端任务面板展示 + 统一 cancel 入口
+    if (ctx) {
+      createTask({
+        taskId: id,
+        runtime: 'bash',
+        sourceId: command.slice(0, 100),
+        status: 'running',
+        label: command.slice(0, 100),
+        agentId: ctx.agentId,
+        sessionKey: ctx.sessionKey,
+        startedAt: entry.startedAt,
+        cancelFn: () => {
+          this.kill(id);
+        },
+      });
+    }
 
     // 捕获 stdout
     child.stdout?.on('data', (data: Buffer) => {
@@ -75,12 +100,38 @@ class ProcessManager {
     child.on('exit', (code) => {
       entry.status = 'exited';
       entry.exitCode = code ?? -1;
+      if (ctx) {
+        const endedAt = Date.now();
+        const durationMs = endedAt - entry.startedAt;
+        const success = entry.exitCode === 0;
+        updateTask(id, {
+          status: success ? 'succeeded' : 'failed',
+          endedAt,
+          error: success ? undefined : `退出码 ${entry.exitCode}`,
+        });
+        // 通知回流 — 让主 Agent 下一 turn 感知后台进程已结束
+        try {
+          const tail = entry.outputBuffer.slice(-20).join('\n');
+          enqueueTaskNotification({
+            taskId: id,
+            kind: 'background_process',
+            status: success ? 'completed' : 'failed',
+            title: command.slice(0, 100),
+            result: success ? (tail || undefined) : undefined,
+            error: success ? undefined : (tail || `退出码 ${entry.exitCode}`),
+            durationMs,
+          }, ctx.sessionKey);
+        } catch { /* 通知失败不影响主流程 */ }
+      }
     });
 
     child.on('error', (err) => {
       entry.status = 'exited';
       entry.exitCode = -1;
       entry.outputBuffer.push(`[error] ${err.message}`);
+      if (ctx) {
+        updateTask(id, { status: 'failed', endedAt: Date.now(), error: err.message });
+      }
     });
 
     this.processes.set(id, entry);
@@ -143,7 +194,7 @@ class ProcessManager {
 const globalProcessManager = new ProcessManager();
 
 /** 创建后台执行工具 */
-export function createExecBackgroundTool(): ToolDefinition {
+export function createExecBackgroundTool(opts?: { agentId: string; sessionKey: string }): ToolDefinition {
   return {
     name: 'exec_background',
     description: '在后台启动一个长时间运行的命令（如 dev server、watch 进程、构建任务等）。命令会在后台持续运行，不阻塞当前对话。使用 process 工具查看输出和管理后台进程。',
@@ -164,7 +215,7 @@ export function createExecBackgroundTool(): ToolDefinition {
       }
 
       try {
-        const entry = globalProcessManager.start(command);
+        const entry = globalProcessManager.start(command, opts);
         return `后台进程已启动:\n  ID: ${entry.id}\n  PID: ${entry.pid}\n  命令: ${command}\n\n使用 process 工具查看输出: process({ action: "output", id: "${entry.id}" })`;
       } catch (err) {
         return `启动失败: ${err instanceof Error ? err.message : String(err)}`;

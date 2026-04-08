@@ -5,7 +5,8 @@ import type { LaneQueue } from '../agent/lane-queue.js';
 import type { CronJobConfig } from '@evoclaw/shared';
 import { createLogger } from '../infrastructure/logger.js';
 import { enqueueSystemEvent } from '../infrastructure/system-events.js';
-import { createTask, updateTask } from './task-registry.js';
+import { enqueueTaskNotification } from '../infrastructure/task-notifications.js';
+import { createTask, updateTask } from '../infrastructure/task-registry.js';
 
 const log = createLogger('cron');
 
@@ -125,10 +126,15 @@ export class CronRunner {
         // 通过 LaneQueue cron 车道执行（隔离会话）
         const sessionKey = `agent:${job.agent_id}:cron:${job.id}`;
         const cronTaskId = `cron-${job.id}-${crypto.randomUUID()}`;
+        const cronStartedAt = Date.now();
         createTask({
           taskId: cronTaskId, runtime: 'cron', sourceId: job.id,
           status: 'queued', label: `cron:${job.action_type}:${job.name}`,
           agentId: job.agent_id, sessionKey, startedAt: undefined,
+          cancelFn: () => {
+            // 从队列移除未执行的任务 + 中止运行中的
+            this.laneQueue.cancel(cronTaskId);
+          },
         });
 
         this.laneQueue.enqueue({
@@ -149,10 +155,33 @@ export class CronRunner {
             ts, ts, job.id,
           );
           updateTask(cronTaskId, { status: 'succeeded', endedAt: Date.now() });
+          // 通知回流 — 主 session 感知 cron 完成
+          try {
+            const mainSessionKey = `agent:${job.agent_id}:local:direct:local-user`;
+            enqueueTaskNotification({
+              taskId: cronTaskId,
+              kind: 'cron',
+              status: 'completed',
+              title: job.name,
+              durationMs: Date.now() - cronStartedAt,
+            }, mainSessionKey);
+          } catch { /* 通知失败不影响主流程 */ }
         }).catch((err) => {
           log.error(`任务 ${job.name} (${job.id}) 执行失败:`, err);
           this.recordError(job.id, job.name);
           updateTask(cronTaskId, { status: 'failed', endedAt: Date.now(), error: String(err) });
+          // 通知回流 — 失败也让主 session 感知
+          try {
+            const mainSessionKey = `agent:${job.agent_id}:local:direct:local-user`;
+            enqueueTaskNotification({
+              taskId: cronTaskId,
+              kind: 'cron',
+              status: 'failed',
+              title: job.name,
+              error: String(err),
+              durationMs: Date.now() - cronStartedAt,
+            }, mainSessionKey);
+          } catch { /* ignore */ }
         });
 
         executed++;

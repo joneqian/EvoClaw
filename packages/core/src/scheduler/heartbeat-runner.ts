@@ -6,7 +6,7 @@ import { isHeartbeatContentEffectivelyEmpty, detectHeartbeatAck } from './heartb
 import { buildHeartbeatPrompt, type HeartbeatReason } from './heartbeat-prompts.js';
 import { hasSystemEvents, peekSystemEvents } from '../infrastructure/system-events.js';
 import { HeartbeatWakeCoalescer, WakePriority } from './heartbeat-wake.js';
-import { createTask, updateTask } from './task-registry.js';
+import { createTask, updateTask } from '../infrastructure/task-registry.js';
 import crypto from 'node:crypto';
 
 const log = createLogger('heartbeat');
@@ -151,6 +151,11 @@ export class HeartbeatRunner {
       agentId: this.agentId,
       sessionKey,
       startedAt: Date.now(),
+      // Cancel 语义：停止整个 heartbeat 循环（本次 tick 的 LLM 请求已在途无法安全 abort，
+      // 但可阻止后续 tick）。企业用户在任务面板点击取消的合理预期。
+      cancelFn: () => {
+        this.stop();
+      },
     });
 
     try {

@@ -224,12 +224,12 @@ async function streamOneRound(
   })) {
     switch (event.type) {
       case 'text_delta':
-        config.onEvent({ type: 'text_delta', delta: event.delta, timestamp: Date.now() });
+        await config.onEvent({ type: 'text_delta', delta: event.delta, timestamp: Date.now() });
         appendOrCreateTextBlock(blocks, event.delta);
         break;
 
       case 'thinking_delta':
-        config.onEvent({ type: 'thinking_delta', delta: event.delta, timestamp: Date.now() });
+        await config.onEvent({ type: 'thinking_delta', delta: event.delta, timestamp: Date.now() });
         appendOrCreateThinkingBlock(blocks, event.delta);
         break;
 
@@ -249,7 +249,7 @@ async function streamOneRound(
 
       case 'tool_use_start':
         pendingToolUses.set(event.id, { id: event.id, name: event.name });
-        config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: {}, timestamp: Date.now() });
+        await config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: {}, timestamp: Date.now() });
         break;
 
       case 'tool_use_end': {
@@ -266,7 +266,7 @@ async function streamOneRound(
         const matchedTool = config.tools.find(t => t.name === event.name);
         const destructive = matchedTool?.isDestructive?.(event.input) ?? false;
         if (destructive) {
-          config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: event.input, isDestructive: true, timestamp: Date.now() });
+          await config.onEvent({ type: 'tool_start', toolName: event.name, toolArgs: event.input, isDestructive: true, timestamp: Date.now() });
         }
 
         // 入队 StreamingToolExecutor — 并发安全工具立即开始
@@ -286,7 +286,7 @@ async function streamOneRound(
         break;
 
       case 'metrics':
-        config.onEvent({
+        await config.onEvent({
           type: 'stream_metrics',
           timestamp: Date.now(),
           streamMetrics: {
@@ -412,7 +412,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     }
 
     // ─── 3. 流式 API 调用 + 流中工具预执行 ───
-    config.onEvent({ type: 'message_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'message_start', timestamp: Date.now() });
 
     const executor = new StreamingToolExecutor(config.tools, 8, config.abortSignal);
 
@@ -493,7 +493,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
         executor.discard();
 
         // Tombstone: 通知 UI 丢弃本轮已发送的 partial text_delta
-        config.onEvent({ type: 'tombstone', timestamp: Date.now() });
+        await config.onEvent({ type: 'tombstone', timestamp: Date.now() });
 
         state = { ...state, effectiveModelId: config.fallbackModel.modelId, transition: 'model_fallback' };
         log.warn(`模型回退: ${config.modelId} → ${config.fallbackModel.modelId}, 原因: ${classified.type}`);
@@ -530,7 +530,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       if (block.type === 'text') fullResponse += block.text;
     }
 
-    config.onEvent({ type: 'message_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'message_end', timestamp: Date.now() });
 
     // ─── 5. 检查 tool_use → 收集结果或退出 ───
     const toolUseBlocks = roundResult.assistantMessage.content.filter(
@@ -645,7 +645,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     // 生成工具摘要并通过 onEvent 广播（可用于上下文压缩和 UI 展示）
     createToolUseSummaryMessage(summaryText, toolIds);
     // 先发送简单摘要（即时），然后异步用 LLM 生成更好的摘要
-    config.onEvent({ type: 'tool_end', toolName: summaryText, timestamp: Date.now() });
+    await config.onEvent({ type: 'tool_end', toolName: summaryText, timestamp: Date.now() });
     if (config.toolSummaryGenerator) {
       const summaryTools = toolUseBlocks.map((b, i) => ({
         toolName: b.name,
@@ -653,9 +653,9 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
         toolResult: toolResults[i]?.content?.slice(0, 300),
         isError: toolResults[i]?.is_error,
       }));
-      config.toolSummaryGenerator.generateAsync(summaryTools).then(llmSummary => {
+      config.toolSummaryGenerator.generateAsync(summaryTools).then(async llmSummary => {
         if (llmSummary && llmSummary !== summaryText) {
-          config.onEvent({ type: 'tool_end', toolName: llmSummary, timestamp: Date.now() });
+          await config.onEvent({ type: 'tool_end', toolName: llmSummary, timestamp: Date.now() });
         }
       }).catch(() => { /* 非关键，忽略 */ });
     }

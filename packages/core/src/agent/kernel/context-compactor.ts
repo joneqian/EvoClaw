@@ -741,8 +741,8 @@ export async function maybeCompress(
     if (smResult.success) {
       messages.length = 0;
       messages.push(...smResult.messages);
-      config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-      config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+      await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+      await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
       log.info(`SM Compact: 释放 ~${smResult.tokensFreed} tokens (零 API 成本)`);
       return true;
     }
@@ -771,8 +771,8 @@ export async function maybeCompress(
   // Layer 1: Snip (零成本)
   const snipped = snipOldMessages(messages);
   if (snipped > 0) {
-    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     log.info(`Snip 边界: ${msgCountBefore} → ${messages.length} 消息 (移除 ${snipped})`);
   }
   if (estimateTokens(messages) < threshold) {
@@ -788,8 +788,8 @@ export async function maybeCompress(
   // Layer 2: Microcompact (零成本, Anthropic 协议下使用 Shadow 模式保护缓存)
   const truncated = microcompactToolResults(messages, config.protocol);
   if (truncated > 0) {
-    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     log.info(`Microcompact 边界: 截断 ${truncated} 个 tool_result`);
   }
   if (estimateTokens(messages) < threshold) {
@@ -804,10 +804,10 @@ export async function maybeCompress(
   }
 
   try {
-    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
     const summaryText = await autocompact(messages, config);
     consecutiveAutocompactFailures = 0;
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     const tokensAfter = estimateTokens(messages);
     log.info(`Autocompact 边界: ${msgCountBefore} → ${messages.length} 消息`);
 
@@ -822,7 +822,7 @@ export async function maybeCompress(
     return true;
   } catch (err) {
     consecutiveAutocompactFailures++;
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     log.warn(`Autocompact 失败 (${consecutiveAutocompactFailures}/${MAX_CONSECUTIVE_FAILURES}): ${err instanceof Error ? err.message : err}`);
     return true; // snip + microcompact 已执行
   }
@@ -951,8 +951,8 @@ export async function maybeCompressPhased(
   if (ratio < TOKEN_THRESHOLDS.autoCompact) {
     const snipped = snipOldMessages(messages);
     if (snipped > 0) {
-      config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-      config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+      await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+      await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
       log.info(`主动 Snip: 移除 ${snipped} 条消息 (${(ratio * 100).toFixed(0)}% → 缓解中)`);
     }
     return { ...collapseState, phase: 'proactive_snip' };
@@ -965,8 +965,8 @@ export async function maybeCompressPhased(
   // Layer 1: Snip
   const snipped = snipOldMessages(messages);
   if (snipped > 0) {
-    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
   }
   if (estimateTokens(messages) < contextWindow - AUTOCOMPACT_BUFFER_TOKENS) {
     return { ...collapseState, phase: 'autocompact' };
@@ -983,8 +983,8 @@ export async function maybeCompressPhased(
     ? microcompactCacheAware(messages, collapseState.cacheBreakpointIndex)
     : microcompactToolResults(messages, config.protocol);
   if (truncated > 0) {
-    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
   }
   if (estimateTokens(messages) < contextWindow - AUTOCOMPACT_BUFFER_TOKENS) {
     return { ...collapseState, phase: 'autocompact' };
@@ -997,9 +997,9 @@ export async function maybeCompressPhased(
   }
 
   try {
-    config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_start', timestamp: Date.now() });
     const summaryText = await autocompact(messages, config);
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     const tokensAfter = estimateTokens(messages);
     log.info(`Autocompact: ${msgCountBefore} → ${messages.length} 消息`);
 
@@ -1014,7 +1014,7 @@ export async function maybeCompressPhased(
 
     return { ...collapseState, phase: 'autocompact', consecutiveFailures: 0 };
   } catch (err) {
-    config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
+    await config.onEvent({ type: 'compaction_end', timestamp: Date.now() });
     const nextFailures = collapseState.consecutiveFailures + 1;
     log.warn(`Autocompact 失败 (${nextFailures}/${MAX_CONSECUTIVE_FAILURES}): ${err instanceof Error ? err.message : err}`);
     return { ...collapseState, phase: 'autocompact', consecutiveFailures: nextFailures };

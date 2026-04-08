@@ -569,7 +569,7 @@ export interface QueryLoopConfig {
   readonly timeoutMs: number;
 
   // ─── Callbacks — 桥接到 RuntimeEvent ───
-  readonly onEvent: (event: RuntimeEvent) => void;
+  readonly onEvent: (event: RuntimeEvent) => void | Promise<void>;
 
   // ─── Safety ───
   readonly toolSafety: ToolSafetyGuard;

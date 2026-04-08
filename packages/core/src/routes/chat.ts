@@ -1,6 +1,17 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import crypto from 'node:crypto';
+import { isBun } from '../infrastructure/runtime.js';
+import { createBunSSEResponse } from '../infrastructure/bun-sse.js';
+
+/**
+ * Bun SSE 绕行映射 — 存储原始 SSE Response，供 Bun.serve 层直接返回
+ *
+ * Hono 中间件（CORS 等）会 clone/wrap Response，破坏 Bun 的流式传输。
+ * 路由层将原始 Bun Response 存入此 WeakMap，Bun.serve 的 fetch 在
+ * app.fetch 返回后检查此映射：若存在则替换 Hono 的包装版本。
+ */
+export const bunSSEResponses = new WeakMap<Request, Response>();
 import { AgentManager } from '../agent/agent-manager.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
@@ -927,7 +938,13 @@ export function createChatRoutes(
 
     // 返回 SSE 流
     const startTime = Date.now();
-    return streamSSE(c, async (stream) => {
+
+    // SSE 回调体 — Bun/Node 共用，通过 stream 接口抽象
+    type SSEWriter = {
+      writeSSE(msg: { data: string; event?: string }): Promise<void>;
+      onAbort(cb: () => void): void;
+    };
+    const sseCallback = async (stream: SSEWriter) => {
       let fullResponse = '';
 
       // 绑定权限冒泡 SSE 发射函数
@@ -1162,7 +1179,20 @@ export function createChatRoutes(
       contextEngine.afterTurn(afterTurnCtx).catch((err) => {
         log.error('afterTurn 失败:', err);
       });
-    });
+    };
+
+    // Bun: 绕过 Hono 中间件的 Response 包装，使用原生 ReadableStream 确保逐条 flush
+    // Node: 继续使用 Hono streamSSE（@hono/node-server 基于 node:http，flush 正常）
+    if (isBun) {
+      const sseResponse = createBunSSEResponse((bunStream) => sseCallback(bunStream), c.req.raw.signal);
+      // 存入 WeakMap，Bun.serve 层会用此 Response 替换 Hono 包装后的版本
+      bunSSEResponses.set(c.req.raw, sseResponse);
+      // 返回空 dummy Response 给 Hono — Hono 中间件可以任意包装它，
+      // 但实际发送给客户端的是 WeakMap 中的原始 SSE Response。
+      // 用 x-sse-bypass header 作为标记，避免误匹配其他请求。
+      return new Response('', { headers: { 'x-sse-bypass': '1' } });
+    }
+    return streamSSE(c, (honoStream) => sseCallback(honoStream));
   });
 
   /** POST /:agentId/cancel — 取消正在运行或排队中的 Agent 任务 */

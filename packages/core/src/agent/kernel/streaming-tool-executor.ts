@@ -32,7 +32,7 @@ interface TrackedTool {
 }
 
 interface CollectConfig {
-  onEvent: (event: RuntimeEvent) => void;
+  onEvent: (event: RuntimeEvent) => void | Promise<void>;
   signal?: AbortSignal;
 }
 
@@ -78,7 +78,7 @@ export class StreamingToolExecutor {
   private hasErrored = false;
   private erroredToolName: string | undefined;
   /** onEvent 回调（在 collectResults 时设置，用于进度桥接） */
-  private onEvent?: (event: import('../types.js').RuntimeEvent) => void;
+  private onEvent?: (event: import('../types.js').RuntimeEvent) => void | Promise<void>;
 
   /** Bash 工具名称 — 只有 Bash 错误会取消兄弟 */
   private static readonly BASH_TOOL_NAME = 'bash';
@@ -147,7 +147,7 @@ export class StreamingToolExecutor {
           content: `已中止: 兄弟工具 ${this.erroredToolName ?? 'bash'} 执行失败`,
           isError: true,
         };
-        config.onEvent({
+        await config.onEvent({
           type: 'tool_end',
           toolName: tracked.block.name,
           toolResult: syntheticResult.content,
@@ -176,7 +176,7 @@ export class StreamingToolExecutor {
       const result = tracked.result ?? { content: '工具执行未返回结果', isError: true };
 
       // 发送 tool_end 事件
-      config.onEvent({
+      await config.onEvent({
         type: 'tool_end',
         toolName: tracked.block.name,
         toolResult: result.content,

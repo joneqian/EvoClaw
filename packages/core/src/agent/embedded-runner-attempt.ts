@@ -34,7 +34,7 @@ import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('embedded-runner-attempt');
 
-type EventCallback = (event: RuntimeEvent) => void;
+type EventCallback = (event: RuntimeEvent) => void | Promise<void>;
 
 /** 总超时 (与 Lane Queue 默认超时对齐) */
 const ATTEMPT_TIMEOUT_MS = 600_000; // 10 分钟
@@ -272,11 +272,11 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     : timeoutController.signal;
 
   // 包装 onEvent 追踪 compaction 状态 + 收集结果
-  const wrappedOnEvent = (event: RuntimeEvent) => {
+  const wrappedOnEvent = async (event: RuntimeEvent) => {
     if (event.type === 'compaction_start') isCompacting = true;
     if (event.type === 'compaction_end') isCompacting = false;
     if (event.type === 'text_delta' && event.delta) fullResponse += event.delta;
-    onEvent(event);
+    await onEvent(event);
   };
 
   // 重置压缩器状态 (新 attempt)
@@ -357,7 +357,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     const totalCacheRead = result.messages.reduce((sum, m) => sum + (m.usage?.cacheReadTokens ?? 0), 0);
     const totalCacheWrite = result.messages.reduce((sum, m) => sum + (m.usage?.cacheWriteTokens ?? 0), 0);
     const costMilli = calculateCostMilli(effectiveModelId, result.totalInputTokens, result.totalOutputTokens, totalCacheRead, totalCacheWrite);
-    onEvent({
+    await onEvent({
       type: 'usage',
       timestamp: Date.now(),
       usage: {

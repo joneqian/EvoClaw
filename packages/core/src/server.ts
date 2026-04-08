@@ -870,7 +870,24 @@ async function main() {
     let actualPort = port;
     if (isBun) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const server = (globalThis as any).Bun.serve({ fetch: app.fetch, port, hostname: '127.0.0.1' });
+      const { bunSSEResponses } = await import('./routes/chat.js');
+      const server = (globalThis as any).Bun.serve({
+        async fetch(req: Request) {
+          const honoResponse = await app.fetch(req);
+          // SSE 绕行: 路由层返回空 dummy Response 给 Hono，实际 SSE Response 存 WeakMap
+          // 避免 Hono 中间件 wrap 原始 ReadableStream 导致 stream lock
+          if (honoResponse.headers.get('x-sse-bypass') === '1') {
+            const sseResponse = bunSSEResponses.get(req);
+            if (sseResponse) {
+              bunSSEResponses.delete(req);
+              return sseResponse;
+            }
+          }
+          return honoResponse;
+        },
+        port,
+        hostname: '127.0.0.1',
+      });
       actualPort = server.port;
     } else {
       const { serve } = await import('@hono/node-server');

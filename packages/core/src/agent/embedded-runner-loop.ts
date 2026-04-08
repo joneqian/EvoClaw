@@ -18,10 +18,10 @@ import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('embedded-runner-loop');
 
-type EventCallback = (event: RuntimeEvent) => void;
+type EventCallback = (event: RuntimeEvent) => void | Promise<void>;
 
-function emit(cb: EventCallback, event: Omit<RuntimeEvent, 'timestamp'>): void {
-  cb({ ...event, timestamp: Date.now() } as RuntimeEvent);
+async function emit(cb: EventCallback, event: Omit<RuntimeEvent, 'timestamp'>): Promise<void> {
+  await cb({ ...event, timestamp: Date.now() } as RuntimeEvent);
 }
 
 /** 最大重试迭代次数上限 */
@@ -207,7 +207,7 @@ export async function runEmbeddedLoop(
     // ─── 超时或外部中止 → 不重试 ───
     if (result.timedOut || result.aborted) {
       if (result.timedOut) {
-        emit(onEvent, { type: 'error', error: `Agent 执行超时${result.timedOutDuringCompaction ? '（compaction 期间）' : ''}` });
+        await emit(onEvent, { type: 'error', error: `Agent 执行超时${result.timedOutDuringCompaction ? '（compaction 期间）' : ''}` });
       }
       return { messagesSnapshot: result.messagesSnapshot };
     }
@@ -219,7 +219,7 @@ export async function runEmbeddedLoop(
     if (result.errorType === 'overload') {
       if (options?.isBackgroundQuery && result.error?.includes('529')) {
         log.warn('后台查询遇 529 (过载)，直接放弃');
-        emit(onEvent, { type: 'error', error: '服务过载，后台任务已放弃' });
+        await emit(onEvent, { type: 'error', error: '服务过载，后台任务已放弃' });
         return;
       }
       overloadAttempts++;
@@ -268,7 +268,7 @@ export async function runEmbeddedLoop(
         continue;
       }
       // 所有 provider 都失败
-      emit(onEvent, { type: 'error', error: `所有 AI 服务不可用: ${result.error}` });
+      await emit(onEvent, { type: 'error', error: `所有 AI 服务不可用: ${result.error}` });
       return;
     }
 
@@ -302,12 +302,12 @@ export async function runEmbeddedLoop(
 
     // ─── 不可恢复 → 返回错误 ───
     log.error(`不可恢复错误: type=${result.errorType}, msg=${result.error}`);
-    emit(onEvent, { type: 'error', error: `Agent 执行失败: ${result.error}` });
+    await emit(onEvent, { type: 'error', error: `Agent 执行失败: ${result.error}` });
     return { messagesSnapshot: result.messagesSnapshot };
   }
 
   log.error(`已达最大重试次数 (${maxIterations})`);
-  emit(onEvent, { type: 'error', error: `Agent 执行失败: 已达最大重试次数 (${maxIterations})` });
+  await emit(onEvent, { type: 'error', error: `Agent 执行失败: 已达最大重试次数 (${maxIterations})` });
   return { messagesSnapshot: messages };
 }
 

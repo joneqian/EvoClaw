@@ -19,10 +19,10 @@ import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('embedded-runner');
 
-type EventCallback = (event: RuntimeEvent) => void;
+type EventCallback = (event: RuntimeEvent) => void | Promise<void>;
 
-function emit(cb: EventCallback, event: Omit<RuntimeEvent, 'timestamp'>): void {
-  cb({ ...event, timestamp: Date.now() } as RuntimeEvent);
+async function emit(cb: EventCallback, event: Omit<RuntimeEvent, 'timestamp'>): Promise<void> {
+  await cb({ ...event, timestamp: Date.now() } as RuntimeEvent);
 }
 
 /**
@@ -42,7 +42,7 @@ export async function runEmbeddedAgent(
     isBackgroundQuery?: boolean;
   },
 ): Promise<EmbeddedAgentResult | undefined> {
-  emit(onEvent, { type: 'agent_start' });
+  await emit(onEvent, { type: 'agent_start' });
 
   let agentResult: EmbeddedAgentResult | undefined;
   try {
@@ -52,10 +52,10 @@ export async function runEmbeddedAgent(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error(`Agent 运行异常: ${msg}`);
-    emit(onEvent, { type: 'error', error: msg });
+    await emit(onEvent, { type: 'error', error: msg });
   }
 
-  emit(onEvent, { type: 'agent_done' });
+  await emit(onEvent, { type: 'agent_done' });
   return agentResult;
 }
 

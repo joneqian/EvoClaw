@@ -56,7 +56,7 @@ export async function callLLM(
 
   const maxTokens = options.maxTokens ?? 4096;
 
-  log.info(`调用 LLM (主模型): model=${modelId} protocol=${protocol} baseUrl=${baseUrl}`);
+  log.info(`调用 LLM (系统默认模型): model=${modelId} protocol=${protocol} baseUrl=${baseUrl}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     // 兼容第三方 Anthropic 端点（如 MiniMax）：baseUrl 不含 /v1 时自动补上
@@ -308,7 +308,7 @@ export async function callLLMWithBlocks(
     throw new Error('LLM 未配置：请先在设置中配置 Provider 和模型');
   }
 
-  log.info(`调用 LLM (blocks): model=${modelId} protocol=${protocol} blocks=${systemBlocks.length}`);
+  log.info(`调用 LLM (系统默认模型, blocks): model=${modelId} protocol=${protocol} blocks=${systemBlocks.length}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;

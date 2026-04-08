@@ -36,7 +36,12 @@ export interface LLMCallOptions {
   userMessage: string;
   /** 可选：最大 token 数（默认 4096） */
   maxTokens?: number;
+  /** 可选：fetch 超时毫秒数（默认 60_000）。reasoning 模型 + 大输出可能需要更长，例如 SOP 标签生成传 300_000 */
+  timeoutMs?: number;
 }
+
+/** 默认 fetch 超时（60s），调用方可通过 LLMCallOptions.timeoutMs 覆盖 */
+const DEFAULT_LLM_TIMEOUT_MS = 60_000;
 
 /**
  * 非流式调用 LLM — 从 ConfigManager 解析默认模型的 API Key、Base URL、协议
@@ -55,15 +60,16 @@ export async function callLLM(
   }
 
   const maxTokens = options.maxTokens ?? 4096;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
 
-  log.info(`调用 LLM (系统默认模型): model=${modelId} protocol=${protocol} baseUrl=${baseUrl}`);
+  log.info(`调用 LLM (系统默认模型): model=${modelId} protocol=${protocol} baseUrl=${baseUrl} timeoutMs=${timeoutMs}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     // 兼容第三方 Anthropic 端点（如 MiniMax）：baseUrl 不含 /v1 时自动补上
     const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;
-    return callAnthropic(anthropicUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);
+    return callAnthropic(anthropicUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens, timeoutMs);
   }
-  return callOpenAI(baseUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens);
+  return callOpenAI(baseUrl, apiKey, modelId, options.systemPrompt, options.userMessage, maxTokens, timeoutMs);
 }
 
 /**
@@ -90,14 +96,15 @@ export async function callLLMSecondary(
 
   const secondaryModelId = resolveSecondaryModelId(configManager, provider, primaryModelId);
   const maxTokens = options.maxTokens ?? 4096;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
 
   log.info(`调用 LLM (辅助/低成本): model=${secondaryModelId} (主模型=${primaryModelId}) protocol=${protocol}`);
 
   if (protocol === 'anthropic-messages' || protocol === 'anthropic') {
     const anthropicUrl = /\/v1\/?$/.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : `${baseUrl.replace(/\/+$/, '')}/v1`;
-    return callAnthropic(anthropicUrl, apiKey, secondaryModelId, options.systemPrompt, options.userMessage, maxTokens);
+    return callAnthropic(anthropicUrl, apiKey, secondaryModelId, options.systemPrompt, options.userMessage, maxTokens, timeoutMs);
   }
-  return callOpenAI(baseUrl, apiKey, secondaryModelId, options.systemPrompt, options.userMessage, maxTokens);
+  return callOpenAI(baseUrl, apiKey, secondaryModelId, options.systemPrompt, options.userMessage, maxTokens, timeoutMs);
 }
 
 /**
@@ -219,6 +226,7 @@ async function callOpenAI(
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
+  timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS,
 ): Promise<string> {
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -235,7 +243,7 @@ async function callOpenAI(
       max_tokens: maxTokens,
       stream: false,
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) {
@@ -257,6 +265,7 @@ async function callAnthropic(
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
+  timeoutMs: number = DEFAULT_LLM_TIMEOUT_MS,
 ): Promise<string> {
   const response = await fetch(`${baseUrl}/messages`, {
     method: 'POST',
@@ -272,7 +281,7 @@ async function callAnthropic(
       max_tokens: maxTokens,
       stream: false,
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) {

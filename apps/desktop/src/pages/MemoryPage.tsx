@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useMemoryStore, type MemoryUnit, type SearchResult, type MemoryFeedbackType } from '../stores/memory-store';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  useMemoryStore,
+  type MemoryUnit,
+  type SearchResult,
+  type MemoryFeedbackType,
+  type KnowledgeRelation,
+  type SessionSummary,
+} from '../stores/memory-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
 import { formatDate } from '../lib/date';
@@ -515,6 +524,197 @@ function SearchDetailPanel({ result }: { result: SearchResult | null }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Sprint 15.12 Phase D — 三个新 Tab 视图
+// ─────────────────────────────────────────────────────────────────
+
+/** Phase D Tab 类型 */
+type MemoryTab = 'memories' | 'graph' | 'consolidations' | 'summaries';
+
+/** 知识图谱 Tab — 表格视图（不引入 force graph 库） */
+function KnowledgeGraphTab({ agentId }: { agentId: string }) {
+  const { knowledgeRelations, fetchKnowledgeGraph, loading } = useMemoryStore();
+
+  useEffect(() => {
+    if (agentId) fetchKnowledgeGraph(agentId);
+  }, [agentId, fetchKnowledgeGraph]);
+
+  if (!agentId) {
+    return <div className="text-center text-slate-300 mt-16"><p className="text-sm">请先选择 Agent</p></div>;
+  }
+  if (loading) {
+    return <div className="text-center text-slate-300 mt-16"><p className="text-xs">加载中…</p></div>;
+  }
+  if (knowledgeRelations.length === 0) {
+    return (
+      <div className="text-center text-slate-300 mt-16 px-4">
+        <p className="text-sm">暂无知识图谱关系</p>
+        <p className="text-xs mt-1">Agent 在对话中提取实体关系后会显示在这里</p>
+      </div>
+    );
+  }
+
+  // 按 subject 分组，让同一实体的关系聚在一起
+  const grouped = knowledgeRelations.reduce<Record<string, KnowledgeRelation[]>>((acc, r) => {
+    if (!acc[r.subjectId]) acc[r.subjectId] = [];
+    acc[r.subjectId].push(r);
+    return acc;
+  }, {});
+
+  return (
+    <div className="h-full overflow-y-auto p-5">
+      <div className="mb-3 text-xs text-slate-400">
+        共 {knowledgeRelations.length} 条关系，{Object.keys(grouped).length} 个实体
+      </div>
+      <div className="space-y-4">
+        {Object.entries(grouped).map(([subject, rels]) => (
+          <div key={subject} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
+              <span className="text-xs font-medium text-slate-700">{subject}</span>
+              <span className="ml-2 text-[10px] text-slate-400">{rels.length} 条关系</span>
+            </div>
+            <table className="w-full text-xs">
+              <tbody>
+                {rels.map((r) => (
+                  <tr key={r.id} className="border-t border-slate-100 first:border-t-0">
+                    <td className="px-3 py-1.5 text-slate-500 w-20">{r.relation}</td>
+                    <td className="px-3 py-1.5 text-slate-700">{r.objectId}</td>
+                    <td className="px-3 py-1.5 text-right text-[10px] text-slate-300 w-16">{Math.round(r.confidence * 100)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 整理历史 Tab — AutoDream 运行时间线 */
+function ConsolidationsTab({ agentId }: { agentId: string }) {
+  const { consolidations, fetchConsolidations, loading } = useMemoryStore();
+
+  useEffect(() => {
+    if (agentId) fetchConsolidations(agentId);
+  }, [agentId, fetchConsolidations]);
+
+  if (!agentId) {
+    return <div className="text-center text-slate-300 mt-16"><p className="text-sm">请先选择 Agent</p></div>;
+  }
+  if (loading) {
+    return <div className="text-center text-slate-300 mt-16"><p className="text-xs">加载中…</p></div>;
+  }
+  if (consolidations.length === 0) {
+    return (
+      <div className="text-center text-slate-300 mt-16 px-4">
+        <p className="text-sm">暂无整合历史</p>
+        <p className="text-xs mt-1">AutoDream 在 24h + 5 个新会话后自动触发</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto p-5">
+      <div className="mb-3 text-xs text-slate-400">
+        共 {consolidations.length} 次 AutoDream 运行
+      </div>
+      <div className="space-y-2">
+        {consolidations.map((run) => {
+          const duration = run.completedAt
+            ? Math.round((new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
+            : null;
+          const statusColor =
+            run.status === 'completed' ? 'bg-green-100 text-green-700' :
+            run.status === 'failed' ? 'bg-red-100 text-red-700' :
+            'bg-yellow-100 text-yellow-700';
+          return (
+            <div key={run.id} className="bg-white rounded-lg border border-slate-200 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColor}`}>{run.status}</span>
+                  <span className="text-xs text-slate-500">{formatDate(run.startedAt)}</span>
+                  {duration !== null && <span className="text-[10px] text-slate-400">耗时 {duration}s</span>}
+                </div>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="text-slate-600">合并 <strong>{run.memoriesMerged}</strong></span>
+                <span className="text-slate-600">裁剪 <strong>{run.memoriesPruned}</strong></span>
+                <span className="text-slate-600">新建 <strong>{run.memoriesCreated}</strong></span>
+              </div>
+              {run.errorMessage && (
+                <p className="mt-2 text-[11px] text-red-500 bg-red-50 p-2 rounded">{run.errorMessage}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 会话摘要 Tab — 列表 + markdown 展开 */
+function SessionSummariesTab({ agentId }: { agentId: string }) {
+  const { sessionSummaries, fetchSessionSummaries, loading } = useMemoryStore();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (agentId) fetchSessionSummaries(agentId);
+  }, [agentId, fetchSessionSummaries]);
+
+  if (!agentId) {
+    return <div className="text-center text-slate-300 mt-16"><p className="text-sm">请先选择 Agent</p></div>;
+  }
+  if (loading) {
+    return <div className="text-center text-slate-300 mt-16"><p className="text-xs">加载中…</p></div>;
+  }
+  if (sessionSummaries.length === 0) {
+    return (
+      <div className="text-center text-slate-300 mt-16 px-4">
+        <p className="text-sm">暂无会话摘要</p>
+        <p className="text-xs mt-1">单个会话累计 ≥10K tokens 后自动生成</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto p-5">
+      <div className="mb-3 text-xs text-slate-400">
+        共 {sessionSummaries.length} 条会话摘要
+      </div>
+      <div className="space-y-2">
+        {sessionSummaries.map((s: SessionSummary) => {
+          const isExpanded = expandedId === s.id;
+          return (
+            <div key={s.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : s.id)}
+                className="w-full px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-xs font-mono text-slate-700 truncate">{s.sessionKey}</p>
+                  <div className="flex gap-3 mt-0.5 text-[10px] text-slate-400">
+                    <span>{formatDate(s.updatedAt)}</span>
+                    <span>{s.tokenCountAt.toLocaleString()} tokens</span>
+                    <span>{s.turnCountAt} 轮</span>
+                    <span>{s.toolCallCountAt} 工具调用</span>
+                  </div>
+                </div>
+                <span className="text-slate-300 ml-2">{isExpanded ? '▾' : '▸'}</span>
+              </button>
+              {isExpanded && (
+                <div className="px-4 py-3 border-t border-slate-100 prose prose-sm prose-slate max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.summaryMarkdown}</ReactMarkdown>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** 记忆管理页面 — 主从分栏布局 */
 export default function MemoryPage() {
   const { agents } = useAgentStore();
@@ -536,6 +736,8 @@ export default function MemoryPage() {
   const [batchDeleting, setBatchDeleting] = useState(false);
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
   const [activeSearchIdx, setActiveSearchIdx] = useState<number>(-1);
+  /** Sprint 15.12 Phase D — 顶部 Tab 切换 */
+  const [activeTab, setActiveTab] = useState<MemoryTab>('memories');
 
   const activeUnit = units.find(u => u.id === activeUnitId) ?? null;
   const activeSearchResult = activeSearchIdx >= 0 ? searchResults[activeSearchIdx] ?? null : null;
@@ -598,41 +800,70 @@ export default function MemoryPage() {
     setActiveSearchIdx(-1);
   }, [clearSearch]);
 
+  const TAB_LABELS: Record<MemoryTab, string> = {
+    memories: '记忆',
+    graph: '知识图谱',
+    consolidations: '整理历史',
+    summaries: '会话摘要',
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏: 第 1 行 — 标题 + 搜索 + Agent */}
       <div className="px-4 pt-3 pb-2 border-b border-slate-200 bg-white">
         <div className="flex items-center gap-3 mb-2">
           <h2 className="text-sm font-bold text-slate-900 shrink-0">记忆管理</h2>
-          <form onSubmit={handleSearch} className="flex-1 flex gap-1.5">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索记忆..."
-              className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand"
-            />
-            <button
-              type="submit"
-              disabled={!selectedAgentId || !searchQuery.trim()}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-brand rounded-md hover:bg-brand-active disabled:opacity-50 transition-colors"
-            >
-              搜索
-            </button>
-            {isSearchMode && (
+          {activeTab === 'memories' ? (
+            <form onSubmit={handleSearch} className="flex-1 flex gap-1.5">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索记忆..."
+                className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand"
+              />
               <button
-                type="button"
-                onClick={handleClearSearch}
-                className="px-2.5 py-1.5 text-xs text-slate-500 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
+                type="submit"
+                disabled={!selectedAgentId || !searchQuery.trim()}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-brand rounded-md hover:bg-brand-active disabled:opacity-50 transition-colors"
               >
-                清除
+                搜索
               </button>
-            )}
-          </form>
+              {isSearchMode && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="px-2.5 py-1.5 text-xs text-slate-500 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
+                >
+                  清除
+                </button>
+              )}
+            </form>
+          ) : (
+            <div className="flex-1" />
+          )}
           <AgentSelect agents={agents} value={selectedAgentId} onChange={setSelectedAgentId} />
         </div>
 
-        {/* 第 2 行 — 分类标签 + 批量操作 */}
+        {/* Sprint 15.12 Phase D — Tab 切换 */}
+        <div className="flex gap-1 border-b border-slate-100 -mx-4 px-4 mb-2">
+          {(Object.keys(TAB_LABELS) as MemoryTab[]).map((key) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === key
+                  ? 'border-brand text-brand'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {TAB_LABELS[key]}
+            </button>
+          ))}
+        </div>
+
+        {/* 第 2 行 — 分类标签 + 批量操作（仅 memories tab）*/}
+        {activeTab === 'memories' && (
         <div className="flex items-center justify-between">
           {!isSearchMode ? (
             <div className="flex gap-1.5 flex-wrap">
@@ -687,67 +918,76 @@ export default function MemoryPage() {
             </div>
           )}
         </div>
+        )}
       </div>
 
-      {/* 主体: 左列表 + 右详情 */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 左列表 */}
-        <div className="w-2/5 min-w-[280px] max-w-[420px] border-r border-slate-200 overflow-y-auto bg-white">
-          {!selectedAgentId ? (
-            <div className="text-center text-slate-300 mt-16 px-4">
-              <p className="text-sm">请先创建一个 Agent</p>
-            </div>
-          ) : loading ? (
-            <div className="text-center text-slate-300 mt-16">
-              <p className="text-xs">加载中...</p>
-            </div>
-          ) : isSearchMode ? (
-            searchResults.length === 0 ? (
+      {/* 主体 — Sprint 15.12 Phase D 按 activeTab 切换 */}
+      {activeTab === 'memories' ? (
+        <div className="flex-1 flex overflow-hidden">
+          {/* 左列表 */}
+          <div className="w-2/5 min-w-[280px] max-w-[420px] border-r border-slate-200 overflow-y-auto bg-white">
+            {!selectedAgentId ? (
+              <div className="text-center text-slate-300 mt-16 px-4">
+                <p className="text-sm">请先创建一个 Agent</p>
+              </div>
+            ) : loading ? (
               <div className="text-center text-slate-300 mt-16">
-                <p className="text-xs">未找到匹配的记忆</p>
+                <p className="text-xs">加载中...</p>
+              </div>
+            ) : isSearchMode ? (
+              searchResults.length === 0 ? (
+                <div className="text-center text-slate-300 mt-16">
+                  <p className="text-xs">未找到匹配的记忆</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {searchResults.map((result, idx) => (
+                    <SearchRow
+                      key={result.memoryId}
+                      result={result}
+                      active={activeSearchIdx === idx}
+                      onSelect={() => setActiveSearchIdx(idx)}
+                    />
+                  ))}
+                </div>
+              )
+            ) : units.length === 0 ? (
+              <div className="text-center text-slate-300 mt-16 px-4">
+                <p className="text-sm">暂无记忆</p>
+                <p className="text-xs mt-1">与 Agent 对话后将自动积累</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {searchResults.map((result, idx) => (
-                  <SearchRow
-                    key={result.memoryId}
-                    result={result}
-                    active={activeSearchIdx === idx}
-                    onSelect={() => setActiveSearchIdx(idx)}
+                {units.map((unit) => (
+                  <MemoryRow
+                    key={unit.id}
+                    unit={unit}
+                    active={activeUnitId === unit.id}
+                    selected={selectedIds.has(unit.id)}
+                    onSelect={() => setActiveUnitId(unit.id)}
+                    onToggleCheck={() => toggleSelect(unit.id)}
                   />
                 ))}
               </div>
-            )
-          ) : units.length === 0 ? (
-            <div className="text-center text-slate-300 mt-16 px-4">
-              <p className="text-sm">暂无记忆</p>
-              <p className="text-xs mt-1">与 Agent 对话后将自动积累</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {units.map((unit) => (
-                <MemoryRow
-                  key={unit.id}
-                  unit={unit}
-                  active={activeUnitId === unit.id}
-                  selected={selectedIds.has(unit.id)}
-                  onSelect={() => setActiveUnitId(unit.id)}
-                  onToggleCheck={() => toggleSelect(unit.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* 右详情 */}
-        <div className="flex-1 bg-slate-50">
-          {isSearchMode ? (
-            <SearchDetailPanel result={activeSearchResult} />
-          ) : (
-            <DetailPanel unit={activeUnit} agentId={selectedAgentId} />
-          )}
+          {/* 右详情 */}
+          <div className="flex-1 bg-slate-50">
+            {isSearchMode ? (
+              <SearchDetailPanel result={activeSearchResult} />
+            ) : (
+              <DetailPanel unit={activeUnit} agentId={selectedAgentId} />
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 bg-slate-50 overflow-hidden">
+          {activeTab === 'graph' && <KnowledgeGraphTab agentId={selectedAgentId} />}
+          {activeTab === 'consolidations' && <ConsolidationsTab agentId={selectedAgentId} />}
+          {activeTab === 'summaries' && <SessionSummariesTab agentId={selectedAgentId} />}
+        </div>
+      )}
     </div>
   );
 }

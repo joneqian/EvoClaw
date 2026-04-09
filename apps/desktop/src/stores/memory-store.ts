@@ -34,11 +34,54 @@ export interface SearchResult {
 /** 反馈类型 — Sprint 15.12 Phase C */
 export type MemoryFeedbackType = 'inaccurate' | 'sensitive' | 'outdated';
 
+/** 知识图谱关系三元组 — Sprint 15.12 Phase D */
+export interface KnowledgeRelation {
+  id: string;
+  agentId: string;
+  subjectId: string;
+  relation: string;
+  objectId: string;
+  confidence: number;
+  createdAt: string;
+}
+
+/** AutoDream 整合运行记录 — Sprint 15.12 Phase D */
+export interface ConsolidationRun {
+  id: string;
+  agentId: string;
+  startedAt: string;
+  completedAt: string | null;
+  status: string;
+  memoriesMerged: number;
+  memoriesPruned: number;
+  memoriesCreated: number;
+  errorMessage: string | null;
+}
+
+/** 会话摘要记录 — Sprint 15.12 Phase D */
+export interface SessionSummary {
+  id: string;
+  agentId: string;
+  sessionKey: string;
+  summaryMarkdown: string;
+  tokenCountAt: number;
+  turnCountAt: number;
+  toolCallCountAt: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface MemoryState {
   /** 记忆单元列表 */
   units: MemoryUnit[];
   /** 搜索结果 */
   searchResults: SearchResult[];
+  /** 知识图谱关系列表 — Phase D */
+  knowledgeRelations: KnowledgeRelation[];
+  /** AutoDream 整合历史 — Phase D */
+  consolidations: ConsolidationRun[];
+  /** 会话摘要列表 — Phase D */
+  sessionSummaries: SessionSummary[];
   /** 是否正在加载 */
   loading: boolean;
   /** 当前选中的记忆单元 */
@@ -54,6 +97,12 @@ interface MemoryState {
   updateMemory: (agentId: string, id: string, partial: { l1Overview?: string; l2Content?: string }) => Promise<void>;
   /** Phase C: 提交反馈（不准确/涉及隐私/过时）*/
   flagMemory: (agentId: string, id: string, type: MemoryFeedbackType, note?: string) => Promise<void>;
+  /** Phase D: 拉取知识图谱关系 */
+  fetchKnowledgeGraph: (agentId: string, limit?: number) => Promise<void>;
+  /** Phase D: 拉取 AutoDream 整合历史 */
+  fetchConsolidations: (agentId: string, limit?: number) => Promise<void>;
+  /** Phase D: 拉取会话摘要列表 */
+  fetchSessionSummaries: (agentId: string, limit?: number) => Promise<void>;
   selectUnit: (unit: MemoryUnit | null) => void;
   clearSearch: () => void;
 }
@@ -61,6 +110,9 @@ interface MemoryState {
 export const useMemoryStore = create<MemoryState>((set) => ({
   units: [],
   searchResults: [],
+  knowledgeRelations: [],
+  consolidations: [],
+  sessionSummaries: [],
   loading: false,
   selectedUnit: null,
 
@@ -139,6 +191,55 @@ export const useMemoryStore = create<MemoryState>((set) => ({
       units: state.units.map((u) => (u.id === id ? fresh.unit : u)),
       selectedUnit: state.selectedUnit?.id === id ? fresh.unit : state.selectedUnit,
     }));
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Sprint 15.12 Phase D — 知识图谱 / 整理历史 / 会话摘要
+  // ─────────────────────────────────────────────────────────────────
+
+  fetchKnowledgeGraph: async (agentId, limit = 100) => {
+    set({ loading: true });
+    try {
+      const data = await apiGet<{ relations: KnowledgeRelation[] }>(
+        `/memory/${agentId}/knowledge-graph?limit=${limit}`,
+      );
+      set({ knowledgeRelations: data.relations ?? [] });
+    } catch (err) {
+      console.error('获取知识图谱失败:', err);
+      set({ knowledgeRelations: [] });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fetchConsolidations: async (agentId, limit = 50) => {
+    set({ loading: true });
+    try {
+      const data = await apiGet<{ runs: ConsolidationRun[] }>(
+        `/memory/${agentId}/consolidations?limit=${limit}`,
+      );
+      set({ consolidations: data.runs ?? [] });
+    } catch (err) {
+      console.error('获取整合历史失败:', err);
+      set({ consolidations: [] });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fetchSessionSummaries: async (agentId, limit = 50) => {
+    set({ loading: true });
+    try {
+      const data = await apiGet<{ summaries: SessionSummary[] }>(
+        `/memory/${agentId}/session-summaries?limit=${limit}`,
+      );
+      set({ sessionSummaries: data.summaries ?? [] });
+    } catch (err) {
+      console.error('获取会话摘要失败:', err);
+      set({ sessionSummaries: [] });
+    } finally {
+      set({ loading: false });
+    }
   },
 
   selectUnit: (unit) => set({ selectedUnit: unit }),

@@ -13,7 +13,11 @@ import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ChannelManager } from '../channel/channel-manager.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
+import type { MemoryStore } from '../memory/memory-store.js';
+import type { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
+import type { FtsStore } from '../infrastructure/db/fts-store.js';
 import type { MemoryExtractor } from '../memory/memory-extractor.js';
+import { createEvoClawTools } from '../tools/evoclaw-tools.js';
 import type { UserMdRenderer } from '../memory/user-md-renderer.js';
 import type { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
@@ -80,6 +84,9 @@ export interface ChannelMessageDeps {
   userMdRenderer?: UserMdRenderer;
   skillDiscoverer?: SkillDiscoverer;
   laneQueue?: LaneQueue;
+  memoryStore?: MemoryStore;
+  ftsStore?: FtsStore;
+  knowledgeGraph?: KnowledgeGraphStore;
 }
 
 /** 通道特定的工具禁止规则 */
@@ -215,7 +222,7 @@ export async function handleChannelMessage(
   deps: ChannelMessageDeps,
 ): Promise<string> {
   const { agentId, sessionKey, message, channel, peerId, chatType } = ctx;
-  const { store, agentManager, channelManager, configManager, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, laneQueue } = deps;
+  const { store, agentManager, channelManager, configManager, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, laneQueue, memoryStore, ftsStore, knowledgeGraph } = deps;
 
   // 1. 获取 Agent 配置
   const agent = agentManager.getAgent(agentId);
@@ -387,6 +394,19 @@ export async function handleChannelMessage(
   if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
   const secondaryLLMCall = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
   enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
+
+  // 记忆和知识图谱工具（与 chat.ts 路径一致）
+  if (hybridSearcher && memoryStore && ftsStore && knowledgeGraph) {
+    enhancedTools.push(...createEvoClawTools({
+      searcher: hybridSearcher,
+      memoryStore,
+      knowledgeGraph,
+      ftsStore,
+      agentId,
+      skipWebTools: true,
+    }));
+  }
+
   enhancedTools.push(createImageTool(providerConfig));
   enhancedTools.push(createPdfTool(providerConfig));
   enhancedTools.push(createBrowserTool());

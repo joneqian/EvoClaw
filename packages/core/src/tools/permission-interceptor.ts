@@ -68,11 +68,25 @@ const SAFE_BINS = new Set([
   'jq', 'yq',
 ]);
 
-/** 自动放行的只读工具 — 不需要权限确认 */
+/**
+ * 自动放行的工具 — 不需要权限确认
+ *
+ * 包含两类：
+ * (1) 真正的只读工具（read/ls/find/grep/image/pdf）
+ * (2) Agent 自管理工具（操作 Agent 自己的资源，每个工具内部有 agentId 越权检查）：
+ *     - 子 Agent 管理：spawn/list/kill/steer/yield
+ *     - 记忆库管理：memory_* + knowledge_query
+ *       记忆工具操作的是 Agent 自己的 SQLite 记忆库，不涉及外部系统/文件/网络。
+ *       memory_delete / memory_forget_topic 是软删除（archived_at），可恢复。
+ *       用户说"请记住/忘掉"本身就是显式授权——每次再弹权限框是糟糕的 UX。
+ */
 const AUTO_ALLOW_TOOLS = new Set([
   'read', 'ls', 'find', 'grep',       // 文件只读
   'image', 'pdf',                       // 多媒体只读
-  'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',  // Agent 管理
+  'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',  // 子 Agent 管理
+  // 记忆库自管理（Agent 自己的 DB，工具内部已做 agentId 越权检查）
+  'memory_search', 'memory_get', 'knowledge_query',
+  'memory_write', 'memory_update', 'memory_delete', 'memory_forget_topic', 'memory_pin',
 ]);
 
 /** 工具名称 → 权限类别映射（仅需拦截的工具） */

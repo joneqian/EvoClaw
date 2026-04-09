@@ -270,12 +270,17 @@ function tryLoadSkill(filePath: string, installPath: string, source: InstalledSk
  * 注意：不暴露 SKILL.md 文件路径，引导模型通过 invoke_skill 工具加载技能
  */
 function buildSkillsPrompt(skills: InstalledSkill[]): string {
-  const header = `## Skills (mandatory)
-Before replying: scan <available_skills> entries.
-- If exactly one skill clearly applies: invoke it with \`invoke_skill({ skill: "name" })\`, then follow the returned instructions.
-- If multiple could apply: choose the most specific one, then invoke it.
-- If none clearly apply: proceed without invoking any skill.
-Constraints: never invoke more than one skill up front; only invoke after selecting.
+  const header = `## Skills (optional reference library)
+Built-in tools are your **primary** action interface — prefer them for any direct action you can do yourself.
+
+Skills are pre-written task templates for *complex multi-step workflows* that no single built-in tool can complete on its own. Only invoke a skill when **all** of the following hold:
+- The user task genuinely requires multi-step orchestration beyond what a single built-in tool provides
+- A specific skill in <available_skills> below clearly matches the workflow
+- You actually need its detailed instructions (not just its name as a hint)
+
+If a built-in tool can do the job, use the built-in tool. Do NOT invoke a skill just because the keyword sounds related.
+
+Constraint: invoke at most one skill per turn.
 
 `;
 

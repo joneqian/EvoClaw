@@ -8,6 +8,8 @@ import { debugCommand } from '../../channel/command/builtin/debug.js';
 import { costCommand } from '../../channel/command/builtin/cost.js';
 import { modelCommand } from '../../channel/command/builtin/model.js';
 import { memoryCommand } from '../../channel/command/builtin/memory.js';
+import { rememberCommand } from '../../channel/command/builtin/remember.js';
+import { forgetCommand } from '../../channel/command/builtin/forget.js';
 import { statusCommand } from '../../channel/command/builtin/status.js';
 import { createHelpCommand } from '../../channel/command/builtin/help.js';
 import { CommandRegistry } from '../../channel/command/command-registry.js';
@@ -335,6 +337,108 @@ describe('memory command', () => {
     };
     const result = await memoryCommand.execute('', makeCtx({ store: store as any }));
     expect(result.response).toContain('共 10 条');
+  });
+});
+
+describe('remember command', () => {
+  function makeRememberCtx() {
+    const store = {
+      all: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue(null),
+      run: vi.fn(),
+      transaction: vi.fn((fn: () => void) => fn()),
+    };
+    return { ctx: makeCtx({ store: store as any }), store };
+  }
+
+  it('参数为空应返回提示', async () => {
+    const { ctx } = makeRememberCtx();
+    const result = await rememberCommand.execute('', ctx);
+    expect(result.handled).toBe(true);
+    expect(result.response).toContain('用法');
+  });
+
+  it('参数为纯空格应返回提示', async () => {
+    const { ctx } = makeRememberCtx();
+    const result = await rememberCommand.execute('   ', ctx);
+    expect(result.handled).toBe(true);
+    expect(result.response).toContain('用法');
+  });
+
+  it('正常文本应写入 memory_units 并返回 id', async () => {
+    const { ctx, store } = makeRememberCtx();
+    const result = await rememberCommand.execute('我女儿叫小满，5 月 3 日生日', ctx);
+    expect(result.handled).toBe(true);
+    expect(result.response).toContain('已记住');
+    expect(result.response).toMatch(/id=[a-f0-9-]+/);
+    expect(store.run).toHaveBeenCalled();
+    const sqlCall = store.run.mock.calls[0]?.[0] as string;
+    expect(sqlCall).toContain('INSERT INTO memory_units');
+  });
+
+  it('应使用当前 agentId', async () => {
+    const { store } = makeRememberCtx();
+    const ctx = makeCtx({
+      agentId: 'special-agent',
+      store: store as any,
+    });
+    await rememberCommand.execute('某事', ctx);
+    const args = store.run.mock.calls[0];
+    expect(args).toContain('special-agent');
+  });
+});
+
+describe('forget command', () => {
+  function makeForgetCtx() {
+    const store = {
+      all: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue(null),
+      run: vi.fn(),
+      transaction: vi.fn((fn: () => void) => fn()),
+    };
+    return { ctx: makeCtx({ store: store as any }), store };
+  }
+
+  it('参数为空应返回提示', async () => {
+    const { ctx } = makeForgetCtx();
+    const result = await forgetCommand.execute('', ctx);
+    expect(result.handled).toBe(true);
+    expect(result.response).toContain('用法');
+  });
+
+  it('无匹配应返回 0 条', async () => {
+    const { ctx, store } = makeForgetCtx();
+    store.all.mockReturnValue([]);
+    const result = await forgetCommand.execute('客户 X', ctx);
+    expect(result.handled).toBe(true);
+    expect(result.response).toContain('0');
+  });
+
+  it('多条匹配应批量软删除并返回数量', async () => {
+    const { ctx, store } = makeForgetCtx();
+    store.all.mockReturnValue([
+      { id: 'mem-1', l0_index: '客户 X 喜欢简洁邮件' },
+      { id: 'mem-2', l0_index: '客户 X 上周开会' },
+      { id: 'mem-3', l0_index: '客户 X 偏好下午联系' },
+    ]);
+    const result = await forgetCommand.execute('客户 X', ctx);
+    expect(result.response).toContain('3');
+    const updateCalls = store.run.mock.calls.filter((call: any[]) =>
+      typeof call[0] === 'string' && call[0].includes('archived_at')
+    );
+    expect(updateCalls.length).toBe(3);
+  });
+
+  it('应只查询当前 agentId 的记忆', async () => {
+    const { store } = makeForgetCtx();
+    store.all.mockReturnValue([]);
+    const ctx = makeCtx({
+      agentId: 'agent-X',
+      store: store as any,
+    });
+    await forgetCommand.execute('关键词', ctx);
+    const selectCall = store.all.mock.calls[0];
+    expect(selectCall).toContain('agent-X');
   });
 });
 

@@ -580,6 +580,87 @@ Phase 5 (15.11.17): 测试 + 验收
 
 ---
 
+#### Sprint 15.12: 记忆系统企业可见度 📋 待开始
+
+> **研究基础**: Claude Code 源码研究 `22-memory-system.md` 差距分析（v2，企业用户视角）。在 Sprint 15.9 完成的记忆后端基础之上，补齐"用户直接触达记忆"的产品化路径——让企业普通员工能在对话中即时增删改记忆、在界面上看到/编辑/反馈记忆、知道 Agent 用了哪些记忆。
+
+**目标**: 把 EvoClaw 记忆系统从"后端引擎完备但用户感知不到"升级到"企业普通员工能看见、能控制、能信任"。
+
+**前提分析**: 经现状核对，记忆系统的真实差距与 Sprint 15.11 类似呈现"后端齐备、上层缺口"特征：
+
+- ✅ **已就绪（Sprint 15.9 完成）**：L0/L1/L2 三层 / 9 类别 merge / FTS5+向量+知识图谱混合检索 / 热度衰减 / AutoDream / Session Summary / 零宽防反馈 / Prompt Cache / `apps/desktop/src/pages/MemoryPage.tsx` 生产级管理页 / `memory_search` `memory_get` `knowledge_query` 三个只读 LLM 工具
+- ❌ **关键缺口**：
+  - Agent 没有"直接增删改 DB 记忆条目"的工具——`USER.md`/`MEMORY.md` 是只读渲染视图，Agent 改不了；用户说"忘掉 X" Agent 真的做不到
+  - 后端 `knowledge_graph` / `consolidation_log` / `session_summaries` 表数据 + 新鲜度判断逻辑都已就绪，但前端记忆中心都没暴露
+  - 用户没有"编辑/纠正记忆"的界面入口——发现记忆错了无能为力
+  - 聊天对话中 Agent 召回了哪些记忆完全不透明，无法解释也无法反馈
+- 🚫 **明确不做（用户 2026-04-09 决定）**：隐私模式 / 团队共享 / 审计导出 / 多设备同步 / 按类别屏蔽 / KAIROS 日志式 / 收紧分类 / 分叉 Agent 提取
+
+**关联**: PRD F3（记忆系统）, MemorySystemDesign.md, Sprint 15.9 已完成的后端基础, `~/.claude/plans/expressive-skipping-puzzle.md`（差距分析底稿）
+
+| # | 任务 | 优先级 | 预估 | 状态 | 对应 Feature |
+|---|------|--------|------|------|-------------|
+| 15.12.1 | **记忆 LLM 工具集（5 个）**：在 `tools/evoclaw-tools.ts` 新增 `memory_write`（即时落盘新记忆，返回 id）/ `memory_update`（更新 L1/L2，L0 保持稳定）/ `memory_delete`（按 id）/ `memory_forget_topic`（按关键字 FTS5 软删 archived_at）/ `memory_pin`（pin/unpin 切换）。复用 `MemoryStore.insert/update/delete/archive/pin/unpin` 现有方法 | P0 | 1.5d | 📋 | F3.21 |
+| 15.12.2 | **系统提示引导**：在 `embedded-runner-prompt.ts` 工具说明段补充"用户明确说'记住 / 忘记 / 修改 / 钉选'时**立即**调用对应工具并等待成功 id 后再回复，避免依赖后台异步抽取" | P0 | 0.5d | 📋 | F3.21 |
+| 15.12.3 | **新增 slash 命令**：`channel/command/builtin/remember.ts`（`/remember <text>` → 调 `memory_write` 走 profile/preference 默认类别）+ `forget.ts`（`/forget <keyword>` → 调 `memory_forget_topic`），二者都返回操作结果摘要 | P0 | 0.5d | 📋 | F3.21 |
+| 15.12.4 | **DB 迁移 021_memory_feedback.sql**：新表 `memory_feedback (id, memory_id FK, agent_id, type CHECK IN ('inaccurate'\|'sensitive'\|'outdated'), note, reported_at, resolved_at)`，并在 `memory_units` 表字段补 `confidence` 降权写入路径 | P0 | 0.5d | 📋 | F3.22 |
+| 15.12.5 | **记忆中心后端 API 补齐**：`routes/memory.ts` 新增 `PUT /:agentId/units/:id`（更新 L1/L2，L0 锁死）、`POST /:agentId/units/:id/feedback`（写 memory_feedback，inaccurate 类型自动 confidence -= 0.15）、`GET /:agentId/knowledge-graph?limit=...`（实体关系三元组分页）、`GET /:agentId/consolidations?limit=...`（AutoDream 历史）、`GET /:agentId/session-summaries?limit=...` | P0 | 1d | 📋 | F3.22 |
+| 15.12.6 | **召回元数据回传**：修改 `memory-recall.ts` 把 `results.map(r => r.memoryId)` 写入 `ctx.recallMeta?: { memoryIds: string[]; scores: number[] }`（新增 `TurnContext` 字段），由 chat.ts 在 SSE 流末尾通过新事件 `recall_meta` 透传给前端 | P0 | 1d | 📋 | F3.23 |
+| 15.12.7 | **前端记忆中心：编辑 + 反馈**：`MemoryPage.tsx` 详情面板加"编辑"按钮（弹层改 L1/L2，调 `PUT /units/:id`）+ "不准确"按钮（弹层选 type+note，调 `POST /units/:id/feedback`）；对应 `memory-store.ts` 新增 `updateMemory` / `flagMemory` actions | P0 | 1.5d | 📋 | F3.22 |
+| 15.12.8 | **前端记忆中心：新鲜度标签**：列表项渲染时根据 `updatedAt` 计算天数，>1 天显示黄色 `1d+` 徽章、>7 天显示红色 `Nd+` 徽章（与后端 `computeStalenessTag` 阈值一致） | P0 | 0.3d | 📋 | F3.22 |
+| 15.12.9 | **前端记忆中心：知识图谱视图**：`MemoryPage.tsx` 顶部 Tab 新增"知识图谱"，使用 `react-force-graph-2d`（或 lightweight `vis-network`）渲染 entities × relations；点击节点展示相关 memory 列表 | P1 | 1d | 📋 | F3.22 |
+| 15.12.10 | **前端记忆中心：整理历史 + 会话摘要 Tab**：另两个顶部 Tab，时间线展示 `consolidation_log`（合并/裁剪条数 + 状态）和 `session_summaries`（会话摘要列表，可点开看 markdown） | P1 | 0.7d | 📋 | F3.22 |
+| 15.12.11 | **聊天页 "Show Your Work" 折叠条**：`ChatPage` 在 Agent 消息上方加"本轮用到 N 条记忆"折叠区，展开列出 L0/L1，每条旁边一个"不准"按钮直接调 `POST /units/:id/feedback`；订阅 SSE `recall_meta` 事件 | P0 | 1d | 📋 | F3.23 |
+| 15.12.12 | **集成测试**：`memory-llm-tools.test.ts`（5 个新工具的 happy path + edge case）+ `memory-feedback-route.test.ts`（feedback API + confidence 衰减）+ `memory-recall-meta.test.ts`（召回元数据传递）+ `remember-forget-command.test.ts`（slash 命令） | P0 | 1d | 📋 | — |
+| 15.12.13 | **E2E + 文档更新**：Playwright e2e 跑"用户说记住生日 → 详情页能看到 → 用户改 L1 → 用户标不准 → AutoDream 后被降权"完整链路；更新 `MemorySystemDesign.md` 加 "用户触达层" 章节 | P1 | 0.5d | 📋 | — |
+
+**实施顺序**：
+
+```
+Phase A (15.12.1-15.12.3): LLM 工具层 + slash 命令      — 后端增量，最小风险，立即解锁"记住/忘记"对话反馈
+Phase B (15.12.4-15.12.5): 反馈 schema + 记忆中心 REST  — 为前端铺路
+Phase C (15.12.6-15.12.8): 召回元数据 + 前端编辑/反馈/新鲜度 — 核心可见度
+Phase D (15.12.9-15.12.10): 前端图谱 + 整理历史 + 会话摘要   — 高级可见度（P1）
+Phase E (15.12.11): 聊天页 Show Your Work             — 闭环最后一公里
+Phase F (15.12.12-15.12.13): 测试 + 文档              — 验收
+```
+
+**总工作量**: ~10.5d ≈ 2 周
+
+**交付物**:
+- 修改文件: `tools/evoclaw-tools.ts`（+5 工具）, `agent/embedded-runner-prompt.ts`（系统提示引导）, `routes/memory.ts`（+5 端点）, `context/plugins/memory-recall.ts`（写 recallMeta）, `context/plugin.interface.ts`（TurnContext 加字段）, `routes/chat.ts`（SSE recall_meta 事件）, `apps/desktop/src/pages/MemoryPage.tsx`（编辑/反馈/新鲜度/3 个 Tab）, `apps/desktop/src/stores/memory-store.ts`（updateMemory/flagMemory/fetchKnowledgeGraph/fetchConsolidations/fetchSessionSummaries）, `apps/desktop/src/pages/ChatPage.tsx`（Show Your Work 折叠条）
+- 新增文件: `packages/core/src/infrastructure/db/migrations/021_memory_feedback.sql`, `packages/core/src/channel/command/builtin/remember.ts`, `packages/core/src/channel/command/builtin/forget.ts`, `packages/core/src/memory/memory-feedback-store.ts`
+- 测试: `__tests__/memory-llm-tools.test.ts`, `__tests__/memory-feedback-route.test.ts`, `__tests__/memory-recall-meta.test.ts`, `__tests__/remember-forget-command.test.ts`, `e2e/memory-lifecycle.spec.ts`
+
+**验收标准**:
+- [ ] 用户对 Agent 说"记住我女儿叫小满，5 月 3 日生日" → Agent 同轮返回"已记住（id=mem_xxx）" → 立即在记忆中心看到该条 → **不依赖 afterTurn 异步抽取**
+- [ ] 用户对 Agent 说"忘掉所有关于客户 ABC 的事" → Agent 调用 `memory_forget_topic('客户 ABC')` → 返回"已归档 N 条" → 记忆中心列表刷新后看不到该客户相关条目
+- [ ] 在记忆中心点"编辑"按钮可以改 L1/L2 内容并保存（L0 字段灰显不可改）
+- [ ] 在记忆中心点"不准确"按钮 → 选类型/写备注 → 提交后该记忆 confidence -0.15，下次召回时排序位置下降
+- [ ] 列表项 >1 天显示 `1d+` 黄标、>7 天显示红标，与后端 `computeStalenessTag` 阈值一致
+- [ ] "知识图谱" Tab 渲染当前 Agent 的实体关系网络，节点可点击关联 memory
+- [ ] "整理历史" Tab 时间线展示最近 20 次 AutoDream 运行（合并/裁剪/创建条数 + 状态）
+- [ ] "会话摘要" Tab 列出按 session_key 聚合的摘要 markdown
+- [ ] 聊天页 Agent 回复上方出现"本轮用到 N 条记忆"折叠条，展开后每条 L0 旁边都有"不准"按钮，点击后写入 `memory_feedback`
+- [ ] `/remember 开会到 3 点` 和 `/forget 客户 ABC` slash 命令兜底可用
+- [ ] 全量测试通过，无回归
+- [ ] e2e 完整链路（说→看→改→标→降权）跑通
+
+**明确不做（用户 2026-04-09 决定）**：
+
+| 项目 | 决定原因 |
+|---|---|
+| 隐私模式 / Incognito Conversation | 暂不考虑 |
+| 企业团队共享记忆链路 | 暂不考虑 |
+| 记忆导出 + 修改审计日志 | 暂不考虑 |
+| 多设备记忆同步 | 暂不考虑 |
+| 细粒度按类别/实体屏蔽 | 暂不考虑 |
+| KAIROS 日志式记忆 | 与 Session Summary 重叠 80% |
+| 收紧到 4 分类（与 Claude Code 对齐） | 9 分类对用户透明，是后端检索加权用的工程手段 |
+| 分叉 Agent 跑记忆任务 | EvoClaw 同进程调用已经安全，无需引入 |
+
+---
+
 #### Sprint 16: 企微 Channel 生产就绪
 
 > **注**: 原 Sprint 15 企微生产化顺延至 Sprint 16。
@@ -1048,3 +1129,6 @@ Phase 5 (15.11.17): 测试 + 验收
 | F9.20 | MCP OAuth 2.1 + PKCE 浏览器授权 + Keychain | Sprint 15.11 | P0 |
 | F9.21 | MCP 工具注解驱动权限确认 | Sprint 15.11 | P1 |
 | F9.22 | MCP 体验与可靠性增强（代理/超时/持久化/ListChanged/命名） | Sprint 15.11 | P1/P2 |
+| F3.21 | 记忆 LLM 工具集（write/update/delete/forget_topic/pin）+ slash 命令 | Sprint 15.12 | P0 |
+| F3.22 | 记忆中心企业可见度（编辑/反馈/新鲜度/知识图谱/整理历史/会话摘要） | Sprint 15.12 | P0/P1 |
+| F3.23 | 聊天页 Show Your Work 召回元数据透传 | Sprint 15.12 | P0 |

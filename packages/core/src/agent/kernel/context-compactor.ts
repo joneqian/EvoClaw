@@ -643,15 +643,14 @@ export async function autocompact(
   messages.push(...recentMessages);
 
   // Post-compaction 恢复指令 + 关键内容重注入（参考 Claude Code compact.ts）
-  const today = new Date().toISOString().slice(0, 10);
   const refreshParts = [
     `[Post-compaction context refresh]`,
     `会话刚刚被压缩。上面的对话摘要是对之前内容的总结。`,
     ``,
     `请立即执行以恢复工作上下文：`,
     `1. 读取 AGENTS.md — 你的操作规程`,
-    `2. 读取 MEMORY.md — 你的长期记忆`,
-    `3. 读取今天的 memory/${today}.md — 今日笔记（如果存在）`,
+    `2. 读取 MEMORY.md — 你的长期记忆（DB 自动渲染视图，仅读不写）`,
+    `3. 如果用户最新请求涉及具体话题，调用 memory_search 取回相关历史记忆`,
     `4. 如果摘要中提到了正在编辑的文件，重新读取这些文件`,
     `5. 检查 <available_skills> 确认可用技能`,
     ``,

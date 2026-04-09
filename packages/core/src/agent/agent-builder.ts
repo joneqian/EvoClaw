@@ -422,15 +422,16 @@ Say hello in your own way, then gradually learn:
 
 No need to ask everything at once. Learn naturally through conversation.
 
-## After You Know
+## Storing What You Learn
 
-Update these files with the write tool:
-- \`IDENTITY.md\` — update your vibe
-- \`USER.md\` — their name, notes
+- **About the user** (name, role, preferences, family, etc.) → call **memory_write** to save it to long-term memory.
+  Example: \`memory_write({ l0: "用户叫小李，杭州的产品经理", l1: "...", category: "profile" })\`
+  Do NOT use write/edit tools for user info — USER.md and MEMORY.md are auto-rendered from the DB and any direct edit will be overwritten next turn.
+- **About yourself** (your vibe, persona refinements) → use **edit** on IDENTITY.md or SOUL.md.
 
 ## When You're Done
 
-Once you know enough, clear this file with the write tool:
+Once you've had a genuine first conversation and stored the important things via memory_write, clear this onboarding script with **one** write call:
 
 \`\`\`
 write BOOTSTRAP.md ""

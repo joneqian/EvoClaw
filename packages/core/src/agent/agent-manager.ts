@@ -195,9 +195,8 @@ export class AgentManager {
     const wsPath = this.getWorkspacePath(id);
     fs.mkdirSync(wsPath, { recursive: true });
 
-    // 创建 memory/ 日记子目录
-    const memoryDir = path.join(wsPath, 'memory');
-    fs.mkdirSync(memoryDir, { recursive: true });
+    // 注：memory/ 子目录已退役（Phase A.4，2026-04-09）。
+    // 所有长期记忆走 memory_units DB 表，由 memory_write/update/delete/forget_topic/pin 工具管理。
 
     // 创建默认模板文件
     this.writeWorkspaceFile(id, 'SOUL.md', DEFAULT_SOUL_MD);
@@ -290,41 +289,49 @@ Before doing anything, read in order:
 
 1. \`SOUL.md\` — who you are
 2. \`USER.md\` — who you're helping
-3. Today's and yesterday's diary — recent context
-4. **DM only**: \`MEMORY.md\` — long-term memory (contains personal info; never load in group chats)
+3. **DM only**: \`MEMORY.md\` — long-term memory (contains personal info; never load in group chats)
 
 Don't ask permission. Just read.
 
-## Memory System (Dual-Write Strategy)
+## Memory System (DB-First, Single Source of Truth)
 
-Your memory has two layers of protection:
-1. **What you write** — use write/edit tools to save to files on the spot (fast, reliable)
-2. **What the system extracts** — background analysis of conversations, saved to database (deep, searchable)
+All long-term memory lives in the database, accessed through dedicated tools. **No more diary files.** USER.md and MEMORY.md are auto-rendered views of the DB — never write to them directly.
 
-### Instant Memory — Write important things immediately!
+### Read tools
 
-**Don't wait for the system to remember for you.** Write immediately when:
+- \`memory_search(query)\` — semantic + keyword hybrid search across all memories
+- \`memory_get(id)\` — fetch full L2 detail of a single memory by id
+- \`knowledge_query(entity)\` — look up entity relations in the knowledge graph
 
-- User says "remember this" or shares important info (names, preferences, habits) → write to today's diary memory/YYYY-MM-DD.md
-- You discover important environment info → edit TOOLS.md
-- You made a mistake and learned a lesson → edit AGENTS.md
+### Write tools — call these immediately when the user says so
 
-**Note: USER.md and MEMORY.md are auto-rendered by the system — do not edit them directly.** Your diary entries are automatically extracted and reflected in these files.
+| User says | Call |
+|---|---|
+| "remember X / 记住 X / 别忘了 X" | \`memory_write({l0, l1, category})\` → reply with the returned id |
+| "改一下那条记忆 / 不对应该是 Y" | \`memory_search\` to find id, then \`memory_update({id, l1?, l2?})\` (l0 is locked) |
+| "删掉这条 / 把 X 那条删了" | \`memory_search\` to find id, then \`memory_delete({id})\` |
+| "忘掉所有关于 X 的事 / 别再提 X" | \`memory_forget_topic({keyword})\` — bulk archive by FTS5 |
+| "这条很重要 / 把这条置顶" | \`memory_pin({id, pinned: true})\` |
+
+**Don't wait for the background extractor.** When the user explicitly tells you to remember/forget/update something, call the matching tool **right away** and only reply after you have the success result.
+
+For implicit facts (the user just mentions something in passing without saying "remember"), the background extractor will pick it up automatically — don't double-write.
+
+### Other memory: edit TOOLS.md / AGENTS.md / SOUL.md
+
+These are static workspace files (not the DB) and you may edit them when you discover lasting environment context, learned operating rules, or personality refinements:
+
+- Environment specifics → edit \`TOOLS.md\`
+- A new operating rule from a mistake → edit \`AGENTS.md\`
+- Personality / voice adjustment → edit \`SOUL.md\`
 
 **Use absolute paths from runtime info when writing files.**
-
-### Background Memory — System-Managed
-
-The system automatically:
-- Analyzes conversations and extracts noteworthy information into the database
-- Renders extracted results into USER.md and MEMORY.md before each session
-- Also extracts from your diary entries
 
 ### "I'll keep that in mind" = Does Not Exist
 
 - Mental notes vanish after session restart
-- Only what's written to files persists
-- **Files > Brain**
+- Only what is in the DB (via memory_write etc.) or written to SOUL/IDENTITY/AGENTS/TOOLS/HEARTBEAT.md persists
+- **DB > Files > Brain**
 
 ## Safety Guidelines
 
@@ -380,8 +387,7 @@ You are free to edit \`HEARTBEAT.md\` with a short checklist or reminders. Keep 
 After receiving a heartbeat signal:
 - Read HEARTBEAT.md for the checklist, execute each item
 - If nothing needs attention, reply HEARTBEAT_OK
-- Track check state in \`memory/heartbeat-state.json\`:
-  \`{"lastChecks": {"email": <unix_ts>, "calendar": <unix_ts>}}\`
+- Track check timestamps inline in HEARTBEAT.md (e.g. as a small \`## Last Run\` block at the bottom)
 - Batch multiple checks in one poll (inbox + calendar + notifications in a single heartbeat)
 - Do not repeat a check done within the last 30 minutes
 
@@ -397,14 +403,6 @@ Stay silent:
 - Late at night (23:00–08:00) unless urgent
 - When the user is busy
 - When there's nothing new
-
-### Diary Files
-
-Your diary directory is for .md memory files only:
-- **Diary path:** see runtime info — use absolute paths for writes
-- Write observations worth recording but not central to the conversation
-- User says "remember this" → write to today's diary file
-- Periodically review recent diary entries
 
 ---
 
@@ -520,24 +518,16 @@ Say hello in your own way, then figure out together:
 
 Offer suggestions if they're stuck. Keep it light.
 
-## After You Know
+## Storing What You Learn
 
-Update these files with the write tool:
-
-- \`IDENTITY.md\` — your name, vibe, signature emoji
-- \`USER.md\` — their name, timezone, notes
-
-Then talk about \`SOUL.md\` together:
-
-- What matters to them
-- How they want you to behave
-- Any boundaries or preferences
-
-Write it down. Make it real.
+- **About the user** (name, role, preferences, family, etc.) → call **memory_write** to save it to long-term memory.
+  Example: \`memory_write({ l0: "用户叫小李，杭州的产品经理", l1: "...", category: "profile" })\`
+  Do NOT use write/edit tools for user info — USER.md and MEMORY.md are auto-rendered from the DB and any direct edit will be overwritten next turn.
+- **About yourself** (your name, vibe, signature emoji, persona refinements) → use **edit** on IDENTITY.md or SOUL.md.
 
 ## When You're Done
 
-Once you know enough, clear this file with the write tool:
+Once you've had a genuine first conversation and stored the important things via memory_write, clear this onboarding script with **one** write call:
 
 \`\`\`
 write BOOTSTRAP.md ""

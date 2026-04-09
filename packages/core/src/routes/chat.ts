@@ -43,7 +43,11 @@ import { createScheduleTool } from '../tools/schedule-tool.js';
 import { SubAgentSpawner } from '../agent/sub-agent-spawner.js';
 import { PermissionBubbleManager } from '../agent/permission-bubble.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
+import type { MemoryStore } from '../memory/memory-store.js';
+import type { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
+import type { FtsStore } from '../infrastructure/db/fts-store.js';
 import type { MemoryExtractor } from '../memory/memory-extractor.js';
+import { createEvoClawTools } from '../tools/evoclaw-tools.js';
 import { createMemoryRecallPlugin } from '../context/plugins/memory-recall.js';
 import { createMemoryExtractPlugin } from '../context/plugins/memory-extract.js';
 import { createToolRegistryPlugin } from '../context/plugins/tool-registry.js';
@@ -326,6 +330,9 @@ export function createChatRoutes(
   costTracker?: import('../cost/cost-tracker.js').CostTracker,
   sessionSummarizer?: import('../memory/session-summarizer.js').SessionSummarizer,
   getMcpManager?: () => import('../mcp/mcp-client.js').McpManager | undefined,
+  memoryStore?: MemoryStore,
+  ftsStore?: FtsStore,
+  knowledgeGraph?: KnowledgeGraphStore,
 ) {
   const app = new Hono();
 
@@ -701,6 +708,18 @@ export function createChatRoutes(
     if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
     const secondaryLLMCall = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
     enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
+
+    // 记忆和知识图谱工具（read: search/get/knowledge_query；write: write/update/delete/forget_topic/pin）
+    if (hybridSearcher && memoryStore && ftsStore && knowledgeGraph) {
+      enhancedTools.push(...createEvoClawTools({
+        searcher: hybridSearcher,
+        memoryStore,
+        knowledgeGraph,
+        ftsStore,
+        agentId,
+        skipWebTools: true,
+      }));
+    }
 
     // 多媒体工具（绕过 PI 直接调用 provider API）
     enhancedTools.push(createImageTool(providerConfig));

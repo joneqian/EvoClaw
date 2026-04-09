@@ -54,6 +54,8 @@ import { createHelpCommand } from './channel/command/builtin/help.js';
 import { costCommand } from './channel/command/builtin/cost.js';
 import { modelCommand } from './channel/command/builtin/model.js';
 import { memoryCommand } from './channel/command/builtin/memory.js';
+import { rememberCommand } from './channel/command/builtin/remember.js';
+import { forgetCommand } from './channel/command/builtin/forget.js';
 import { statusCommand } from './channel/command/builtin/status.js';
 import { createDoctorRoutes } from './routes/doctor.js';
 import { MemoryMonitor } from './infrastructure/memory-monitor.js';
@@ -128,6 +130,12 @@ export interface CreateAppOptions {
   hybridSearcher?: HybridSearcher;
   /** 记忆系统：记忆提取器 */
   memoryExtractor?: MemoryExtractor;
+  /** 记忆系统：记忆存储（供 LLM 工具直写 DB） */
+  memoryStore?: import('./memory/memory-store.js').MemoryStore;
+  /** 记忆系统：FTS5 全文索引（供 memory_forget_topic 工具按关键字检索） */
+  ftsStore?: import('./infrastructure/db/fts-store.js').FtsStore;
+  /** 记忆系统：知识图谱存储 */
+  knowledgeGraph?: import('./memory/knowledge-graph.js').KnowledgeGraphStore;
   /** USER.md / MEMORY.md 动态渲染器 */
   userMdRenderer?: UserMdRenderer;
   /** Skill 发现器 */
@@ -161,6 +169,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     laneQueue,
     hybridSearcher,
     memoryExtractor,
+    memoryStore,
+    ftsStore,
+    knowledgeGraph,
     userMdRenderer,
     skillDiscoverer,
     memoryMonitor,
@@ -310,7 +321,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   if (store && agentManager) {
     app.route(
       '/chat',
-      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance, sessionSummarizer, () => sharedMcpManager),
+      createChatRoutes(store, agentManager, vectorStore, configManager, laneQueue, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, cronRunner, costTrackerInstance, sessionSummarizer, () => sharedMcpManager, memoryStore, ftsStore, knowledgeGraph),
     );
     // 反馈路由挂载到 /chat，与聊天路由共用前缀
     app.route('/chat', createFeedbackRoutes(store));
@@ -676,7 +687,7 @@ async function main() {
       const skillDiscoverer = new SkillDiscoverer();
       profiler.checkpoint('memory_ready');
       log.info(`记忆系统已初始化 (向量搜索: ${vectorStore.hasEmbeddingFn ? '已启用' : '降级为 FTS 纯文本'})`);
-      return { vectorStore, memoryStore, ftsStore, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer };
+      return { vectorStore, memoryStore, ftsStore, knowledgeGraph, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer };
     })(),
 
     // Group B: Agent + Scheduler（CronRunner.start() 延迟到 Phase 3）
@@ -707,7 +718,7 @@ async function main() {
   ]);
 
   // 解构并行结果
-  const { vectorStore, ftsStore, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
+  const { vectorStore, memoryStore, ftsStore, knowledgeGraph, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
   const { agentManager, laneQueue, cronRunner } = agentSys;
   const { channelManager, channelStateRepo, bindingRouter } = channelSys;
 
@@ -723,6 +734,8 @@ async function main() {
   commandRegistry.register(costCommand);
   commandRegistry.register(modelCommand);
   commandRegistry.register(memoryCommand);
+  commandRegistry.register(rememberCommand);
+  commandRegistry.register(forgetCommand);
   commandRegistry.register(statusCommand);
   commandRegistry.register(createHelpCommand(commandRegistry));
 
@@ -740,6 +753,9 @@ async function main() {
     userMdRenderer,
     skillDiscoverer,
     laneQueue,
+    memoryStore,
+    ftsStore,
+    knowledgeGraph,
   };
 
   // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理
@@ -854,6 +870,9 @@ async function main() {
     laneQueue,
     hybridSearcher,
     memoryExtractor,
+    memoryStore,
+    ftsStore,
+    knowledgeGraph,
     userMdRenderer,
     skillDiscoverer,
     memoryMonitor,

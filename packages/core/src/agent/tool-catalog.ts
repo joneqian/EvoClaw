@@ -31,6 +31,11 @@ export const CORE_TOOLS: readonly CoreToolMeta[] = [
   // memory
   { id: 'memory_search', section: 'memory', label: '记忆搜索', description: '语义搜索记忆（L0/L1 混合索引）' },
   { id: 'memory_get', section: 'memory', label: '记忆获取', description: '获取记忆详情（L2 完整内容）' },
+  { id: 'memory_write', section: 'memory', label: '记忆写入', description: '即时写入新记忆到 DB（用户说"记住"时调用）' },
+  { id: 'memory_update', section: 'memory', label: '记忆更新', description: '修改现有记忆的 L1/L2 内容（L0 锁死）' },
+  { id: 'memory_delete', section: 'memory', label: '记忆删除', description: '软删除一条记忆' },
+  { id: 'memory_forget_topic', section: 'memory', label: '话题遗忘', description: '按关键词批量软删除相关记忆' },
+  { id: 'memory_pin', section: 'memory', label: '记忆置顶', description: '钉选/取消钉选记忆，免疫热度衰减' },
   { id: 'knowledge_query', section: 'memory', label: '知识查询', description: '查询知识图谱（实体关系）' },
   // agent
   { id: 'spawn_agent', section: 'agent', label: '派生', description: '创建子 Agent 并行处理任务' },
@@ -80,7 +85,9 @@ export const TOOL_PROFILES: Record<ToolProfileId, readonly string[] | null> = {
     'read', 'write', 'edit', 'apply_patch',
     'bash', 'exec_background', 'process',
     'web_search', 'web_fetch',
-    'memory_search', 'memory_get', 'knowledge_query',
+    'memory_search', 'memory_get',
+    'memory_write', 'memory_update', 'memory_delete', 'memory_forget_topic', 'memory_pin',
+    'knowledge_query',
     'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',
     'image', 'pdf',
     'browser', 'image_generate',
@@ -88,6 +95,7 @@ export const TOOL_PROFILES: Record<ToolProfileId, readonly string[] | null> = {
   ],
   messaging: [
     'read', 'memory_search', 'memory_get',
+    'memory_write', 'memory_update', 'memory_delete', 'memory_forget_topic', 'memory_pin',
     'web_search', 'web_fetch',
     'todo_write',
     // channel 工具是动态的，运行时添加

@@ -52,6 +52,11 @@ const TOOL_SUMMARIES: Record<string, string> = {
   pdf: '阅读 PDF 文档（原生模式或文本提取）',
   memory_search: '搜索 Agent 记忆库，查找用户偏好和历史',
   memory_get: '获取单条记忆的完整详情',
+  memory_write: '把一条新记忆即时写入 DB（用户说"记住"时立即调用，不要等后台抽取）',
+  memory_update: '修改现有记忆的概述或详情（用户说"改一下/不对"时调用，l0 锁死）',
+  memory_delete: '软删除一条记忆（用户说"删掉这条"时调用）',
+  memory_forget_topic: '按关键词批量遗忘某个话题（用户说"忘掉所有关于 X 的事"时调用）',
+  memory_pin: '钉选/取消钉选记忆，钉选后免疫热度衰减',
   knowledge_query: '查询知识图谱中的实体关系',
   spawn_agent: '创建子 Agent 并行处理独立子任务',
   list_agents: '查看所有子 Agent 的状态和结果',
@@ -68,7 +73,9 @@ const TOOL_ORDER = [
   'bash', 'exec_background', 'process',
   'web_search', 'web_fetch',
   'image', 'pdf',
-  'memory_search', 'memory_get', 'knowledge_query',
+  'memory_search', 'memory_get',
+  'memory_write', 'memory_update', 'memory_delete', 'memory_forget_topic', 'memory_pin',
+  'knowledge_query',
   'spawn_agent', 'list_agents', 'kill_agent', 'steer_agent', 'yield_agents',
   'todo_write',
 ];
@@ -157,9 +164,27 @@ Before answering the user, you should:
 2. Use memory_get for full details when needed
 3. Incorporate memory context for more personalized, accurate replies
 4. If the user mentions a previously discussed topic, always search memory first
-5. MEMORY.md is your long-term notebook — read it with the read tool
-6. When you discover important information worth remembering long-term, write it to today's diary (memory/YYYY-MM-DD.md)
+5. MEMORY.md is an auto-rendered DB view — read it for context, but never write to it
+6. When the user explicitly asks you to remember something, call memory_write **immediately** (see table below) — do not wait for the background extractor
 7. At the start of each session, check MEMORY.md for previously recorded notes
+
+## 主动管理记忆 — 即时反馈优先
+当用户在对话中**明确**说出以下意图时，**立即**调用对应工具，并等待成功后在回复里告知用户结果（含 id），不要依赖后台异步抽取：
+
+| 用户说 | 你应该做 |
+|---|---|
+| "记住 X / 帮我记一下 / 别忘了 X" | memory_write 写入新记忆 → 回复"已记住（id=...）" |
+| "改一下那条记忆 / 不对应该是 Y / 修正一下" | 先 memory_search 找 id → memory_update 改 l1/l2 → 回复"已更新" |
+| "删掉这条 / 把 X 那条记忆删了" | 先 memory_search 找 id → memory_delete → 回复"已删除：..." |
+| "忘掉所有关于 X 的事 / 别再提 X" | memory_forget_topic 按关键词批量归档 → 回复"已遗忘 N 条" |
+| "这条很重要 / 把这条置顶 / 别让它衰减" | memory_pin（pinned=true） → 回复"已钉选" |
+| "取消置顶 / 不用置顶了" | memory_pin（pinned=false） → 回复"已取消钉选" |
+
+要点：
+- l0 字段（一行摘要）是检索锚点，**写入后不可改**——只能改 l1（概述）和 l2（详情）
+- memory_write 的 category 默认 preference；profile/preference/entity 等会自动合并相同主题
+- memory_forget_topic 走 FTS5 全文检索，所有匹配条目软删（archived_at），可恢复
+- 这些工具是"用户显式指令"专用——不要自作主张写入；隐式信息仍由后台 afterTurn 抽取
 
 ## 记忆新鲜度
 记忆可能随时间过期。使用超过 1 天的记忆前，请验证其是否仍然正确。
@@ -267,9 +292,8 @@ reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show a
   }
 
   runtimeLines.push(
-    `Diary directory: memory/ (only for .md daily memory diary files — no other file types allowed)`,
-    `Diary write path: memory/YYYY-MM-DD.md (append-only — never overwrite existing content)`,
-    `Work output: files generated for the user (HTML/PDF/images etc.) go to workspace root, not memory/`,
+    `Long-term memory: stored in DB — use memory_write/update/delete/forget_topic/pin tools (not files)`,
+    `Work output: files generated for the user (HTML/PDF/images etc.) go to workspace root`,
   );
 
   blocks.push({ text: `<runtime>\n${runtimeLines.join('\n')}\n</runtime>`, cacheControl: null, label: 'runtime' });

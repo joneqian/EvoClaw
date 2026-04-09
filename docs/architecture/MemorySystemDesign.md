@@ -1055,6 +1055,200 @@ afterTurn 提取前检查:
 
 ---
 
+## 15. 用户触达层（Sprint 15.12）
+
+> 增加于 2026-04-09。前面 1-14 节描述的是"记忆系统的引擎"——存储、检索、整合、防护。本节描述的是 Sprint 15.12 加入的"用户触达层"——让企业普通员工（非开发者）能**看见、控制、信任** Agent 的记忆。
+
+### 15.1 设计动机
+
+Sprint 15.9 完成时，记忆系统的后端能力已经超过 Claude Code（L0/L1/L2 三层、9 类别 merge、知识图谱、热度衰减、混合检索、零宽防反馈、AutoDream、Session Summary、Prompt Cache、LLM 精选）。但**用户感知不到这些能力**：
+
+- 用户说"记住 X" → 只能等后台 `afterTurn` 异步抽取，得不到即时确认
+- 用户想知道 AI 记得什么 → 没有界面入口
+- 用户发现 AI 记错了 → 没有纠正机制
+- AI 召回了几条记忆 → 用户不知道用了哪几条
+- 用户怀疑某条记忆不准 → 无反馈通道
+
+Sprint 15.12 在不动后端引擎的前提下，把这些能力**端到端暴露给用户**。
+
+### 15.2 五个 Phase 闭环
+
+```
+Phase A: 5 个 LLM 写工具 + 退役 diary 文件路径
+   memory_write / memory_update / memory_delete /
+   memory_forget_topic / memory_pin
+        ↓
+Phase B: routes/memory.ts 5 个新端点 + memory_feedback 表
+   PUT /units/:id            (编辑 L1/L2，L0 锁死)
+   POST /units/:id/feedback  (反馈 + confidence -= 0.15)
+   GET /knowledge-graph
+   GET /consolidations
+   GET /session-summaries
+        ↓
+Phase C: 召回元数据 SSE 透传 + 前端编辑/反馈/新鲜度
+   memory-recall plugin → ctx.recallMeta
+   chat.ts → SSE event 'recall_meta'
+   MemoryPage 详情面板：编辑/反馈按钮
+   MemoryRow 列表：新鲜度徽章
+        ↓
+Phase D: MemoryPage 顶部 Tab 切换
+   记忆 / 知识图谱 / 整理历史 / 会话摘要
+        ↓
+Phase E: ChatPage Show Your Work 折叠条
+   "💭 本轮用到 N 条记忆 ▸"
+   展开 → 列出 [类别] L0 摘要 N% [不准]
+   "不准" → POST feedback → confidence 降权
+```
+
+### 15.3 LLM 工具层（Phase A）
+
+5 个新 LLM 工具，全部走 `memory-store.ts` 现有 CRUD，工具内部都做 `agentId` 越权检查（拒绝跨 Agent 操作）：
+
+| 工具 | 触发场景 | 内部行为 |
+|---|---|---|
+| `memory_write` | 用户说"记住 X" | INSERT memory_units，confidence=0.9，merge_key 自动从 category+l0 派生 |
+| `memory_update` | 用户说"改一下/不对" | UPDATE l1_overview / l2_content（**L0 锁死**，是检索锚点） |
+| `memory_delete` | 用户说"删掉这条" | UPDATE archived_at = now (软删除，可恢复) |
+| `memory_forget_topic` | 用户说"忘掉所有 X" | FTS5 搜出匹配 → 批量 archive |
+| `memory_pin` | 用户说"这条很重要" | UPDATE pinned = 1 (免疫热度衰减) |
+
+**关键设计**：这 5 个工具加进了 `permission-interceptor.ts:AUTO_ALLOW_TOOLS`，与 `kill_agent`/`spawn_agent` 同级——属于 Agent 自管理范畴，**不触发权限弹窗**。
+
+**退役本地 diary 文件**：原来 Agent 的 BOOTSTRAP.md / AGENTS.md 模板里有"用 write 工具改 USER.md / 写 memory/YYYY-MM-DD.md 日记"的指令，导致 Agent 走 3-8 turn 的 bash/write/edit 老路径。Phase A.4 全部退役：
+
+- `agent-manager.ts` 不再 `mkdir memory/` 子目录
+- AGENTS.md 模板的 "Memory System" 段重写成 DB-first 工具表
+- BOOTSTRAP.md 模板（agent-builder + agent-manager 两份）改成"用 memory_write 存用户信息"
+- `memory-flush.ts` 重构：紧急持久化白名单从 `[read, write]` 改为 `[read, memory_search, memory_write]`
+- `context-compactor.ts` 压缩后恢复指令从"读今天的 memory/YYYY-MM-DD.md"改成"调用 memory_search"
+
+### 15.4 反馈表与 confidence 衰减（Phase B）
+
+**`memory_feedback` 表**（migration 025）：
+
+```sql
+CREATE TABLE memory_feedback (
+  id TEXT PRIMARY KEY,
+  memory_id TEXT NOT NULL FK→memory_units ON DELETE CASCADE,
+  agent_id TEXT NOT NULL FK→agents ON DELETE CASCADE,
+  type TEXT CHECK IN ('inaccurate', 'sensitive', 'outdated'),
+  note TEXT,
+  reported_at TEXT,
+  resolved_at TEXT
+);
+```
+
+**衰减常数**：`CONFIDENCE_DECAY_STEP = 0.15`，每次反馈 `confidence = max(0, current - 0.15)`，下限 0 不变成负数。
+
+**为什么不做硬删除**：用户的反馈是一个信号，不是判决。`AutoDream` 整合时把低 confidence 的记忆优先合并/裁剪——这比"用户点一下就删"更可控，且可恢复。
+
+**为什么是 routes 层做 confidence 更新而不是 store**：保持 `MemoryFeedbackStore` 单一职责（CRUD `memory_feedback`），衰减是路由层的协调动作（写 feedback 表 + 改 memory_units 两表）。
+
+### 15.5 召回元数据透传（Phase C / E）
+
+**`TurnContext.recallMeta`** 字段，由 `memory-recall` 插件在 `beforeTurn` 写入：
+
+```ts
+recallMeta?: {
+  memoryIds: string[];
+  scores: number[];
+  l0Indexes: string[];   // Phase E 加，避免前端再 GET 单条
+  categories: string[];  // Phase E 加，同上
+}
+```
+
+四个数组平行索引（同一记忆在四个数组里下标相同）。
+
+**`chat.ts`** 在 SSE 流末尾（`pendingPermissions` 之前）发 `recall_meta` 事件：
+
+```ts
+if (turnCtx.recallMeta && turnCtx.recallMeta.memoryIds.length > 0) {
+  await stream.writeSSE({
+    event: 'recall_meta',
+    data: JSON.stringify(turnCtx.recallMeta),
+  });
+}
+```
+
+**前端 ChatPage** 监听这个事件，把 payload 通过 `setLastMessageRecallMeta(meta)` 附加到当前 streaming 的 assistant 消息上。`MessageBubble` 在渲染时检测到 `message.recallMeta` 就在顶部显示 `<RecallMetaBar>`。
+
+### 15.6 前端记忆中心（Phase C / D）
+
+**MemoryPage** 在 Sprint 15.12 之前已经有完整的"列表 + 详情"布局。Phase C/D 加了：
+
+- **顶部 4 Tab 切换**：`记忆` / `知识图谱` / `整理历史` / `会话摘要`
+- **新鲜度徽章**：`MemoryRow` 按 `updatedAt` 计算天数，>1 天黄、>7 天红，与后端 `computeStalenessTag()` 阈值一致
+- **置信度 vs 热度区分**：列表项原来用无标签的 `ActivationDot` 显示 67%，被用户误解为"置信度"。重构成 `ConfidenceDot`（"信 N%"，列表用，反馈会让它下降）+ `HotnessDot`（"热 N%"，仅搜索结果用）
+- **编辑弹层**：`EditDialog`，L0 灰显锁死，L1/L2 textarea，调 `PUT /units/:id`
+- **反馈弹层**：`FeedbackDialog`，3 选 1 type radio + note textarea，调 `POST /units/:id/feedback`
+- **写后必 refetch**：`updateMemory` / `flagMemory` 不做乐观更新（脆弱），写完后立即 `GET /units/:id` 拉单条最新数据替换本地 → React 一定能看到引用变化触发 rerender
+
+**知识图谱 Tab**：表格视图，不引入 force graph 库（节省 ~100KB bundle）。按 subject 分组，每行 `relation predicate | object | confidence%`。
+
+**整理历史 Tab**：`consolidation_log` 卡片时间线，状态徽章（绿/黄/红）+ 起止时间 + 耗时 + 合并/裁剪/新建计数 + 错误信息。
+
+**会话摘要 Tab**：`session_summaries` 可折叠卡片，header 显 session_key + token 数 + turn 数 + 工具调用数，展开用 `react-markdown` + `remark-gfm` 渲染。
+
+### 15.7 Show Your Work 折叠条（Phase E）
+
+**`RecallMetaBar`** 组件（`ChatPage.tsx`），渲染在每条 assistant 消息的顶部：
+
+```
+┌────────────────────────────────────┐
+│ 💭 本轮用到 3 条记忆            ▸ │  ← 折叠状态
+└────────────────────────────────────┘
+
+┌────────────────────────────────────┐
+│ 💭 本轮用到 3 条记忆            ▾ │
+├────────────────────────────────────┤
+│ [偏好] 用户喜欢简洁回答  73% [不准]│  ← 展开后每行
+│ [实体] 用户的女儿叫小满  68% [不准]│
+│ [事件] 上周三的医生预约  45% [已反馈]│
+└────────────────────────────────────┘
+```
+
+**"不准" 按钮**：调 `useMemoryStore().flagMemory(currentAgentId, memoryId, 'inaccurate')` → 走 Phase B 端点 → confidence 降权 → 下次召回排序变化。
+
+按钮按下后立即变 `已反馈` 标签（不可重复点击）。
+
+### 15.8 完整闭环
+
+```
+1. Phase A: Agent 调 memory_write 工具                       [写]
+       ↓
+2. Phase C: 下次 turn beforeTurn 调 hybrid-search 召回         [读]
+       ↓
+3. Phase E: chat.ts 发 SSE recall_meta，前端附加到 message    [透明]
+       ↓
+4. Phase E: 用户点 "不准" 按钮                                [反馈]
+       ↓
+5. Phase B: POST /feedback 写 memory_feedback + confidence-=  [降权]
+       ↓
+6. 下次召回: hybrid-search 因 confidence 下降而排序变化       [改善]
+       ↓
+7. Phase D: 用户在记忆中心可以看到、编辑、删除、导出           [可见]
+       ↓
+8. AutoDream: 整合时优先合并/裁剪 confidence 低的记忆          [清理]
+```
+
+每一步对应一个 Phase，每一步都有 e2e 测试覆盖。
+
+### 15.9 不在 Sprint 15.12 范围内的事
+
+差距分析阶段（`~/.claude/plans/expressive-skipping-puzzle.md`）讨论过但**有意不做**的：
+
+- 隐私模式（Incognito Conversation）— 暂不考虑
+- 团队共享记忆（TEAMMEM 类似机制）— 暂不考虑
+- 记忆审计 / 修改日志 / 合规导出— 暂不考虑
+- 多设备记忆同步 — 暂不考虑
+- KAIROS 日志式记忆 — 与 Session Summary 重叠 80%
+- 收紧到 4 类别（Claude Code 风格）— EvoClaw 9 类别对用户透明，是后端检索权重用
+- 分叉 Agent 跑提取 — EvoClaw 同进程已经安全
+
+这些可能进入 Sprint 16+ 的"v1.5 深度集成"或"v2.0 企业完整版"。
+
+---
+
 ## 附录：研究来源
 
 ### MemOS Cloud OpenClaw Plugin

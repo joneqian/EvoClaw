@@ -2,7 +2,7 @@
 
 > **文档版本**: v6.3
 > **创建日期**: 2026-03-20
-> **文档状态**: 执行中（Sprint 11 ✅ 已完成, Sprint 12 ✅ 已完成, Sprint 13 ✅ 已完成, Sprint 14 ✅ 已完成, Sprint 15 ✅ 已完成, Sprint 15.5 ✅ 已完成, Sprint 15.6 ✅ 已完成, Sprint 15.7 ✅ 已完成）
+> **文档状态**: 执行中（Sprint 11 ✅ 已完成, Sprint 12 ✅ 已完成, Sprint 13 ✅ 已完成, Sprint 14 ✅ 已完成, Sprint 15 ✅ 已完成, Sprint 15.5 ✅ 已完成, Sprint 15.6 ✅ 已完成, Sprint 15.7 ✅ 已完成, Sprint 15.8 ✅ 基础完成）
 > **基于**: PRD v6.4 + Architecture v6.4 + heartbeat-alignment-plan.md
 > **前序**: Sprint 1-10C 已全部完成（基于 PRD v4.0），本计划从 v1.0 企业级就绪版本开始
 > **废弃**: 本文档替代 `IterationPlan.md` (v4.0)
@@ -406,7 +406,7 @@ Phase 2 内: 15.7.6 先行 → 15.7.7-15.7.12 可并行 → 15.7.13
 
 ---
 
-#### Sprint 15.8: MCP 协议集成 ⏳ 进行中
+#### Sprint 15.8: MCP 协议集成 ✅ 基础完成（企业化补齐见 Sprint 15.11）
 
 > **注**: 基于 Claude Code 研究（docs/research/21-mcp-client.md），实现完整 MCP 客户端能力，让 Agent 能连接外部 MCP 服务器扩展工具集。
 
@@ -516,6 +516,66 @@ Phase 4 (15.8.11-15.8.13): API + 前端 + 测试
 - [ ] 退避最大值 32s，支持 Retry-After 头
 - [ ] 持久重试模式下 overload 不终止循环
 - [ ] 工具调用后 5s 内生成 ~30 字符摘要
+- [ ] 全量测试通过，无回归
+
+---
+
+#### Sprint 15.11: MCP 客户端企业化 📋 待开始
+
+> **研究基础**: Claude Code 源码研究 `docs/research/21-mcp-client.md` 差距分析。基于 EvoClaw "面向企业普通员工"前提补齐企业落地项 + 修复 Sprint 15.8 遗留问题。
+
+**目标**: 把 MCP 从"开发者自用级"升级到"企业用户可用级"——员工无需编辑 JSON 即可一键添加经过 OAuth 授权的 MCP 服务器，IT 管理员可通过 managed.json 强制下发服务器集合且员工无法绕过。
+
+**前提分析**: EvoClaw 目标用户是企业普通员工（非开发者），因此与 Claude Code 的优先级显著不同：
+- ✅ **必做**: 管理员强制下发、GUI 增删改、OAuth 浏览器授权、运行时自动重连
+- 🚫 **明确不做**: InProcessTransport / SDK transport / KAIROS / claude.ai 代理 / WebSocket / XAA（详见底部表）
+
+**关联**: PRD F9.12（深化）, Architecture §3.5.3, Sprint 15.8 遗留项（15.8.9/11/12/13）
+
+| # | 任务 | 优先级 | 预估 | 状态 | 对应 Feature |
+|---|------|--------|------|------|-------------|
+| 15.11.1 | **运行时 onclose 重连修复**：`McpClient.start()` 成功后注册 `client.onclose`，触发后读磁盘禁用状态 + 复用 `startWithReconnect` 退避循环；stdio 传输也尝试一次重连后再放弃 | P0 | 1d | 📋 | F9.17 |
+| 15.11.2 | **配置发现并入 ConfigManager**：`mcp-config.ts` 改为从 `ConfigManager.get('mcpServers')` 读取，`.mcp.json` 降级为开发模式 fallback | P0 | 1d | 📋 | F9.18 |
+| 15.11.3 | **Zod schema 接入**：`mcpServerConfigSchema`（`packages/shared/src/schemas/mcp.schema.ts`，已存在但未被调用）在 ConfigManager 合并前校验，失败条目跳过并 warn 输出可读路径 | P0 | 0.5d | 📋 | F9.18 |
+| 15.11.4 | **managed.json + enforced 机制**：管理员层新增 `mcpServers` 段 + `enforced` 路径列表，用户层不可覆盖 enforced 项；denylist 始终全合并 | P0 | 1d | 📋 | F9.18 |
+| 15.11.5 | **后端 REST 补齐**：`POST /mcp/servers/:name/enable`、`POST /mcp/servers/:name/disable`、`POST /mcp/servers/:name/restart`、`GET /mcp/servers/:name/detail`（含 tools/prompts/最近 10 次连接日志/最后错误） | P0 | 1d | 📋 | F9.19 |
+| 15.11.6 | **SSE 状态事件推送**：`McpManager` 内置 `EventEmitter`，`addServer/removeServer/refreshTools/onclose` 后 emit `mcp:status`；现有 `/events` SSE 流广播给前端 | P0 | 0.5d | 📋 | F9.19 |
+| 15.11.7 | **前端 MCP 服务器管理页面**：`pages/McpServersPage.tsx` + `stores/mcp-store.ts`，含服务器列表、添加向导、状态徽章（绿/黄/红）、错误展开、启停/重连按钮、订阅 `mcp:status` 事件 | P0 | 2d | 📋 | F9.19 |
+| 15.11.8 | **内置策划 MCP 目录**：`apps/desktop/src/data/mcp-catalog.ts` 内置 15-20 个官方 / 经审计的 MCP（filesystem、brave-search、postgres、github、slack、gmail 等），用户点击即装 | P1 | 1d | 📋 | F9.19 |
+| 15.11.9 | **OAuth 2.1 + PKCE 浏览器流**：扩展 `McpServerConfig` 加 `auth?: { type, ...}`；HTTP 传输前插 Auth 中间件；Tauri `shell.open` 打开浏览器；Node `http.createServer` 监听 127.0.0.1 随机回调端口；token endpoint 自动发现 | P0 | 3d | 📋 | F9.20 |
+| 15.11.10 | **OAuth token 存 Keychain**：复用 `@evoclaw/core/credential`（macOS Keychain + AES-256-GCM），存 access_token + refresh_token + expires_at；401 自动刷新重试一次 | P0 | 0.5d | 📋 | F9.20 |
+| 15.11.11 | **工具注解驱动权限确认**：`tool-injector.ts` MCP 阶段读 `destructiveHint/readOnlyHint`（`mcp-client.ts:123-124` 已提取但未消费），destructive→`requiresConfirmation: 'always'`，readOnly→`'never'` | P1 | 0.5d | 📋 | F9.21 |
+| 15.11.12 | **HTTP/HTTPS 代理透传**：`StreamableHTTPClientTransport` 构造处透传 `process.env.HTTPS_PROXY`，使用 `undici.ProxyAgent` | P1 | 0.5d | 📋 | F9.22 |
+| 15.11.13 | **工具调用超时配置**：`callTool` 增加 `toolCallTimeoutMs`（默认 5min），可全局/per-server 覆盖 | P1 | 0.5d | 📋 | F9.22 |
+| 15.11.14 | **禁用状态持久化**：`~/.evoclaw/mcp-state.json` 或 SQLite 表存运行时禁用，重连循环每次重试前 `isDisabledFromDisk` 检查 | P1 | 0.5d | 📋 | F9.22 |
+| 15.11.15 | **ListChanged 动态刷新**：注册 `ToolListChangedNotification/PromptListChangedNotification` 处理器，回调内 refresh + emit `mcp:status` | P2 | 0.5d | 📋 | F9.22 |
+| 15.11.16 | **工具命名双下划线 + 兼容层**：`mcp__{server}__{tool}`，旧 `mcp_*` 双向映射，新会话写新格式、旧会话读时映射 | P2 | 0.5d | 📋 | F9.22 |
+| 15.11.17 | **集成测试 + E2E**：sqlite MCP 端到端测试、onclose 重连回归测试（kill -9 子进程验证 5s 内恢复）、managed.json enforced 测试、OAuth 流单元测试（mock IdP） | P0 | 1d | 📋 | — |
+
+**实施顺序**：
+
+```
+Phase 1 (15.11.1-15.11.6): 补齐 15.8 遗留 + 后端基础 — 修复重连 bug + ConfigManager 集成 + REST + SSE
+Phase 2 (15.11.7-15.11.8): 前端管理面 — 页面 + store + 内置目录
+Phase 3 (15.11.9-15.11.10): 认证 — OAuth 2.1 + Keychain
+Phase 4 (15.11.11-15.11.16): 体验与可靠性 — 注解权限 / 代理 / 超时 / 持久化 / ListChanged / 命名
+Phase 5 (15.11.17): 测试 + 验收
+```
+
+**总工作量**: ~14.5d ≈ 3 周
+
+**交付物**：
+- 修改文件: `mcp-client.ts`（onclose + auth + timeout）, `mcp-config.ts`（→ ConfigManager）, `mcp-reconnect.ts`（被 onclose 复用）, `mcp-tool-bridge.ts`（命名 + 注解）, `routes/mcp.ts`（REST 补齐）, `infrastructure/config-manager.ts`（mcpServers 段）, `bridge/tool-injector.ts`（注解→权限）, `packages/shared/src/types/mcp.ts`（auth 字段）
+- 新增文件: `packages/core/src/mcp/mcp-oauth.ts`（OAuth 2.1 + PKCE 流）, `packages/core/src/mcp/mcp-state-store.ts`（禁用持久化）, `apps/desktop/src/pages/McpServersPage.tsx`, `apps/desktop/src/stores/mcp-store.ts`, `apps/desktop/src/data/mcp-catalog.ts`
+- 测试: `mcp-onclose-reconnect.test.ts`, `mcp-config-managed.test.ts`, `mcp-oauth-flow.test.ts`, `mcp-routes-enable-disable.test.ts`, `mcp-integration-sqlite.test.ts`
+
+**验收标准**：
+- [ ] 全新机器只放一份 `managed.json` 到 IT 位置，重启 Sidecar 后前端 MCP 页面看到强制服务器，且员工无法删除 enforced 项
+- [ ] 员工点 "添加 Slack MCP" → 浏览器跳转授权 → 回到应用看到连接成功 → 能调用 Slack 工具（全程零 JSON 编辑、零 token 复制）
+- [ ] 手动 `kill -9` 一个 stdio MCP 子进程，5 秒内前端状态从绿变黄（重连中），随后恢复绿
+- [ ] denylist 中的服务器即使在 enforced managed.json 中也不会启动
+- [ ] 工具调用 5min 内未返回视为超时，错误消息用户友好
+- [ ] HTTPS_PROXY 环境变量下，远程 SSE MCP 通过代理连接成功
 - [ ] 全量测试通过，无回归
 
 ---
@@ -920,6 +980,11 @@ Phase 4 (15.8.11-15.8.13): API + 前端 + 测试
 | Linux 版本 | 企业桌面以 macOS + Windows 为主 |
 | 本地模型 | 所有 LLM 调用统一走 ModelRouter |
 | ACP 协议（近期） | 当前架构满足需求，按客户需求驱动 |
+| MCP InProcessTransport / SDK transport | Claude Code 特有扩展点（Chrome MCP / Computer Use），与 EvoClaw 架构无关 |
+| MCP KAIROS Channel 通知 | 与 EvoClaw 自有 Channel 系统重复 |
+| MCP Claude.ai connector 代理 + CCR URL 解包 | EvoClaw 无 claude.ai 连接器 |
+| MCP WebSocket 传输（ws / ws-ide） | MCP 生态 95% 走 SSE/Streamable HTTP，无优先用户需求 |
+| MCP XAA（SEP-990 跨应用访问） | 需企业自建 IdP + 全部 MCP 实现 PRM，普通企业员工场景投入产出比极低；待具体客户需求驱动 |
 
 ---
 
@@ -977,3 +1042,9 @@ Phase 4 (15.8.11-15.8.13): API + 前端 + 测试
 | F11.9 | System Events 增强 | Sprint 15.7 | P1 |
 | F11.10 | Cron 错误追踪与状态机 | Sprint 15.7 | P2 |
 | F11.11 | TaskRegistry 统一任务追踪 | Sprint 15.7 | P2 |
+| F9.17 | MCP 运行时重连修复（onclose） | Sprint 15.11 | P0 |
+| F9.18 | MCP 配置接入 ConfigManager + managed.json enforced | Sprint 15.11 | P0 |
+| F9.19 | MCP GUI 服务器管理 + REST 补齐 + 内置目录 | Sprint 15.11 | P0 |
+| F9.20 | MCP OAuth 2.1 + PKCE 浏览器授权 + Keychain | Sprint 15.11 | P0 |
+| F9.21 | MCP 工具注解驱动权限确认 | Sprint 15.11 | P1 |
+| F9.22 | MCP 体验与可靠性增强（代理/超时/持久化/ListChanged/命名） | Sprint 15.11 | P1/P2 |

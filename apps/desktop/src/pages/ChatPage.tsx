@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
-import { useChatStore, type Message, type ToolCall, type ToolSegment } from '../stores/chat-store';
+import { useChatStore, type Message, type ToolCall, type ToolSegment, type RecallMeta } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
+import { useMemoryStore, type MemoryFeedbackType } from '../stores/memory-store';
 import { patch, post } from '../lib/api';
 import ModelSelector from '../components/ModelSelector';
 import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
@@ -48,6 +49,7 @@ function ChatView() {
     updateToolSegment,
     updateToolProgress,
     discardLastAssistantMessage,
+    setLastMessageRecallMeta,
     destructiveConfirm,
     setDestructiveConfirm,
     setStreaming,
@@ -277,6 +279,15 @@ function ChatView() {
                     category: payload.category,
                     resource: payload.resource ?? '*',
                     reason: payload.reason,
+                  });
+                  break;
+                case 'recall_meta':
+                  // Sprint 15.12 Phase E — Show Your Work 折叠条数据
+                  setLastMessageRecallMeta({
+                    memoryIds: payload.memoryIds ?? [],
+                    scores: payload.scores ?? [],
+                    l0Indexes: payload.l0Indexes ?? [],
+                    categories: payload.categories ?? [],
                   });
                   break;
                 case 'queued':
@@ -925,6 +936,90 @@ function MessageActions({ content }: { content: string }) {
 }
 
 /** 单条消息气泡组件 */
+/** Show Your Work 折叠条 — Sprint 15.12 Phase E
+ *  显示本轮 LLM 召回的记忆列表，每条带"不准"反馈按钮 */
+function RecallMetaBar({ meta }: { meta: RecallMeta }) {
+  const [expanded, setExpanded] = useState(false);
+  const [flagged, setFlagged] = useState<Record<string, MemoryFeedbackType>>({});
+  const [flagging, setFlagging] = useState<string | null>(null);
+  const currentAgentId = useChatStore((s) => s.currentAgentId);
+  const flagMemory = useMemoryStore((s) => s.flagMemory);
+
+  const count = meta.memoryIds.length;
+  if (count === 0) return null;
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    profile: '个人',
+    preference: '偏好',
+    entity: '实体',
+    event: '事件',
+    case: '案例',
+    pattern: '模式',
+    tool: '工具',
+    skill: '技能',
+    correction: '纠正',
+  };
+
+  const handleFlag = async (memoryId: string) => {
+    if (!currentAgentId || flagged[memoryId] || flagging) return;
+    setFlagging(memoryId);
+    try {
+      await flagMemory(currentAgentId, memoryId, 'inaccurate');
+      setFlagged((prev) => ({ ...prev, [memoryId]: 'inaccurate' }));
+    } catch (err) {
+      console.error('反馈失败:', err);
+    } finally {
+      setFlagging(null);
+    }
+  };
+
+  return (
+    <div className="mb-3 border border-slate-200 rounded-lg overflow-hidden bg-slate-50/50">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-1.5 flex items-center justify-between text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+      >
+        <span className="flex items-center gap-1.5">
+          <span className="text-slate-400">💭</span>
+          本轮用到 {count} 条记忆
+        </span>
+        <span className="text-slate-300">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="border-t border-slate-200 divide-y divide-slate-100">
+          {meta.memoryIds.map((id, i) => {
+            const l0 = meta.l0Indexes[i] ?? '(无摘要)';
+            const cat = meta.categories[i] ?? '';
+            const score = meta.scores[i] ?? 0;
+            const isFlagged = !!flagged[id];
+            return (
+              <div key={id} className="flex items-start gap-2 px-3 py-1.5 text-xs">
+                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] shrink-0">
+                  {CATEGORY_LABELS[cat] ?? cat}
+                </span>
+                <span className="flex-1 text-slate-700 leading-snug">{l0}</span>
+                <span className="text-[10px] text-slate-300 shrink-0">{Math.round(score * 100)}%</span>
+                {isFlagged ? (
+                  <span className="text-[10px] text-orange-500 shrink-0">已反馈</span>
+                ) : (
+                  <button
+                    onClick={() => handleFlag(id)}
+                    disabled={flagging === id}
+                    className="text-[10px] text-slate-400 hover:text-orange-500 transition-colors shrink-0 disabled:opacity-50"
+                    title="标记为不准确，下次召回会降权"
+                  >
+                    {flagging === id ? '提交中…' : '不准'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const { isStreaming, toggleThinkingExpanded } = useChatStore();
   const isUser = message.role === 'user';
@@ -945,6 +1040,8 @@ function MessageBubble({ message }: { message: Message }) {
 
   return (
     <div className="group border-t border-slate-100 first:border-t-0 py-4">
+      {/* Sprint 15.12 Phase E — Show Your Work 折叠条 */}
+      {message.recallMeta && <RecallMetaBar meta={message.recallMeta} />}
       {isEmpty ? (
         <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
           <span className="flex gap-0.5">

@@ -58,11 +58,14 @@ export function createMemoryRecallPlugin(searcher: HybridSearcher): ContextPlugi
         log.debug(`  [${r.category}] score=${r.finalScore.toFixed(3)} activation=${r.activation.toFixed(2)} "${r.l0Index.slice(0, 50)}"`);
       }
 
-      // Sprint 15.12 Phase C — 把召回的 memoryId+score 写入 ctx.recallMeta，
-      // 让 chat.ts 在 SSE 流末尾透传给前端"Show Your Work"折叠条
+      // Sprint 15.12 Phase C/E — 把召回的 memoryId+score+l0+category 写入 ctx.recallMeta，
+      // 让 chat.ts 在 SSE 流末尾透传给前端"Show Your Work"折叠条。
+      // 包含 l0Index/category 后前端不需要再 GET 单条记忆详情
       ctx.recallMeta = {
         memoryIds: results.map(r => r.memoryId),
         scores: results.map(r => r.finalScore),
+        l0Indexes: results.map(r => r.l0Index),
+        categories: results.map(r => r.category),
       };
 
       // 组装记忆上下文（L0 + L1 + 新鲜度警告）

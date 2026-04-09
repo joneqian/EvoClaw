@@ -32,11 +32,15 @@ export interface TurnContext {
   securityFlags?: SecurityFlags;
   /** 加载警告（文件截断、缓存失效等） */
   warnings: string[];
-  /** 召回元数据（由 memory-recall 插件设置）— Sprint 15.12 Phase C
-   *  让 chat.ts 在 SSE 流末尾透传给前端，用于"Show Your Work"折叠条 */
+  /** 召回元数据（由 memory-recall 插件设置）— Sprint 15.12 Phase C/E
+   *  让 chat.ts 在 SSE 流末尾透传给前端，用于"Show Your Work"折叠条。
+   *  l0Indexes 和 categories 是 Phase E 加的，让前端不需要再 GET 单条记忆详情。
+   *  五个数组的 length 永远相等，对应同一条记忆。 */
   recallMeta?: {
     memoryIds: string[];
     scores: number[];
+    l0Indexes: string[];
+    categories: string[];
   };
 }
 

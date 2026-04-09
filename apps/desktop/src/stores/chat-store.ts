@@ -45,6 +45,15 @@ export interface DestructiveConfirmState {
   resolve: (confirmed: boolean) => void;
 }
 
+/** 召回元数据 — Sprint 15.12 Phase E
+ *  从后端 SSE `recall_meta` 事件接收，附加在 assistant 消息上，用于"Show Your Work"折叠条 */
+export interface RecallMeta {
+  memoryIds: string[];
+  scores: number[];
+  l0Indexes: string[];
+  categories: string[];
+}
+
 /** 聊天消息 */
 export interface Message {
   id: string;
@@ -54,6 +63,8 @@ export interface Message {
   segments?: MessageSegment[];
   /** 工具调用列表（向后兼容） */
   toolCalls?: ToolCall[];
+  /** 召回元数据 — Sprint 15.12 Phase E */
+  recallMeta?: RecallMeta;
   createdAt: string;
 }
 
@@ -107,6 +118,8 @@ interface ChatState {
   appendThinkingSegment: (delta: string) => void;
   /** 切换 thinking 段落的折叠/展开 */
   toggleThinkingExpanded: (messageId: string) => void;
+  /** Phase E: 把 SSE recall_meta 事件附加到最后一条 assistant 消息 */
+  setLastMessageRecallMeta: (meta: RecallMeta) => void;
   /** 更新工具实时进度 */
   updateToolProgress: (toolName: string, progressText: string) => void;
   /** 丢弃最后一条 assistant 消息的 partial 内容（模型回退 tombstone 时调用） */
@@ -324,6 +337,20 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         );
         return { ...msg, segments };
       });
+      return { messages: msgs };
+    }),
+
+  setLastMessageRecallMeta: (meta) =>
+    set((state) => {
+      const msgs = [...state.messages];
+      // 找最后一条 assistant 消息（流式中的当前消息）
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i]!;
+        if (m.role === 'assistant') {
+          msgs[i] = { ...m, recallMeta: meta };
+          return { messages: msgs };
+        }
+      }
       return { messages: msgs };
     }),
 

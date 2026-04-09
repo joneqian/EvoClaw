@@ -117,49 +117,28 @@ export const useMemoryStore = create<MemoryState>((set) => ({
 
   // ─────────────────────────────────────────────────────────────────
   // Sprint 15.12 Phase C — 编辑 + 反馈
+  //
+  // 写后端 → 立即从后端拉单条最新 unit 替换本地状态。
+  // 不做乐观更新（之前用 set 手动改 confidence 在某些 React/Zustand 路径
+  // 下不触发 rerender，直接从后端拉是最稳的）。
   // ─────────────────────────────────────────────────────────────────
 
   updateMemory: async (agentId, id, partial) => {
     await put(`/memory/${agentId}/units/${id}`, partial);
-    // 本地状态即时更新（避免再 refetch 全量列表）
+    const fresh = await apiGet<{ unit: MemoryUnit }>(`/memory/${agentId}/units/${id}`);
     set((state) => ({
-      units: state.units.map((u) =>
-        u.id === id
-          ? {
-              ...u,
-              ...(partial.l1Overview !== undefined ? { l1Overview: partial.l1Overview } : {}),
-              ...(partial.l2Content !== undefined ? { l2Content: partial.l2Content } : {}),
-              updatedAt: new Date().toISOString(),
-            }
-          : u,
-      ),
-      selectedUnit:
-        state.selectedUnit?.id === id
-          ? {
-              ...state.selectedUnit,
-              ...(partial.l1Overview !== undefined ? { l1Overview: partial.l1Overview } : {}),
-              ...(partial.l2Content !== undefined ? { l2Content: partial.l2Content } : {}),
-              updatedAt: new Date().toISOString(),
-            }
-          : state.selectedUnit,
+      units: state.units.map((u) => (u.id === id ? fresh.unit : u)),
+      selectedUnit: state.selectedUnit?.id === id ? fresh.unit : state.selectedUnit,
     }));
   },
 
   flagMemory: async (agentId, id, type, note) => {
     await post(`/memory/${agentId}/units/${id}/feedback`, { type, note });
-    // 本地 confidence -= 0.15（与后端 CONFIDENCE_DECAY_STEP 同步），下限 0
-    set((state) => {
-      const decay = (c: number) => Math.max(0, c - 0.15);
-      return {
-        units: state.units.map((u) =>
-          u.id === id ? { ...u, confidence: decay(u.confidence) } : u,
-        ),
-        selectedUnit:
-          state.selectedUnit?.id === id
-            ? { ...state.selectedUnit, confidence: decay(state.selectedUnit.confidence) }
-            : state.selectedUnit,
-      };
-    });
+    const fresh = await apiGet<{ unit: MemoryUnit }>(`/memory/${agentId}/units/${id}`);
+    set((state) => ({
+      units: state.units.map((u) => (u.id === id ? fresh.unit : u)),
+      selectedUnit: state.selectedUnit?.id === id ? fresh.unit : state.selectedUnit,
+    }));
   },
 
   selectUnit: (unit) => set({ selectedUnit: unit }),

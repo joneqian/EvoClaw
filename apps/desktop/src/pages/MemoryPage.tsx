@@ -49,14 +49,32 @@ function CategoryBadge({ category }: { category: string }) {
   return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${cat.color}`}>{cat.name}</span>;
 }
 
-/** 激活度圆点 */
-function ActivationDot({ value }: { value: number }) {
+/** 置信度圆点 — 列表项主要信号（用户反馈会立刻降低这个值） */
+function ConfidenceDot({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   const color = pct >= 70 ? 'bg-green-400' : pct >= 40 ? 'bg-yellow-400' : 'bg-slate-300';
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+    <span
+      className="inline-flex items-center gap-1 text-[10px] text-slate-400"
+      title={`置信度 ${pct}%`}
+    >
       <span className={`w-1.5 h-1.5 rounded-full ${color}`} />
-      {pct}%
+      信 {pct}%
+    </span>
+  );
+}
+
+/** 热度圆点 — 仅搜索结果使用（搜索结果没有 confidence 字段，显示 activation） */
+function HotnessDot({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const color = pct >= 70 ? 'bg-green-400' : pct >= 40 ? 'bg-yellow-400' : 'bg-slate-300';
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] text-slate-400"
+      title={`激活度（热度）${pct}%`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${color}`} />
+      热 {pct}%
     </span>
   );
 }
@@ -99,7 +117,7 @@ function MemoryRow({
         </p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <CategoryBadge category={unit.category} />
-          <ActivationDot value={unit.activation} />
+          <ConfidenceDot value={unit.confidence} />
           <span className="text-[10px] text-slate-300">{unit.accessCount}次</span>
           <StalenessBadge updatedAt={unit.updatedAt} />
         </div>
@@ -129,7 +147,7 @@ function SearchRow({
       <div className="flex items-center gap-1.5 mt-0.5">
         <CategoryBadge category={result.category} />
         <span className="text-[10px] text-slate-400">{Math.round(result.finalScore * 100)}% 匹配</span>
-        <ActivationDot value={result.activation} />
+        <HotnessDot value={result.activation} />
       </div>
     </div>
   );

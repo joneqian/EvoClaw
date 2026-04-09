@@ -58,6 +58,13 @@ export function createMemoryRecallPlugin(searcher: HybridSearcher): ContextPlugi
         log.debug(`  [${r.category}] score=${r.finalScore.toFixed(3)} activation=${r.activation.toFixed(2)} "${r.l0Index.slice(0, 50)}"`);
       }
 
+      // Sprint 15.12 Phase C — 把召回的 memoryId+score 写入 ctx.recallMeta，
+      // 让 chat.ts 在 SSE 流末尾透传给前端"Show Your Work"折叠条
+      ctx.recallMeta = {
+        memoryIds: results.map(r => r.memoryId),
+        scores: results.map(r => r.finalScore),
+      };
+
       // 组装记忆上下文（L0 + L1 + 新鲜度警告）
       const memoryBlock = results.map(r => {
         const detail = r.l2Content ? `\n详情: ${r.l2Content}` : '';

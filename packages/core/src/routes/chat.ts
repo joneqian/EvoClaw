@@ -21,6 +21,7 @@ import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ChatMessage } from '@evoclaw/shared';
 import { ContextEngine } from '../context/context-engine.js';
+import type { TurnContext } from '../context/plugin.interface.js';
 import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js';
 import { sessionRouterPlugin } from '../context/plugins/session-router.js';
 import { resolveModel } from '../provider/model-resolver.js';
@@ -627,7 +628,7 @@ export function createChatRoutes(
     }
 
     // 执行 beforeTurn（记忆召回 + 上下文组装）
-    const turnCtx = {
+    const turnCtx: TurnContext = {
       agentId,
       sessionKey: sessionKey as any,
       messages,
@@ -1278,6 +1279,16 @@ export function createChatRoutes(
         emitServerEvent({
           type: 'conversations-changed',
           data: { agentId, sessionKey },
+        });
+      }
+
+      // Sprint 15.12 Phase C — 召回元数据透传
+      // memory-recall 插件在 beforeTurn 把召回的 memoryIds + scores 写入 turnCtx.recallMeta
+      // 流结束前发给前端，用于"Show Your Work"折叠条
+      if (turnCtx.recallMeta && turnCtx.recallMeta.memoryIds.length > 0) {
+        await stream.writeSSE({
+          event: 'recall_meta',
+          data: JSON.stringify(turnCtx.recallMeta),
         });
       }
 

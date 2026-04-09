@@ -32,6 +32,12 @@ export interface TurnContext {
   securityFlags?: SecurityFlags;
   /** 加载警告（文件截断、缓存失效等） */
   warnings: string[];
+  /** 召回元数据（由 memory-recall 插件设置）— Sprint 15.12 Phase C
+   *  让 chat.ts 在 SSE 流末尾透传给前端，用于"Show Your Work"折叠条 */
+  recallMeta?: {
+    memoryIds: string[];
+    scores: number[];
+  };
 }
 
 /** 压缩阶段上下文 */

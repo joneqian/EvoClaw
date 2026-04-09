@@ -1,8 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useMemoryStore, type MemoryUnit, type SearchResult } from '../stores/memory-store';
+import { useMemoryStore, type MemoryUnit, type SearchResult, type MemoryFeedbackType } from '../stores/memory-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
 import { formatDate } from '../lib/date';
+
+/** 计算新鲜度天数（用于黄/红徽章和后端 staleness tag 阈值一致：1 天/7 天） */
+function daysSinceUpdated(updatedAt: string): number {
+  return (Date.now() - new Date(updatedAt).getTime()) / (1000 * 60 * 60 * 24);
+}
+
+/** 新鲜度徽章 — Sprint 15.12 Phase C.6 */
+function StalenessBadge({ updatedAt }: { updatedAt: string }) {
+  const days = daysSinceUpdated(updatedAt);
+  if (days <= 1) return null;
+  if (days > 7) {
+    return (
+      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700" title="超过 7 天未更新，建议验证">
+        ⚠ {Math.floor(days)}d
+      </span>
+    );
+  }
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700" title={`${Math.floor(days)} 天未更新`}>
+      {Math.floor(days)}d
+    </span>
+  );
+}
 
 /** 分类显示名称和颜色 */
 const CATEGORIES: Record<string, { name: string; color: string }> = {
@@ -78,6 +101,7 @@ function MemoryRow({
           <CategoryBadge category={unit.category} />
           <ActivationDot value={unit.activation} />
           <span className="text-[10px] text-slate-300">{unit.accessCount}次</span>
+          <StalenessBadge updatedAt={unit.updatedAt} />
         </div>
       </div>
     </div>
@@ -111,6 +135,205 @@ function SearchRow({
   );
 }
 
+/** 编辑弹层 — Sprint 15.12 Phase C.5（L0 灰显锁死，仅可改 L1/L2） */
+function EditDialog({
+  unit,
+  agentId,
+  onClose,
+}: {
+  unit: MemoryUnit;
+  agentId: string;
+  onClose: () => void;
+}) {
+  const { updateMemory } = useMemoryStore();
+  const [l1, setL1] = useState(unit.l1Overview);
+  const [l2, setL2] = useState(unit.l2Content);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = useCallback(async () => {
+    if (l1 === unit.l1Overview && l2 === unit.l2Content) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const partial: { l1Overview?: string; l2Content?: string } = {};
+      if (l1 !== unit.l1Overview) partial.l1Overview = l1;
+      if (l2 !== unit.l2Content) partial.l2Content = l2;
+      await updateMemory(agentId, unit.id, partial);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失败');
+      setSaving(false);
+    }
+  }, [l1, l2, unit, agentId, updateMemory, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-900">编辑记忆</h3>
+          <p className="text-[11px] text-slate-400 mt-0.5">L0 摘要为检索锚点，不可编辑</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">L0 摘要（锁定）</label>
+            <input
+              type="text"
+              value={unit.l0Index}
+              disabled
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-slate-50 text-slate-400 cursor-not-allowed"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">L1 概述</label>
+            <textarea
+              value={l1}
+              onChange={(e) => setL1(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              placeholder="结构化概览"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">L2 详情</label>
+            <textarea
+              value={l2}
+              onChange={(e) => setL2(e.target.value)}
+              rows={6}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              placeholder="完整内容"
+            />
+          </div>
+          {error && (
+            <p className="text-xs text-red-500">{error}</p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 py-1.5 text-xs rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-3 py-1.5 text-xs rounded-md bg-brand text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? '保存中…' : '保存'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 反馈弹层 — Sprint 15.12 Phase C.5 */
+function FeedbackDialog({
+  unit,
+  agentId,
+  onClose,
+}: {
+  unit: MemoryUnit;
+  agentId: string;
+  onClose: () => void;
+}) {
+  const { flagMemory } = useMemoryStore();
+  const [type, setType] = useState<MemoryFeedbackType>('inaccurate');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const TYPE_LABELS: Record<MemoryFeedbackType, string> = {
+    inaccurate: '不准确（事实错误）',
+    sensitive: '涉及隐私（不应保留）',
+    outdated: '过时（信息已变化）',
+  };
+
+  const handleSubmit = useCallback(async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await flagMemory(agentId, unit.id, type, note.trim() || undefined);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '提交失败');
+      setSubmitting(false);
+    }
+  }, [type, note, agentId, unit.id, flagMemory, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-900">反馈这条记忆</h3>
+          <p className="text-[11px] text-slate-400 mt-0.5 truncate">{unit.l0Index}</p>
+        </div>
+        <div className="p-5 space-y-3">
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1.5">问题类型</label>
+            <div className="space-y-1.5">
+              {(Object.entries(TYPE_LABELS) as [MemoryFeedbackType, string][]).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer hover:bg-slate-50">
+                  <input
+                    type="radio"
+                    name="feedback-type"
+                    value={key}
+                    checked={type === key}
+                    onChange={() => setType(key)}
+                    className="text-brand focus:ring-brand/30"
+                  />
+                  <span className="text-sm text-slate-700">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">备注（可选）</label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              placeholder="补充说明，例如哪里不对、应该是什么"
+            />
+          </div>
+          <p className="text-[11px] text-slate-400">
+            提交后该记忆的置信度会自动降低 0.15，下次召回排序会下降。
+          </p>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-3 py-1.5 text-xs rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="px-3 py-1.5 text-xs rounded-md bg-orange-500 text-white hover:bg-orange-600 transition-colors disabled:opacity-50"
+          >
+            {submitting ? '提交中…' : '提交反馈'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 右侧详情面板 */
 function DetailPanel({
   unit,
@@ -121,9 +344,15 @@ function DetailPanel({
 }) {
   const { pinMemory, unpinMemory, deleteMemory } = useMemoryStore();
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
-  // 切换选中时重置删除状态
-  useEffect(() => { setDeleting(false); }, [unit?.id]);
+  // 切换选中时重置弹层和删除状态
+  useEffect(() => {
+    setDeleting(false);
+    setEditing(false);
+    setFeedbackOpen(false);
+  }, [unit?.id]);
 
   if (!unit) {
     return (
@@ -143,6 +372,7 @@ function DetailPanel({
           <h3 className="text-base font-semibold text-slate-900 leading-snug">{unit.l0Index}</h3>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <CategoryBadge category={unit.category} />
+            <StalenessBadge updatedAt={unit.updatedAt} />
             <span className="text-xs text-slate-400">置信度 {Math.round(unit.confidence * 100)}%</span>
             <span className="text-xs text-slate-400">激活度 {Math.round(unit.activation * 100)}%</span>
             <span className="text-xs text-slate-400">访问 {unit.accessCount} 次</span>
@@ -178,6 +408,18 @@ function DetailPanel({
       {/* 操作栏 */}
       <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-100 bg-white shrink-0">
         <button
+          onClick={() => setEditing(true)}
+          className="px-3 py-1.5 text-xs rounded-md bg-brand/10 text-brand hover:bg-brand/20 transition-colors"
+        >
+          编辑
+        </button>
+        <button
+          onClick={() => setFeedbackOpen(true)}
+          className="px-3 py-1.5 text-xs rounded-md bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+        >
+          反馈
+        </button>
+        <button
           onClick={() => isPinned ? unpinMemory(agentId, unit.id) : pinMemory(agentId, unit.id)}
           className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
             isPinned
@@ -187,6 +429,7 @@ function DetailPanel({
         >
           {isPinned ? '取消置顶' : '置顶'}
         </button>
+        <div className="flex-1" />
         {deleting ? (
           <>
             <button
@@ -211,6 +454,9 @@ function DetailPanel({
           </button>
         )}
       </div>
+
+      {editing && <EditDialog unit={unit} agentId={agentId} onClose={() => setEditing(false)} />}
+      {feedbackOpen && <FeedbackDialog unit={unit} agentId={agentId} onClose={() => setFeedbackOpen(false)} />}
     </div>
   );
 }

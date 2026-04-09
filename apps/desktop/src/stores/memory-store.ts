@@ -31,6 +31,9 @@ export interface SearchResult {
   activation: number;
 }
 
+/** 反馈类型 — Sprint 15.12 Phase C */
+export type MemoryFeedbackType = 'inaccurate' | 'sensitive' | 'outdated';
+
 interface MemoryState {
   /** 记忆单元列表 */
   units: MemoryUnit[];
@@ -47,6 +50,10 @@ interface MemoryState {
   unpinMemory: (agentId: string, id: string) => Promise<void>;
   deleteMemory: (agentId: string, id: string) => Promise<void>;
   deleteMemories: (agentId: string, ids: string[]) => Promise<void>;
+  /** Phase C: 更新 L1/L2（L0 锁死）*/
+  updateMemory: (agentId: string, id: string, partial: { l1Overview?: string; l2Content?: string }) => Promise<void>;
+  /** Phase C: 提交反馈（不准确/涉及隐私/过时）*/
+  flagMemory: (agentId: string, id: string, type: MemoryFeedbackType, note?: string) => Promise<void>;
   selectUnit: (unit: MemoryUnit | null) => void;
   clearSearch: () => void;
 }
@@ -106,6 +113,53 @@ export const useMemoryStore = create<MemoryState>((set) => ({
     await post(`/memory/${agentId}/units/batch-delete`, { ids });
     const idSet = new Set(ids);
     set((state) => ({ units: state.units.filter((u) => !idSet.has(u.id)) }));
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // Sprint 15.12 Phase C — 编辑 + 反馈
+  // ─────────────────────────────────────────────────────────────────
+
+  updateMemory: async (agentId, id, partial) => {
+    await put(`/memory/${agentId}/units/${id}`, partial);
+    // 本地状态即时更新（避免再 refetch 全量列表）
+    set((state) => ({
+      units: state.units.map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              ...(partial.l1Overview !== undefined ? { l1Overview: partial.l1Overview } : {}),
+              ...(partial.l2Content !== undefined ? { l2Content: partial.l2Content } : {}),
+              updatedAt: new Date().toISOString(),
+            }
+          : u,
+      ),
+      selectedUnit:
+        state.selectedUnit?.id === id
+          ? {
+              ...state.selectedUnit,
+              ...(partial.l1Overview !== undefined ? { l1Overview: partial.l1Overview } : {}),
+              ...(partial.l2Content !== undefined ? { l2Content: partial.l2Content } : {}),
+              updatedAt: new Date().toISOString(),
+            }
+          : state.selectedUnit,
+    }));
+  },
+
+  flagMemory: async (agentId, id, type, note) => {
+    await post(`/memory/${agentId}/units/${id}/feedback`, { type, note });
+    // 本地 confidence -= 0.15（与后端 CONFIDENCE_DECAY_STEP 同步），下限 0
+    set((state) => {
+      const decay = (c: number) => Math.max(0, c - 0.15);
+      return {
+        units: state.units.map((u) =>
+          u.id === id ? { ...u, confidence: decay(u.confidence) } : u,
+        ),
+        selectedUnit:
+          state.selectedUnit?.id === id
+            ? { ...state.selectedUnit, confidence: decay(state.selectedUnit.confidence) }
+            : state.selectedUnit,
+      };
+    });
   },
 
   selectUnit: (unit) => set({ selectedUnit: unit }),

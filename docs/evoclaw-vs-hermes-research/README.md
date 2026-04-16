@@ -70,9 +70,9 @@
 | 13 | Plugins 子系统 | 13-plugins.md | [`13-plugins-gap.md`](./13-plugins-gap.md) | ✅ Wave 2-2 | 🟡 形态差异显著 |
 | 14 | 状态与会话 | 14-state-sessions.md | [`14-state-sessions-gap.md`](./14-state-sessions-gap.md) | ✅ Wave 2-3 | 🟡 部分覆盖（多项 🟢 反超） |
 | 15 | Memory 提供商 | 15-memory-providers.md | [`15-memory-providers-gap.md`](./15-memory-providers-gap.md) | ✅ Wave 2-3 | 🟢 EvoClaw 显著反超 |
-| 16 | Trajectory 格式 | 16-trajectory-format.md | `16-trajectory-format-gap.md` | 📋 待写 | — |
-| 17 | Trajectory 压缩 | 17-trajectory-compression.md | `17-trajectory-compression-gap.md` | 📋 待写 | — |
-| 18 | Cron / 后台 | 18-cron-background.md | `18-cron-background-gap.md` | 📋 待写 | — |
+| 16 | Trajectory 格式 | 16-trajectory-format.md | [`16-trajectory-format-gap.md`](./16-trajectory-format-gap.md) | ✅ Wave 2-4 | 🟡 形态差异（多项 🟢 反超） |
+| 17 | Trajectory 压缩 | 17-trajectory-compression.md | [`17-trajectory-compression-gap.md`](./17-trajectory-compression-gap.md) | ✅ Wave 2-4 | 🟡 压缩算法反超 / 训练预处理缺失 |
+| 18 | Cron / 后台 | 18-cron-background.md | [`18-cron-background-gap.md`](./18-cron-background-gap.md) | ✅ Wave 2-4 | 🟡 多项 🟢 反超（Heartbeat/Cron 隔离 + Standing Orders） |
 | 19 | Gateway 总览 | 19-gateway-platforms.md | `19-gateway-platforms-gap.md` | 📋 待写 | — |
 | 19a | Telegram | 19a-telegram.md | `19a-telegram-gap.md` | 📋 待写 | — |
 | 19b | Discord | 19b-discord.md | `19b-discord-gap.md` | 📋 待写 | — |

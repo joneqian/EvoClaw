@@ -56,15 +56,15 @@
 |---|---|---|---|---|---|
 | 00 | 项目概览 | [00-overview.md](../../../hermes-agent/.research/00-overview.md) | [`00-overview-gap.md`](./00-overview-gap.md) | ✅ Wave 1 #1 | 🟡 部分覆盖（含 🟢 反超） |
 | 01 | 技术栈 | 01-tech-stack.md | [`01-tech-stack-gap.md`](./01-tech-stack-gap.md) | ✅ Wave 1 #2 | 🟡 部分覆盖（含 🟢 反超） |
-| 02 | 仓库布局 | 02-repo-layout.md | `02-repo-layout-gap.md` | 📋 待写 | — |
+| 02 | 仓库布局 | 02-repo-layout.md | [`02-repo-layout-gap.md`](./02-repo-layout-gap.md) | ✅ Wave 2-1 | 🟡 形态差异（含 🟢 反超） |
 | 03 | 总体架构 | 03-architecture.md | [`03-architecture-gap.md`](./03-architecture-gap.md) | ✅ Wave 1 #3 | 🟡 部分覆盖（多项 🟢 反超） |
 | 04 | 核心抽象类型 | 04-core-abstractions.md | [`04-core-abstractions-gap.md`](./04-core-abstractions-gap.md) | ✅ Wave 1 #4 | 🟡 部分覆盖（多项 🟢 反超） |
 | 05 | **Agent 主循环** | 05-agent-loop.md | [`05-agent-loop-gap.md`](./05-agent-loop-gap.md) | ✅ **样板** | 🟡 部分覆盖（含 🟢 反超项） |
 | 06 | LLM Provider 路由 | 06-llm-providers.md | [`06-llm-providers-gap.md`](./06-llm-providers-gap.md) | ✅ Wave 1 #5 | 🟡 部分覆盖（多 🔴 缺失 + 多 🟢 反超） |
 | 07 | Prompt 系统 | 07-prompt-system.md | `07-prompt-system-gap.md` | 📋 待写 | — |
 | 08 | 上下文压缩 | 08-context-compression.md | [`08-context-compression-gap.md`](./08-context-compression-gap.md) | ✅ Wave 1 #6 | 🟢 EvoClaw 显著反超 |
-| 09 | 工具系统 | 09-tools-system.md | `09-tools-system-gap.md` | 📋 待写 | — |
-| 10 | Toolsets 组合 | 10-toolsets.md | `10-toolsets-gap.md` | 📋 待写 | — |
+| 09 | 工具系统 | 09-tools-system.md | [`09-tools-system-gap.md`](./09-tools-system-gap.md) | ✅ Wave 2-1 | 🟡 部分覆盖（多项 🟢 反超） |
+| 10 | Toolsets 组合 | 10-toolsets.md | [`10-toolsets-gap.md`](./10-toolsets-gap.md) | ✅ Wave 2-1 | 🟡 部分覆盖（多项 🟢 反超） |
 | 11 | 执行环境 & spawn | 11-environments-spawn.md | `11-environments-spawn-gap.md` | 📋 待写 | — |
 | 12 | Skills 系统 | 12-skills-system.md | `12-skills-system-gap.md` | 📋 待写 | — |
 | 13 | Plugins 子系统 | 13-plugins.md | `13-plugins-gap.md` | 📋 待写 | — |

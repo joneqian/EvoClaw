@@ -73,9 +73,9 @@
 | 16 | Trajectory 格式 | 16-trajectory-format.md | [`16-trajectory-format-gap.md`](./16-trajectory-format-gap.md) | ✅ Wave 2-4 | 🟡 形态差异（多项 🟢 反超） |
 | 17 | Trajectory 压缩 | 17-trajectory-compression.md | [`17-trajectory-compression-gap.md`](./17-trajectory-compression-gap.md) | ✅ Wave 2-4 | 🟡 压缩算法反超 / 训练预处理缺失 |
 | 18 | Cron / 后台 | 18-cron-background.md | [`18-cron-background-gap.md`](./18-cron-background-gap.md) | ✅ Wave 2-4 | 🟡 多项 🟢 反超（Heartbeat/Cron 隔离 + Standing Orders） |
-| 19 | Gateway 总览 | 19-gateway-platforms.md | `19-gateway-platforms-gap.md` | 📋 待写 | — |
-| 19a | Telegram | 19a-telegram.md | `19a-telegram-gap.md` | 📋 待写 | — |
-| 19b | Discord | 19b-discord.md | `19b-discord-gap.md` | 📋 待写 | — |
+| 19 | Gateway 总览 | 19-gateway-platforms.md | [`19-gateway-platforms-gap.md`](./19-gateway-platforms-gap.md) | ✅ Wave 2-5 | 🟡 国产渠道反超 / 国际平台缺失 |
+| 19a | Telegram | 19a-telegram.md | [`19a-telegram-gap.md`](./19a-telegram-gap.md) | ✅ Wave 2-5 | 🔴 整体缺失（可迁移资产 10 项） |
+| 19b | Discord | 19b-discord.md | [`19b-discord-gap.md`](./19b-discord-gap.md) | ✅ Wave 2-5 | 🔴 整体缺失（可迁移资产 12 项） |
 | 19c | Slack | 19c-slack.md | `19c-slack-gap.md` | 📋 待写 | — |
 | 19d | Signal | 19d-signal.md | `19d-signal-gap.md` | 📋 待写 | — |
 | 19e | Matrix | 19e-matrix.md | `19e-matrix-gap.md` | 📋 待写 | — |

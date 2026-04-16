@@ -61,15 +61,15 @@
 | 04 | 核心抽象类型 | 04-core-abstractions.md | [`04-core-abstractions-gap.md`](./04-core-abstractions-gap.md) | ✅ Wave 1 #4 | 🟡 部分覆盖（多项 🟢 反超） |
 | 05 | **Agent 主循环** | 05-agent-loop.md | [`05-agent-loop-gap.md`](./05-agent-loop-gap.md) | ✅ **样板** | 🟡 部分覆盖（含 🟢 反超项） |
 | 06 | LLM Provider 路由 | 06-llm-providers.md | [`06-llm-providers-gap.md`](./06-llm-providers-gap.md) | ✅ Wave 1 #5 | 🟡 部分覆盖（多 🔴 缺失 + 多 🟢 反超） |
-| 07 | Prompt 系统 | 07-prompt-system.md | `07-prompt-system-gap.md` | 📋 待写 | — |
+| 07 | Prompt 系统 | 07-prompt-system.md | [`07-prompt-system-gap.md`](./07-prompt-system-gap.md) | ✅ Wave 2-3 | 🟡 部分覆盖（多项 🟢 反超） |
 | 08 | 上下文压缩 | 08-context-compression.md | [`08-context-compression-gap.md`](./08-context-compression-gap.md) | ✅ Wave 1 #6 | 🟢 EvoClaw 显著反超 |
 | 09 | 工具系统 | 09-tools-system.md | [`09-tools-system-gap.md`](./09-tools-system-gap.md) | ✅ Wave 2-1 | 🟡 部分覆盖（多项 🟢 反超） |
 | 10 | Toolsets 组合 | 10-toolsets.md | [`10-toolsets-gap.md`](./10-toolsets-gap.md) | ✅ Wave 2-1 | 🟡 部分覆盖（多项 🟢 反超） |
 | 11 | 执行环境 & spawn | 11-environments-spawn.md | [`11-environments-spawn-gap.md`](./11-environments-spawn-gap.md) | ✅ Wave 2-2 | 🟡 部分覆盖（含多项 🟢 反超） |
 | 12 | Skills 系统 | 12-skills-system.md | [`12-skills-system-gap.md`](./12-skills-system-gap.md) | ✅ Wave 2-2 | 🟢 EvoClaw 显著反超 |
 | 13 | Plugins 子系统 | 13-plugins.md | [`13-plugins-gap.md`](./13-plugins-gap.md) | ✅ Wave 2-2 | 🟡 形态差异显著 |
-| 14 | 状态与会话 | 14-state-sessions.md | `14-state-sessions-gap.md` | 📋 待写 | — |
-| 15 | Memory 提供商 | 15-memory-providers.md | `15-memory-providers-gap.md` | 📋 待写 | — |
+| 14 | 状态与会话 | 14-state-sessions.md | [`14-state-sessions-gap.md`](./14-state-sessions-gap.md) | ✅ Wave 2-3 | 🟡 部分覆盖（多项 🟢 反超） |
+| 15 | Memory 提供商 | 15-memory-providers.md | [`15-memory-providers-gap.md`](./15-memory-providers-gap.md) | ✅ Wave 2-3 | 🟢 EvoClaw 显著反超 |
 | 16 | Trajectory 格式 | 16-trajectory-format.md | `16-trajectory-format-gap.md` | 📋 待写 | — |
 | 17 | Trajectory 压缩 | 17-trajectory-compression.md | `17-trajectory-compression-gap.md` | 📋 待写 | — |
 | 18 | Cron / 后台 | 18-cron-background.md | `18-cron-background-gap.md` | 📋 待写 | — |

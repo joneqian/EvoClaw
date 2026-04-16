@@ -187,8 +187,8 @@
 | 01 | tech-stack | ✅ | `a53dc5c` | 🟡 部分覆盖（含 🟢 反超）|
 | 03 | architecture | ✅ | `a2d0eea` | 🟡 部分覆盖（多项 🟢 反超）|
 | 04 | core-abstractions | ✅ | `4f46e43` | 🟡 部分覆盖（多项 🟢 反超）|
-| 06 | llm-providers | ✅ | 待提交 | 🟡 部分覆盖（多 🔴 缺失 + 多 🟢 反超）|
-| 08 | context-compression | 📋 待写 | — | — |
+| 06 | llm-providers | ✅ | `00c7fb7` | 🟡 部分覆盖（多 🔴 缺失 + 多 🟢 反超）|
+| 08 | context-compression | ✅ | 待提交 | 🟢 EvoClaw 显著反超 |
 
 **Wave 2（33 份 / 11 批 × 3 子代理）**
 

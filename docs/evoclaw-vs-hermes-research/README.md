@@ -62,7 +62,7 @@
 | 05 | **Agent 主循环** | 05-agent-loop.md | [`05-agent-loop-gap.md`](./05-agent-loop-gap.md) | ✅ **样板** | 🟡 部分覆盖（含 🟢 反超项） |
 | 06 | LLM Provider 路由 | 06-llm-providers.md | [`06-llm-providers-gap.md`](./06-llm-providers-gap.md) | ✅ Wave 1 #5 | 🟡 部分覆盖（多 🔴 缺失 + 多 🟢 反超） |
 | 07 | Prompt 系统 | 07-prompt-system.md | `07-prompt-system-gap.md` | 📋 待写 | — |
-| 08 | 上下文压缩 | 08-context-compression.md | `08-context-compression-gap.md` | 📋 待写 | — |
+| 08 | 上下文压缩 | 08-context-compression.md | [`08-context-compression-gap.md`](./08-context-compression-gap.md) | ✅ Wave 1 #6 | 🟢 EvoClaw 显著反超 |
 | 09 | 工具系统 | 09-tools-system.md | `09-tools-system-gap.md` | 📋 待写 | — |
 | 10 | Toolsets 组合 | 10-toolsets.md | `10-toolsets-gap.md` | 📋 待写 | — |
 | 11 | 执行环境 & spawn | 11-environments-spawn.md | `11-environments-spawn-gap.md` | 📋 待写 | — |

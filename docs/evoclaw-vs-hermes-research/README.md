@@ -54,7 +54,7 @@
 
 | # | 章节 | hermes 研究 | 差距文档 | 状态 | 综合判定 |
 |---|---|---|---|---|---|
-| 00 | 项目概览 | [00-overview.md](../../../hermes-agent/.research/00-overview.md) | `00-overview-gap.md` | 📋 待写 | — |
+| 00 | 项目概览 | [00-overview.md](../../../hermes-agent/.research/00-overview.md) | [`00-overview-gap.md`](./00-overview-gap.md) | ✅ Wave 1 #1 | 🟡 部分覆盖（含 🟢 反超） |
 | 01 | 技术栈 | 01-tech-stack.md | `01-tech-stack-gap.md` | 📋 待写 | — |
 | 02 | 仓库布局 | 02-repo-layout.md | `02-repo-layout-gap.md` | 📋 待写 | — |
 | 03 | 总体架构 | 03-architecture.md | `03-architecture-gap.md` | 📋 待写 | — |

@@ -184,8 +184,8 @@
 | # | 章节 | 状态 | commit | 综合判定 |
 |---|---|---|---|---|
 | 00 | overview | ✅ | `ccf67c9` | 🟡 部分覆盖（含 🟢 反超）|
-| 01 | tech-stack | ✅ | 待提交 | 🟡 部分覆盖（含 🟢 反超）|
-| 03 | architecture | 📋 待写 | — | — |
+| 01 | tech-stack | ✅ | `a53dc5c` | 🟡 部分覆盖（含 🟢 反超）|
+| 03 | architecture | ✅ | 待提交 | 🟡 部分覆盖（多项 🟢 反超）|
 | 04 | core-abstractions | 📋 待写 | — | — |
 | 06 | llm-providers | 📋 待写 | — | — |
 | 08 | context-compression | 📋 待写 | — | — |

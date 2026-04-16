@@ -57,7 +57,7 @@
 | 00 | 项目概览 | [00-overview.md](../../../hermes-agent/.research/00-overview.md) | [`00-overview-gap.md`](./00-overview-gap.md) | ✅ Wave 1 #1 | 🟡 部分覆盖（含 🟢 反超） |
 | 01 | 技术栈 | 01-tech-stack.md | [`01-tech-stack-gap.md`](./01-tech-stack-gap.md) | ✅ Wave 1 #2 | 🟡 部分覆盖（含 🟢 反超） |
 | 02 | 仓库布局 | 02-repo-layout.md | `02-repo-layout-gap.md` | 📋 待写 | — |
-| 03 | 总体架构 | 03-architecture.md | `03-architecture-gap.md` | 📋 待写 | — |
+| 03 | 总体架构 | 03-architecture.md | [`03-architecture-gap.md`](./03-architecture-gap.md) | ✅ Wave 1 #3 | 🟡 部分覆盖（多项 🟢 反超） |
 | 04 | 核心抽象类型 | 04-core-abstractions.md | `04-core-abstractions-gap.md` | 📋 待写 | — |
 | 05 | **Agent 主循环** | 05-agent-loop.md | [`05-agent-loop-gap.md`](./05-agent-loop-gap.md) | ✅ **样板** | 🟡 部分覆盖（含 🟢 反超项） |
 | 06 | LLM Provider 路由 | 06-llm-providers.md | `06-llm-providers-gap.md` | 📋 待写 | — |

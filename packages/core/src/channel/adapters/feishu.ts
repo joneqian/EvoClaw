@@ -1,4 +1,3 @@
-import type { ChannelMessage } from '@evoclaw/shared';
 import type {
   ChannelAdapter,
   ChannelConfig,

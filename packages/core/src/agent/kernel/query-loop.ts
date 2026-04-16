@@ -36,7 +36,6 @@ import type {
   QueryLoopResult,
   ExitReason,
   LoopState,
-  TransitionReason,
 } from './types.js';
 import { ApiError } from './types.js';
 import { streamLLM } from './stream-client.js';

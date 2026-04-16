@@ -765,7 +765,7 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
         fallbackUsed,
         latency,
         // abort 传播追踪 — 参考 Claude Code streamWatchdogFiredAt + exit_delay_ms
-        ...(watchdog.aborted && watchdog.firedAt != null ? {
+        ...(watchdog.aborted && watchdog.firedAt !== null ? {
           abortExitDelayMs: Math.round(performance.now() - watchdog.firedAt),
           abortExitPath: exitPath,
         } : {}),
@@ -840,7 +840,7 @@ export async function* streamLLM(config: StreamConfig): AsyncGenerator<StreamEve
     // ─── 双重回退: 流式 → 非流式 → yield error（不 throw） ───
     if (watchdog.aborted) {
       exitPath = 'catch';
-      const exitDelayMs = watchdog.firedAt != null
+      const exitDelayMs = watchdog.firedAt !== null
         ? Math.round(performance.now() - watchdog.firedAt)
         : -1;
       log.warn(`流式超时，尝试非流式回退 (exit_path=catch, exit_delay_ms=${exitDelayMs})`);

@@ -5,6 +5,9 @@
  */
 
 import type { SkillMetadata } from '@evoclaw/shared';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('skill-parser');
 
 /** SKILL.md 解析结果 */
 export interface ParsedSkill {
@@ -34,6 +37,17 @@ export function parseSkillMd(content: string): ParsedSkill | null {
 
   // name 和 description 必需
   if (!metadata.name || !metadata.description) return null;
+
+  // G2 认知对齐：inline 模式下 allowedTools 不会被运行时消费，打 warn 提醒用户
+  // executionMode 缺省为 inline
+  const isInline = !metadata.executionMode || metadata.executionMode === 'inline';
+  if (isInline && metadata.allowedTools && metadata.allowedTools.length > 0) {
+    log.warn(
+      `技能 "${metadata.name}" 声明了 allowed-tools 但执行模式为 inline — ` +
+      `该字段当前仅在 fork 模式下生效，inline 模式不会注入自动放行规则。` +
+      `如需生效请设置 execution-mode: fork，或等待 inline contextModifier 运行时注入（P1 增强）。`,
+    );
+  }
 
   return { metadata, body };
 }
@@ -147,6 +161,14 @@ function parseYamlFrontmatter(yaml: string): SkillMetadata | null {
     }
     if (result['model']) {
       metadata.model = String(result['model']);
+    }
+    // G3: argument-hint 字段（填空式示例，面向非技术用户）
+    if (result['argument-hint'] || result['argumentHint']) {
+      metadata.argumentHint = String(result['argument-hint'] ?? result['argumentHint']);
+    }
+    // G3: arguments 字段（命名参数列表）
+    if (Array.isArray(result['arguments'])) {
+      metadata.arguments = result['arguments'] as string[];
     }
 
     // EvoClaw 扩展字段：requires

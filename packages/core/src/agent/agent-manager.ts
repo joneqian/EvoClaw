@@ -1,5 +1,5 @@
 import type { AgentConfig, AgentStatus } from '@evoclaw/shared';
-import { AGENT_WORKSPACE_FILES, DEFAULT_DATA_DIR, AGENTS_DIR, SHARED_WORKSPACE_DIR } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR, AGENTS_DIR } from '@evoclaw/shared';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -569,12 +569,3 @@ _Update this file as you figure out who you are._
 const DEFAULT_SOUL_MD = SOUL_BASE;
 
 const DEFAULT_AGENTS_MD = AGENTS_BASE;
-
-const DEFAULT_BOOTSTRAP_MD = `# Startup
-
-Agent startup sequence:
-1. Load SOUL.md and IDENTITY.md
-2. Load AGENTS.md operating procedures
-3. Render USER.md and MEMORY.md
-4. Inject tool set
-`;

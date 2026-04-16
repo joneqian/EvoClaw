@@ -62,7 +62,7 @@ export function createGapDetectionPlugin(discoverer?: SkillDiscoverer): ContextP
       // 尝试从上下文提取搜索关键词
       const lastUserMsg = [...ctx.messages].reverse().find(m => m.role === 'user');
       if (lastUserMsg) {
-        result.suggestedQuery = extractSearchQuery(lastUserMsg.content, content);
+        result.suggestedQuery = extractSearchQuery(lastUserMsg.content);
       }
 
       // 如果有发现器，搜索推荐 Skill
@@ -106,7 +106,7 @@ export function detectGap(content: string): GapDetectionResult {
 }
 
 /** 从用户消息中提取搜索关键词 */
-function extractSearchQuery(userContent: string, assistantContent: string): string {
+function extractSearchQuery(userContent: string): string {
   // 简单策略：取用户消息的前 3 个有意义的词
   const words = userContent
     .replace(/[^\u4e00-\u9fff\w\s]/g, ' ')

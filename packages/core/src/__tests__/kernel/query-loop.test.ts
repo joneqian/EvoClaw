@@ -13,8 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { StreamEvent, KernelTool, QueryLoopConfig, KernelMessage, ToolCallResult } from '../../agent/kernel/types.js';
-import { ApiError, AbortError } from '../../agent/kernel/types.js';
+import type { StreamEvent, KernelTool, QueryLoopConfig, ToolCallResult } from '../../agent/kernel/types.js';
 import { ToolSafetyGuard } from '../../agent/tool-safety.js';
 
 // ─── Mock streamLLM ───

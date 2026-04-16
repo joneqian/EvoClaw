@@ -76,9 +76,6 @@ export async function installExtensionPack(
 
   // 2. 合并 MCP Server 配置
   if (manifest.mcpServers && manifest.mcpServers.length > 0) {
-    const config = configManager.getConfig();
-    const existing = config.models?.providers ? Object.keys(config.models.providers) : [];
-
     // MCP 配置存储在 evo_claw.json 中（由 discoverMcpConfigs 读取）
     // 这里通过写入 .mcp.json 到数据目录
     const mcpConfigPath = path.join(os.homedir(), DEFAULT_DATA_DIR, '.mcp.json');

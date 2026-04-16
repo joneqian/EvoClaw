@@ -8,7 +8,6 @@ import {
   getProvider,
   registerProvider,
   unregisterProvider,
-  updateProviderModels,
   registerFromExtension,
 } from '../provider/provider-registry.js';
 import { getProviderExtension, getAllProviderExtensions } from '../provider/extensions/index.js';

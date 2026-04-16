@@ -4,7 +4,6 @@ import {
   getInjectedTools,
   permissionInterceptor,
   type ToolDefinition,
-  type ToolInjectorConfig,
 } from '../bridge/tool-injector.js';
 
 /** 创建测试工具 */

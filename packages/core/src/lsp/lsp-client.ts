@@ -154,7 +154,7 @@ export class LspClient {
 
       try {
         const msg = JSON.parse(content);
-        if (msg.id != null && this.pending.has(msg.id)) {
+        if (msg.id !== null && msg.id !== undefined && this.pending.has(msg.id)) {
           const p = this.pending.get(msg.id)!;
           this.pending.delete(msg.id);
           if (msg.error) p.reject(new Error(msg.error.message));

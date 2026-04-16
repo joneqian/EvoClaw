@@ -115,10 +115,10 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
   // 去重：丢弃 saveMessage 写入的冗余 assistant 行（kernel_message_json 为空）
   // 仅当本 session 存在任何 persister 写入的 assistant 行时生效，保护老数据不误删
   const hasPersisterAssistant = rawRows.some(
-    r => r.role === 'assistant' && r.kernel_message_json != null,
+    r => r.role === 'assistant' && r.kernel_message_json !== null,
   );
   const rows = hasPersisterAssistant
-    ? rawRows.filter(r => !(r.role === 'assistant' && r.kernel_message_json == null))
+    ? rawRows.filter(r => !(r.role === 'assistant' && r.kernel_message_json === null))
     : rawRows;
 
   const result: ChatMessage[] = [];

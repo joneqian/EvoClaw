@@ -195,6 +195,94 @@ Body.`;
       expect(result!.metadata.name).toBe('quoted-skill');
       expect(result!.metadata.description).toBe('A quoted description');
     });
+
+    // G3: argument-hint + arguments 字段解析
+    it('应解析 argument-hint 字段', () => {
+      const content = `---
+name: report-skill
+description: Generate report
+argument-hint: "month=4 week=1"
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.argumentHint).toBe('month=4 week=1');
+    });
+
+    it('应解析 arguments 列表字段', () => {
+      const content = `---
+name: report-skill
+description: Generate report
+arguments:
+  - month
+  - week
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.arguments).toEqual(['month', 'week']);
+    });
+
+    // G2 最小版：inline + allowed-tools 的组合不应阻断解析（只打 warn）
+    it('G2: inline 模式 + allowed-tools 组合仍能正常解析', () => {
+      const content = `---
+name: inline-with-tools
+description: Inline mode skill declaring allowed-tools
+execution-mode: inline
+allowed-tools:
+  - Read
+  - Grep
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.name).toBe('inline-with-tools');
+      expect(result!.metadata.executionMode).toBe('inline');
+      // 字段仍然被解析存储（类型注释说明了"仅 fork 生效"的语义）
+      expect(result!.metadata.allowedTools).toEqual(['Read', 'Grep']);
+    });
+
+    it('G2: fork 模式 + allowed-tools 组合不应触发 warn（正常组合）', () => {
+      const content = `---
+name: fork-with-tools
+description: Fork mode skill declaring allowed-tools
+execution-mode: fork
+allowed-tools:
+  - Read
+  - Grep
+---
+
+Body.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.executionMode).toBe('fork');
+      expect(result!.metadata.allowedTools).toEqual(['Read', 'Grep']);
+    });
+
+    it('argument-hint 和 arguments 可同时声明', () => {
+      const content = `---
+name: report-skill
+description: Generate report
+argument-hint: "month=4 week=1"
+arguments:
+  - month
+  - week
+---
+
+Body using \${month} and \${week}.`;
+
+      const result = parseSkillMd(content);
+      expect(result).not.toBeNull();
+      expect(result!.metadata.argumentHint).toBe('month=4 week=1');
+      expect(result!.metadata.arguments).toEqual(['month', 'week']);
+    });
   });
 
   describe('isSkillFile', () => {

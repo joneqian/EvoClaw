@@ -87,9 +87,6 @@ function isDangerousWritePath(filePath: string): boolean {
   return segments.some(s => DANGEROUS_PATH_SEGMENTS.has(s));
 }
 
-/** grep 最大匹配数 */
-const GREP_MAX_MATCHES = 100;
-
 /** find 最大文件数 */
 const FIND_MAX_FILES = 1000;
 
@@ -406,7 +403,7 @@ function applyQuoteStyle(newString: string, originalContext: string): string {
     // 替换直双引号为弯双引号
     result = result.replace(/"/g, (_, offset) => {
       // 左引号: 字符串开头，或前面是空格/换行/([{
-      if (offset === 0 || /[\s\n([\{—–]/.test(result[offset - 1] ?? '')) {
+      if (offset === 0 || /[\s\n([{—–]/.test(result[offset - 1] ?? '')) {
         return '\u201C'; // 左双弯引号
       }
       return '\u201D'; // 右双弯引号
@@ -423,7 +420,7 @@ function applyQuoteStyle(newString: string, originalContext: string): string {
         return '\u2019'; // 右单弯引号 (缩写)
       }
       // 左引号上下文
-      if (offset === 0 || /[\s\n([\{—–]/.test(prev)) {
+      if (offset === 0 || /[\s\n([{—–]/.test(prev)) {
         return '\u2018'; // 左单弯引号
       }
       return '\u2019'; // 右单弯引号

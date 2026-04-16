@@ -99,7 +99,7 @@ describe('AgentManager', () => {
   });
 
   it('listAgents 按状态过滤', async () => {
-    const a = await manager.createAgent({ name: 'Draft Agent' });
+    await manager.createAgent({ name: 'Draft Agent' });
     const b = await manager.createAgent({ name: 'Active Agent' });
     manager.updateAgentStatus(b.id, 'active');
 

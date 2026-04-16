@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { runDiagnostics } from '../routes/doctor.js';
-import type { CheckResult, DiagnosticReport } from '../routes/doctor.js';
 
 describe('Doctor 自诊断', () => {
   it('无依赖时应返回诊断报告', () => {

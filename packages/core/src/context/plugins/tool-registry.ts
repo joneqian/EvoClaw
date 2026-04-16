@@ -155,9 +155,16 @@ export function createToolRegistryPlugin(arg?: Partial<SkillPaths> | ToolRegistr
 
       log.info(`[${ctx.agentId}] 注入 ${activeSkills.length} 个技能: ${activeSkills.map(s => s.name).join(', ')}`);
 
-      // 截断到最大数量
+      // G1: 截断到最大数量 — bundled 技能享有豁免权，必须全部保留
+      // others 占用 MAX_SKILLS_IN_PROMPT 扣除 bundled 后的剩余槽位
       if (activeSkills.length > MAX_SKILLS_IN_PROMPT) {
-        activeSkills = activeSkills.slice(0, MAX_SKILLS_IN_PROMPT);
+        const bundled = activeSkills.filter(s => s.source === 'bundled');
+        const others = activeSkills.filter(s => s.source !== 'bundled');
+        const otherSlots = Math.max(0, MAX_SKILLS_IN_PROMPT - bundled.length);
+        activeSkills = [...bundled, ...others.slice(0, otherSlots)];
+        log.debug(
+          `[${ctx.agentId}] 截断数量: bundled ${bundled.length} 全部保留 + others ${others.length} → ${otherSlots}`,
+        );
       }
 
       // Tier 1: 生成 XML 目录（自动降级）
@@ -253,6 +260,8 @@ function tryLoadSkill(filePath: string, installPath: string, source: InstalledSk
       executionMode: parsed.metadata.executionMode,
       whenToUse: parsed.metadata.whenToUse,
       model: parsed.metadata.model,
+      argumentHint: parsed.metadata.argumentHint,
+      arguments: parsed.metadata.arguments,
     };
   } catch {
     return null;
@@ -266,6 +275,13 @@ function tryLoadSkill(filePath: string, installPath: string, source: InstalledSk
 /**
  * 构建技能 prompt — 含引导语 + XML 目录
  * 自动在完整模式和紧凑模式之间降级
+ *
+ * G1 Bundled 预算豁免：bundled 技能享有不可截断特权。
+ * 算法：
+ *   1. 切分 bundled / others 两组
+ *   2. bundled 始终以 full 模式存在，占用预算优先
+ *   3. others 在剩余预算内分级降级（full → compact → 截断）
+ *   4. 极端情况 others 被完全舍弃，但 bundled 必须保留
  *
  * 注意：不暴露 SKILL.md 文件路径，引导模型通过 invoke_skill 工具加载技能
  */
@@ -284,8 +300,9 @@ Constraint: invoke at most one skill per turn.
 
 `;
 
-  // 先尝试完整模式（含 description）
-  const fullCatalog = formatSkillsFull(skills);
+  // 先尝试完整模式（含 description）— 快路径：整体不超预算时直接返回
+  const fullEntries = skills.map(skillToFullEntry);
+  const fullCatalog = `<available_skills>\n${fullEntries.join('\n')}\n</available_skills>`;
   const fullPrompt = header + fullCatalog;
 
   if (fullPrompt.length <= MAX_SKILLS_PROMPT_CHARS) {
@@ -293,39 +310,84 @@ Constraint: invoke at most one skill per turn.
     return fullPrompt;
   }
 
-  // 超预算 → 降级为紧凑模式（无 description）
-  const compactCatalog = formatSkillsCompact(skills);
-  const compactPrompt = header + compactCatalog;
+  // G1: 切分 bundled / others，bundled 享有截断豁免
+  const bundled = skills.filter(s => s.source === 'bundled');
+  const others = skills.filter(s => s.source !== 'bundled');
 
-  if (compactPrompt.length <= MAX_SKILLS_PROMPT_CHARS) {
-    log.info(`技能 prompt 降级为紧凑模式 (${compactPrompt.length} chars, ${skills.length} skills)`);
-    return compactPrompt;
+  // bundled 始终 full 模式（无 <available_skills> 包裹的内部条目）
+  const bundledEntries = bundled.map(skillToFullEntry);
+  const bundledEntriesStr = bundledEntries.join('\n');
+
+  // 计算剩余预算：总预算 - header - XML 包裹标签 - bundled 条目 - 两组之间的换行
+  const wrapperOverhead = '<available_skills>\n\n</available_skills>'.length + 2; // <open>\n...\n</close>
+  const bundledCost = bundledEntriesStr.length + (bundledEntries.length > 0 ? 1 : 0); // + 分隔换行
+  const fixedCost = header.length + wrapperOverhead + bundledCost;
+  const remainingBudget = MAX_SKILLS_PROMPT_CHARS - fixedCost;
+
+  // 构造最终 prompt 的辅助函数
+  const assemble = (otherEntries: string[]): string => {
+    const allEntries = [...bundledEntries, ...otherEntries];
+    return `${header}<available_skills>\n${allEntries.join('\n')}\n</available_skills>`;
+  };
+
+  // 尝试 others full 模式
+  const othersFullEntries = others.map(skillToFullEntry);
+  const othersFullCost = othersFullEntries.join('\n').length;
+  if (othersFullCost <= remainingBudget) {
+    const prompt = assemble(othersFullEntries);
+    log.debug(`技能 prompt 模式: 完整 (bundled 豁免) (${prompt.length} chars, ${skills.length} skills)`);
+    return prompt;
   }
 
-  // 紧凑模式仍然超预算 → 按比例截断技能数量
-  const ratio = MAX_SKILLS_PROMPT_CHARS / compactPrompt.length;
-  const truncatedCount = Math.max(1, Math.floor(skills.length * ratio * 0.9));
-  log.warn(`技能 prompt 截断: ${skills.length} → ${truncatedCount} skills`);
-  const truncatedCatalog = formatSkillsCompact(skills.slice(0, truncatedCount));
-  return header + truncatedCatalog;
-}
+  // 降级：others 转 compact 模式
+  const othersCompactEntries = others.map(skillToCompactEntry);
+  const othersCompactCost = othersCompactEntries.join('\n').length;
+  if (othersCompactCost <= remainingBudget) {
+    const prompt = assemble(othersCompactEntries);
+    log.info(
+      `技能 prompt 降级为紧凑模式 (bundled 豁免) ` +
+      `(${prompt.length} chars, ${bundled.length} bundled full + ${others.length} others compact)`,
+    );
+    return prompt;
+  }
 
-/** 完整模式 — name + description + whenToUse + mode（不含文件路径，引导用 invoke_skill） */
-function formatSkillsFull(skills: InstalledSkill[]): string {
-  const entries = skills.map(s => {
-    const modeTag = s.executionMode === 'fork' ? '\n    <mode>fork</mode>' : '';
-    const whenTag = s.whenToUse ? `\n    <when>${escapeXml(s.whenToUse)}</when>` : '';
-    return `  <skill>\n    <name>${escapeXml(s.name)}</name>\n    <description>${escapeXml(s.description)}</description>${whenTag}${modeTag}\n  </skill>`;
-  });
-  return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
-}
+  // 进一步降级：others 按比例截断（仅截 others，bundled 完整保留）
+  if (remainingBudget <= 0) {
+    log.warn(
+      `技能 prompt 预算被 bundled 完全占用，others 全部舍弃 ` +
+      `(${bundled.length} bundled full + 0 / ${others.length} others)`,
+    );
+    return assemble([]);
+  }
 
-/** 紧凑模式 — 仅 name（省略 description + 路径，最省 token） */
-function formatSkillsCompact(skills: InstalledSkill[]): string {
-  const entries = skills.map(s =>
-    `  <skill><name>${escapeXml(s.name)}</name></skill>`,
+  const ratio = remainingBudget / othersCompactCost;
+  const truncatedCount = Math.max(0, Math.floor(others.length * ratio * 0.9));
+  log.warn(
+    `技能 prompt 截断: others ${others.length} → ${truncatedCount} ` +
+    `(bundled ${bundled.length} 全部豁免)`,
   );
-  return `<available_skills>\n${entries.join('\n')}\n</available_skills>`;
+  return assemble(othersCompactEntries.slice(0, truncatedCount));
+}
+
+/**
+ * 完整模式条目 — name + description + whenToUse + mode + argument-hint
+ *
+ * G3 argument-hint：当技能声明 argumentHint 时，注入 <argument-hint> 子节点，
+ * 引导 LLM 在缺参调用时向用户追问具体参数（对非技术用户的"填空式"提示）。
+ */
+function skillToFullEntry(s: InstalledSkill): string {
+  const modeTag = s.executionMode === 'fork' ? '\n    <mode>fork</mode>' : '';
+  const whenTag = s.whenToUse ? `\n    <when>${escapeXml(s.whenToUse)}</when>` : '';
+  const hintTag = s.argumentHint ? `\n    <argument-hint>${escapeXml(s.argumentHint)}</argument-hint>` : '';
+  const argNamesTag = s.arguments && s.arguments.length > 0
+    ? `\n    <arguments>${s.arguments.map(escapeXml).join(', ')}</arguments>`
+    : '';
+  return `  <skill>\n    <name>${escapeXml(s.name)}</name>\n    <description>${escapeXml(s.description)}</description>${whenTag}${hintTag}${argNamesTag}${modeTag}\n  </skill>`;
+}
+
+/** 紧凑模式条目 — 仅 name（省略 description + 路径，最省 token） */
+function skillToCompactEntry(s: InstalledSkill): string {
+  return `  <skill><name>${escapeXml(s.name)}</name></skill>`;
 }
 
 /** 转义 XML 特殊字符 */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { splitDocument, detectDocumentType, type DocumentType } from '../rag/chunk-splitter.js';
+import { splitDocument, detectDocumentType } from '../rag/chunk-splitter.js';
 
 describe('splitDocument', () => {
   // ---------- Markdown ----------

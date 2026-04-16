@@ -137,11 +137,11 @@ interface ConversationRow {
  */
 function dedupeAssistantRows(rows: ConversationRow[]): ConversationRow[] {
   const hasPersisterAssistant = rows.some(
-    r => r.role === 'assistant' && r.kernel_message_json != null,
+    r => r.role === 'assistant' && r.kernel_message_json !== null,
   );
   if (!hasPersisterAssistant) return rows;
   return rows.filter(
-    r => !(r.role === 'assistant' && r.kernel_message_json == null),
+    r => !(r.role === 'assistant' && r.kernel_message_json === null),
   );
 }
 

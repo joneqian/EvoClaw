@@ -5,7 +5,7 @@
  * 中的 requires 字段，检查系统环境是否满足要求。
  */
 
-import type { SkillMetadata, SkillGateResult, SkillRequires } from '@evoclaw/shared';
+import type { SkillMetadata, SkillGateResult } from '@evoclaw/shared';
 import { execSync } from 'node:child_process';
 
 /** 执行门控检查 */
@@ -34,9 +34,9 @@ export function checkGates(metadata: SkillMetadata): SkillGateResult[] {
   return results;
 }
 
-/** 检查所有门控是否通过 */
+/** 检查所有门控是否通过（空数组返回 true） */
 export function allGatesPassed(results: SkillGateResult[]): boolean {
-  return results.length === 0 || results.every(r => r.satisfied);
+  return results.every(r => r.satisfied);
 }
 
 /** 检查二进制工具是否存在 */

@@ -54,7 +54,9 @@ export function flattenUnionSchema(schema: Record<string, unknown>): Record<stri
   if (!variants || schema['type']) return schema; // 已有 type 或非 union
 
   // 仅当至少有一个变体包含 properties 时才扁平化（原始类型 union 保持原样）
-  const hasObjectVariant = variants.some(v => v['properties'] != null);
+  const hasObjectVariant = variants.some(
+    v => v['properties'] !== null && v['properties'] !== undefined,
+  );
   if (!hasObjectVariant) return schema;
 
   // 合并所有变体的 properties

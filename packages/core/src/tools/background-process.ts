@@ -289,7 +289,7 @@ export function createProcessTool(): ToolDefinition {
 /** 危险命令检测 */
 function isDangerousCommand(command: string): boolean {
   const dangerous = [
-    /\brm\s+(-rf?|--recursive)\s+[\/~]/i,     // rm -rf /
+    /\brm\s+(-rf?|--recursive)\s+[/~]/i,      // rm -rf /
     /\bmkfs\b/i,                                // 格式化磁盘
     /\bdd\s+.*of=\/dev\//i,                     // 覆写设备
     /\b:()\s*\{.*\|\s*:\s*&\s*\}\s*;?\s*:/,    // fork bomb

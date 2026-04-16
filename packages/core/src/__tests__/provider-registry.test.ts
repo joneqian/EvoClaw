@@ -188,7 +188,6 @@ describe('ProviderRegistry', () => {
 
   it('updateProviderModels 应动态更新模型列表', () => {
     registerMiniMax('minimax-key');
-    const before = getProvider('minimax')!.models.length;
 
     const newModels = [
       { id: 'new-model-1', name: 'New Model 1', provider: 'minimax', maxContextLength: 128000, maxOutputTokens: 8192, supportsVision: false, supportsToolUse: true, isDefault: true },

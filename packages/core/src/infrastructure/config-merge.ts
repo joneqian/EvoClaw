@@ -64,7 +64,7 @@ export function getValueByPath(obj: Record<string, unknown>, path: string): unkn
   let current: unknown = obj;
 
   for (const key of keys) {
-    if (current == null || typeof current !== 'object') return undefined;
+    if (current === null || current === undefined || typeof current !== 'object') return undefined;
     current = (current as Record<string, unknown>)[key];
   }
 
@@ -78,7 +78,7 @@ export function setValueByPath(obj: Record<string, unknown>, path: string, value
 
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (current[key] == null || typeof current[key] !== 'object') {
+    if (current[key] === null || current[key] === undefined || typeof current[key] !== 'object') {
       current[key] = {};
     }
     current = current[key] as Record<string, unknown>;

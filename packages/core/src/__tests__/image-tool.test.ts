@@ -67,10 +67,8 @@ describe('image 工具', () => {
 
   it('应该构造正确的 OpenAI 请求', async () => {
     // Mock fetch for image download + API call
-    let apiCallBody: any;
-    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes('chat/completions')) {
-        apiCallBody = JSON.parse((init?.body as string) || '{}');
         return {
           ok: true,
           json: () => Promise.resolve({ choices: [{ message: { content: '这是一张测试图片' } }] }),
@@ -86,7 +84,7 @@ describe('image 工具', () => {
     const tool = createImageTool({
       apiKey: 'key', provider: 'openai', modelId: 'gpt-4o', baseUrl: 'https://api.openai.com/v1', apiProtocol: 'openai-completions',
     });
-    const result = await tool.execute({ path: 'https://example.com/test.png', prompt: '描述' });
+    await tool.execute({ path: 'https://example.com/test.png', prompt: '描述' });
 
     expect(globalThis.fetch).toHaveBeenCalled();
     // 第二次调用应该是 API 调用

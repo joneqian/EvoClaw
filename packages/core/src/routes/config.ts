@@ -143,7 +143,7 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
   app.get('/env-vars', (c) => {
     const config = configManager.getConfig();
     // 品牌默认环境变量（优先级最低） + 用户配置覆盖
-    const merged: Record<string, string> = { ...(BRAND.defaultEnv ?? {}), ...(config.envVars ?? {}) };
+    const merged: Record<string, string> = { ...BRAND.defaultEnv, ...config.envVars };
     // 向后兼容：合并旧 services.brave.apiKey
     if (config.services?.brave?.apiKey && !merged['BRAVE_API_KEY']) {
       merged['BRAVE_API_KEY'] = config.services.brave.apiKey;
@@ -160,7 +160,7 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
   app.get('/env-vars/:key', (c) => {
     const key = c.req.param('key');
     const config = configManager.getConfig();
-    const merged: Record<string, string> = { ...(BRAND.defaultEnv ?? {}), ...(config.envVars ?? {}) };
+    const merged: Record<string, string> = { ...BRAND.defaultEnv, ...config.envVars };
     if (config.services?.brave?.apiKey && !merged['BRAVE_API_KEY']) {
       merged['BRAVE_API_KEY'] = config.services.brave.apiKey;
     }

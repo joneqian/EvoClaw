@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { AgentManager } from '../agent/agent-manager.js';
-import { AgentBuilder, type BuilderState } from '../agent/agent-builder.js';
+import { AgentBuilder } from '../agent/agent-builder.js';
 
 /** 读取初始迁移 SQL */
 const migrationsDir = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');

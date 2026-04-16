@@ -112,9 +112,8 @@ describe('LaneQueue', () => {
     ]);
 
     // 两个任务应该几乎同时开始（交错执行）
-    const x1StartIdx = executionOrder.indexOf('x1-start');
     const y1StartIdx = executionOrder.indexOf('y1-start');
-    // 两个 start 应该在两个 end 之前
+    // y1 应该在 x1 结束之前就开始（证明两个 session 并发）
     const x1EndIdx = executionOrder.indexOf('x1-end');
     expect(y1StartIdx).toBeLessThan(x1EndIdx);
   });

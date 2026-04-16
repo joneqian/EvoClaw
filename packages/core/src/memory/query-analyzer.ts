@@ -84,7 +84,7 @@ function extractKeywords(query: string): string[] {
   // 2. 提取英文/数字片段
   const nonCjk = query.replace(CJK_RE, ' ');
   const parts = nonCjk
-    .replace(/[，。！？、；：""''（）【】《》…—\-.,!?;:'"()\[\]{}<>\/\\@#$%^&*+=|~`]/g, ' ')
+    .replace(/[，。！？、；：""''（）【】《》…—.,!?;:'"()[\]{}<>/\\@#$%^&*+=|~`-]/g, ' ')
     .split(/\s+/)
     .filter(Boolean);
   for (const part of parts) {

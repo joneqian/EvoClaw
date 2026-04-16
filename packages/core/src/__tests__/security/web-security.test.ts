@@ -4,7 +4,6 @@ import {
   upgradeToHttps,
   isPermittedRedirect,
   isPrivateIP,
-  type URLValidationResult,
 } from '../../security/web-security.js';
 
 // ─── validateWebURL ──────────────────────────────────────────────

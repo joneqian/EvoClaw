@@ -21,11 +21,11 @@ interface Row {
 /** 复制 chat.ts 的去重函数行为用于独立测试 */
 function dedupeAssistantRows(rows: Row[]): Row[] {
   const hasPersisterAssistant = rows.some(
-    r => r.role === 'assistant' && r.kernel_message_json != null,
+    r => r.role === 'assistant' && r.kernel_message_json !== null,
   );
   if (!hasPersisterAssistant) return rows;
   return rows.filter(
-    r => !(r.role === 'assistant' && r.kernel_message_json == null),
+    r => !(r.role === 'assistant' && r.kernel_message_json === null),
   );
 }
 

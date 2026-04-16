@@ -6,7 +6,7 @@
  * - GitHub: git clone --depth 1 或 GitHub API 下载 ZIP
  */
 
-import type { SkillPrepareResult, SkillSource, SkillGateResult } from '@evoclaw/shared';
+import type { SkillPrepareResult, SkillSource } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';

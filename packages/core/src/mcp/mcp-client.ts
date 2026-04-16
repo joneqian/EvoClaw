@@ -75,7 +75,7 @@ export class McpClient {
         transport = new StdioClientTransport({
           command: this.config.command,
           args: this.config.args,
-          env: { ...process.env, ...(this.config.env ?? {}) } as Record<string, string>,
+          env: { ...process.env, ...this.config.env } as Record<string, string>,
         });
       } else if (this.config.type === 'sse') {
         if (!this.config.url) throw new Error('sse 类型需要 url 字段');

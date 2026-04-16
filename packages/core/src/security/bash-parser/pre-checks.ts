@@ -38,6 +38,8 @@ const PRE_CHECKS: readonly PreCheck[] = [
     isMisparsing: true,
     test: (cmd) => {
       // 控制字符 (除 \t \n \r): bash 静默丢弃，解析器视为分隔符
+      // 故意包含控制字符作为安全检查 pattern
+      // eslint-disable-next-line no-control-regex
       if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(cmd)) {
         return '命令包含控制字符';
       }

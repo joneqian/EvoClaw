@@ -1,4 +1,3 @@
-import type { MemoryUnit } from '@evoclaw/shared';
 import { HOTNESS_HALF_LIFE_DAYS, MEMORY_L2_BUDGET_TOKENS } from '@evoclaw/shared';
 
 import type { FtsStore } from '../infrastructure/db/fts-store.js';

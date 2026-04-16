@@ -85,7 +85,7 @@ export class MemoryMonitor {
     const durationHours = (last.timestamp - first.timestamp) / (1000 * 60 * 60);
 
     // 线性回归: y = heapUsed (MB), x = hours since first sample
-    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
 
     for (const s of this.samples) {
       const x = (s.timestamp - first.timestamp) / (1000 * 60 * 60); // hours
@@ -94,7 +94,6 @@ export class MemoryMonitor {
       sumY += y;
       sumXY += x * y;
       sumX2 += x * x;
-      sumY2 += y * y;
     }
 
     const denominator = n * sumX2 - sumX * sumX;

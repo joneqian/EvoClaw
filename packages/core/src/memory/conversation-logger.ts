@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 
 /** 日志条目类型 — 区分普通消息和系统事件 */

@@ -20,7 +20,7 @@ const SIMPLE_PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
   // API Keys（各 Provider 格式）
   { regex: /sk-ant-[A-Za-z0-9_-]{20,}/g, replacement: 'sk-ant-***' },
   { regex: /sk-[A-Za-z0-9_-]{20,}/g, replacement: 'sk-***' },
-  { regex: /Bearer\s+[A-Za-z0-9._\-]{20,}/gi, replacement: `Bearer ${REDACTED}` },
+  { regex: /Bearer\s+[A-Za-z0-9._-]{20,}/gi, replacement: `Bearer ${REDACTED}` },
   // JWT Token
   { regex: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, replacement: `jwt:${REDACTED}` },
   // 邮箱
@@ -28,7 +28,7 @@ const SIMPLE_PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
   // 中国手机号
   { regex: /(?<!\d)1[3-9]\d{9}(?!\d)/g, replacement: `phone:${REDACTED}` },
   // x-api-key header 值
-  { regex: /x-api-key[:\s]+[A-Za-z0-9._\-]{10,}/gi, replacement: `x-api-key: ${REDACTED}` },
+  { regex: /x-api-key[:\s]+[A-Za-z0-9._-]{10,}/gi, replacement: `x-api-key: ${REDACTED}` },
 ];
 
 /** 密码字段值模式（需要函数替换） */

@@ -99,12 +99,8 @@ export class UserMdRenderer {
     const sessionKey = `agent:${agentId}:default:direct:` as any;
     const logs = this.conversationLogger.getBySession(agentId, sessionKey, 100);
 
-    // 过滤当天的日志
-    const dayLogs = logs.filter(l => {
-      // ConversationLogEntry doesn't have createdAt in the return type,
-      // so we use a broad approach
-      return true; // 简化实现：返回所有日志
-    });
+    // 过滤当天的日志（简化实现：返回所有日志；ConversationLogEntry 没有 createdAt 字段）
+    const dayLogs = logs;
 
     if (dayLogs.length === 0) {
       return `# ${date} 对话日志\n\n暂无记录。\n`;

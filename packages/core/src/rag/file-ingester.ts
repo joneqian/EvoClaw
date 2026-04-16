@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
-import { splitDocument, detectDocumentType, type DocumentType } from './chunk-splitter.js';
+import { splitDocument, detectDocumentType } from './chunk-splitter.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('file-ingester');

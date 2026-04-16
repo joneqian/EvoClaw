@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { resolveSecondaryModelId, createSecondaryLLMCallFn } from '../agent/llm-client.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 

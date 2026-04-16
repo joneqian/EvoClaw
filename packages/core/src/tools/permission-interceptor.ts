@@ -33,6 +33,7 @@ const DANGEROUS_PATTERNS = [
   /crontab\s+-[re]/i,                                         // 定时任务篡改
   // Legacy 降级路径保留 — AST 主路径的 pre-checks 已覆盖以下 3 项，
   // 但 parse-unavailable 降级时仍需要这些正则兜底
+  // eslint-disable-next-line no-control-regex -- 故意包含控制字符作为安全检查 pattern
   /[\x00-\x08\x0b\x0c\x0e-\x1f]/,                            // 控制字符（排除 \t\n\r）→ pre-checks: control_characters
   /[\u00A0\u2000-\u200B\u2028\u2029\u202F\u205F\u3000]/,      // Unicode 伪空格 → pre-checks: unicode_whitespace
   /\{[^}]*,[^}]*\}/,                                          // 花括号展开 {a,b} → pre-checks: brace_expansion_with_quotes

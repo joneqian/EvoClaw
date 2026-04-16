@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from '../infrastructure/db/migration-runner.js';
-import { ToolAuditor, type ToolAuditEntry } from '../bridge/tool-injector.js';
+import { ToolAuditor } from '../bridge/tool-injector.js';
 
 /** 生成临时数据库路径 */
 function tmpDbPath(): string {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ChannelManager } from '../channel/channel-manager.js';
 import type { ChannelAdapter, ChannelConfig, ChannelStatusInfo, MessageHandler } from '../channel/channel-adapter.js';
-import type { ChannelType, ChannelMessage } from '@evoclaw/shared';
+import type { ChannelType } from '@evoclaw/shared';
 
 /** 模拟适配器 */
 function createMockAdapter(type: ChannelType = 'feishu'): ChannelAdapter & {

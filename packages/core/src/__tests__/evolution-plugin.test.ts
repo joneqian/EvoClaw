@@ -82,7 +82,7 @@ describe('createEvolutionPlugin', () => {
 
     // "帮助" 可能匹配 communication，所以检查是否不抛错即可
     const graph = new CapabilityGraph(db);
-    const nodes = graph.getCapabilityGraph(agentId);
+    graph.getCapabilityGraph(agentId); // 仅验证不抛错
     // 可能有 communication，也可能没有，关键是不报错
     expect(true).toBe(true);
   });

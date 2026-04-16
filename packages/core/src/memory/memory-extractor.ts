@@ -54,7 +54,7 @@ export class MemoryExtractor {
    * Stage 2: LLM 调用 (prompt → call → parse)
    * Stage 3: 持久化 (merge-resolver + knowledge_graph + conversation_log)
    */
-  async extractAndPersist(messages: ChatMessage[], agentId: string, sessionKey?: string): Promise<{
+  async extractAndPersist(messages: ChatMessage[], agentId: string, _sessionKey?: string): Promise<{
     memoryIds: string[];
     relationCount: number;
     skipped: boolean;

@@ -1,4 +1,3 @@
-import type { AgentConfig } from '@evoclaw/shared';
 import { AgentManager } from './agent-manager.js';
 import { SOUL_BASE, AGENTS_BASE } from './agent-manager.js';
 import { createLogger } from '../infrastructure/logger.js';

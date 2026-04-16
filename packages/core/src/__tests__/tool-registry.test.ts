@@ -145,6 +145,155 @@ Agent version.`);
     expect(matched[0].description).toBe('Agent level version');
   });
 
+  // ─── G3: argument-hint XML 注入 ───
+  it('G3: argument-hint 应注入到 XML 目录的 <argument-hint> 子节点', async () => {
+    const skillDir = path.join(tempUserDir, 'report-skill');
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `---
+name: report-skill
+description: Generate weekly report
+argument-hint: "month=4 week=1"
+arguments:
+  - month
+  - week
+---
+
+Generate report for \${month} month week \${week}.`);
+
+    const plugin = createPlugin();
+    const ctx = makeTurnCtx();
+
+    await plugin.bootstrap!(makeBootstrapCtx());
+    await plugin.beforeTurn!(ctx);
+
+    expect(ctx.injectedContext).toHaveLength(1);
+    const catalog = ctx.injectedContext[0];
+    expect(catalog).toContain('<argument-hint>month=4 week=1</argument-hint>');
+    expect(catalog).toContain('<arguments>month, week</arguments>');
+  });
+
+  // ─── G1: Bundled 技能预算豁免 ───
+  describe('G1: Bundled 预算豁免', () => {
+    let tempBundledDir: string;
+
+    beforeEach(() => {
+      tempBundledDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-registry-bundled-'));
+      refreshSkillCache(agentId);
+    });
+
+    afterEach(() => {
+      fs.rmSync(tempBundledDir, { recursive: true, force: true });
+    });
+
+    function createPluginWithBundled() {
+      return createToolRegistryPlugin({
+        paths: {
+          userDir: tempUserDir,
+          agentDirTemplate: path.join(tempAgentDir, '{agentId}', 'skills'),
+          bundledDir: tempBundledDir,
+        },
+      });
+    }
+
+    /** 创建一个技能目录 + SKILL.md */
+    function writeSkill(baseDir: string, name: string, descLen = 120): void {
+      const skillDir = path.join(baseDir, name);
+      fs.mkdirSync(skillDir, { recursive: true });
+      const description = `desc_${name}_` + 'x'.repeat(Math.max(0, descLen - name.length - 5));
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), `---
+name: ${name}
+description: ${description}
+---
+
+Body for ${name}.`);
+    }
+
+    it('预算充足时 bundled 和 user 技能都以 full 模式注入', async () => {
+      writeSkill(tempBundledDir, 'bundled-a');
+      writeSkill(tempBundledDir, 'bundled-b');
+      writeSkill(tempUserDir, 'user-a');
+
+      const plugin = createPluginWithBundled();
+      const ctx = makeTurnCtx();
+
+      await plugin.bootstrap!(makeBootstrapCtx());
+      await plugin.beforeTurn!(ctx);
+
+      expect(ctx.injectedContext).toHaveLength(1);
+      const catalog = ctx.injectedContext[0];
+      // 三个技能都在完整模式（含 description）
+      expect(catalog).toContain('<description>');
+      expect(catalog).toContain('bundled-a');
+      expect(catalog).toContain('bundled-b');
+      expect(catalog).toContain('user-a');
+    });
+
+    it('预算不足时 bundled 始终以 full 模式保留，others 降级或截断', async () => {
+      // 200 个 user 技能 + 32 个 bundled 技能（模拟 EvoClaw 实际场景）
+      for (let i = 0; i < 32; i++) {
+        writeSkill(tempBundledDir, `bundled-${String(i).padStart(2, '0')}`, 200);
+      }
+      for (let i = 0; i < 200; i++) {
+        writeSkill(tempUserDir, `user-${String(i).padStart(3, '0')}`, 200);
+      }
+
+      const plugin = createPluginWithBundled();
+      const ctx = makeTurnCtx();
+
+      await plugin.bootstrap!(makeBootstrapCtx());
+      await plugin.beforeTurn!(ctx);
+
+      expect(ctx.injectedContext).toHaveLength(1);
+      const catalog = ctx.injectedContext[0];
+
+      // 断言 1：所有 bundled 技能都出现
+      for (let i = 0; i < 32; i++) {
+        const bundledName = `bundled-${String(i).padStart(2, '0')}`;
+        expect(
+          catalog.includes(`<name>${bundledName}</name>`),
+          `bundled 技能 ${bundledName} 必须保留`,
+        ).toBe(true);
+      }
+
+      // 断言 2：所有 bundled 技能以 full 模式（含 description）存在
+      // 具体检查每个 bundled 条目后面跟着 <description>
+      for (let i = 0; i < 32; i++) {
+        const bundledName = `bundled-${String(i).padStart(2, '0')}`;
+        const pattern = new RegExp(
+          `<name>${bundledName}</name>\\s*\\n\\s*<description>`,
+          'm',
+        );
+        expect(
+          pattern.test(catalog),
+          `bundled 技能 ${bundledName} 必须以 full 模式（含 description）存在`,
+        ).toBe(true);
+      }
+    });
+
+    it('极端情况：bundled 占满预算时 others 可被完全舍弃但 bundled 保留', async () => {
+      // 创建超大 bundled 技能池（单技能 description 接近 1000 字符）
+      // 使 bundled 足以占满 30k 预算
+      for (let i = 0; i < 100; i++) {
+        writeSkill(tempBundledDir, `big-bundled-${String(i).padStart(3, '0')}`, 1000);
+      }
+      writeSkill(tempUserDir, 'victim-user-skill');
+
+      const plugin = createPluginWithBundled();
+      const ctx = makeTurnCtx();
+
+      await plugin.bootstrap!(makeBootstrapCtx());
+      await plugin.beforeTurn!(ctx);
+
+      expect(ctx.injectedContext).toHaveLength(1);
+      const catalog = ctx.injectedContext[0];
+
+      // bundled 技能（至少一部分）必须存在
+      // 由于 MAX_SKILLS_IN_PROMPT=150 也会先截断，这里 100 < 150 所以不会被截断
+      expect(catalog).toContain('big-bundled-000');
+      expect(catalog).toContain('big-bundled-099');
+    });
+  });
+
   it('refreshSkillCache 应清除缓存', async () => {
     const skillDir = path.join(tempUserDir, 'refresh-skill');
     fs.mkdirSync(skillDir, { recursive: true });

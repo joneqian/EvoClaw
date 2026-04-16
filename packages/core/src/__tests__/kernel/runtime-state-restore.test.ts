@@ -6,7 +6,7 @@
  * 2. saveRuntimeState / loadRuntimeState 正确读写
  * 3. 无保存状态时返回 null
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { FileStateCache } from '../../agent/kernel/file-state-cache.js';
 import { saveRuntimeState, loadRuntimeState } from '../../agent/kernel/runtime-state-store.js';
 import type { RuntimeStateSnapshot } from '../../agent/kernel/runtime-state-store.js';
@@ -25,7 +25,7 @@ function createMockStore() {
       return { changes: 1, lastInsertRowid: 0 };
     },
     get<T>(): T | undefined { return undefined; },
-    all<T>(sql: string, ...params: unknown[]): T[] {
+    all<T>(sql: string, ..._params: unknown[]): T[] {
       if (sql.includes('session_runtime_state')) {
         return [...rows.values()] as T[];
       }
@@ -44,13 +44,7 @@ function createMockStore() {
 describe('FileStateCache serialization', () => {
   it('toJSON 返回所有缓存条目', () => {
     const cache = new FileStateCache();
-    // 使用 mock — 不依赖真实文件系统
-    const data = {
-      '/tmp/test-a.txt': { mtimeMs: 1000, readAt: 2000, isPartialView: false, contentLength: 100 },
-      '/tmp/test-b.txt': { mtimeMs: 3000, readAt: 4000, isPartialView: true, contentLength: 50 },
-    };
-
-    // 直接验证 toJSON 返回空（因为没 recordRead）
+    // 直接验证 toJSON 返回空（因为没 recordRead；不依赖真实文件系统）
     expect(cache.toJSON()).toEqual({});
     expect(cache.size).toBe(0);
   });

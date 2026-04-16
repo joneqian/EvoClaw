@@ -5,8 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { tokenize } from '../../security/bash-parser/tokenizer.js';
 import { parse } from '../../security/bash-parser/parser.js';
-import { parseForSecurity, extractSimpleCommands } from '../../security/bash-parser/ast-extractor.js';
-import type { Token, SimpleCommand } from '../../security/bash-parser/types.js';
+import { parseForSecurity } from '../../security/bash-parser/ast-extractor.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Tokenizer Tests

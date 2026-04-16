@@ -28,7 +28,6 @@ const {
   isBlockedReadPath,
   isDangerousWritePath,
   FileStateCache,
-  desanitizeXml,
 } = _testing;
 
 // ─── Test Fixture ───

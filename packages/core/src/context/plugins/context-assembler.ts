@@ -7,45 +7,6 @@ import path from 'node:path';
 
 const log = createLogger('context-assembler');
 
-// ─── 会话级 Prompt 缓存 (Sprint 5) ───
-
-/** 会话级缓存条目 */
-interface SessionCacheEntry { content: string; computedAt: number }
-
-/** 会话级缓存（5 分钟 TTL） */
-const sessionPromptCache = new Map<string, SessionCacheEntry>();
-const SESSION_CACHE_TTL_MS = 300_000;
-
-/** 获取会话缓存或重新计算 */
-function getCachedOrCompute(sessionKey: string, key: string, computeFn: () => string): string {
-  const cacheKey = `${sessionKey}:${key}`;
-  const cached = sessionPromptCache.get(cacheKey);
-  if (cached && Date.now() - cached.computedAt < SESSION_CACHE_TTL_MS) {
-    return cached.content;
-  }
-  const content = computeFn();
-  sessionPromptCache.set(cacheKey, { content, computedAt: Date.now() });
-  return content;
-}
-
-/** 清除会话级缓存（含事件日志） */
-export function clearSessionPromptCache(sessionKey?: string): void {
-  if (sessionKey) {
-    let count = 0;
-    for (const key of sessionPromptCache.keys()) {
-      if (key.startsWith(`${sessionKey}:`)) {
-        sessionPromptCache.delete(key);
-        count++;
-      }
-    }
-    if (count > 0) log.info(`会话 prompt 缓存已清除: session=${sessionKey}, entries=${count}`);
-  } else {
-    const count = sessionPromptCache.size;
-    sessionPromptCache.clear();
-    if (count > 0) log.info(`全局 prompt 缓存已清除: entries=${count}`);
-  }
-}
-
 /** 单个工作区文件最大字符数 */
 const MAX_FILE_CHARS = 20_000;
 
@@ -173,7 +134,6 @@ export const contextAssemblerPlugin: ContextPlugin = {
   },
 
   async shutdown(ctx: ShutdownContext) {
-    clearSessionPromptCache(ctx.sessionKey);
     if (workspaceCache.has(ctx.agentId)) {
       workspaceCache.delete(ctx.agentId);
       log.info(`工作区文件缓存已清除: agent=${ctx.agentId}`);

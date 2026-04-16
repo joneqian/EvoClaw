@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { parsePatch, applyPatch, parseHunks, createApplyPatchTool } from '../tools/apply-patch.js';
 import type { PatchEntry } from '../tools/apply-patch.js';
-import fs from 'node:fs';
 
 describe('parsePatch', () => {
   it('应该解析 Update 操作', () => {

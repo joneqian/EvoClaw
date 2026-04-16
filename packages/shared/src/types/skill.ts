@@ -10,7 +10,14 @@ export interface SkillMetadata {
   author?: string;
   /** 兼容性说明（信息性，最多 500 字符） */
   compatibility?: string;
-  /** 允许预批准的工具列表（实验性） */
+  /**
+   * 允许预批准的工具列表 — auto-approval 语义（减少审批弹窗），非限制语义。
+   *
+   * ⚠️ 当前仅 fork 模式生效：fork 子代理启动时会把该列表注入子会话的自动放行规则。
+   * inline 模式下该字段**不会被运行时消费**（只是被解析存储），声明了也不会触发自动放行，
+   * 仍然走主会话的默认权限流程。如需在 inline 模式下生效，需要实现 contextModifier
+   * runtime 注入（属 P1 增强，非当前行为）。
+   */
   allowedTools?: string[];
   /** 禁用模型自主调用（仅 /skill:name 可触发） */
   disableModelInvocation?: boolean;
@@ -24,6 +31,19 @@ export interface SkillMetadata {
   whenToUse?: string;
   /** 建议使用的模型（格式: provider/modelId，未配置时降级为当前默认模型） */
   model?: string;
+  /**
+   * 参数提示（面向非技术用户的"填空式"示例）。
+   * 示例：`argument-hint: "month=4 week=1"` 或 `argument-hint: "<文件路径>"`
+   * 渲染到 system prompt 的 <argument-hint> 节点，引导 LLM 在缺参时主动向用户追问。
+   */
+  argumentHint?: string;
+  /**
+   * 命名参数列表（可选）。声明后支持：
+   * 1. 模型在 body 中使用 `${name}` 占位符
+   * 2. 纯位置参数调用（`args: "4 1"`）自动按顺序映射到命名参数
+   * 3. kv 风格调用（`args: "month=4 week=1"`）直接按名匹配
+   */
+  arguments?: string[];
 }
 
 /** EvoClaw 扩展门控要求（PI/AgentSkills 规范不定义此字段） */
@@ -120,4 +140,8 @@ export interface InstalledSkill {
   whenToUse?: string;
   /** 建议使用的模型 (provider/modelId) */
   model?: string;
+  /** 参数提示（面向用户的"填空式"示例） */
+  argumentHint?: string;
+  /** 命名参数列表 */
+  arguments?: string[];
 }

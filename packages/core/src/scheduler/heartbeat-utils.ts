@@ -19,7 +19,7 @@ const HEARTBEAT_TOKEN = 'HEARTBEAT_OK';
 export function isHeartbeatContentEffectivelyEmpty(
   content: string | undefined | null,
 ): boolean {
-  if (content == null) return false;
+  if (content === null || content === undefined) return false;
 
   for (const line of content.split('\n')) {
     const trimmed = line.trim();

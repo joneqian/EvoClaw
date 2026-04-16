@@ -2,7 +2,6 @@
  * E2E: 启动 + health + config 写入后 health=ok
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { createTestEnv, cleanupTestEnv, authHeader, jsonHeaders } from './e2e-helpers.js';
 
 describe('E2E: 启动与健康检查', () => {

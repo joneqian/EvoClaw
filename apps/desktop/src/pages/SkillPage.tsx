@@ -16,11 +16,15 @@ interface InstalledSkillItem {
   description: string;
   version?: string;
   author?: string;
-  source: 'clawhub' | 'github' | 'local';
+  source: 'clawhub' | 'github' | 'local' | 'bundled' | 'mcp';
   installPath: string;
   gatesPassed: boolean;
   gateResults?: GateResult[];
   disableModelInvocation: boolean;
+  /** G3: 面向非技术用户的"填空式"参数示例 */
+  argumentHint?: string;
+  /** G3: 命名参数列表 */
+  arguments?: string[];
 }
 
 interface SkillItem {
@@ -642,6 +646,15 @@ function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUnin
           </button>
         </div>
         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{skill.description}</p>
+        {/* G3: argument-hint 填空式示例 */}
+        {skill.argumentHint && (
+          <div className="mt-1.5 flex items-start gap-1.5">
+            <span className="text-xs text-slate-400 shrink-0">示例：</span>
+            <code className="text-xs font-mono bg-slate-50 text-slate-600 px-1.5 py-0.5 rounded line-clamp-1 break-all">
+              {skill.argumentHint}
+            </code>
+          </div>
+        )}
         {/* 门控缺失项 */}
         {!skill.gatesPassed && skill.gateResults && skill.gateResults.length > 0 && (
           <div className="mt-1.5 space-y-0.5">

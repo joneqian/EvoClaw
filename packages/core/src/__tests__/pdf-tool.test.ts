@@ -64,10 +64,8 @@ describe('pdf 工具', () => {
   });
 
   it('Anthropic 原生模式应包含 beta header', async () => {
-    let capturedHeaders: Record<string, string> = {};
     globalThis.fetch = vi.fn().mockImplementation(async (_url: string, opts: RequestInit) => {
       if (opts?.method === 'POST') {
-        capturedHeaders = opts.headers as Record<string, string>;
         return {
           ok: true,
           json: () => Promise.resolve({ content: [{ type: 'text', text: '文档分析结果' }] }),
@@ -83,7 +81,7 @@ describe('pdf 工具', () => {
     const tool = createPdfTool({
       apiKey: 'key', provider: 'anthropic', modelId: 'claude-sonnet-4-20250514', baseUrl: '',
     });
-    const result = await tool.execute({ path: 'https://example.com/test.pdf' });
+    await tool.execute({ path: 'https://example.com/test.pdf' });
 
     // 验证 beta header
     const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;

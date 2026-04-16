@@ -1,4 +1,4 @@
-import type { AgentConfig, ChatMessage, ThinkLevel } from '@evoclaw/shared';
+import type { AgentConfig, ChatMessage } from '@evoclaw/shared';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { ErrorType } from './embedded-runner-errors.js';
 import type { McpManager } from '../mcp/mcp-client.js';

@@ -2,7 +2,7 @@
  * E2E: 创建 Agent → 发消息 → SSE 事件 → conversation_log 持久化
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestEnv, cleanupTestEnv, authHeader, jsonHeaders } from './e2e-helpers.js';
+import { createTestEnv, cleanupTestEnv, jsonHeaders } from './e2e-helpers.js';
 
 describe('E2E: 聊天流程', () => {
   let env: ReturnType<typeof createTestEnv>;

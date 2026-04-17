@@ -1,16 +1,22 @@
 /**
  * Web 工具安全模块 — URL 校验、SSRF 防护、重定向安全
  *
- * 参考 Claude Code 5 层防护：
+ * 6 层防护：
  * 1. URL 校验（协议、格式、长度、凭据）
- * 2. 私有 IP / 内部域名检测
- * 3. HTTP → HTTPS 自动升级
- * 4. 重定向安全（同主机跟随，跨主机返回 LLM）
- * 5. 域名黑名单（可扩展）
+ * 2. 内部域名 / 私有 IP 字面量检测（同步）
+ * 3. 元数据 hostname 黑名单（GCP/AWS/Azure/K8s）
+ * 4. DNS 解析后逐 IP 复检（DNS rebinding 防护，Fail Closed）
+ * 5. HTTP → HTTPS 自动升级
+ * 6. 重定向安全（同主机跟随，跨主机返回 LLM）
  */
+
+import { lookup as dnsLookup } from 'node:dns/promises';
 
 /** URL 最大长度 */
 const MAX_URL_LENGTH = 2000;
+
+/** DNS 解析超时（ms） */
+const DNS_LOOKUP_TIMEOUT_MS = 5000;
 
 /** 最大安全重定向跳数 */
 export const MAX_REDIRECTS = 10;
@@ -37,6 +43,20 @@ export interface SafeFetchResult {
   readonly redirect?: RedirectInfo;
   readonly error?: string;
 }
+
+/** DNS lookup 函数签名（可注入测试） */
+export type LookupFn = (hostname: string) => Promise<Array<{ address: string; family: number }>>;
+
+/** 默认 DNS lookup（带超时 + all=true 拿全部 IP） */
+const defaultLookup: LookupFn = async (hostname) => {
+  const result = await Promise.race([
+    dnsLookup(hostname, { all: true }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('DNS lookup 超时')), DNS_LOOKUP_TIMEOUT_MS),
+    ),
+  ]);
+  return result as Array<{ address: string; family: number }>;
+};
 
 // ─── URL 校验 ────────────────────────────────────────────────────
 
@@ -74,12 +94,106 @@ export function validateWebURL(url: string): URLValidationResult {
     return { ok: false, reason: `拒绝访问内部域名 "${parsed.hostname}"` };
   }
 
-  // 私有 IP 检查
+  // 元数据 hostname 黑名单（云平台 metadata 服务）
+  if (isMetadataHost(parsed.hostname)) {
+    return { ok: false, reason: `拒绝访问云平台元数据端点 "${parsed.hostname}"` };
+  }
+
+  // 私有 IP 检查（IP 字面量）
   if (isPrivateIP(parsed.hostname)) {
     return { ok: false, reason: `拒绝访问私有 IP 地址 "${parsed.hostname}"` };
   }
 
   return { ok: true, parsed };
+}
+
+/**
+ * 异步校验 URL 是否安全 — 在同步检查之外加 DNS 解析后的 IP 复检
+ *
+ * 防护场景：
+ * - 攻击者注册解析到 127.0.0.1 的域名（DNS rebinding）
+ * - 解析到云平台元数据 IP（169.254.169.254）的域名
+ *
+ * Fail Closed 策略：DNS 解析失败、超时一律拒
+ *
+ * @param url 待校验 URL
+ * @param lookup 可选的 DNS lookup 注入（测试用）
+ */
+export async function validateWebURLAsync(
+  url: string,
+  lookup: LookupFn = defaultLookup,
+): Promise<URLValidationResult> {
+  // 先跑同步检查
+  const syncResult = validateWebURL(url);
+  if (!syncResult.ok || !syncResult.parsed) return syncResult;
+
+  const hostname = syncResult.parsed.hostname;
+
+  // 已是 IP 字面量 → 同步检查已覆盖，跳过 DNS
+  if (isIpLiteral(hostname)) return syncResult;
+
+  // DNS 解析（带超时 + Fail Closed）
+  let addresses: Array<{ address: string; family: number }>;
+  try {
+    addresses = await lookup(hostname);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `DNS 解析失败（Fail Closed）: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  if (addresses.length === 0) {
+    return { ok: false, reason: `DNS 解析未返回任何 IP（Fail Closed）` };
+  }
+
+  // 任一 IP 为私有/元数据 → 拒（防 DNS rebinding 多 IP 绕过）
+  for (const { address } of addresses) {
+    if (isPrivateIP(address) || isMetadataHost(address)) {
+      return {
+        ok: false,
+        reason: `域名 "${hostname}" 解析到禁止的 IP "${address}"（DNS rebinding 防护）`,
+      };
+    }
+  }
+
+  return syncResult;
+}
+
+// ─── 元数据 hostname 黑名单 ──────────────────────────────────────
+
+/** 云平台元数据服务的固定 hostname / IP */
+const METADATA_HOSTS = new Set([
+  'metadata.google.internal',
+  'metadata',
+  'metadata.amazonaws.com',
+  '169.254.169.254',
+  // AWS IPv6 元数据
+  'fd00:ec2::254',
+  '[fd00:ec2::254]',
+]);
+
+/** Kubernetes 内部 service hostname pattern */
+const K8S_INTERNAL_PATTERNS = [
+  /^kubernetes\.default\.svc(\.cluster\.local)?$/,
+  /^kubernetes\.default$/,
+];
+
+/** 判断 hostname 是否为云平台元数据端点或集群内部 service */
+export function isMetadataHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  if (METADATA_HOSTS.has(normalized)) return true;
+  return K8S_INTERNAL_PATTERNS.some((re) => re.test(normalized));
+}
+
+/** 判断字符串是否为 IP 字面量（v4 或 v6） */
+function isIpLiteral(hostname: string): boolean {
+  // IPv4
+  if (/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(hostname)) return true;
+  // IPv6 (含方括号或冒号)
+  if (hostname.includes(':')) return true;
+  if (hostname.startsWith('[') && hostname.endsWith(']')) return true;
+  return false;
 }
 
 // ─── 私有 IP 检测 ────────────────────────────────────────────────
@@ -202,10 +316,13 @@ export async function fetchWithSafeRedirects(
       return { error: `无效的重定向目标: "${location}"` };
     }
 
-    // 检查重定向目标是否为私有 IP
+    // 检查重定向目标是否为私有 IP / 元数据端点
     const redirectParsed = new URL(redirectUrl);
     if (isPrivateIP(redirectParsed.hostname)) {
       return { error: `重定向目标为私有 IP "${redirectParsed.hostname}"，已拦截` };
+    }
+    if (isMetadataHost(redirectParsed.hostname)) {
+      return { error: `重定向目标为云平台元数据端点 "${redirectParsed.hostname}"，已拦截` };
     }
 
     // 判断是否允许自动跟随

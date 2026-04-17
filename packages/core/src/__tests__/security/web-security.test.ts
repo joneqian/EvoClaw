@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateWebURL,
+  validateWebURLAsync,
   upgradeToHttps,
   isPermittedRedirect,
   isPrivateIP,
+  isMetadataHost,
+  type LookupFn,
 } from '../../security/web-security.js';
 
 // ─── validateWebURL ──────────────────────────────────────────────
@@ -185,6 +188,109 @@ describe('isPrivateIP', () => {
 
   it('应该识别域名为非私有（不做 DNS 解析）', () => {
     expect(isPrivateIP('example.com')).toBe(false);
+  });
+});
+
+// ─── isMetadataHost ──────────────────────────────────────────────
+
+describe('isMetadataHost', () => {
+  it('应该识别 GCP 元数据 hostname', () => {
+    expect(isMetadataHost('metadata.google.internal')).toBe(true);
+    expect(isMetadataHost('metadata')).toBe(true);
+  });
+
+  it('应该识别 AWS/Azure 元数据 IP', () => {
+    expect(isMetadataHost('169.254.169.254')).toBe(true);
+    // IPv6 元数据
+    expect(isMetadataHost('fd00:ec2::254')).toBe(true);
+    expect(isMetadataHost('[fd00:ec2::254]')).toBe(true);
+  });
+
+  it('应该识别 Kubernetes 内部 service', () => {
+    expect(isMetadataHost('kubernetes.default.svc')).toBe(true);
+    expect(isMetadataHost('kubernetes.default.svc.cluster.local')).toBe(true);
+  });
+
+  it('正常 hostname 不应误判', () => {
+    expect(isMetadataHost('example.com')).toBe(false);
+    expect(isMetadataHost('api.openai.com')).toBe(false);
+    expect(isMetadataHost('8.8.8.8')).toBe(false);
+  });
+});
+
+// ─── validateWebURLAsync (含 DNS 解析) ───────────────────────────
+
+describe('validateWebURLAsync', () => {
+  // 测试用 lookup 注入：模拟不同 DNS 解析结果
+  const lookupTo = (...addresses: { address: string; family: number }[]): LookupFn =>
+    async () => addresses;
+  const lookupFails: LookupFn = async () => {
+    throw new Error('ENOTFOUND');
+  };
+
+  it('应该通过同步检查未被拒的 IP 字面量（无 DNS）', async () => {
+    const r = await validateWebURLAsync('https://8.8.8.8/dns', lookupFails);
+    // 8.8.8.8 是 IP 字面量，跳过 DNS 解析
+    expect(r.ok).toBe(true);
+  });
+
+  it('应该拒绝 DNS 解析到私有 IP 的域名（DNS rebinding 防护）', async () => {
+    const r = await validateWebURLAsync(
+      'https://attacker.com/payload',
+      lookupTo({ address: '127.0.0.1', family: 4 }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('解析');
+  });
+
+  it('应该拒绝 DNS 解析到 169.254.x 的域名', async () => {
+    const r = await validateWebURLAsync(
+      'https://attacker.com/',
+      lookupTo({ address: '169.254.169.254', family: 4 }),
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it('多个 IP 中任一为私有 → 应拒（防回旋绑定）', async () => {
+    const r = await validateWebURLAsync(
+      'https://multi.com/',
+      lookupTo(
+        { address: '8.8.8.8', family: 4 },
+        { address: '10.0.0.1', family: 4 },
+      ),
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it('Fail Closed: DNS 解析失败 → 拒', async () => {
+    const r = await validateWebURLAsync('https://nx-domain.invalid/', lookupFails);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('DNS');
+  });
+
+  it('应该拒绝元数据 hostname（无需 DNS）', async () => {
+    const r = await validateWebURLAsync('http://metadata.google.internal/computeMetadata/v1/');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('元数据');
+  });
+
+  it('应该拒绝 IPv6 元数据', async () => {
+    const r = await validateWebURLAsync('http://[fd00:ec2::254]/latest/');
+    expect(r.ok).toBe(false);
+  });
+
+  it('合法公网域名 + 公网 IP → 通过', async () => {
+    const r = await validateWebURLAsync(
+      'https://example.com/page',
+      lookupTo({ address: '93.184.216.34', family: 4 }),
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('应该继承同步检查的拒绝（如非法协议）', async () => {
+    const r = await validateWebURLAsync('ftp://example.com/');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('协议');
   });
 });
 

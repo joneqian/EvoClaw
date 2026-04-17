@@ -210,7 +210,7 @@
 
 | # | 章节 | 状态 | commit |
 |---|---|---|---|
-| 34 | rebuild-roadmap | ✅ | 待填 |
+| 34 | rebuild-roadmap | ✅ | `1b003ce` |
 
 **已完成参考**
 

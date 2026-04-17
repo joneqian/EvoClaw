@@ -79,9 +79,9 @@
 | 19c | Slack | 19c-slack.md | [`19c-slack-gap.md`](./19c-slack-gap.md) | ✅ Wave 2-6 | 🔴 整体缺失（可迁移资产 14 项） |
 | 19d | Signal | 19d-signal.md | [`19d-signal-gap.md`](./19d-signal-gap.md) | ✅ Wave 2-6 | 🔴 整体缺失（可迁移资产 12 项 / 1 项 🟡 PII 脱敏） |
 | 19e | Matrix | 19e-matrix.md | [`19e-matrix-gap.md`](./19e-matrix-gap.md) | ✅ Wave 2-6 | 🔴 整体缺失（可迁移资产 13 项 / E2EE 最大风险） |
-| 19f | WhatsApp | 19f-whatsapp.md | `19f-whatsapp-gap.md` | 📋 待写 | — |
-| 20 | ACP 适配器 | 20-acp-adapter.md | `20-acp-adapter-gap.md` | 📋 待写 | — |
-| 21 | MCP 集成 | 21-mcp.md | `21-mcp-gap.md` | 📋 待写 | — |
+| 19f | WhatsApp | 19f-whatsapp.md | [`19f-whatsapp-gap.md`](./19f-whatsapp-gap.md) | ✅ Wave 2-7 | 🔴 整体缺失（可迁移资产 13 项 / Node Baileys bridge 首例双进程） |
+| 20 | ACP 适配器 | 20-acp-adapter.md | [`20-acp-adapter-gap.md`](./20-acp-adapter-gap.md) | ✅ Wave 2-7 | 🔴 整体缺失 / 架构定位不同 / 不建议补齐 |
+| 21 | MCP 集成 | 21-mcp.md | [`21-mcp-gap.md`](./21-mcp-gap.md) | ✅ Wave 2-7 | 🟡 Client 覆盖 / Server 缺失（5 项反超 / OAuth/OSV/sampling/list_changed 缺） |
 | 22 | 浏览器栈 | 22-browser-stack.md | `22-browser-stack-gap.md` | 📋 待写 | — |
 | 23 | RL 环境 | 23-rl-environments.md | `23-rl-environments-gap.md` | 📋 待写 | — |
 | 24 | Batch 运行器 | 24-batch-runner.md | `24-batch-runner-gap.md` | 📋 待写 | — |

@@ -94,7 +94,7 @@
 | 31 | 测试 | 31-testing.md | [`31-testing-gap.md`](./31-testing-gap.md) | ✅ Wave 2-11 | 🟡 部分覆盖 / 规模与形态差异（hermes 191k 行测试 vs EvoClaw 102k 行，2 🟢 反超：三阶段 413 恢复 + 工具循环防护） |
 | 32 | 文档与站点 | 32-docs-website.md | [`32-docs-website-gap.md`](./32-docs-website-gap.md) | ✅ Wave 2-11 | 🔴 严重落后（11 🔴 / 4 🟡 / 0 🟢，hermes Docusaurus + 登陆页 + i18n vs EvoClaw 纯 docs/ 目录） |
 | 33 | 发布流程 | 33-release-process.md | [`33-release-process-gap.md`](./33-release-process-gap.md) | ✅ Wave 2-11 | 🔴 整体落后（13 🔴 / 1 🟡 / 1 🟢，完整缺失发布基础设施，反超点为多品牌参数化隔离） |
-| 34 | 复刻路线图 | 34-rebuild-roadmap.md | `34-rebuild-roadmap-gap.md` | 📋 待写 | — |
+| 34 | 复刻路线图 | 34-rebuild-roadmap.md | [`34-rebuild-roadmap-gap.md`](./34-rebuild-roadmap-gap.md) | ✅ Wave 3 | 🟡 聚合卷：EvoClaw 无需复刻 hermes，选择性补齐 21 项 P0（~4-6 人周）+ 37 项反超全景 |
 
 **总计**: 37 份文档（34 章节 + 包含 19a-f 的 6 份平台 + 全局索引），当前完成 1 份样板。
 

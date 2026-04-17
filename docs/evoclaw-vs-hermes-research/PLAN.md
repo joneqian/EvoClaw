@@ -210,7 +210,7 @@
 
 | # | 章节 | 状态 | commit |
 |---|---|---|---|
-| 34 | rebuild-roadmap | 📋 待写（需 Wave 1+2 全部完成）| — |
+| 34 | rebuild-roadmap | ✅ | 待填 |
 
 **已完成参考**
 

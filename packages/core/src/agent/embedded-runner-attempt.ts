@@ -371,6 +371,9 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
         totalTokens: result.totalInputTokens + result.totalOutputTokens,
         estimatedCostMilli: costMilli,
         turnCount: result.turnCount,
+        // M3-T2: 让前端能展示"剩余 M 轮"
+        maxTurns: result.maxTurns,
+        remainingTurns: Math.max(0, result.maxTurns - result.turnCount),
       },
     });
 

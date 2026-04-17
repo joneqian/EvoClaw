@@ -374,6 +374,7 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       totalOutputTokens: totalOutput,
       exitReason,
       turnCount: state.turnCount,
+      maxTurns: config.maxTurns,
       lastTransition: state.transition,
     };
   };

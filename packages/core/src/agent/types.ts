@@ -176,6 +176,10 @@ export interface RuntimeEvent {
     totalTokens: number;
     estimatedCostMilli: number;
     turnCount: number;
+    /** 最大 turn 数（M3-T2）— 前端用于展示"剩余 M 轮" */
+    maxTurns?: number;
+    /** 剩余 turn 数（M3-T2）= Math.max(0, maxTurns - turnCount) */
+    remainingTurns?: number;
   };
   /** 子 Agent 进度（type='subagent_progress' 时） */
   subagentProgress?: {

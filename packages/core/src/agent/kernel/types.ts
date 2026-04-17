@@ -465,8 +465,10 @@ export interface QueryLoopResult {
   readonly totalOutputTokens: number;
   /** 循环退出原因 */
   readonly exitReason: ExitReason;
-  /** 轮次数 */
+  /** 轮次数（已完成的 turn 数） */
   readonly turnCount: number;
+  /** 最大 turn 上限（M3-T2，= config.maxTurns，便于调用方计算 remaining） */
+  readonly maxTurns: number;
   /** 最后一次转换原因（调试用） */
   readonly lastTransition: TransitionReason | null;
 }

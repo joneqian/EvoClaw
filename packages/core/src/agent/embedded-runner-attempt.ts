@@ -334,6 +334,9 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     fileStateCache: restoredFileStateCache,
     // Incremental Persistence
     persister,
+    // Grace Call — 预算耗尽时生成收尾摘要（M3-T1）。默认启用；chat.ts
+    // 对 heartbeat/cron/boot 等自主会话显式传 false。
+    graceCall: { enabled: config.graceCallEnabled !== false },
   };
 
   // 追踪最新的 kernel 消息（catch 块中用于构建 messagesSnapshot）
@@ -368,6 +371,9 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
         totalTokens: result.totalInputTokens + result.totalOutputTokens,
         estimatedCostMilli: costMilli,
         turnCount: result.turnCount,
+        // M3-T2: 让前端能展示"剩余 M 轮"
+        maxTurns: result.maxTurns,
+        remainingTurns: Math.max(0, result.maxTurns - result.turnCount),
       },
     });
 

@@ -29,6 +29,8 @@ import ExpertPanel from './components/ExpertPanel';
 import AgentCreationModal from './components/AgentCreationModal';
 import TaskBadge from './components/TaskBadge';
 import { useTasksStore } from './stores/tasks-store';
+import CommandPalette from './components/CommandPalette';
+import { useGlobalHotkey } from './hooks/useGlobalHotkey';
 
 // ─── SVG Icon 组件 ───
 
@@ -229,10 +231,17 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLDivElement>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [recentsPage, setRecentsPage] = useState(1);
   const [recentsHasMore, setRecentsHasMore] = useState(true);
   const [recentsLoading, setRecentsLoading] = useState(false);
   const [recents, setRecents] = useState<RecentConversation[]>([]);
+
+  // M3-T3c: Cmd+K / Ctrl+K 打开命令面板
+  useGlobalHotkey('mod+k', (e) => {
+    e.preventDefault();
+    setCommandPaletteOpen((v) => !v);
+  });
 
   /** 手动重启 Sidecar */
   const handleRestartSidecar = useCallback(async () => {
@@ -477,6 +486,12 @@ export default function App() {
           newConversation(agentId);
           navigate('/chat');
         }}
+      />
+
+      {/* 命令面板（M3-T3c，Cmd+K / Ctrl+K 打开） */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
       />
       <div className="flex flex-1 min-h-0">
         {/* ─── Column 1: Icon Navigation (54px) ─── */}

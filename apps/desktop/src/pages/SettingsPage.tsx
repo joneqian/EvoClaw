@@ -3,15 +3,17 @@ import { BRAND_NAME } from '@evoclaw/shared';
 import { get, put } from '../lib/api';
 import Select from '../components/Select';
 import MCPServersPanel from '../components/MCPServersPanel';
+import ApiDocsPanel from '../components/ApiDocsPanel';
 
 // ─── Tab 定义 ───
 
-type SettingsTab = 'general' | 'env' | 'mcp' | 'about';
+type SettingsTab = 'general' | 'env' | 'mcp' | 'api-docs' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: '通用' },
   { key: 'env', label: '环境变量' },
   { key: 'mcp', label: 'MCP 服务器' },
+  { key: 'api-docs', label: 'API 文档' },
   { key: 'about', label: '关于' },
 ];
 
@@ -487,6 +489,7 @@ export default function SettingsPage() {
         {activeTab === 'general' && <GeneralTab />}
         {activeTab === 'env' && <EnvVarsTab />}
         {activeTab === 'mcp' && <MCPServersPanel />}
+        {activeTab === 'api-docs' && <ApiDocsPanel />}
         {activeTab === 'about' && <AboutTab />}
       </div>
     </div>

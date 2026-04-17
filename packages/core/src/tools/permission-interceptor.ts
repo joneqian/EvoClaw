@@ -90,25 +90,12 @@ const AUTO_ALLOW_TOOLS = new Set([
   'memory_write', 'memory_update', 'memory_delete', 'memory_forget_topic', 'memory_pin',
 ]);
 
-/** 工具名称 → 权限类别映射（仅需拦截的工具） */
-const TOOL_CATEGORY_MAP: Record<string, PermissionCategory> = {
-  // 文件修改
-  write: 'file_write',
-  edit: 'file_write',
-  apply_patch: 'file_write',
-  // 命令执行
-  bash: 'shell',
-  shell: 'shell',
-  exec_background: 'shell',
-  process: 'shell',
-  // 网络
-  web_search: 'network',
-  web_fetch: 'network',
-  fetch: 'network',
-  http: 'network',
-  // 浏览器
-  browse: 'browser',
-};
+/**
+ * 工具名称 → 权限类别映射（M3-T3a 迁移至 routes/command-manifest.ts 作为唯一来源）。
+ * 这里保留一个局部常量引用，调用点零改动。
+ */
+import { TOOL_CATEGORY_MAP as _TOOL_MANIFEST_CATEGORY_MAP } from '../routes/command-manifest.js';
+const TOOL_CATEGORY_MAP = _TOOL_MANIFEST_CATEGORY_MAP;
 
 /** 拦截结果 */
 export interface InterceptResult {

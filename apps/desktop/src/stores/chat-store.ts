@@ -129,6 +129,10 @@ interface ChatState {
   setDestructiveConfirm: (state: DestructiveConfirmState | null) => void;
   setStreaming: (streaming: boolean) => void;
   clearMessages: () => void;
+
+  /** 当前会话轮次进度（M3-T2，来自 SSE usage 事件） */
+  turnProgress: { used: number; max: number } | null;
+  setTurnProgress: (progress: { used: number; max: number } | null) => void;
 }
 
 /** 生成前端会话 ID（发送时传给后端） */
@@ -148,6 +152,8 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   currentSessionKey: null,
   conversations: [],
   loadingMessages: false,
+  turnProgress: null,
+  setTurnProgress: (progress) => set({ turnProgress: progress }),
 
   setCurrentAgent: (agentId) => {
     set({
@@ -155,6 +161,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       currentSessionKey: null,
       messages: [],
       conversations: [],
+      turnProgress: null,   // M3-T2: 切换 Agent 重置进度
     });
     // 自动加载该 Agent 的会话列表
     if (agentId) {
@@ -170,7 +177,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   },
 
   enterConversation: async (agentId, sessionKey) => {
-    set({ currentAgentId: agentId, currentSessionKey: sessionKey, messages: [], loadingMessages: true });
+    set({ currentAgentId: agentId, currentSessionKey: sessionKey, messages: [], loadingMessages: true, turnProgress: null });
     try {
       const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; createdAt: string }[] }>(
         `/chat/${agentId}/messages?sessionKey=${encodeURIComponent(sessionKey)}&limit=50`,
@@ -231,6 +238,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
       currentAgentId: agentId,
       currentSessionKey: sessionKey,
       messages: [],
+      turnProgress: null,   // M3-T2: 新会话重置进度
     });
   },
 

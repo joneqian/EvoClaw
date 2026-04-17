@@ -339,8 +339,15 @@ function ChatView() {
                   });
                   setTimeout(() => setBackgroundedNotice(null), 8000);
                   break;
+                case 'usage': {
+                  // M3-T2: 接住 turnCount/maxTurns/remainingTurns → 状态栏显示剩余轮次
+                  const u = payload.usage;
+                  if (u && typeof u.turnCount === 'number' && typeof u.maxTurns === 'number') {
+                    useChatStore.getState().setTurnProgress({ used: u.turnCount, max: u.maxTurns });
+                  }
+                  break;
+                }
                 case 'stream_metrics':
-                case 'usage':
                 case 'message_start':
                 case 'message_end':
                 case 'compaction_start':
@@ -438,8 +445,28 @@ function ChatView() {
   const hasMessages = messages.length > 0;
 
   /** 输入区域（空态和消息态共享） */
+  // M3-T2: 剩余轮次状态栏（输入区正上方一行）
+  const turnProgress = useChatStore((s) => s.turnProgress);
+  const turnStatusText = (() => {
+    if (!turnProgress) return null;
+    const { used, max } = turnProgress;
+    const remaining = Math.max(0, max - used);
+    const ratio = max > 0 ? remaining / max : 1;
+    let colorCls = 'text-slate-400';
+    if (ratio < 0.2) colorCls = 'text-rose-500';
+    else if (ratio < 0.5) colorCls = 'text-amber-600';
+    return { text: `已用 ${used} / 剩余 ${remaining}`, colorCls };
+  })();
+
   const inputArea = (
     <div className="w-full max-w-[700px] mx-auto">
+      {turnStatusText && (
+        <div className="flex justify-end pr-2 mb-1">
+          <span className={`text-xs ${turnStatusText.colorCls}`} title={`本次会话工具调用轮次：${turnStatusText.text}`}>
+            {turnStatusText.text}
+          </span>
+        </div>
+      )}
       <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
         {/* 附件卡片区 */}
         {attachments.length > 0 && (

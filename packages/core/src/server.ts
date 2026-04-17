@@ -746,9 +746,6 @@ async function main() {
 
   const dispatchCommand = createCommandDispatcher(commandRegistry);
 
-  // 命令清单 API（M3-T3b）— 在 commandRegistry 就绪后挂载
-  app.route('/commands', createCommandsRoutes(commandRegistry));
-
   // 渠道消息处理依赖
   const channelMsgDeps: ChannelMessageDeps = {
     store: db,
@@ -889,6 +886,9 @@ async function main() {
     sessionSummarizer,
     getHeartbeatManager: () => heartbeatManager ?? undefined,
   });
+
+  // 命令清单 API（M3-T3b）— 在 app 创建 + commandRegistry 就绪后挂载
+  app.route('/commands', createCommandsRoutes(commandRegistry));
 
   // 延迟初始化的调度器引用（在 cleanup 中关闭）
   let decayScheduler: DecayScheduler | null = null;

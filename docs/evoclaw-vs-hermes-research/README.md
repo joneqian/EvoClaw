@@ -88,9 +88,9 @@
 | 25 | Mini SWE runner | 25-mini-swe-runner.md | [`25-mini-swe-runner-gap.md`](./25-mini-swe-runner-gap.md) | ✅ Wave 2-9 | 🔴 整体缺失 / 产品定位正交（SWE 评测框架 vs 企业 AI 伴侣） |
 | 26 | RL CLI | 26-rl-cli.md | [`26-rl-cli-gap.md`](./26-rl-cli-gap.md) | ✅ Wave 2-9 | 🔴 整体缺失 / 无任何 CLI 框架依赖（含 2 🟡 形态差异：Doctor / 优雅退出）|
 | 27 | CLI 架构 | 27-cli-architecture.md | [`27-cli-architecture-gap.md`](./27-cli-architecture-gap.md) | ✅ Wave 2-9 | 🟡 形态完全不同（CLI-first vs GUI-first）/ 8 项反超 |
-| 28 | 配置系统 | 28-config-system.md | `28-config-system-gap.md` | 📋 待写 | — |
-| 29 | 安全与审批 | 29-security-approval.md | `29-security-approval-gap.md` | 📋 待写 | — |
-| 30 | 构建与发行 | 30-build-packaging.md | `30-build-packaging-gap.md` | 📋 待写 | — |
+| 28 | 配置系统 | 28-config-system.md | [`28-config-system-gap.md`](./28-config-system-gap.md) | ✅ Wave 2-10 | 🟡 部分覆盖 / 多项形态差异（含 🟢 反超：迁移框架 + enforced/denylist 分层） |
+| 29 | 安全与审批 | 29-security-approval.md | [`29-security-approval-gap.md`](./29-security-approval-gap.md) | ✅ Wave 2-10 | 🟡 部分覆盖（9 🟢 反超：AST / pre-checks / sed / 破坏性 / Unicode / 权限矩阵 / NameSecurityPolicy / flag 级 / 三层管线，7 🔴 缺失：Smart Approve / Tirith / 网站黑名单 / OSV / ContextVar / env passthrough / Secret 全局脱敏） |
+| 30 | 构建与发行 | 30-build-packaging.md | [`30-build-packaging-gap.md`](./30-build-packaging-gap.md) | ✅ Wave 2-10 | 🟡 形态差异显著（库发行 vs 桌面应用，9 🔴 / 4 🟡 / 2 🟢，含 🟢 反超：多品牌构建 + Bun sidecar 打包） |
 | 31 | 测试 | 31-testing.md | `31-testing-gap.md` | 📋 待写 | — |
 | 32 | 文档与站点 | 32-docs-website.md | `32-docs-website-gap.md` | 📋 待写 | — |
 | 33 | 发布流程 | 33-release-process.md | `33-release-process-gap.md` | 📋 待写 | — |

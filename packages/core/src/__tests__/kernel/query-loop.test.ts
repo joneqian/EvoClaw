@@ -19,10 +19,10 @@ import { ToolSafetyGuard } from '../../agent/tool-safety.js';
 // ─── Mock streamLLM ───
 // vi.mock 需要在顶层
 
-const mockStreamLLM = vi.fn<[], AsyncGenerator<StreamEvent>>();
+const mockStreamLLM = vi.fn<() => AsyncGenerator<StreamEvent>>();
 
 vi.mock('../../agent/kernel/stream-client.js', () => ({
-  streamLLM: (...args: unknown[]) => mockStreamLLM(...(args as [])),
+  streamLLM: () => mockStreamLLM(),
 }));
 
 // Mock maybeCompress (不在单元测试中真正调用 LLM)

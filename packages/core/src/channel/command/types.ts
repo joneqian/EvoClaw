@@ -22,7 +22,7 @@ export interface IAgentManager {
  * 避免直接依赖 skill 层（架构守卫: channel 不可依赖 skill）
  */
 export interface ISkillDiscoverer {
-  listLocal(): Array<{ name: string; description?: string }>;
+  listLocal(): Array<{ name: string; slug?: string; description?: string }>;
 }
 
 /** 命令执行上下文 */

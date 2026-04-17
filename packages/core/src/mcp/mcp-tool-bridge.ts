@@ -7,7 +7,7 @@
  * - 工具名称前缀（server_name:tool_name）避免冲突
  */
 
-import type { McpToolInfo, McpToolResult } from '@evoclaw/shared';
+import type { McpToolInfo } from '@evoclaw/shared';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { McpManager } from './mcp-client.js';
 import { createLogger } from '../infrastructure/logger.js';
@@ -45,7 +45,7 @@ export function mcpToolToDefinition(
     description: mcpTool.description ?? `MCP tool: ${mcpTool.name} (from ${mcpTool.serverName})`,
     parameters: mcpTool.inputSchema as Record<string, unknown>,
     execute: async (args: Record<string, unknown>): Promise<string> => {
-      const result: McpToolResult = await manager.callTool(
+      const result = await manager.callTool(
         mcpTool.serverName,
         mcpTool.name,
         args,

@@ -2,6 +2,10 @@ import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const pkg = JSON.parse(
+  fs.readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
+) as { name: string; version: string };
+
 // Bun 运行时: 内置 import.meta.dirname、require、bun:sqlite，无需额外 polyfill
 // Node.js 回退: 需要 createRequire + NODE_PATH + Module._initPaths()
 const bunBanner = [
@@ -108,7 +112,7 @@ if (fs.existsSync(srcBundled)) {
 // 如果找不到会导致 PI 加载失败，回退到无工具的 fetch 模式
 fs.writeFileSync(
   'dist/package.json',
-  JSON.stringify({ name: '@evoclaw/core', type: 'module', version: '0.1.0' }),
+  JSON.stringify({ name: pkg.name, type: 'module', version: pkg.version }),
 );
 console.log('Generated dist/package.json for PI framework compatibility');
 

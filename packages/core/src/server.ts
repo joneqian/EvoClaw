@@ -47,6 +47,8 @@ import { generateSessionKey } from './routing/session-key.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
 import { CommandRegistry } from './channel/command/command-registry.js';
+import { createOpenApiRoutes } from './routes/openapi.js';
+import { createCommandsRoutes } from './routes/commands.js';
 import { createCommandDispatcher, isSlashCommand } from './channel/command/command-dispatcher.js';
 import { echoCommand } from './channel/command/builtin/echo.js';
 import { debugCommand } from './channel/command/builtin/debug.js';
@@ -375,6 +377,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
 
   // Doctor 自诊断 — 无需 store/agent，始终可用
   app.route('/doctor', createDoctorRoutes(store, configManager, laneQueue, memoryMonitor));
+
+  // OpenAPI 3.0 文档（M3-T3b）— 从 ROUTE_MANIFEST 静态生成
+  app.route('/openapi.json', createOpenApiRoutes());
 
   // SSE 事件推送 — 前端通过 EventSource 监听实时事件
   app.get('/events', (c) => {
@@ -740,6 +745,9 @@ async function main() {
   commandRegistry.register(createHelpCommand(commandRegistry));
 
   const dispatchCommand = createCommandDispatcher(commandRegistry);
+
+  // 命令清单 API（M3-T3b）— 在 commandRegistry 就绪后挂载
+  app.route('/commands', createCommandsRoutes(commandRegistry));
 
   // 渠道消息处理依赖
   const channelMsgDeps: ChannelMessageDeps = {

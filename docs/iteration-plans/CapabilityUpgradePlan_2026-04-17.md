@@ -53,20 +53,51 @@
 
 ## 2. 模块总览
 
-| 模块 | 名称 | 优先级 | 预估 | 前置依赖 | 来源章节 |
-|------|------|--------|------|----------|----------|
-| **M0** | 基础工程 | P0 | 3-4d | 无 | 30, 31, 33 |
-| **M1** | 安全增强 | P0 | 5-9d | 无 | 29, 21 |
-| **M2** | 配置增强 | P0 | 1d | 无 | 28 |
-| **M3** | Agent 核心增强 | P0 | 2.5-3.5d | M0 | 05, 02 |
-| **M4** | MCP 生产化 | P0 | 1d | M1, M2 | 21 |
-| **M5** | Skills 生态增强 | P0 | 3-5d | M4 | 12 |
-| **M6** | Provider 增强 | P1 | 4-6d | M2 | 06, 28 |
-| **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 | 12 §7, SkillEvolutionDesign |
-| **M8** | 会话隔离与环境安全 | P1 | 5-8d | M1, M3 | 29 |
-| **M9** | 发布与分发 | P1 | 7-13d | M0 | 30, 33 |
-| **M10** | 文档站 | P1 | 5-8d | M0 | 32 |
-| **M11** | 平台扩展 | P2 | 按需 | M3, M8 | 19a-f, 22, 20 |
+| 模块 | 名称 | 优先级 | 预估 | 前置依赖 |
+|------|------|--------|------|----------|
+| **M0** | 基础工程 | P0 | 3-4d | 无 |
+| **M1** | 安全增强 | P0 | 5-9d | 无 |
+| **M2** | 配置增强 | P0 | 1d | 无 |
+| **M3** | Agent 核心增强 | P0 | 2.5-3.5d | M0 |
+| **M4** | MCP 生产化 | P0 | 1d | M1, M2 |
+| **M5** | Skills 生态增强 | P0 | 3-5d | M4 |
+| **M6** | Provider 增强 | P1 | 4-6d | M2 |
+| **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 |
+| **M8** | 会话隔离与环境安全 | P1 | 5-8d | M1, M3 |
+| **M9** | 发布与分发 | P1 | 7-13d | M0 |
+| **M10** | 文档站 | P1 | 5-8d | M0 |
+| **M11** | 平台扩展 | P2 | 按需 | M3, M8 |
+
+### 各模块参考文档索引
+
+制定详细方案时，按下表定位到具体差距分析文档的具体章节：
+
+| 模块 | 参考文档（点击跳转） | 重点章节 |
+|------|---------------------|----------|
+| **M0** | [`30-build-packaging-gap.md`](../evoclaw-vs-hermes-research/30-build-packaging-gap.md) | §3.10 CI/CD 工作流、§3.11 版本化与发布 |
+| | [`31-testing-gap.md`](../evoclaw-vs-hermes-research/31-testing-gap.md) | §3.5 超时与卡死防护、§3.10 CI/CD 集成、§3.11 并行与分片 |
+| | [`33-release-process-gap.md`](../evoclaw-vs-hermes-research/33-release-process-gap.md) | §3.1 版本号策略、§3.2 版本号同步 |
+| **M1** | [`29-security-approval-gap.md`](../evoclaw-vs-hermes-research/29-security-approval-gap.md) | §3.4 Smart Approve、§3.15 SSRF、§3.17 OSV、§3.18 Secret 脱敏 |
+| | [`21-mcp-gap.md`](../evoclaw-vs-hermes-research/21-mcp-gap.md) | §3.8 OSV MAL-*、§3.19 env 白名单、§3.20 Prompt injection |
+| **M2** | [`28-config-system-gap.md`](../evoclaw-vs-hermes-research/28-config-system-gap.md) | §3.4 凭证权限强制、§3.5 非 ASCII 凭证清理 |
+| **M3** | [`05-agent-loop-gap.md`](../evoclaw-vs-hermes-research/05-agent-loop-gap.md) | §3 Grace call（搜索"grace"）、IterationBudget（搜索"budget"）|
+| | [`02-repo-layout-gap.md`](../evoclaw-vs-hermes-research/02-repo-layout-gap.md) | §3.7 集中式命令注册表 |
+| **M4** | [`21-mcp-gap.md`](../evoclaw-vs-hermes-research/21-mcp-gap.md) | §3.12 startWithReconnect、§3.14 MCP Prompt→Skill 桥接 |
+| **M5** | [`12-skills-system-gap.md`](../evoclaw-vs-hermes-research/12-skills-system-gap.md) | §3.9 威胁扫描 + Trust level、§3.11 版本比对、§4 P0 改造蓝图 |
+| **M6** | [`06-llm-providers-gap.md`](../evoclaw-vs-hermes-research/06-llm-providers-gap.md) | §3 CredentialPool、OAuth、Provider Overlay |
+| | [`28-config-system-gap.md`](../evoclaw-vs-hermes-research/28-config-system-gap.md) | §3.6 多 Provider + OAuth 凭据池、§3.8 Profile 隔离 |
+| **M7** | [`12-skills-system-gap.md`](../evoclaw-vs-hermes-research/12-skills-system-gap.md) | §7 Skill 自进化三方对比（SkillClaw / Hermes / EvoClaw） |
+| | [`SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md) | 全文（Phase 1-4 详细设计） |
+| **M8** | [`29-security-approval-gap.md`](../evoclaw-vs-hermes-research/29-security-approval-gap.md) | §3.16 网站黑名单、§3.19 ContextVar 会话隔离、§3.20 env 白名单 |
+| **M9** | [`30-build-packaging-gap.md`](../evoclaw-vs-hermes-research/30-build-packaging-gap.md) | §3.4 跨平台、§3.8 代码签名 + 公证、§3.9 多架构 |
+| | [`33-release-process-gap.md`](../evoclaw-vs-hermes-research/33-release-process-gap.md) | §3.6 CHANGELOG、§3.7 构件构建、§3.8 GitHub Release |
+| **M10** | [`32-docs-website-gap.md`](../evoclaw-vs-hermes-research/32-docs-website-gap.md) | 全文（§3.1-§3.15 文档框架/导航/搜索/CI 部署等 15 个机制） |
+| **M11** | [`19a-telegram-gap.md`](../evoclaw-vs-hermes-research/19a-telegram-gap.md) | 全文 |
+| | [`19b-discord-gap.md`](../evoclaw-vs-hermes-research/19b-discord-gap.md) | 全文 |
+| | [`19c-slack-gap.md`](../evoclaw-vs-hermes-research/19c-slack-gap.md) | 全文 |
+| | [`22-browser-stack-gap.md`](../evoclaw-vs-hermes-research/22-browser-stack-gap.md) | 全文 |
+| | [`20-acp-adapter-gap.md`](../evoclaw-vs-hermes-research/20-acp-adapter-gap.md) | 全文 |
+| **通用** | [`34-rebuild-roadmap-gap.md`](../evoclaw-vs-hermes-research/34-rebuild-roadmap-gap.md) | §3 P0 聚合、§5 反超全景、§6 实施路径 |
 
 ---
 

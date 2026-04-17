@@ -72,6 +72,7 @@ function ChatView() {
     category: string;
     resource: string;
     reason?: string;
+    smartApprove?: { decision: 'escalate'; reason: string };
   } | null>(null);
   /** 子 Agent 完成通知（浮动 pill，12s 自动消失） */
   const [subagentNotices, setSubagentNotices] = useState<Array<{
@@ -279,6 +280,7 @@ function ChatView() {
                     category: payload.category,
                     resource: payload.resource ?? '*',
                     reason: payload.reason,
+                    smartApprove: payload.smartApprove,
                   });
                   break;
                 case 'recall_meta':
@@ -705,6 +707,7 @@ function ChatView() {
         category={permissionRequest?.category ?? ''}
         resource={permissionRequest?.resource ?? ''}
         reason={permissionRequest?.reason}
+        smartApprove={permissionRequest?.smartApprove}
         onDecision={handlePermissionDecision}
         onClose={() => setPermissionRequest(null)}
       />

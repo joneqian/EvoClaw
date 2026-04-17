@@ -633,6 +633,9 @@ function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUnin
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
           <p className="text-sm font-semibold text-slate-800 truncate">{skill.name}</p>
+          {skill.source === 'mcp' && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 font-medium shrink-0" title="来自已连接的 MCP 服务器">MCP</span>
+          )}
           {skill.gatesPassed ? (
             <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-600 font-medium shrink-0">可用</span>
           ) : (
@@ -667,7 +670,13 @@ function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUnin
         )}
         <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400">
           {skill.version && <span>v{skill.version}</span>}
-          <span>{skill.source === 'clawhub' ? 'ClawHub' : '本地'}</span>
+          <span>{
+            skill.source === 'clawhub' ? 'ClawHub' :
+            skill.source === 'mcp' ? 'MCP' :
+            skill.source === 'github' ? 'GitHub' :
+            skill.source === 'bundled' ? '内置' :
+            '本地'
+          }</span>
         </div>
       </div>
     </div>

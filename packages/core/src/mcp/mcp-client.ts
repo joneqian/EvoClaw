@@ -212,11 +212,14 @@ export class McpClient {
  */
 export class McpManager {
   private readonly clients = new Map<string, McpClient>();
+  /** 保留每个 server 的原始 config，供 reconnect 重建 client 使用 */
+  private readonly configs = new Map<string, McpServerConfig>();
 
   async addServer(config: McpServerConfig): Promise<void> {
     if (this.clients.has(config.name)) await this.removeServer(config.name);
     const client = new McpClient(config);
     this.clients.set(config.name, client);
+    this.configs.set(config.name, config);
     // 首启失败时自动指数退避重试（1s→2s→4s→8s→16s，最多 5 次）；
     // 5 次全失败后返回 false，client.status 为 'error'，不阻塞其它 server 启动。
     if (config.enabled !== false) await startWithReconnect(client);
@@ -225,6 +228,22 @@ export class McpManager {
   async removeServer(name: string): Promise<void> {
     const client = this.clients.get(name);
     if (client) { await client.dispose(); this.clients.delete(name); }
+    this.configs.delete(name);
+  }
+
+  /**
+   * 手动重连：dispose 现有 client → 用原 config 新建 → 走 startWithReconnect 指数退避。
+   * 返回 true = 恢复成功；false = 5 次全失败；null = server 不存在或无原 config。
+   */
+  async reconnect(name: string): Promise<boolean | null> {
+    const config = this.configs.get(name);
+    if (!config) return null;
+    const existing = this.clients.get(name);
+    if (existing) { await existing.dispose(); }
+    const client = new McpClient(config);
+    this.clients.set(name, client);
+    if (config.enabled === false) return true;
+    return startWithReconnect(client);
   }
 
   getAllTools(): McpToolInfo[] {

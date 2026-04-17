@@ -893,7 +893,13 @@ export function createChatRoutes(
 
     // 记录本次对话中需要弹窗的权限请求（流结束后随最后一批 SSE 事件到达前端）
     const pendingPermissions: Array<{
-      requestId: string; toolName: string; category: string; resource: string; reason?: string;
+      requestId: string;
+      toolName: string;
+      category: string;
+      resource: string;
+      reason?: string;
+      /** Smart Approve escalate 时的 LLM 评估结果，供前端展示"AI 评估理由" */
+      smartApprove?: { decision: 'escalate'; reason: string };
     }> = [];
 
     // 自主执行会话标记（heartbeat/cron/boot）— 无人值守，权限策略不同
@@ -909,6 +915,8 @@ export function createChatRoutes(
       const result = interceptor.intercept(agentId, toolName, args);
 
       // Smart Approve：mode === 'smart' 且静态分析需要确认时调辅助 LLM 评估
+      // escalate 时把 reason 带到 pendingPermissions，前端弹窗展示"AI 评估理由"
+      let smartEscalate: { decision: 'escalate'; reason: string } | undefined;
       if (
         !result.allowed &&
         result.requiresConfirmation &&
@@ -934,6 +942,7 @@ export function createChatRoutes(
         }
         // escalate → 落到下方原有 ask 流程
         log.info(`[smart-approve] escalate ${toolName}: ${decision.reason}`);
+        smartEscalate = { decision: 'escalate', reason: decision.reason };
       }
 
       if (!result.allowed && result.requiresConfirmation) {
@@ -959,6 +968,7 @@ export function createChatRoutes(
           category,
           resource,
           reason: result.reason,
+          smartApprove: smartEscalate,
         });
         return `需要「${category}」权限才能执行此操作。请在弹出的权限对话框中授权后重新发送消息。`;
       }

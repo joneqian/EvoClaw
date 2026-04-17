@@ -54,6 +54,8 @@ export interface PermissionDialogProps {
   category: string;
   resource: string;
   reason?: string;
+  /** Smart Approve escalate 时的 LLM 评估理由（可选） */
+  smartApprove?: { decision: 'escalate'; reason: string };
   onDecision: (scope: 'always' | 'deny') => void;
   onClose: () => void;
 }
@@ -64,6 +66,7 @@ export default function PermissionDialog({
   category,
   resource,
   reason,
+  smartApprove,
   onDecision,
   onClose,
 }: PermissionDialogProps) {
@@ -135,6 +138,21 @@ export default function PermissionDialog({
               </p>
             )}
           </div>
+
+          {/* Smart Approve 评估理由（仅 escalate 时展示） */}
+          {smartApprove && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <svg className="w-3.5 h-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <span className="text-[11px] font-semibold text-amber-700">AI 风险评估 · 建议人工确认</span>
+              </div>
+              <p className="text-xs text-amber-800/90 leading-relaxed">
+                {smartApprove.reason}
+              </p>
+            </div>
+          )}
 
           <p className="text-xs text-slate-400 mb-4 leading-relaxed">
             允许后该专家将永久获得此类权限，你可以随时在安全中心撤销。

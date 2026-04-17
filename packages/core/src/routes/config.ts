@@ -105,6 +105,17 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     return c.json(configManager.validate());
   });
 
+  /**
+   * GET /warnings — 一次性取出启动期间累积的凭证清理警告。
+   *
+   * 响应后 server 端立即清空队列，再次调用返回 `{ warnings: [] }`。
+   * 前端在 SettingsPage / EnvVarsTab 挂载时调用并按条 toast。
+   */
+  app.get('/warnings', (c) => {
+    const warnings = configManager.getSanitizeWarningsOnce();
+    return c.json({ warnings });
+  });
+
   /** POST /reload — 从磁盘重新加载配置 */
   app.post('/reload', (c) => {
     configManager.reload();

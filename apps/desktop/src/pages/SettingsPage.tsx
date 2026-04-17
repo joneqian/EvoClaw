@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { BRAND_NAME } from '@evoclaw/shared';
 import { get, put } from '../lib/api';
 import Select from '../components/Select';
+import MCPServersPanel from '../components/MCPServersPanel';
 
 // ─── Tab 定义 ───
 
-type SettingsTab = 'general' | 'env' | 'about';
+type SettingsTab = 'general' | 'env' | 'mcp' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: '通用' },
   { key: 'env', label: '环境变量' },
+  { key: 'mcp', label: 'MCP 服务器' },
   { key: 'about', label: '关于' },
 ];
 
@@ -175,6 +177,21 @@ function EnvVarsTab() {
   }, []);
 
   useEffect(() => { fetchEnvVars(); }, [fetchEnvVars]);
+
+  // 启动期间累积的凭证清理警告（一次性消费）— 让用户知道全角/非 ASCII 凭证已自动清理
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await get<{ warnings: string[] }>('/config/warnings');
+        const warnings = data.warnings ?? [];
+        if (warnings.length > 0) {
+          const paths = warnings.join('、');
+          showToast(`已自动清理 ${warnings.length} 个凭证的非 ASCII 字符：${paths}`, 'success');
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [showToast]);
+
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 3000);
@@ -469,6 +486,7 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'general' && <GeneralTab />}
         {activeTab === 'env' && <EnvVarsTab />}
+        {activeTab === 'mcp' && <MCPServersPanel />}
         {activeTab === 'about' && <AboutTab />}
       </div>
     </div>

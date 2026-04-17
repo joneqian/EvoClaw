@@ -55,11 +55,11 @@
 
 | 模块 | 名称 | 优先级 | 预估 | 前置依赖 |
 |------|------|--------|------|----------|
-| **M0** | 基础工程 | P0 | 3-4d | 无 |
-| **M1** | 安全增强 | P0 | 5-9d | 无 |
-| **M2** | 配置增强 | P0 | 1d | 无 |
+| **M0** | 基础工程 ✅ | P0 | 3-4d | 无 |
+| **M1** | 安全增强 ✅ | P0 | 5-9d | 无 |
+| **M2** | 配置增强 ✅ | P0 | 1d | 无 |
 | **M3** | Agent 核心增强 | P0 | 2.5-3.5d | M0 |
-| **M4** | MCP 生产化 | P0 | 1d | M1, M2 |
+| **M4** | MCP 生产化 ✅ | P0 | 1d | M1, M2 |
 | **M5** | Skills 生态增强 | P0 | 3-5d | M4 |
 | **M6** | Provider 增强 | P1 | 4-6d | M2 |
 | **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 |
@@ -161,16 +161,20 @@
 
 ---
 
-### M4 — MCP 生产化（P0，依赖 M1 + M2）
+### M4 — MCP 生产化 ✅（P0，依赖 M1 + M2，完成于 2026-04-17）
 
 > **为什么在 M1/M2 后**: MCP 生产化涉及安全（env 白名单已在 M1 实现）+ 配置（凭证清洗已在 M2 实现）。
 
-| 项目 | 工作量 | 来源 |
-|------|--------|------|
-| MCP Prompt → Skill 桥接生产接线（已完成 50%） | 0.5d | 21 §3.14 |
-| `startWithReconnect` 生产激活（已有死代码） | 0.5d | 21 §3.12 |
+| 项目 | 工作量 | 来源 | 状态 |
+|------|--------|------|------|
+| MCP Prompt → Skill 桥接生产接线（chat.ts 注入 `mcpPromptsProvider`） | 0.5d | 21 §3.14 | ✅ |
+| `startWithReconnect` 首启激活（`McpManager.addServer` 内部包装） | 0.5d | 21 §3.12 | ✅ |
 
-**验收标准**: MCP server 断连后自动重连，MCP prompts 出现在 `<available_skills>` 目录。
+**已实现验收**:
+- `<available_skills>` 目录中出现 `mcp:{serverName}:{promptName}` 条目
+- MCP server 首次启动失败时自动指数退避重试 1s→2s→4s→8s→16s（最多 5 次）
+
+**范围外（已决策放未排期）**: 运行时（已连接后）断线自动恢复 → 见 §3.X A2
 
 ---
 
@@ -183,8 +187,9 @@
 | 威胁扫描模式库扩展（keystore/exfiltration/DNS tunneling/persistence 4 类） | 1-2d | 12 §3.9 |
 | Trust level 分级 + INSTALL_POLICY 决策矩阵 | 1d | 12 §3.9 |
 | Skill 版本比对 + "有新版可用" 提示 | 1-2d | 12 §3.11 |
+| `tool-registry.securityPolicy` 生产接线（chat.ts 注入 `securityPolicy` 回调，从 configManager 读 `skillSecurity` 字段 allowlist/denylist）— 参考 M4 T1 `mcpPromptsProvider` 同模式 | 0.5d | M4 实施时识别 |
 
-**验收标准**: 安装社区 Skill 时显示 trust level 并过威胁扫描，outdated skill 有提示。
+**验收标准**: 安装社区 Skill 时显示 trust level 并过威胁扫描，outdated skill 有提示；IT 管理员可通过配置白名单/黑名单控制 Agent 可见的 Skills。
 
 ---
 
@@ -298,6 +303,25 @@
 **预估**: 2-3d
 **前置依赖**: M2 ✅ 已完成（凭证文件权限 + ASCII 清理）；M9 ⏳（跨平台构建保障 Windows 路径）
 **验收标准**: 写入磁盘的配置 JSON 中 apiKey 字段为 `enc:base64(...)` 格式；启动时 Sidecar 通过 Tauri IPC 解密；macOS Keychain 中可见 `com.evoclaw.app.config-key`。
+
+---
+
+### A2 — MCP 运行时断线自动恢复（P1）
+
+> **触因**: M4 实施时发现 `startWithReconnect` 仅覆盖 `McpManager.addServer()` 首启路径；已连接的 server 若运行时崩溃或网络断，EvoClaw 当前不会自动恢复。
+>
+> **何时启动**: 线上出现 MCP server 运行中掉线影响可用性的报障 ≥ 2 次；或企业客户明确要求 24x7 稳定性。
+
+| 项目 | 工作量 | 备注 |
+|------|--------|------|
+| `McpClient` 声明 notifications 能力 + 注册 disconnect handler | 0.5d | MCP SDK 已支持 |
+| stdio 子进程 exit 事件监听；SSE/HTTP keepalive 超时检测 | 0.5-1d | 需按 transport 类型分支处理 |
+| 断线后调用 `startWithReconnect` 恢复连接 | 0.5d | 复用 M4 已接线的重连函数 |
+| 重连成功后广播 `mcp:reconnected` 事件 → Agent 工具/技能缓存失效 | 0.5-1d | 需接 `tool-registry` / `skill-cache` 失效通道 |
+
+**预估**: 2-3d
+**前置依赖**: M4 ✅ 已完成（首启重连机制）
+**验收标准**: 手工 `kill -9` 已连接的 stdio MCP 子进程 → 5s 内日志出现重连尝试 → 30s 内完全恢复 + `<available_tools>` / `<available_skills>` 重新包含该 server 的工具/prompts。
 
 ---
 

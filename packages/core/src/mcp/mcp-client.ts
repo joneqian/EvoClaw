@@ -14,6 +14,7 @@ import type { McpServerConfig } from './mcp-config.js';
 import type { McpPromptInfo } from './mcp-prompt-bridge.js';
 import { buildMcpEnv } from './mcp-env.js';
 import { wrapWithWarningIfSuspicious } from '../security/prompt-injection-detector.js';
+import { startWithReconnect } from './mcp-reconnect.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('mcp-client');
@@ -216,7 +217,9 @@ export class McpManager {
     if (this.clients.has(config.name)) await this.removeServer(config.name);
     const client = new McpClient(config);
     this.clients.set(config.name, client);
-    if (config.enabled !== false) await client.start();
+    // 首启失败时自动指数退避重试（1s→2s→4s→8s→16s，最多 5 次）；
+    // 5 次全失败后返回 false，client.status 为 'error'，不阻塞其它 server 启动。
+    if (config.enabled !== false) await startWithReconnect(client);
   }
 
   async removeServer(name: string): Promise<void> {

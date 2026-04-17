@@ -81,6 +81,7 @@ import {
 } from '../agent/kernel/incremental-persister.js';
 import type { KernelMessage } from '../agent/kernel/types.js';
 import { bridgeMcpToolsForAgent } from '../mcp/mcp-tool-bridge.js';
+import { bridgeAllMcpPrompts } from '../mcp/mcp-prompt-bridge.js';
 
 const log = createLogger('chat');
 
@@ -581,7 +582,7 @@ export function createChatRoutes(
       contextEngine.register(createMemoryExtractPlugin(memoryExtractor));
     }
 
-    // Skill 系统插件（含 Agent 级启用/禁用过滤）
+    // Skill 系统插件（含 Agent 级启用/禁用过滤 + MCP Prompt 桥接）
     contextEngine.register(createToolRegistryPlugin({
       getDisabledSkills: (aId) => {
         const rows = store.all<{ skill_name: string }>(
@@ -589,6 +590,12 @@ export function createChatRoutes(
           aId,
         );
         return new Set(rows.map(r => r.skill_name));
+      },
+      // MCP Prompt → Skill 桥接：将所有 MCP server 的 prompts 作为 mcp:{server}:{name} 注入 <available_skills>
+      mcpPromptsProvider: () => {
+        const mgr = getMcpManager?.();
+        if (!mgr) return [];
+        return bridgeAllMcpPrompts(mgr.getAllPrompts());
       },
     }));                  // Tier 1: <available_skills> 目录注入
     contextEngine.register(createGapDetectionPlugin(skillDiscoverer));   // afterTurn: 能力缺口检测 + Skill 推荐

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { get, post, del } from '../lib/api';
 import { BRAND_NAME } from '@evoclaw/shared';
+import SkillSourceBadge from '../components/SkillSourceBadge';
 
 // ─── 类型 ───
 
@@ -45,11 +46,17 @@ interface SkillItem {
 interface PrepareResult {
   prepareId: string;
   metadata: { name: string; description: string; version?: string };
+  source: 'clawhub' | 'github' | 'local' | 'bundled' | 'mcp';
   securityReport: {
     riskLevel: 'low' | 'medium' | 'high';
     findings: Array<{ type: string; file: string; line: number; snippet: string; severity: string }>;
   };
   gateResults?: Array<{ type: string; name: string; satisfied: boolean; message?: string }>;
+  /** M5 T2: 安装策略决策 */
+  installPolicy?: {
+    policy: 'auto' | 'require-confirm' | 'block';
+    reason: string;
+  };
 }
 
 type TabType = 'brand' | 'store' | 'my';
@@ -177,6 +184,20 @@ const RISK_STYLES: Record<string, { label: string; color: string }> = {
   high: { label: '高风险', color: 'text-red-600 bg-red-50' },
 };
 
+/** M5 T1: 威胁发现项中文 label 映射 */
+const FINDING_TYPE_LABELS: Record<string, string> = {
+  eval: 'eval 动态执行',
+  function_constructor: 'new Function 动态执行',
+  fetch: 'fetch 外部 URL',
+  fs_write: '写入文件系统',
+  shell_exec: '执行 shell 命令',
+  env_access: '读取环境变量',
+  keystore: '访问系统凭据存储',
+  exfiltration: '疑似隐蔽外传',
+  dns_tunnel: '疑似 DNS 隧道',
+  persistence: '疑似持久化后门',
+};
+
 // ─── 主页面 ───
 
 export default function SkillPage() {
@@ -198,6 +219,10 @@ export default function SkillPage() {
   const [prepareResult, setPrepareResult] = useState<PrepareResult | null>(null);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState('');
+  /** M5 T2: require-confirm 策略时用户勾选"我理解风险"的状态 */
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
+  /** M5 T1: 威胁扫描 findings 折叠状态 */
+  const [findingsExpanded, setFindingsExpanded] = useState(false);
 
   /** 加载商店列表 */
   const fetchStore = useCallback(async () => {
@@ -216,6 +241,9 @@ export default function SkillPage() {
     finally { setStoreLoading(false); }
   }, [page, pageSize, sortBy, category, keyword]);
 
+  /** M5 T3: Clawhub 来源 skill 的"有新版可用"信息，key = skill name */
+  const [updatesMap, setUpdatesMap] = useState<Map<string, { slug: string; latestVersion: string }>>(new Map());
+
   /** 加载已安装列表 */
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -226,8 +254,25 @@ export default function SkillPage() {
     finally { setLoading(false); }
   }, []);
 
+  /** M5 T3: 拉取 ClawHub 版本比对结果，失败静默 */
+  const fetchUpdates = useCallback(async () => {
+    try {
+      const data = await post<{ updates: Array<{ name: string; slug: string; installedVersion?: string; latestVersion: string }> }>(
+        '/skill/check-updates',
+        {},
+      );
+      const m = new Map<string, { slug: string; latestVersion: string }>();
+      for (const u of data.updates) m.set(u.name, { slug: u.slug, latestVersion: u.latestVersion });
+      setUpdatesMap(m);
+    } catch {
+      setUpdatesMap(new Map());
+    }
+  }, []);
+
   useEffect(() => { fetchSkills(); }, [fetchSkills]);
   useEffect(() => { fetchStore(); }, [fetchStore]);
+  // 加载我的技能后查一次更新（静默）
+  useEffect(() => { if (skills.length > 0) fetchUpdates(); }, [skills, fetchUpdates]);
 
   // 切换分类/排序时重置页码
   useEffect(() => { setPage(1); }, [category, sortBy, keyword]);
@@ -251,7 +296,15 @@ export default function SkillPage() {
     try {
       await post('/skill/confirm', { prepareId: prepareResult.prepareId });
       setPrepareResult(null);
+      setRiskAcknowledged(false);
+      setFindingsExpanded(false);
       await fetchSkills();
+      // 升级后清理 updatesMap 对应条目（也会被下轮 fetchUpdates 覆盖）
+      setUpdatesMap((prev) => {
+        const next = new Map(prev);
+        next.delete(prepareResult.metadata.name);
+        return next;
+      });
     } catch (err) { setError(err instanceof Error ? err.message : '安装失败'); }
     finally { setInstalling(false); }
   }, [prepareResult, fetchSkills]);
@@ -260,6 +313,23 @@ export default function SkillPage() {
     try { await del(`/skill/${encodeURIComponent(name)}`); await fetchSkills(); }
     catch (err) { setError(err instanceof Error ? err.message : '卸载失败'); }
   }, [fetchSkills]);
+
+  /** M5 T3: 升级 ClawHub skill = 走 prepare/confirm 同一管线 */
+  const handleUpgrade = useCallback(async (slug: string, latestVersion: string) => {
+    setInstalling(true); setError('');
+    try {
+      const data = await post<{ result: PrepareResult }>('/skill/prepare', {
+        source: 'clawhub',
+        identifier: slug,
+        version: latestVersion,
+      });
+      setPrepareResult(data.result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '升级准备失败');
+    } finally {
+      setInstalling(false);
+    }
+  }, []);
 
   const installedNames = new Set(skills.map(s => s.name));
   const totalPages = Math.ceil(total / pageSize);
@@ -296,18 +366,67 @@ export default function SkillPage() {
       {error && <p className="text-xs text-red-500 px-6 mt-2">{error}</p>}
 
       {/* 安装确认弹窗 */}
-      {prepareResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setPrepareResult(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-[420px] p-5" onClick={(e) => e.stopPropagation()}>
+      {prepareResult && (() => {
+        const policy = prepareResult.installPolicy?.policy ?? (prepareResult.securityReport.riskLevel === 'high' ? 'block' : 'auto');
+        const isBlocked = policy === 'block';
+        const requiresAck = policy === 'require-confirm';
+        const canConfirm = !installing && !isBlocked && (!requiresAck || riskAcknowledged);
+        const findings = prepareResult.securityReport.findings;
+        const closeDialog = () => { setPrepareResult(null); setRiskAcknowledged(false); setFindingsExpanded(false); };
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeDialog}>
+          <div className="bg-white rounded-xl shadow-xl w-[460px] p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-slate-900 mb-1">
               安装 {prepareResult.metadata.name}
               {prepareResult.metadata.version && <span className="text-xs text-slate-400 ml-1.5">v{prepareResult.metadata.version}</span>}
             </h3>
             <p className="text-xs text-slate-500 mb-3">{prepareResult.metadata.description}</p>
-            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mb-3 ${RISK_STYLES[prepareResult.securityReport.riskLevel]?.color ?? ''}`}>
-              {prepareResult.securityReport.riskLevel === 'low' ? '✓' : '⚠'}
-              {RISK_STYLES[prepareResult.securityReport.riskLevel]?.label}
+
+            {/* 风险徽章 + 来源 */}
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${RISK_STYLES[prepareResult.securityReport.riskLevel]?.color ?? ''}`}>
+                {prepareResult.securityReport.riskLevel === 'low' ? '✓' : '⚠'}
+                {RISK_STYLES[prepareResult.securityReport.riskLevel]?.label}
+              </div>
+              <SkillSourceBadge source={prepareResult.source} />
             </div>
+
+            {/* M5 T1: 威胁扫描 findings 折叠详情 */}
+            {findings.length > 0 && (
+              <div className="mb-3 border border-slate-200 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setFindingsExpanded(!findingsExpanded)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  <span>威胁扫描详情（{findings.length} 项）</span>
+                  <span className="text-slate-400">{findingsExpanded ? '▾' : '▸'}</span>
+                </button>
+                {findingsExpanded && (
+                  <div className="px-3 pb-2 space-y-1.5 max-h-[180px] overflow-y-auto">
+                    {findings.map((f, i) => (
+                      <div key={i} className="text-[11px] font-mono text-slate-700">
+                        <div className="flex items-start gap-1.5">
+                          <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${f.severity === 'high' ? 'bg-red-50 text-red-600' : f.severity === 'medium' ? 'bg-yellow-50 text-yellow-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {FINDING_TYPE_LABELS[f.type] ?? f.type}
+                          </span>
+                          <span className="text-slate-400">{f.file}:{f.line}</span>
+                        </div>
+                        <div className="pl-1 mt-0.5 text-slate-500 break-all">{f.snippet.slice(0, 80)}{f.snippet.length > 80 && '…'}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* M5 T2: 安装策略原因（require-confirm / block 时显式展示） */}
+            {prepareResult.installPolicy && policy !== 'auto' && (
+              <div className={`mb-3 p-2.5 rounded-lg text-xs ${isBlocked ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}>
+                {prepareResult.installPolicy.reason}
+              </div>
+            )}
+
             {prepareResult.gateResults && prepareResult.gateResults.length > 0 && (
               <div className="mb-3 space-y-1">
                 <p className="text-xs font-medium text-slate-600">环境要求：</p>
@@ -318,15 +437,33 @@ export default function SkillPage() {
                 ))}
               </div>
             )}
+
+            {/* M5 T2: require-confirm 时的风险确认 checkbox */}
+            {requiresAck && (
+              <label className="flex items-start gap-2 mb-3 p-2.5 rounded-lg bg-amber-50/70 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={riskAcknowledged}
+                  onChange={(e) => setRiskAcknowledged(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span className="text-xs text-amber-900">我已核实代码无异常，理解该来源的风险，确认安装。</span>
+              </label>
+            )}
+
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setPrepareResult(null)} className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">取消</button>
-              <button onClick={handleConfirm} disabled={installing || prepareResult.securityReport.riskLevel === 'high'}
-                className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40"
-              >{installing ? '安装中...' : '确认安装'}</button>
+              <button onClick={closeDialog} className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">取消</button>
+              <button
+                onClick={handleConfirm}
+                disabled={!canConfirm}
+                title={isBlocked ? (prepareResult.installPolicy?.reason ?? '安装被策略阻止') : undefined}
+                className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              >{installing ? '安装中...' : isBlocked ? '已被阻止' : '确认安装'}</button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ─── 技能详情弹窗 ─── */}
       {detailSkill && !prepareResult && (
@@ -563,7 +700,13 @@ export default function SkillPage() {
           ) : (
             <div className="grid grid-cols-3 gap-3">
               {skills.map((skill) => (
-                <MySkillCard key={skill.name} skill={skill} onUninstall={handleUninstall} />
+                <MySkillCard
+                  key={skill.name}
+                  skill={skill}
+                  onUninstall={handleUninstall}
+                  updateInfo={updatesMap.get(skill.name)}
+                  onUpgrade={handleUpgrade}
+                />
               ))}
             </div>
           )}
@@ -622,7 +765,15 @@ function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem
 
 // ─── 我的技能卡片 ───
 
-function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUninstall: (name: string) => void }) {
+interface MySkillCardProps {
+  skill: InstalledSkillItem;
+  onUninstall: (name: string) => void;
+  /** M5 T3: 有新版时的更新信息（仅 ClawHub 来源） */
+  updateInfo?: { slug: string; latestVersion: string };
+  onUpgrade?: (slug: string, latestVersion: string) => void;
+}
+
+function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade }: MySkillCardProps) {
   return (
     <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-all group">
       <div className="w-11 h-11 rounded-xl bg-brand/5 flex items-center justify-center shrink-0">
@@ -670,14 +821,20 @@ function MySkillCard({ skill, onUninstall }: { skill: InstalledSkillItem; onUnin
         )}
         <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-400">
           {skill.version && <span>v{skill.version}</span>}
-          <span>{
-            skill.source === 'clawhub' ? 'ClawHub' :
-            skill.source === 'mcp' ? 'MCP' :
-            skill.source === 'github' ? 'GitHub' :
-            skill.source === 'bundled' ? '内置' :
-            '本地'
-          }</span>
+          <SkillSourceBadge source={skill.source} />
         </div>
+        {/* M5 T3: 有新版可用提示 */}
+        {updateInfo && onUpgrade && (
+          <div className="mt-2 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-violet-50 border border-violet-100">
+            <span className="text-xs text-violet-700">
+              有新版 <strong className="font-semibold">v{updateInfo.latestVersion}</strong> 可用
+            </span>
+            <button
+              onClick={() => onUpgrade(updateInfo.slug, updateInfo.latestVersion)}
+              className="text-xs font-medium text-violet-700 hover:text-violet-900 px-2 py-0.5 rounded border border-violet-200 hover:bg-violet-100"
+            >升级</button>
+          </div>
+        )}
       </div>
     </div>
   );

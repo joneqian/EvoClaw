@@ -16,19 +16,30 @@ import { execSync } from 'node:child_process';
 import { parseSkillMd } from './skill-parser.js';
 import { analyzeSkillSecurity } from './skill-analyzer.js';
 import { checkGates } from './skill-gate.js';
+import { decideInstallPolicy, type SkillInstallPolicyOverride } from './install-policy.js';
+import { writeManifest } from './install-manifest.js';
 
 /** ClawHub API 基地址 */
 const CLAWHUB_API = 'https://clawhub.ai/api/v1';
 
-/** 待确认的安装会话 */
-const pendingInstalls = new Map<string, SkillPrepareResult>();
+/** 待确认的安装会话（内部状态含 identifier 用于 manifest 回写） */
+interface PendingInstall extends SkillPrepareResult {
+  /** 原始标识：clawhub 是 slug / github 是 owner/repo 或 URL */
+  identifier: string;
+}
+const pendingInstalls = new Map<string, PendingInstall>();
 
 /** Skill 安装器 */
 export class SkillInstaller {
   private skillsBaseDir: string;
+  private getPolicyOverride?: () => SkillInstallPolicyOverride | undefined;
 
-  constructor(skillsBaseDir?: string) {
+  constructor(
+    skillsBaseDir?: string,
+    getPolicyOverride?: () => SkillInstallPolicyOverride | undefined,
+  ) {
     this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+    this.getPolicyOverride = getPolicyOverride;
   }
 
   /**
@@ -67,6 +78,10 @@ export class SkillInstaller {
       // 门控检查
       const gateResults = checkGates(parsed.metadata);
 
+      // M5 T2: 安装策略决策（来源 × 风险等级矩阵 + 可选 IT 管理员覆盖）
+      const override = this.getPolicyOverride?.();
+      const installPolicy = decideInstallPolicy(source, securityReport.riskLevel, override);
+
       const result: SkillPrepareResult = {
         prepareId,
         metadata: parsed.metadata,
@@ -74,10 +89,11 @@ export class SkillInstaller {
         securityReport,
         gateResults,
         tempPath: tempDir,
+        installPolicy,
       };
 
-      // 存入待确认
-      pendingInstalls.set(prepareId, result);
+      // 存入待确认（含 identifier 供 confirm 回写 manifest）
+      pendingInstalls.set(prepareId, { ...result, identifier });
 
       return result;
     } catch (err) {
@@ -98,8 +114,13 @@ export class SkillInstaller {
 
     pendingInstalls.delete(prepareId);
 
-    // 阻止 high risk 安装
-    if (pending.securityReport.riskLevel === 'high') {
+    // M5 T2: 阻止 block 策略（含高风险默认阻断 + 管理员显式 block 覆盖）
+    if (pending.installPolicy?.policy === 'block') {
+      this.cleanupDir(pending.tempPath);
+      throw new Error(pending.installPolicy.reason || '安装策略拒绝该安装');
+    }
+    // 兼容旧路径：policy 未计算时仍拦截 high risk
+    if (!pending.installPolicy && pending.securityReport.riskLevel === 'high') {
       this.cleanupDir(pending.tempPath);
       throw new Error('安全分析显示高风险，拒绝安装');
     }
@@ -117,6 +138,20 @@ export class SkillInstaller {
     // 移动临时目录到目标
     fs.mkdirSync(path.dirname(targetDir), { recursive: true });
     fs.renameSync(pending.tempPath, targetDir);
+
+    // M5 T3: 仅 clawhub 来源写 sidecar manifest（供"有新版可用"比对）
+    if (pending.source === 'clawhub') {
+      try {
+        writeManifest(targetDir, {
+          source: 'clawhub',
+          slug: pending.identifier,
+          installedVersion: pending.metadata.version,
+          installedAt: new Date().toISOString(),
+        });
+      } catch {
+        // 非致命：manifest 写入失败不影响安装成功
+      }
+    }
 
     return targetDir;
   }

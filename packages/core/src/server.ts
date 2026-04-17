@@ -341,7 +341,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     if (vectorStore) {
       app.route('/knowledge', createKnowledgeRoutes(store, vectorStore));
     }
-    app.route('/skill', createSkillRoutes());
+    app.route('/skill', createSkillRoutes({
+      getPolicyOverride: () => configManager?.getConfig()?.security?.skillInstallPolicy,
+    }));
     if (Feature.MCP && (options as any).mcpManager && (options as any).createMcpRoutes) {
       app.route('/mcp', (options as any).createMcpRoutes((options as any).mcpManager));
     }

@@ -582,7 +582,7 @@ export function createChatRoutes(
       contextEngine.register(createMemoryExtractPlugin(memoryExtractor));
     }
 
-    // Skill 系统插件（含 Agent 级启用/禁用过滤 + MCP Prompt 桥接）
+    // Skill 系统插件（含 Agent 级启用/禁用过滤 + MCP Prompt 桥接 + IT 管理员安全策略）
     contextEngine.register(createToolRegistryPlugin({
       getDisabledSkills: (aId) => {
         const rows = store.all<{ skill_name: string }>(
@@ -597,6 +597,8 @@ export function createChatRoutes(
         if (!mgr) return [];
         return bridgeAllMcpPrompts(mgr.getAllPrompts());
       },
+      // IT 管理员级安全策略（allowlist/denylist/disabled）— beforeTurn 过滤 available_skills
+      securityPolicy: configManager?.getSkillSecurityPolicy(),
     }));                  // Tier 1: <available_skills> 目录注入
     contextEngine.register(createGapDetectionPlugin(skillDiscoverer));   // afterTurn: 能力缺口检测 + Skill 推荐
     if (sessionSummarizer) {

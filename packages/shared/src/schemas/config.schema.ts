@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { nameSecurityPolicySchema } from './security.schema.js';
+import { extensionSecurityPolicySchema } from './security.schema.js';
 
 /** 模型费用 */
 export const modelCostSchema = z.object({
@@ -54,10 +54,7 @@ export const configSchema = z.object({
   thinking: z.enum(['auto', 'on', 'off']).optional(),
   /** 权限模式（全局默认） — default | strict | permissive */
   permissionMode: z.enum(['default', 'strict', 'permissive']).optional(),
-  security: z.object({
-    skills: nameSecurityPolicySchema.optional(),
-    mcpServers: nameSecurityPolicySchema.optional(),
-  }).optional(),
+  security: extensionSecurityPolicySchema.optional(),
   /** Hook 策略 — managed.json 中的 IT 管理员控制 */
   hooks: z.object({
     /** 禁用所有非系统 Hook */

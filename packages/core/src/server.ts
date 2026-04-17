@@ -1023,6 +1023,22 @@ async function main() {
           log.info(`MCP: ${running}/${enabledConfigs.length} 服务器已连接, ${mcpManager.getAllTools().length} 个工具`);
         }
         profiler.checkpoint('mcp_ready');
+
+        // M6 T2: Profile 切换时自动 reload MCP 配置
+        if (configManager) {
+          configManager.onConfigChange(async () => {
+            try {
+              let freshConfigs = discoverMcpConfigs();
+              const freshPolicy = (configManager.getConfig() as any).mcpSecurity;
+              if (freshPolicy) freshConfigs = applySecurityPolicy(freshConfigs, freshPolicy);
+              const enabledFresh = freshConfigs.filter((c: { enabled?: boolean }) => c.enabled !== false);
+              const diff = await mcpManager.reloadAll(enabledFresh);
+              log.info(`profile 切换: MCP 重载 新增=${diff.added.length} 移除=${diff.removed.length} 更新=${diff.updated.length}${diff.warnings.length > 0 ? ` warnings=${diff.warnings.length}` : ''}`);
+            } catch (err) {
+              log.warn(`MCP reloadAll 失败: ${err instanceof Error ? err.message : err}`);
+            }
+          });
+        }
       } catch (err) {
         log.warn(`MCP 初始化失败: ${err instanceof Error ? err.message : err}`);
       }

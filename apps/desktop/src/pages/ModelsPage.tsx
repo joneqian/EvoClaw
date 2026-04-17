@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { get, put, post, del } from '../lib/api';
 import Select from '../components/Select';
+import CredentialPoolEditor, { type CredentialPool } from '../components/CredentialPoolEditor';
 
 /** Provider 预设（新增 Provider 时可选） */
 interface ProviderPreset {
@@ -81,6 +82,9 @@ function ProviderCard({
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editApiKey, setEditApiKey] = useState('');
+  /** M6 T1: 凭据池管理弹窗 */
+  const [poolOpen, setPoolOpen] = useState(false);
+  const [poolConfig, setPoolConfig] = useState<CredentialPool | undefined>(undefined);
   const [editBaseUrl, setEditBaseUrl] = useState(provider.baseUrl);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
@@ -253,6 +257,16 @@ function ProviderCard({
     <div className={`bg-white rounded-xl border transition-colors ${
       expanded ? 'border-brand/30 ring-1 ring-brand/10' : 'border-slate-200'
     }`}>
+      {/* M6 T1: 凭据池编辑弹窗 */}
+      {poolOpen && (
+        <CredentialPoolEditor
+          providerId={provider.id}
+          initialPool={poolConfig}
+          onSaved={onRefresh}
+          onClose={() => setPoolOpen(false)}
+          showToast={showToast}
+        />
+      )}
       {/* 头部 */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -330,6 +344,28 @@ function ProviderCard({
               <span className="text-slate-400">Base URL</span>
               <p className="font-mono text-slate-600 mt-0.5 break-all">{provider.baseUrl}</p>
             </div>
+          </div>
+
+          {/* M6 T1: 凭据池 — 多 Key 管理入口 */}
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const data = await get<{ provider: { credentialPool?: CredentialPool } }>(`/config/provider/${provider.id}`);
+                  setPoolConfig(data.provider.credentialPool);
+                } catch {
+                  setPoolConfig(undefined);
+                }
+                setPoolOpen(true);
+              }}
+              className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:border-brand hover:text-brand transition-colors"
+              title="配置多把 API Key 做 failover / round-robin"
+            >
+              🔑 多 Key 管理
+            </button>
+            <span className="text-[11px] text-slate-400">
+              配置多把 Key 后，主 Key 限流会自动切换到备 Key
+            </span>
           </div>
 
           {/* 编辑区域 */}

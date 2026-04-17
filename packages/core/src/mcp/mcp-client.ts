@@ -232,6 +232,65 @@ export class McpManager {
   }
 
   /**
+   * M6 T2: 根据新配置列表 diff 对比并同步所有 server。
+   *
+   * - 新增的：addServer
+   * - 移除的：removeServer
+   * - 已有但 config 变化的：removeServer + addServer（等价 reconnect + 新 config）
+   * - 已有且 config 未变的：不动
+   *
+   * 返回 warnings 列表（重连失败的 server 名，不抛异常）。
+   */
+  async reloadAll(newConfigs: McpServerConfig[]): Promise<{
+    added: string[];
+    removed: string[];
+    updated: string[];
+    warnings: string[];
+  }> {
+    const added: string[] = [];
+    const removed: string[] = [];
+    const updated: string[] = [];
+    const warnings: string[] = [];
+
+    const newMap = new Map(newConfigs.map((c) => [c.name, c]));
+
+    // 1. 移除不在新列表里的（快照 keys 避免迭代时变更）
+    for (const name of Array.from(this.configs.keys())) {
+      if (!newMap.has(name)) {
+        try {
+          await this.removeServer(name);
+          removed.push(name);
+        } catch (err) {
+          warnings.push(`${name} 移除失败: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    }
+
+    // 2. 新增 / 更新
+    for (const cfg of newConfigs) {
+      const existing = this.configs.get(cfg.name);
+      if (!existing) {
+        try {
+          await this.addServer(cfg);
+          added.push(cfg.name);
+        } catch (err) {
+          warnings.push(`${cfg.name} 启动失败: ${err instanceof Error ? err.message : err}`);
+        }
+      } else if (JSON.stringify(existing) !== JSON.stringify(cfg)) {
+        try {
+          await this.removeServer(cfg.name);
+          await this.addServer(cfg);
+          updated.push(cfg.name);
+        } catch (err) {
+          warnings.push(`${cfg.name} 重启失败: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    }
+
+    return { added, removed, updated, warnings };
+  }
+
+  /**
    * 手动重连：dispose 现有 client → 用原 config 新建 → 走 startWithReconnect 指数退避。
    * 返回 true = 恢复成功；false = 5 次全失败；null = server 不存在或无原 config。
    */

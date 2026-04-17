@@ -4,6 +4,7 @@ import { get, put } from '../lib/api';
 import Select from '../components/Select';
 import MCPServersPanel from '../components/MCPServersPanel';
 import ApiDocsPanel from '../components/ApiDocsPanel';
+import ProfileManager from '../components/ProfileManager';
 
 // ─── Tab 定义 ───
 
@@ -71,6 +72,9 @@ function GeneralTab() {
 
   return (
     <>
+      {/* M6 T2: Profile 管理（置顶，影响面最大） */}
+      <ProfileManager showToast={(message, type = 'success') => setToast({ message, type })} />
+
       <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
         {/* 语言设置 */}
         <div className="px-4 py-3 flex items-center justify-between">

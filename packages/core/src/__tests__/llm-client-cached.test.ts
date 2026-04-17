@@ -6,13 +6,16 @@ import { callLLMSecondaryCached, callLLMWithBlocks } from '../agent/llm-client.j
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 
 function mockConfigManager(overrides?: Partial<Record<string, string>>): ConfigManager {
+  const apiKey = overrides?.apiKey ?? 'test-key';
   return {
-    getDefaultApiKey: () => overrides?.apiKey ?? 'test-key',
+    getDefaultApiKey: () => apiKey,
     getDefaultBaseUrl: () => overrides?.baseUrl ?? 'https://api.anthropic.com/v1',
     getDefaultModelId: () => overrides?.modelId ?? 'claude-haiku-4-5-20251001',
     getDefaultApi: () => overrides?.api ?? 'anthropic-messages',
     getDefaultProvider: () => overrides?.provider ?? 'anthropic',
     getProvider: () => ({ models: [], apiKey: 'test-key', baseUrl: 'https://api.anthropic.com/v1', api: 'anthropic-messages' }),
+    // M6 T1: mock 凭据解析（无 pool）
+    resolveProviderCredential: () => ({ apiKey, keyId: null }),
   } as unknown as ConfigManager;
 }
 

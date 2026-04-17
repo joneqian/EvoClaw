@@ -7,11 +7,15 @@ import type { ConfigManager } from '../infrastructure/config-manager.js';
 
 /** 创建 mock ConfigManager */
 function mockConfigManager(overrides?: Partial<Record<string, string>>): ConfigManager {
+  const apiKey = overrides?.apiKey ?? 'test-key';
   return {
-    getDefaultApiKey: () => overrides?.apiKey ?? 'test-key',
+    getDefaultApiKey: () => apiKey,
     getDefaultBaseUrl: () => overrides?.baseUrl ?? 'https://api.example.com/v1',
     getDefaultModelId: () => overrides?.modelId ?? 'gpt-4o-mini',
     getDefaultApi: () => overrides?.api ?? 'openai-completions',
+    getDefaultProvider: () => overrides?.provider ?? 'openai',
+    // M6 T1: mock 凭据解析（无 pool，直接返回 apiKey + keyId=null）
+    resolveProviderCredential: () => ({ apiKey, keyId: null }),
   } as unknown as ConfigManager;
 }
 

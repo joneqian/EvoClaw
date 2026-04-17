@@ -123,23 +123,87 @@ export function createConfigRoutes(configManager: ConfigManager): Hono {
     return c.json({ success: true, validation });
   });
 
+  // ─── M6 T2: Profile 管理 ───
+
+  /** GET /profiles — 列出所有 profile + 当前激活 */
+  app.get('/profiles', (c) => {
+    return c.json({
+      current: configManager.getCurrentProfile(),
+      profiles: configManager.listProfiles(),
+    });
+  });
+
+  /** POST /profile/switch { name } — 切换到指定 profile */
+  app.post('/profile/switch', async (c) => {
+    const body = await c.req.json<{ name: string }>();
+    if (!body.name) return c.json({ error: 'name 必填' }, 400);
+    try {
+      await configManager.switchProfile(body.name);
+      return c.json({ ok: true, current: configManager.getCurrentProfile() });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  /** POST /profile/create { name, copyFrom? } — 创建新 profile */
+  app.post('/profile/create', async (c) => {
+    const body = await c.req.json<{ name: string; copyFrom?: string }>();
+    if (!body.name) return c.json({ error: 'name 必填' }, 400);
+    try {
+      configManager.createProfile(body.name, body.copyFrom);
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  /** DELETE /profile/:name — 删除 profile（不能删当前激活 / default） */
+  app.delete('/profile/:name', (c) => {
+    const name = c.req.param('name');
+    try {
+      configManager.deleteProfile(name);
+      return c.json({ ok: true });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  /** M6 T1: GET /provider/:id — 获取 Provider 完整配置（含 credentialPool，供前端编辑器读取） */
+  app.get('/provider/:id', (c) => {
+    const id = c.req.param('id');
+    const entry = configManager.getProvider(id);
+    if (!entry) return c.json({ error: 'Provider not found' }, 404);
+    return c.json({ provider: entry });
+  });
+
   /** PUT /provider/:id — 添加/更新 Provider */
   app.put('/provider/:id', async (c) => {
     const id = c.req.param('id');
-    const body = await c.req.json<ProviderEntry>();
+    const body = await c.req.json<ProviderEntry & { credentialPool?: unknown }>();
 
     if (!body.baseUrl || !body.api) {
       return c.json({ error: '需要 baseUrl 和 api' }, 400);
     }
 
-    // apiKey 为特殊值时保持原值
     const existing = configManager.getProvider(id);
+
+    // apiKey 为特殊值时保持原值
     if (body.apiKey === '___KEEP___' && existing) {
       body.apiKey = existing.apiKey;
     }
 
-    configManager.setProvider(id, body);
-    syncProviderToRegistry(id, body);
+    // M6 T1: credentialPool 三态处理
+    //   undefined（body 里没传）→ 保留现有
+    //   null → 显式清空
+    //   对象 → 使用新值
+    if (!('credentialPool' in body) && existing?.credentialPool) {
+      body.credentialPool = existing.credentialPool;
+    } else if (body.credentialPool === null) {
+      delete body.credentialPool;
+    }
+
+    configManager.setProvider(id, body as ProviderEntry);
+    syncProviderToRegistry(id, body as ProviderEntry);
     return c.json({ success: true });
   });
 

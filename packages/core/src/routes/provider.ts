@@ -10,6 +10,7 @@ import {
   unregisterProvider,
   registerFromExtension,
 } from '../provider/provider-registry.js';
+import { getProviderKeyStatus, resetKeyState } from '../infrastructure/provider-key-state.js';
 import { getProviderExtension, getAllProviderExtensions } from '../provider/extensions/index.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
@@ -113,6 +114,31 @@ export function createProviderRoutes(
       };
     });
     return c.json({ providers: result });
+  });
+
+  /** M6 T1: GET /:id/key-status — 获取凭据池每把 Key 的运行时状态（UI 回显） */
+  app.get('/:id/key-status', (c) => {
+    const id = c.req.param('id');
+    const pool = configManager?.getProvider(id)?.credentialPool;
+    const states = getProviderKeyStatus(id);
+    const keys = (pool?.keys ?? []).map((k) => ({
+      id: k.id,
+      enabled: k.enabled,
+      state: states[k.id] ?? { failCount: 0, disabled: false },
+    }));
+    return c.json({
+      strategy: pool?.strategy ?? null,
+      keys,
+    });
+  });
+
+  /** M6 T1: POST /:id/key-reset — 手动重置某把 Key 的失败状态（用户在 UI 点「重新启用」时调用） */
+  app.post('/:id/key-reset', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json<{ keyId: string }>();
+    if (!body.keyId) return c.json({ error: 'keyId 必填' }, 400);
+    resetKeyState(id, body.keyId);
+    return c.json({ ok: true });
   });
 
   /** GET /:id/apikey — 获取完整 API Key（前端眼睛按钮点击时调用） */

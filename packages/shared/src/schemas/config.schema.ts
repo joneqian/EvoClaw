@@ -28,13 +28,32 @@ export const modelEntrySchema = z.object({
 /** API 协议 */
 export const apiProtocolSchema = z.enum(['openai-completions', 'anthropic-messages']);
 
+/** M6 T1: 凭据池单把 Key */
+export const credentialPoolKeySchema = z.object({
+  id: z.string().min(1),
+  apiKey: z.string().min(1),
+  enabled: z.boolean().default(true),
+});
+
+/** M6 T1: 凭据池策略 */
+export const credentialPoolSchema = z.object({
+  strategy: z.enum(['failover', 'round-robin']).default('failover'),
+  keys: z.array(credentialPoolKeySchema).min(1),
+});
+
 /** Provider 配置条目 */
 export const providerEntrySchema = z.object({
   baseUrl: z.string().min(1),
-  apiKey: z.string().min(1),
+  /** 单把 apiKey — 与 credentialPool 二选一（向后兼容；允许空字符串表示走 pool） */
+  apiKey: z.string().default(''),
+  /** M6 T1: 多把 Key 凭据池（运行时优先于 apiKey） */
+  credentialPool: credentialPoolSchema.optional(),
   api: apiProtocolSchema,
   models: z.array(modelEntrySchema),
-});
+}).refine(
+  (d) => d.apiKey.length > 0 || (d.credentialPool && d.credentialPool.keys.length > 0),
+  { message: 'providerEntry 必须配置 apiKey 或 credentialPool 之一' },
+);
 
 /** 模型配置 */
 export const modelsConfigSchema = z.object({

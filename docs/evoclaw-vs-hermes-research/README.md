@@ -82,9 +82,9 @@
 | 19f | WhatsApp | 19f-whatsapp.md | [`19f-whatsapp-gap.md`](./19f-whatsapp-gap.md) | ✅ Wave 2-7 | 🔴 整体缺失（可迁移资产 13 项 / Node Baileys bridge 首例双进程） |
 | 20 | ACP 适配器 | 20-acp-adapter.md | [`20-acp-adapter-gap.md`](./20-acp-adapter-gap.md) | ✅ Wave 2-7 | 🔴 整体缺失 / 架构定位不同 / 不建议补齐 |
 | 21 | MCP 集成 | 21-mcp.md | [`21-mcp-gap.md`](./21-mcp-gap.md) | ✅ Wave 2-7 | 🟡 Client 覆盖 / Server 缺失（5 项反超 / OAuth/OSV/sampling/list_changed 缺） |
-| 22 | 浏览器栈 | 22-browser-stack.md | `22-browser-stack-gap.md` | 📋 待写 | — |
-| 23 | RL 环境 | 23-rl-environments.md | `23-rl-environments-gap.md` | 📋 待写 | — |
-| 24 | Batch 运行器 | 24-batch-runner.md | `24-batch-runner-gap.md` | 📋 待写 | — |
+| 22 | 浏览器栈 | 22-browser-stack.md | [`22-browser-stack-gap.md`](./22-browser-stack-gap.md) | ✅ Wave 2-8 | 🔴 结构性缺失（含 3 🟢 反超：SSRF/HTTPS 升级/跨主机重定向 LLM 回传） |
+| 23 | RL 环境 | 23-rl-environments.md | [`23-rl-environments-gap.md`](./23-rl-environments-gap.md) | ✅ Wave 2-8 | 🔴 整体缺失 / 产品定位不同 / 不建议补齐 |
+| 24 | Batch 运行器 | 24-batch-runner.md | [`24-batch-runner-gap.md`](./24-batch-runner-gap.md) | ✅ Wave 2-8 | 🔴 整体缺失 / 离线训练数据生产与 EvoClaw 定位正交 |
 | 25 | Mini SWE runner | 25-mini-swe-runner.md | `25-mini-swe-runner-gap.md` | 📋 待写 | — |
 | 26 | RL CLI | 26-rl-cli.md | `26-rl-cli-gap.md` | 📋 待写 | — |
 | 27 | CLI 架构 | 27-cli-architecture.md | `27-cli-architecture-gap.md` | 📋 待写 | — |

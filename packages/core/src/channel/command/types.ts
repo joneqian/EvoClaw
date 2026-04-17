@@ -47,14 +47,26 @@ export interface CommandContext {
   readonly skillDiscoverer?: ISkillDiscoverer;
 }
 
-/** 渠道命令定义 */
-export interface ChannelCommand {
+/**
+ * 所有命令的通用元数据基类（M3-T3a）。
+ *
+ * 用于让 CommandRegistry 泛型化支持除 ChannelCommand 以外的命令类型
+ * （如未来的 SlashCommand、Agent 工具命令等），统一提供 name/aliases/description/
+ * category 等展示用字段。ChannelCommand 在此基础上扩展 execute 方法。
+ */
+export interface BaseCommandMeta {
   /** 命令名（不含 /） */
   readonly name: string;
   /** 别名列表 */
   readonly aliases?: readonly string[];
-  /** 描述（用于 /help 展示） */
+  /** 描述（用于 /help 和命令面板展示） */
   readonly description: string;
+  /** 分组/类别（可选，用于命令面板分类展示） */
+  readonly category?: string;
+}
+
+/** 渠道命令定义 */
+export interface ChannelCommand extends BaseCommandMeta {
   /** 执行命令 */
   execute(args: string, ctx: CommandContext): Promise<CommandResult>;
 }

@@ -85,9 +85,9 @@
 | 22 | 浏览器栈 | 22-browser-stack.md | [`22-browser-stack-gap.md`](./22-browser-stack-gap.md) | ✅ Wave 2-8 | 🔴 结构性缺失（含 3 🟢 反超：SSRF/HTTPS 升级/跨主机重定向 LLM 回传） |
 | 23 | RL 环境 | 23-rl-environments.md | [`23-rl-environments-gap.md`](./23-rl-environments-gap.md) | ✅ Wave 2-8 | 🔴 整体缺失 / 产品定位不同 / 不建议补齐 |
 | 24 | Batch 运行器 | 24-batch-runner.md | [`24-batch-runner-gap.md`](./24-batch-runner-gap.md) | ✅ Wave 2-8 | 🔴 整体缺失 / 离线训练数据生产与 EvoClaw 定位正交 |
-| 25 | Mini SWE runner | 25-mini-swe-runner.md | `25-mini-swe-runner-gap.md` | 📋 待写 | — |
-| 26 | RL CLI | 26-rl-cli.md | `26-rl-cli-gap.md` | 📋 待写 | — |
-| 27 | CLI 架构 | 27-cli-architecture.md | `27-cli-architecture-gap.md` | 📋 待写 | — |
+| 25 | Mini SWE runner | 25-mini-swe-runner.md | [`25-mini-swe-runner-gap.md`](./25-mini-swe-runner-gap.md) | ✅ Wave 2-9 | 🔴 整体缺失 / 产品定位正交（SWE 评测框架 vs 企业 AI 伴侣） |
+| 26 | RL CLI | 26-rl-cli.md | [`26-rl-cli-gap.md`](./26-rl-cli-gap.md) | ✅ Wave 2-9 | 🔴 整体缺失 / 无任何 CLI 框架依赖（含 2 🟡 形态差异：Doctor / 优雅退出）|
+| 27 | CLI 架构 | 27-cli-architecture.md | [`27-cli-architecture-gap.md`](./27-cli-architecture-gap.md) | ✅ Wave 2-9 | 🟡 形态完全不同（CLI-first vs GUI-first）/ 8 项反超 |
 | 28 | 配置系统 | 28-config-system.md | `28-config-system-gap.md` | 📋 待写 | — |
 | 29 | 安全与审批 | 29-security-approval.md | `29-security-approval-gap.md` | 📋 待写 | — |
 | 30 | 构建与发行 | 30-build-packaging.md | `30-build-packaging-gap.md` | 📋 待写 | — |

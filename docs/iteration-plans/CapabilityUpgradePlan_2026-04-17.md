@@ -147,23 +147,6 @@
 
 ---
 
-### M2.5 — 配置加密存储（P1，候选未排期）
-
-> **触因**: M2 实施过程发现 `apiKey/secret` 仍以明文存于 `~/.evoclaw/evo_claw.json`。M2 的文件权限 0o600 + ASCII 清理只解决了 80% 场景，磁盘加密是真正的纵深防御。
-
-| 项目 | 工作量 | 备注 |
-|------|--------|------|
-| Sidecar ↔ Tauri credential IPC 协议设计 | 0.5d | 复用现有 Bearer token 通道 |
-| 敏感字段标记 schema（哪些字段需加密） | 0.5d | apiKey/secret/token/password 等 |
-| Sidecar 调用 Tauri credential.rs (macOS Keychain + AES-256-GCM) | 1d | `apps/desktop/src-tauri/src/{credential,crypto}.rs` 已就绪，缺 IPC 桥接 |
-| Windows DPAPI 兼容（fallback 给非 macOS 平台） | 0.5-1d | Tauri keyring crate 已支持 |
-
-**预估**: 2-3d
-**前置依赖**: M2 ✅ 已完成
-**验收标准**: 写入磁盘的配置 JSON 中 apiKey 字段为 `enc:base64(...)` 格式；启动时 Sidecar 通过 Tauri IPC 解密；macOS Keychain 中可见 `com.evoclaw.app.config-key`。
-
----
-
 ### M3 — Agent 核心增强（P0，依赖 M0）
 
 > **为什么 M0 后做**: Grace call 和 IterationBudget 需要在 CI 保护下开发，避免主循环回归。
@@ -292,6 +275,29 @@
 | ACP 适配器（IDE 集成） | 2-3w | 20 |
 
 按市场需求逐个评估启动。
+
+---
+
+## 3.X — 未排期候选（按需启动，不在主路线图）
+
+下列模块在 M0-M11 实施过程中识别但未纳入排期。各项独立，按业务/合规需求触发后再单独评估。
+
+### A1 — 配置加密存储（P1）
+
+> **触因**: M2 实施时发现 `apiKey/secret` 仍以明文存于 `~/.evoclaw/evo_claw.json`。M2 的文件权限 0o600 + ASCII 清理只解决了 80% 场景，磁盘加密是真正的纵深防御。
+>
+> **何时启动**: 企业客户提出磁盘审计 / 合规要求时；或全平台正式发布前的安全加固阶段。
+
+| 项目 | 工作量 | 备注 |
+|------|--------|------|
+| Sidecar ↔ Tauri credential IPC 协议设计 | 0.5d | 复用现有 Bearer token 通道 |
+| 敏感字段标记 schema（哪些字段需加密） | 0.5d | apiKey/secret/token/password |
+| Sidecar 调用 Tauri credential.rs (macOS Keychain + AES-256-GCM) | 1d | `apps/desktop/src-tauri/src/{credential,crypto}.rs` 已就绪，缺 IPC 桥接 |
+| Windows DPAPI 兼容（fallback 给非 macOS 平台） | 0.5-1d | Tauri keyring crate 已支持 |
+
+**预估**: 2-3d
+**前置依赖**: M2 ✅ 已完成（凭证文件权限 + ASCII 清理）；M9 ⏳（跨平台构建保障 Windows 路径）
+**验收标准**: 写入磁盘的配置 JSON 中 apiKey 字段为 `enc:base64(...)` 格式；启动时 Sidecar 通过 Tauri IPC 解密；macOS Keychain 中可见 `com.evoclaw.app.config-key`。
 
 ---
 

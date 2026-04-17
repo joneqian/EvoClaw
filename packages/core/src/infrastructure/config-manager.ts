@@ -68,6 +68,8 @@ export class ConfigManager {
   private managedRaw: EvoClawConfig = {};
   private dropInRaw: EvoClawConfig = {};
   private userRaw: EvoClawConfig = {};
+  /** 最近一次 loadMergedConfig 期间产生的凭证清理警告（一次性消费，getWarningsOnce 后清空） */
+  private pendingSanitizeWarnings: string[] = [];
 
   constructor(configPath?: string) {
     this.configPath = configPath ?? path.join(DEFAULT_CONFIG_DIR, CONFIG_FILENAME);
@@ -116,6 +118,10 @@ export class ConfigManager {
     const { sanitized, warnings: sanitizeWarnings } = sanitizeCredentials(merged);
     for (const w of sanitizeWarnings) {
       log.warn(`已清理凭证非 ASCII 字符: ${w}`);
+    }
+    // 累加到 pending 队列（多次 reload 不覆盖未读警告）
+    if (sanitizeWarnings.length > 0) {
+      this.pendingSanitizeWarnings.push(...sanitizeWarnings);
     }
 
     const layerInfo = [
@@ -457,5 +463,16 @@ export class ConfigManager {
   /** 获取配置文件路径 */
   getConfigPath(): string {
     return this.configPath;
+  }
+
+  /**
+   * 一次性取出待展示的凭证清理警告。
+   * 设计为一次性消费：返回后立刻清空，避免下次打开 UI 再次弹提示。
+   * 用于前端 SettingsPage EnvVarsTab 挂载时给用户一次性 toast。
+   */
+  getSanitizeWarningsOnce(): string[] {
+    const warnings = this.pendingSanitizeWarnings;
+    this.pendingSanitizeWarnings = [];
+    return warnings;
   }
 }

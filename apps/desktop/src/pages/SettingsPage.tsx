@@ -177,6 +177,21 @@ function EnvVarsTab() {
   }, []);
 
   useEffect(() => { fetchEnvVars(); }, [fetchEnvVars]);
+
+  // 启动期间累积的凭证清理警告（一次性消费）— 让用户知道全角/非 ASCII 凭证已自动清理
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await get<{ warnings: string[] }>('/config/warnings');
+        const warnings = data.warnings ?? [];
+        if (warnings.length > 0) {
+          const paths = warnings.join('、');
+          showToast(`已自动清理 ${warnings.length} 个凭证的非 ASCII 字符：${paths}`, 'success');
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [showToast]);
+
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 3000);

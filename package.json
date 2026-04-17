@@ -13,18 +13,18 @@
     "brand:apply": "bun scripts/brand-apply.mjs",
     "test": "turbo run test",
     "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "version:bump": "node scripts/version-bump.mjs",
+    "version:check": "node scripts/version-check.mjs",
     "dev:core": "turbo run dev --filter=@evoclaw/core",
-
     "dev": "./scripts/dev.sh",
     "build": "bun scripts/brand-apply.mjs && turbo run build",
     "build:desktop": "bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
     "build:dmg": "./scripts/build-dmg.sh",
-
     "dev:evoclaw": "./scripts/dev.sh",
     "build:evoclaw": "bun scripts/brand-apply.mjs && turbo run build",
     "build:desktop:evoclaw": "bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
     "build:dmg:evoclaw": "./scripts/build-dmg.sh",
-
     "dev:healthclaw": "BRAND=healthclaw ./scripts/dev.sh",
     "build:healthclaw": "BRAND=healthclaw bun scripts/brand-apply.mjs && turbo run build",
     "build:desktop:healthclaw": "BRAND=healthclaw bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
@@ -40,7 +40,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "better-sqlite3"
     ]
   }
 }

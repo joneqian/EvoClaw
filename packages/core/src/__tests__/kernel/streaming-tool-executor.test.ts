@@ -144,7 +144,7 @@ describe('StreamingToolExecutor', () => {
     const events: Array<{ type: string }> = [];
 
     executor.enqueue(toolUseBlock('call_1', 'read'));
-    await executor.collectResults({ onEvent: (e) => events.push(e) });
+    await executor.collectResults({ onEvent: (e) => { events.push(e); } });
 
     expect(events).toHaveLength(1);
     expect(events[0]!.type).toBe('tool_end');

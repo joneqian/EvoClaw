@@ -15,3 +15,23 @@ declare module 'unpdf' {
     options?: { mergePages?: boolean },
   ): Promise<{ totalPages: number; text: string | string[] }>;
 }
+
+/** Optional dependency: playwright (浏览器自动化完整模式) */
+declare module 'playwright' {
+  export interface Page {
+    goto(url: string, opts?: { waitUntil?: string; timeout?: number }): Promise<unknown>;
+    title(): Promise<string>;
+    textContent(selector: string): Promise<string | null>;
+    click(selector: string): Promise<void>;
+    fill(selector: string, value: string): Promise<void>;
+    screenshot(opts?: { type?: 'png' | 'jpeg'; fullPage?: boolean }): Promise<Uint8Array>;
+    evaluate<T = unknown>(script: string | (() => T)): Promise<T>;
+  }
+  export interface Browser {
+    newPage(): Promise<Page>;
+    close(): Promise<void>;
+  }
+  export const chromium: {
+    launch(opts?: { headless?: boolean }): Promise<Browser>;
+  };
+}

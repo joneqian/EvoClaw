@@ -1,0 +1,330 @@
+# EvoClaw 能力提升总体开发计划
+
+> **基于**: 40 份 hermes 差距分析 + SkillClaw 进化研究 + SkillEvolutionDesign.md
+> **日期**: 2026-04-17
+> **优先级调整**: 先做能力对齐（本计划），再回到 Sprint 16（企微 Channel 生产就绪）
+> **计划起始**: 即日起
+> **用法**: 本文档为总体路线图，各模块详细计划后续单独制定
+
+---
+
+## 1. 模块划分与依赖关系
+
+```
+                    ┌──────────────┐
+                    │  M0 基础工程  │  CI/CD + 版本管理 + 测试增强
+                    │  (阶段 1)  │
+                    └──────┬───────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+     ┌────────────┐ ┌──────────┐ ┌──────────────┐
+     │ M1 安全增强 │ │M2 配置增强│ │M3 Agent 核心 │
+     │ (阶段 1) │ │(阶段 1)│ │  (阶段 2) │
+     └──────┬─────┘ └────┬─────┘ └──────┬───────┘
+            │             │              │
+            ▼             │              │
+     ┌──────────────┐    │              │
+     │M4 MCP 生产化  │    │              │
+     │  (阶段 2)  │◄──┘              │
+     └──────┬───────┘                   │
+            │                           │
+            ▼                           ▼
+     ┌──────────────┐          ┌────────────────┐
+     │M5 Skills 生态 │          │M6 Provider 增强 │
+     │  (阶段 3)  │          │   (阶段 3)   │
+     └──────┬───────┘          └────────┬───────┘
+            │                           │
+            ▼                           ▼
+     ┌──────────────┐          ┌────────────────┐
+     │M7 Skill 进化  │          │M8 会话隔离     │
+     │(阶段 4-5) │          │  (阶段 4)   │
+     └──────────────┘          └────────────────┘
+                                        │
+            ┌───────────────────────────┘
+            ▼
+     ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+     │M9 发布与分发  │   │M10 文档站    │   │M11 平台扩展  │
+     │(阶段 5) │   │(阶段 5)│   │ (阶段 6+) │
+     └──────────────┘   └──────────────┘   └──────────────┘
+```
+
+---
+
+## 2. 模块总览
+
+| 模块 | 名称 | 优先级 | 预估 | 前置依赖 |
+|------|------|--------|------|----------|
+| **M0** | 基础工程 | P0 | 3-4d | 无 |
+| **M1** | 安全增强 | P0 | 5-9d | 无 |
+| **M2** | 配置增强 | P0 | 1d | 无 |
+| **M3** | Agent 核心增强 | P0 | 2.5-3.5d | M0 |
+| **M4** | MCP 生产化 | P0 | 1d | M1, M2 |
+| **M5** | Skills 生态增强 | P0 | 3-5d | M4 |
+| **M6** | Provider 增强 | P1 | 4-6d | M2 |
+| **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 |
+| **M8** | 会话隔离与环境安全 | P1 | 5-8d | M1, M3 |
+| **M9** | 发布与分发 | P1 | 7-13d | M0 |
+| **M10** | 文档站 | P1 | 5-8d | M0 |
+| **M11** | 平台扩展 | P2 | 按需 | M3, M8 |
+
+### 各模块参考文档索引
+
+制定详细方案时，按下表定位到具体差距分析文档的具体章节：
+
+| 模块 | 参考文档（点击跳转） | 重点章节 |
+|------|---------------------|----------|
+| **M0** | [`30-build-packaging-gap.md`](../evoclaw-vs-hermes-research/30-build-packaging-gap.md) | §3.10 CI/CD 工作流、§3.11 版本化与发布 |
+| | [`31-testing-gap.md`](../evoclaw-vs-hermes-research/31-testing-gap.md) | §3.5 超时与卡死防护、§3.10 CI/CD 集成、§3.11 并行与分片 |
+| | [`33-release-process-gap.md`](../evoclaw-vs-hermes-research/33-release-process-gap.md) | §3.1 版本号策略、§3.2 版本号同步 |
+| **M1** | [`29-security-approval-gap.md`](../evoclaw-vs-hermes-research/29-security-approval-gap.md) | §3.4 Smart Approve、§3.15 SSRF、§3.17 OSV、§3.18 Secret 脱敏 |
+| | [`21-mcp-gap.md`](../evoclaw-vs-hermes-research/21-mcp-gap.md) | §3.8 OSV MAL-*、§3.19 env 白名单、§3.20 Prompt injection |
+| **M2** | [`28-config-system-gap.md`](../evoclaw-vs-hermes-research/28-config-system-gap.md) | §3.4 凭证权限强制、§3.5 非 ASCII 凭证清理 |
+| **M3** | [`05-agent-loop-gap.md`](../evoclaw-vs-hermes-research/05-agent-loop-gap.md) | §3 Grace call（搜索"grace"）、IterationBudget（搜索"budget"）|
+| | [`02-repo-layout-gap.md`](../evoclaw-vs-hermes-research/02-repo-layout-gap.md) | §3.7 集中式命令注册表 |
+| **M4** | [`21-mcp-gap.md`](../evoclaw-vs-hermes-research/21-mcp-gap.md) | §3.12 startWithReconnect、§3.14 MCP Prompt→Skill 桥接 |
+| **M5** | [`12-skills-system-gap.md`](../evoclaw-vs-hermes-research/12-skills-system-gap.md) | §3.9 威胁扫描 + Trust level、§3.11 版本比对、§4 P0 改造蓝图 |
+| **M6** | [`06-llm-providers-gap.md`](../evoclaw-vs-hermes-research/06-llm-providers-gap.md) | §3 CredentialPool、OAuth、Provider Overlay |
+| | [`28-config-system-gap.md`](../evoclaw-vs-hermes-research/28-config-system-gap.md) | §3.6 多 Provider + OAuth 凭据池、§3.8 Profile 隔离 |
+| **M7** | [`12-skills-system-gap.md`](../evoclaw-vs-hermes-research/12-skills-system-gap.md) | §7 Skill 自进化三方对比（SkillClaw / Hermes / EvoClaw） |
+| | [`SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md) | 全文（Phase 1-4 详细设计） |
+| **M8** | [`29-security-approval-gap.md`](../evoclaw-vs-hermes-research/29-security-approval-gap.md) | §3.16 网站黑名单、§3.19 ContextVar 会话隔离、§3.20 env 白名单 |
+| **M9** | [`30-build-packaging-gap.md`](../evoclaw-vs-hermes-research/30-build-packaging-gap.md) | §3.4 跨平台、§3.8 代码签名 + 公证、§3.9 多架构 |
+| | [`33-release-process-gap.md`](../evoclaw-vs-hermes-research/33-release-process-gap.md) | §3.6 CHANGELOG、§3.7 构件构建、§3.8 GitHub Release |
+| **M10** | [`32-docs-website-gap.md`](../evoclaw-vs-hermes-research/32-docs-website-gap.md) | 全文（§3.1-§3.15 文档框架/导航/搜索/CI 部署等 15 个机制） |
+| **M11** | [`19a-telegram-gap.md`](../evoclaw-vs-hermes-research/19a-telegram-gap.md) | 全文 |
+| | [`19b-discord-gap.md`](../evoclaw-vs-hermes-research/19b-discord-gap.md) | 全文 |
+| | [`19c-slack-gap.md`](../evoclaw-vs-hermes-research/19c-slack-gap.md) | 全文 |
+| | [`22-browser-stack-gap.md`](../evoclaw-vs-hermes-research/22-browser-stack-gap.md) | 全文 |
+| | [`20-acp-adapter-gap.md`](../evoclaw-vs-hermes-research/20-acp-adapter-gap.md) | 全文 |
+| **通用** | [`34-rebuild-roadmap-gap.md`](../evoclaw-vs-hermes-research/34-rebuild-roadmap-gap.md) | §3 P0 聚合、§5 反超全景、§6 实施路径 |
+
+---
+
+## 3. 各模块概要
+
+### M0 — 基础工程（P0，无前置依赖）
+
+> **为什么先做**: CI/CD 是所有后续模块的质量守护网，没有 CI 的代码变更无法保证不引入回归。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| GitHub Actions `test.yml`（Vitest + Oxlint，PR 触发） | 1-2d | 30 §3.10, 31 §3.10 |
+| 版本号统一管理 + `release.mjs`（4 处 → 单一来源） | 1-1.5d | 33 §3.1-§3.2 |
+| Vitest 并行执行 + 30s 全局超时 | 0.5d | 31 §3.5, §3.11 |
+
+**验收标准**: PR 提交自动跑测试，版本号改一处全同步。
+
+---
+
+### M1 — 安全增强（P0，无前置依赖，与 M0 可并行）
+
+> **为什么先做**: 安全缺口（SSRF 无 DNS 解析、MCP 子进程透传 API Key）是线上风险，不能等。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| SSRF 补齐（DNS 解析后 IP 校验 + GCP 元数据 + Fail Closed） | 0.5d | 29 §3.15 |
+| MCP stdio 环境变量白名单（子进程不透传 API Key） | 0.5d | 21 §3.19 |
+| MCP Prompt injection 扫描 + WARNING | 0.5d | 21 §3.20 |
+| OSV MAL-* 恶意软件预检 | 1-2d | 21 §3.8, 29 §3.17 |
+| 全局 Secret 脱敏（25+ API Key pattern + Logger 拦截） | 1-2d | 29 §3.18 |
+| Smart Approve（LLM 辅助风险评估） | 2-3d | 29 §3.4 |
+
+**验收标准**: `curl http://169.254.169.254` 被拒绝，MCP 子进程 env 不含 API Key，日志中 `sk-*` 被替换为 `****`。
+
+---
+
+### M2 — 配置增强（P0，无前置依赖，与 M0/M1 可并行）
+
+> **为什么先做**: 小改动大收益，修复凭据文件 world-readable + Unicode 凭证导致 API 调用失败。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| 凭证文件权限强制（0600） | 0.5d | 28 §3.4 |
+| 非 ASCII 凭证清理（Unicode 替代字检测 + encode 清洗） | 0.5d | 28 §3.5 |
+
+**验收标准**: 新写入的凭证文件 `stat -f "%Lp"` 为 600，含 Unicode 的 API Key 自动清洗后 API 调用正常。
+
+---
+
+### M3 — Agent 核心增强（P0，依赖 M0）
+
+> **为什么 M0 后做**: Grace call 和 IterationBudget 需要在 CI 保护下开发，避免主循环回归。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| Grace call 机制（预算耗尽时请求 LLM 返回摘要而非空响应） | 1d | 05 §3.X |
+| IterationBudget 剩余预算追踪（用户可感知剩余轮次） | 0.5d | 05 §3.X |
+| 集中式命令注册表（权限审计 + 命令文档化） | 1-2d | 02 §3.7 |
+
+**验收标准**: 工具调用达到预算上限后返回有意义的摘要而非空白，用户可见剩余预算。
+
+---
+
+### M4 — MCP 生产化（P0，依赖 M1 + M2）
+
+> **为什么在 M1/M2 后**: MCP 生产化涉及安全（env 白名单已在 M1 实现）+ 配置（凭证清洗已在 M2 实现）。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| MCP Prompt → Skill 桥接生产接线（已完成 50%） | 0.5d | 21 §3.14 |
+| `startWithReconnect` 生产激活（已有死代码） | 0.5d | 21 §3.12 |
+
+**验收标准**: MCP server 断连后自动重连，MCP prompts 出现在 `<available_skills>` 目录。
+
+---
+
+### M5 — Skills 生态增强（P0，依赖 M4）
+
+> **为什么在 M4 后**: Skill 信任分级需要知道 MCP 桥接的 skill 来源类型（M4 输出）。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| 威胁扫描模式库扩展（keystore/exfiltration/DNS tunneling/persistence 4 类） | 1-2d | 12 §3.9 |
+| Trust level 分级 + INSTALL_POLICY 决策矩阵 | 1d | 12 §3.9 |
+| Skill 版本比对 + "有新版可用" 提示 | 1-2d | 12 §3.11 |
+
+**验收标准**: 安装社区 Skill 时显示 trust level 并过威胁扫描，outdated skill 有提示。
+
+---
+
+### M6 — Provider 增强（P1，依赖 M2）
+
+> **为什么在 M2 后**: OAuth 凭据需要正确的文件权限和 Unicode 清洗（M2 输出）。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| CredentialPool 凭据池（多 key 轮换 + fallback） | 2-3d | 06 §3.X |
+| OAuth token 刷新（device code flow） | 1-2d | 28 §3.6 |
+| Profile 隔离（运行时配置切换 dev/prod） | 2-3d | 28 §3.8 |
+
+**验收标准**: 单个 API key 失败时自动切换下一个，OAuth token 过期前自动刷新。
+
+---
+
+### M7 — Skill 自进化（P1，依赖 M5 + M8）
+
+> **为什么在 M5/M8 后**: Phase 1 需要 trust level 分级（M5），Phase 2-3 需要会话隔离保障进化 Cron 安全（M8）。
+
+详见 [`SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md)，分 4 个 Phase：
+
+| Phase | 内容 | 工作量 | 依赖 |
+|-------|------|--------|------|
+| Phase 1: 基础记忆化 | `skill_manage` 工具 + Manifest v2 + 安全扫描 | ~1w | M5 |
+| Phase 2: 评估反馈 | `skill_usage` 表 + 使用追踪 + 轨迹摘要 | ~2w | Phase 1 |
+| Phase 3: 自动进化 | Agentic Evolver + Cron + Refine/Create/Skip | ~3w | Phase 2 + M8 |
+| Phase 4: 集体进化 | ClawHub 反馈回传 + 匿名聚合 | 长期 | Phase 2 |
+
+**验收标准**: Agent 自主创建 skill 后下次会话可用；低效 skill 被 Cron 自动改进。
+
+---
+
+### M8 — 会话隔离与环境安全（P1，依赖 M1 + M3）
+
+> **为什么在 M1/M3 后**: 需要安全基础（M1 env 白名单）+ Agent 核心稳定（M3 无回归）。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| AsyncLocalStorage 会话级隔离（权限按 sessionId 分离） | 2-3d | 29 §3.19 |
+| 环境变量白名单 + 凭据 sandbox（子 Agent 不继承全部 env） | 2-3d | 29 §3.20 |
+| 网站黑名单 + 通配符匹配 | 1-2d | 29 §3.16 |
+
+**验收标准**: Agent A 的 session-scope 授权不被 Agent B 的会话复用，子 Agent env 只含白名单变量。
+
+---
+
+### M9 — 发布与分发（P1，依赖 M0）
+
+> **为什么在 M0 后**: 代码签名和 auto-update 建立在 CI/CD + 版本管理基础之上。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| 代码签名 + macOS 公证 | 2-3d | 30 §3.8 |
+| CHANGELOG 自动生成（Conventional Commits → Markdown） | 1d | 33 §3.6 |
+| GitHub Release + auto-update 集成 | 2-3d | 33 §3.7-§3.8 |
+| Windows / Linux 构建支持 | 5-10d | 30 §3.4 |
+
+**验收标准**: DMG 双击安装无 Gatekeeper 警告，应用内检测到新版本并提示更新。
+
+---
+
+### M10 — 文档站（P1，依赖 M0）
+
+> **为什么在 M0 后**: 文档站 CI 部署依赖 GitHub Actions（M0 输出）。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| VitePress 或 Docusaurus 搭建 + 现有 docs/ 迁移 | 3-5d | 32 全章 |
+| 自动部署工作流（push main → GitHub Pages） | 1d | 32 §3.10 |
+| 搜索功能 + 侧边栏导航 | 1-2d | 32 §3.3, §3.4 |
+
+**验收标准**: 文档站可访问，PR 合并后自动部署。
+
+---
+
+### M11 — 平台扩展（P2，按需，依赖 M3 + M8）
+
+> **为什么最后**: 非核心能力，按市场需求决定，且需要会话隔离（M8）支撑多平台并发。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| Telegram 渠道 | 1.5-2w | 19a |
+| Discord 渠道 | 2-3w | 19b |
+| Slack 渠道 | 2-3w | 19c |
+| 浏览器栈（Playwright + 云 Provider） | 3-4w | 22 |
+| ACP 适配器（IDE 集成） | 2-3w | 20 |
+
+按市场需求逐个评估启动。
+
+---
+
+## 4. Sprint 排期建议
+
+| 阶段 | 模块 | 主题 | 预估 |
+|------|------|------|------|
+| **阶段 1** | M0 + M1 + M2 | 基础工程 + 安全 + 配置（三者可并行） | 9-14d |
+| **阶段 2** | M3 + M4 | Agent 核心 + MCP 生产化 | 3.5-4.5d |
+| **阶段 3** | M5 + M6 | Skills 生态 + Provider | 7-11d |
+| **阶段 4** | M7 Phase 1 + M8 | Skill 记忆化 + 会话隔离 | 10-13d |
+| **阶段 5** | M7 Phase 2 + M9 + M10 | Skill 评估 + 发布 + 文档站 | 14-23d |
+| **阶段 6** | M7 Phase 3 | Skill 自动进化 | ~3w |
+| **阶段 7+** | M11 + M7 Phase 4 | 平台扩展 + 集体进化 | 按需 |
+| **回归** | Sprint 16 | 企微 Channel 生产就绪 | — |
+
+> **说明**: 能力对齐完成后回到 Sprint 16 继续企微 Channel 生产就绪工作。
+
+---
+
+## 5. 不做清单（产品定位排除）
+
+| 章节 | 内容 | 理由 |
+|------|------|------|
+| 23-26 | RL 训练栈（环境/Batch/SWE/CLI） | 与企业 AI 伴侣定位正交 |
+| 27 | CLI 命令体系 | EvoClaw 是 GUI 应用 |
+| 19d/19e | Signal / Matrix 渠道 | 用户量极小 |
+| 30 | PyPI / Nix 发布通道 | 非 Python 库 |
+| 31 | pytest 迁移 | 用 Vitest |
+
+---
+
+## 6. 风险与缓解
+
+| 风险 | 影响 | 缓解 |
+|------|------|------|
+| M0 CI/CD 搭建耗时超预期 | 阻塞 M3/M9/M10 | 最小可用 CI（仅 test.yml），签名/部署推迟到 M9 |
+| M1 Smart Approve LLM 调用成本 | 每次命令审批消耗 token | 使用辅助低成本模型（ModelRouter 已支持） |
+| M7 Skill 进化引入回归 | 自动修改的 skill 质量下降 | 保守编辑原则 + 改前备份 + 进化日志可回滚 |
+| M9 代码签名需 Apple 开发者账号 | 费用 + 审核周期 | 提前注册，M0 阶段申请 |
+| M11 国际 IM 需各平台审核 | Telegram Bot / Discord App 审核 | 提前了解各平台审核政策 |
+
+---
+
+## 7. 使用方式
+
+本文档为总体路线图。后续每个模块（M0-M11）将制定独立的详细计划，包含：
+- 具体文件变更清单
+- 接口设计
+- 测试方案
+- 验收 checklist
+
+制定详细计划时请注明 `基于: CapabilityUpgradePlan_2026-04-17.md 模块 MX`。

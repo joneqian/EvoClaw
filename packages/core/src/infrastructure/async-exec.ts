@@ -137,11 +137,11 @@ export async function asyncExec(
   const maxBytes = maxOutputChars * 2;
   let capped = false;
 
-  // 进度节流
-  const emitProgress = (lastLines: string): void => {
+  // 进度节流（force=true 用于流结束时强制 emit 最终状态，绕过节流）
+  const emitProgress = (lastLines: string, force = false): void => {
     if (!onProgress) return;
     const now = Date.now();
-    if (now - lastProgressTime < PROGRESS_THROTTLE_MS) return;
+    if (!force && now - lastProgressTime < PROGRESS_THROTTLE_MS) return;
     lastProgressTime = now;
     onProgress({ lastLines, totalLines, totalBytes });
   };
@@ -181,6 +181,9 @@ export async function asyncExec(
       settled = true;
       clearTimeout(timeoutTimer);
       signal?.removeEventListener('abort', onAbort);
+
+      // 最终进度强制 emit（绕过节流），确保调用方拿到最终的 totalLines/totalBytes
+      emitProgress('', true);
 
       const stdout = Buffer.concat(stdoutChunks).toString('utf-8');
       const stderr = Buffer.concat(stderrChunks).toString('utf-8');

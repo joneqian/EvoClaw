@@ -13,6 +13,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { McpServerConfig } from './mcp-config.js';
 import type { McpPromptInfo } from './mcp-prompt-bridge.js';
 import { buildMcpEnv } from './mcp-env.js';
+import { wrapWithWarningIfSuspicious } from '../security/prompt-injection-detector.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('mcp-client');
@@ -167,7 +168,7 @@ export class McpClient {
     try {
       const result = await this.client.getPrompt({ name: promptName, arguments: args });
       // 拼接 prompt messages 的文本内容
-      return (result.messages ?? [])
+      const joined = (result.messages ?? [])
         .map(m => {
           if (typeof m.content === 'string') return m.content;
           if (m.content && typeof m.content === 'object' && 'text' in m.content) return (m.content as { text: string }).text;
@@ -175,6 +176,8 @@ export class McpClient {
         })
         .filter(Boolean)
         .join('\n\n');
+      // Prompt 注入扫描：可疑则包 <warning> 标签让 LLM 自行判断（不杀进程）
+      return wrapWithWarningIfSuspicious(joined, `MCP server "${this.config.name}" prompt "${promptName}"`);
     } catch (err) {
       return `MCP prompt 获取失败: ${err instanceof Error ? err.message : String(err)}`;
     }

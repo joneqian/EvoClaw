@@ -57,6 +57,102 @@ describe('sanitizePII', () => {
     expect(result).not.toContain('user@test.com');
     expect(result).not.toContain('sk-proj-1234567890');
   });
+
+  // ─── M1 T2: 扩展 25+ pattern ───────────────────────────────────
+  //
+  // ⚠️ 测试 fixture 一律用字符串拼接构造，避免 GitHub Push Protection /
+  //   secret-scanner 把 test 数据误判为真凭据。pattern 完整性由 regex 保证。
+
+  describe('云厂商 / SaaS / Git Provider 凭据', () => {
+    // 构造看起来像但不是真凭据的 fake fixture（运行时拼接绕过 scanner）
+    const fake20 = (prefix: string) => prefix + 'X'.repeat(20);
+    const fake36 = (prefix: string) => prefix + 'X'.repeat(36);
+
+    it('替换 AWS access key (AKIA*)', () => {
+      const text = `AWS_KEY=${fake20('AKIA').slice(0, 20)} prod`; // AKIA + 16 X
+      expect(sanitizePII(text)).toBe('AWS_KEY=AKIA*** prod');
+    });
+
+    it('替换 AWS 临时凭据 (ASIA*)', () => {
+      expect(sanitizePII(fake20('ASIA').slice(0, 20))).toBe('AKIA***');
+    });
+
+    it('替换 GitHub Personal Access Token (ghp_)', () => {
+      const text = `token: ${fake36('ghp_')}`;
+      expect(sanitizePII(text)).toContain('gh_***');
+    });
+
+    it('替换 GitHub OAuth/Server/User token (gho_/ghs_/ghu_/ghr_)', () => {
+      for (const prefix of ['gho_', 'ghs_', 'ghu_', 'ghr_']) {
+        expect(sanitizePII(fake36(prefix))).toContain('gh_***');
+      }
+    });
+
+    it('替换 GitLab personal access token (glpat-)', () => {
+      expect(sanitizePII(`GITLAB_PAT=${fake20('glpat-')}`)).toContain('glpat-***');
+    });
+
+    it('替换 Slack tokens (xoxb-/xoxp-/xoxa-/xoxs-)', () => {
+      for (const prefix of ['xoxb-', 'xoxp-', 'xoxa-', 'xoxs-']) {
+        const tok = prefix + '1234567890-' + 'X'.repeat(20);
+        expect(sanitizePII(tok)).toContain('xox_***');
+      }
+    });
+
+    it('替换 Google API key (AIza)', () => {
+      const text = `GOOGLE_KEY=${'AIza' + 'X'.repeat(35)}`;
+      expect(sanitizePII(text)).toContain('AIza***');
+    });
+
+    it('替换 OpenAI org id (org-)', () => {
+      expect(sanitizePII(fake20('org-'))).toBe('org-***');
+    });
+
+    it('替换 Stripe live keys (sk_live_/pk_live_)', () => {
+      // 字符串拼接构造绕过 secret-scanner
+      expect(sanitizePII('sk_' + 'live_' + 'X'.repeat(24))).toContain('***');
+      expect(sanitizePII('pk_' + 'live_' + 'X'.repeat(24))).toContain('***');
+    });
+
+    it('替换阿里云 AccessKey (LTAI)', () => {
+      expect(sanitizePII(fake20('LTAI').slice(0, 20))).toBe('LTAI***');
+    });
+
+    it('替换腾讯云 SecretId (AKID)', () => {
+      const text = `TENCENT_AKID=${'AK' + 'ID' + 'X'.repeat(32)}`;
+      expect(sanitizePII(text)).toContain('AKID***');
+    });
+
+    it('替换 HuggingFace token (hf_)', () => {
+      expect(sanitizePII(fake36('hf_'))).toBe('hf_***');
+    });
+  });
+
+  describe('不误伤短哈希与正常字符串', () => {
+    it('不误伤 git commit hash (40 hex)', () => {
+      const text = 'commit a8e0c6c0d839c75e6d75a3d853d331e34a3290';
+      // 40 char hex 不匹配任何上述 pattern
+      expect(sanitizePII(text)).toBe(text);
+    });
+
+    it('不误伤 UUID', () => {
+      const text = 'id: 550e8400-e29b-41d4-a716-446655440000';
+      expect(sanitizePII(text)).toBe(text);
+    });
+
+    it('不误伤短字符串（<20 字符的 sk-）', () => {
+      // sk- 后只有 5 字符，不到 20 字符阈值
+      expect(sanitizePII('sk-short')).toBe('sk-short');
+    });
+
+    it('不误伤随机大写串（不像 AKIA 开头）', () => {
+      expect(sanitizePII('NORMALSTRING12345')).toBe('NORMALSTRING12345');
+    });
+
+    it('不误伤上下文中的"key"字面量', () => {
+      expect(sanitizePII('the key is important')).toBe('the key is important');
+    });
+  });
 });
 
 describe('sanitizeObject', () => {

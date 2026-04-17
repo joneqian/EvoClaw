@@ -15,20 +15,60 @@
 /** 脱敏后的占位符 */
 const REDACTED = '[REDACTED]';
 
-/** 简单模式列表（正则 → 固定替换字符串） */
+/** 简单模式列表（正则 → 固定替换字符串）
+ *
+ * ⚠️ 顺序敏感：更具体的 pattern 必须在更宽泛的之前。
+ * 例：sk-ant-* 在 sk-* 之前；Stripe sk_live_* 在通用 sk-* 之前。
+ *
+ * 阈值：所有 token 长度 ≥20，避免误伤短串（git commit hash、UUID 等）。
+ */
 const SIMPLE_PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
-  // API Keys（各 Provider 格式）
+  // ─── Anthropic / OpenAI / 通用 sk- (具体在前) ───
   { regex: /sk-ant-[A-Za-z0-9_-]{20,}/g, replacement: 'sk-ant-***' },
+  { regex: /sk-proj-[A-Za-z0-9_-]{20,}/g, replacement: 'sk-***' },
+  { regex: /org-[A-Za-z0-9]{20,}/g, replacement: 'org-***' },
+
+  // ─── Stripe live keys（必须在通用 sk- 之前） ───
+  { regex: /sk_live_[0-9A-Za-z]{20,}/g, replacement: 'sk_live_***' },
+  { regex: /pk_live_[0-9A-Za-z]{20,}/g, replacement: 'pk_live_***' },
+
+  // ─── 通用 sk- ───
   { regex: /sk-[A-Za-z0-9_-]{20,}/g, replacement: 'sk-***' },
+
+  // ─── AWS Access Key（IAM + 临时凭据，统一替换为 AKIA***） ───
+  { regex: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g, replacement: 'AKIA***' },
+
+  // ─── GitHub tokens (PAT/OAuth/Server/User/Refresh) ───
+  { regex: /\bgh[poshur]_[A-Za-z0-9]{36,}\b/g, replacement: 'gh_***' },
+
+  // ─── GitLab personal access token ───
+  { regex: /\bglpat-[A-Za-z0-9_-]{20,}\b/g, replacement: 'glpat-***' },
+
+  // ─── Slack tokens ───
+  { regex: /\bxox[baps]-[A-Za-z0-9-]{20,}\b/g, replacement: 'xox_***' },
+
+  // ─── Google API key ───
+  { regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, replacement: 'AIza***' },
+
+  // ─── HuggingFace ───
+  { regex: /\bhf_[A-Za-z0-9]{30,}\b/g, replacement: 'hf_***' },
+
+  // ─── 国产云 ───
+  { regex: /\bLTAI[A-Za-z0-9]{12,20}\b/g, replacement: 'LTAI***' },     // 阿里云
+  { regex: /\bAKID[A-Za-z0-9]{32,}\b/g, replacement: 'AKID***' },        // 腾讯云
+
+  // ─── Bearer / x-api-key（在所有 token pattern 之后，捕获通用情况） ───
   { regex: /Bearer\s+[A-Za-z0-9._-]{20,}/gi, replacement: `Bearer ${REDACTED}` },
-  // JWT Token
-  { regex: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, replacement: `jwt:${REDACTED}` },
-  // 邮箱
-  { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, replacement: `email:${REDACTED}` },
-  // 中国手机号
-  { regex: /(?<!\d)1[3-9]\d{9}(?!\d)/g, replacement: `phone:${REDACTED}` },
-  // x-api-key header 值
   { regex: /x-api-key[:\s]+[A-Za-z0-9._-]{10,}/gi, replacement: `x-api-key: ${REDACTED}` },
+
+  // ─── JWT Token（三段式 base64） ───
+  { regex: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, replacement: `jwt:${REDACTED}` },
+
+  // ─── 邮箱 ───
+  { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, replacement: `email:${REDACTED}` },
+
+  // ─── 中国手机号 ───
+  { regex: /(?<!\d)1[3-9]\d{9}(?!\d)/g, replacement: `phone:${REDACTED}` },
 ];
 
 /** 密码字段值模式（需要函数替换） */

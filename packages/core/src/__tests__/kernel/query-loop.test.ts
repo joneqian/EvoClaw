@@ -237,6 +237,8 @@ describe('queryLoop - limits and termination', () => {
     const result = await queryLoop(baseConfig({
       tools: [readTool],
       maxTurns: 3,
+      // M3-T1: 关闭 grace call，避免 maxTurns 耗尽后额外多一次 LLM 调用
+      graceCall: { enabled: false },
     }));
 
     expect(mockStreamLLM).toHaveBeenCalledTimes(3);

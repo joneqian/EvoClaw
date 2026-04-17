@@ -619,6 +619,17 @@ export interface QueryLoopConfig {
 
   // ─── Incremental Persistence (可选: 流式持久化) ───
   readonly persister?: import('./incremental-persister.js').IncrementalPersister;
+
+  // ─── Grace Call (可选: 预算耗尽时生成收尾摘要) ───
+  /**
+   * 预算耗尽时（maxTurns / token_budget / max_tokens_exhausted）发起一次额外 LLM
+   * 调用生成 ≤300 字的中文收尾摘要，避免 fullResponse 为空字符串。不扣预算，
+   * 不触发 tokenBudget 回调。Heartbeat/Cron/BOOT 等自主会话应显式 disable。
+   */
+  readonly graceCall?: {
+    readonly enabled?: boolean;   // 默认 true
+    readonly maxTokens?: number;  // 默认 512
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

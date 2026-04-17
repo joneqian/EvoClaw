@@ -1032,6 +1032,9 @@ export function createChatRoutes(
             return callLLMSecondaryCached(configManager, 'tool_summary', user, { maxTokens: 256 });
           }
         : undefined,
+      // Grace Call（M3-T1）：普通会话启用；自主会话（heartbeat/cron/boot）禁用，
+      // 避免无人值守场景每次预算耗尽都多一次 LLM 调用浪费 token。
+      graceCallEnabled: !isAutonomousSession,
       // Compact 后置钩子: 持久化压缩边界 + 摘要
       postCompactHook: async (trigger, tokensBefore, tokensAfter, summaryText) => {
         try {

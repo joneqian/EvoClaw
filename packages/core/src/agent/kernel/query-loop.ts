@@ -46,6 +46,7 @@ import { Feature } from '../../infrastructure/feature.js';
 import { classifyApiError, isRecoverableInLoop, isFallbackTrigger, isAbortLike, MAX_OUTPUT_RECOVERY_MESSAGE, MAX_OUTPUT_RECOVERY_LIMIT } from './error-recovery.js';
 import { PromptCacheMonitor } from './prompt-cache-monitor.js';
 import { buildMessageLookups, mapToToolCallRecords as mapToolCalls, createToolUseSummaryMessage, stripThinkingBlocks, ensureToolResultPairing } from './message-utils.js';
+import { maybeGraceCall } from './grace-call.js';
 import type { ToolCallRecord, RuntimeEvent } from '../types.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
@@ -377,6 +378,18 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     };
   };
 
+  /**
+   * 预算耗尽退出前尝试发起一次 grace call（收尾摘要）。
+   * 触发时机：maxTurns / max_tokens_exhausted / token_budget_exhausted 三处。
+   * 失败/禁用/中止均吞错返回空字符串，不影响原退出语义。
+   */
+  const applyGraceCallAndBuild = async (reason: ExitReason): Promise<QueryLoopResult> => {
+    const tail = await maybeGraceCall(config, state, reason);
+    if (tail) fullResponse += tail;
+    exitReason = reason;
+    return buildResult();
+  };
+
   while (true) {
     // ─── 1. 中止检查 ───
     if (config.abortSignal?.aborted) {
@@ -385,9 +398,8 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       return buildResult();
     }
     if (state.turnCount >= config.maxTurns) {
-      exitReason = 'max_turns';
       log.info(`达到最大 turn 数 (${config.maxTurns})，退出`);
-      return buildResult();
+      return applyGraceCallAndBuild('max_turns');
     }
 
     // ─── 2. 上下文压缩 (turn > 0 时检查) ───
@@ -587,9 +599,8 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       }
 
       if (roundResult.stopReason === 'max_tokens') {
-        exitReason = 'max_tokens_exhausted';
         log.info(`max_output_tokens 恢复次数用尽 (${MAX_OUTPUT_RECOVERY_LIMIT})`);
-        return buildResult();
+        return applyGraceCallAndBuild('max_tokens_exhausted');
       }
 
       // ─── 5c. Token Budget 连续执行 (参考 Claude Code TOKEN_BUDGET feature) ───
@@ -608,9 +619,8 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
           continue;
         }
         if (decision.action === 'stop' && decision.stopReason === 'budget_exhausted') {
-          exitReason = 'token_budget_exhausted';
           log.info('Token Budget 耗尽');
-          return buildResult();
+          return applyGraceCallAndBuild('token_budget_exhausted');
         }
       }
 

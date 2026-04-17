@@ -10,17 +10,19 @@ const SRC_DIR = path.resolve(import.meta.dirname, '..', '..');
 
 /** 层级依赖规则 — key 可以依赖 value 中的层 */
 const LAYER_RULES: Record<string, string[]> = {
-  infrastructure: [],
-  memory: ['infrastructure'],
-  provider: ['infrastructure'],
-  rag: ['memory', 'infrastructure'],
-  skill: ['infrastructure'],
-  routing: ['infrastructure'],
-  channel: ['infrastructure'],
-  scheduler: ['agent', 'infrastructure'],
-  agent: ['memory', 'provider', 'bridge', 'infrastructure'],
+  // infrastructure 可以使用 security 工具（如 unicode-detector / 专项 sanitizer）做加固，
+  // 反向依赖（security → infrastructure）仍然禁止，避免循环
+  infrastructure: ['security'],
+  memory: ['infrastructure', 'security'],
+  provider: ['infrastructure', 'security'],
+  rag: ['memory', 'infrastructure', 'security'],
+  skill: ['infrastructure', 'security'],
+  routing: ['infrastructure', 'security'],
+  channel: ['infrastructure', 'security'],
+  scheduler: ['agent', 'infrastructure', 'security'],
+  agent: ['memory', 'provider', 'bridge', 'infrastructure', 'security'],
   context: ['agent', 'memory', 'provider', 'bridge', 'routing', 'evolution', 'skill', 'security', 'infrastructure'],
-  evolution: ['infrastructure'],
+  evolution: ['infrastructure', 'security'],
   security: [],
   // routes/ and bridge/ are unrestricted (they wire everything together)
 };

@@ -26,6 +26,8 @@ import { parseModelRef, safeParseConfig } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME, BRAND } from '@evoclaw/shared';
 import { deepMerge, applyEnforced, mergeLayers } from './config-merge.js';
 import { runConfigMigrations } from './config-migration.js';
+import { writeCredentialFile } from './credential-file.js';
+import { sanitizeCredentials } from './credential-sanitizer.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('config');
@@ -110,6 +112,12 @@ export class ConfigManager {
         result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; '));
     }
 
+    // 凭证 ASCII 清理（处理 PDF 复制全角字母 / 同形字 / Unicode 残余导致的认证失败）
+    const { sanitized, warnings: sanitizeWarnings } = sanitizeCredentials(merged);
+    for (const w of sanitizeWarnings) {
+      log.warn(`已清理凭证非 ASCII 字符: ${w}`);
+    }
+
     const layerInfo = [
       Object.keys(managed).length > 0 ? 'managed' : null,
       Object.keys(dropIn).length > 0 ? 'drop-in' : null,
@@ -117,7 +125,7 @@ export class ConfigManager {
     ].filter(Boolean).join(' + ');
     log.info(`配置加载完成 (${layerInfo})`);
 
-    return merged;
+    return sanitized;
   }
 
   /** 加载管理员配置 + enforced 列表 */
@@ -180,10 +188,8 @@ export class ConfigManager {
         // 自动执行配置迁移
         const { config: migrated, changed } = runConfigMigrations(parsed);
         if (changed) {
-          // 迁移后保存（原子写入用户配置）
-          const dir = path.dirname(this.configPath);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(this.configPath, JSON.stringify(migrated, null, 2), 'utf-8');
+          // 迁移后保存（原子写入用户配置 + 强制 0o600 权限）
+          writeCredentialFile(this.configPath, JSON.stringify(migrated, null, 2));
         }
 
         return migrated as EvoClawConfig;
@@ -194,14 +200,9 @@ export class ConfigManager {
     return {};
   }
 
-  /** 保存用户配置到磁盘（只写用户层，不动 managed 和 drop-in） */
+  /** 保存用户配置到磁盘（只写用户层，不动 managed 和 drop-in；强制 0o600 权限） */
   private saveToDisk(): void {
-    const dir = path.dirname(this.configPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    // 保存的是用户层配置（userRaw 的更新版）
-    fs.writeFileSync(this.configPath, JSON.stringify(this.userRaw, null, 2), 'utf-8');
+    writeCredentialFile(this.configPath, JSON.stringify(this.userRaw, null, 2));
     // 重新合并（enforced 可能覆盖用户写入的值）
     this.config = this.loadMergedConfig();
   }

@@ -12,6 +12,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './mcp-config.js';
 import type { McpPromptInfo } from './mcp-prompt-bridge.js';
+import { buildMcpEnv } from './mcp-env.js';
+import { wrapWithWarningIfSuspicious } from '../security/prompt-injection-detector.js';
 import { createLogger } from '../infrastructure/logger.js';
 
 const log = createLogger('mcp-client');
@@ -72,10 +74,18 @@ export class McpClient {
       let transport: StdioClientTransport | StreamableHTTPClientTransport;
       if (this.config.type === 'stdio') {
         if (!this.config.command) throw new Error('stdio 类型需要 command 字段');
+        const { env, stripped } = buildMcpEnv(
+          process.env,
+          this.config.env,
+          this.config.envPassthrough,
+        );
+        if (stripped.length > 0) {
+          log.warn(`MCP "${this.config.name}" envPassthrough 中含敏感变量被剥离: ${stripped.join(', ')}`);
+        }
         transport = new StdioClientTransport({
           command: this.config.command,
           args: this.config.args,
-          env: { ...process.env, ...this.config.env } as Record<string, string>,
+          env,
         });
       } else if (this.config.type === 'sse') {
         if (!this.config.url) throw new Error('sse 类型需要 url 字段');
@@ -158,7 +168,7 @@ export class McpClient {
     try {
       const result = await this.client.getPrompt({ name: promptName, arguments: args });
       // 拼接 prompt messages 的文本内容
-      return (result.messages ?? [])
+      const joined = (result.messages ?? [])
         .map(m => {
           if (typeof m.content === 'string') return m.content;
           if (m.content && typeof m.content === 'object' && 'text' in m.content) return (m.content as { text: string }).text;
@@ -166,6 +176,8 @@ export class McpClient {
         })
         .filter(Boolean)
         .join('\n\n');
+      // Prompt 注入扫描：可疑则包 <warning> 标签让 LLM 自行判断（不杀进程）
+      return wrapWithWarningIfSuspicious(joined, `MCP server "${this.config.name}" prompt "${promptName}"`);
     } catch (err) {
       return `MCP prompt 获取失败: ${err instanceof Error ? err.message : String(err)}`;
     }

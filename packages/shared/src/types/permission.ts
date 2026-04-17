@@ -17,8 +17,9 @@ export type PermissionScope = 'once' | 'session' | 'always' | 'deny';
  * default:    标准确认模式（ask→提示用户）
  * strict:     严格模式（ask→自动 deny，适合生产环境/无人值守）
  * permissive: 宽松模式（工作区内 file_write/shell 自动放行，工作区外保持 ask）
+ * smart:      智能模式（ask→调用辅助 LLM 评估风险，approve/deny/escalate 三档自动决策）
  */
-export type PermissionMode = 'default' | 'strict' | 'permissive';
+export type PermissionMode = 'default' | 'strict' | 'permissive' | 'smart';
 
 /** 权限模式元信息（供 UI 展示） */
 export const PERMISSION_MODE_META: Record<PermissionMode, { label: string; description: string }> = {
@@ -33,6 +34,10 @@ export const PERMISSION_MODE_META: Record<PermissionMode, { label: string; descr
   permissive: {
     label: '宽松模式',
     description: '工作区内的文件修改和命令执行自动放行，适合开发测试',
+  },
+  smart: {
+    label: '智能模式',
+    description: '辅助 LLM 评估每次工具调用的风险，明显安全/危险的自动决策，边界情况升级人工确认',
   },
 };
 
@@ -55,6 +60,7 @@ export type PermissionDecisionReason =
   | { type: 'message_tool'; tool: string }
   | { type: 'preapproved_domain'; url: string }
   | { type: 'denial_limit'; count: number; limit: number }
+  | { type: 'smart_approve'; decision: 'approve' | 'deny' | 'escalate'; reason: string }
   | { type: 'other'; reason: string };
 
 /** 权限授予记录 */

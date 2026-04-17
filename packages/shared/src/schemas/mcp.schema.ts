@@ -11,6 +11,7 @@ export const mcpServerConfigSchema = z.object({
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   env: z.record(z.string(), z.string()).optional(),
+  envPassthrough: z.array(z.string()).optional(),
   url: z.string().optional(),
   headers: z.record(z.string(), z.string()).optional(),
   enabled: z.boolean().optional(),

@@ -27,6 +27,7 @@ const DENIAL_LIMITS: Record<PermissionMode, number> = {
   default: 5,
   strict: 3,
   permissive: 8,
+  smart: 6, // 比 default 略宽，因为 smart 模式 LLM 已过滤明显危险
 };
 
 export class DenialTracker {

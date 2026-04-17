@@ -14,6 +14,7 @@ import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { ParsedExtensionPack, ExtensionPackInstallResult } from '@evoclaw/shared';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import { mergeSecurityPolicies } from '../security/extension-security.js';
+import { scanPackage, extractPackageFromNpxArgs, isNpmRunner } from '../security/osv-scanner.js';
 import { refreshSkillCache } from '../context/plugins/tool-registry.js';
 import { registerInstalledPack } from './pack-registry.js';
 import { createLogger } from '../infrastructure/logger.js';
@@ -93,6 +94,26 @@ export async function installExtensionPack(
         warnings.push(`MCP 服务器 "${server.name}" 已存在，跳过`);
         continue;
       }
+
+      // OSV 恶意软件预检（仅 npx/bunx 启动的 npm 包）
+      if (server.command && isNpmRunner(server.command)) {
+        const pkg = extractPackageFromNpxArgs(server.args);
+        if (pkg) {
+          const scan = await scanPackage(pkg.name, 'npm', pkg.version);
+          if (scan.malicious) {
+            warnings.push(
+              `MCP 服务器 "${server.name}" 拒绝安装：包 "${pkg.name}" 被 OSV 标记为恶意软件 (${scan.maliciousIds.join(', ')})`,
+            );
+            log.error(`OSV 拒绝安装: ${pkg.name} (${scan.maliciousIds.join(', ')})`);
+            continue;
+          }
+          if (!scan.scanned) {
+            warnings.push(`MCP 服务器 "${server.name}" OSV 扫描失败: ${scan.error}（已放行，请手动审计）`);
+            log.warn(`OSV 扫描失败 for ${pkg.name}: ${scan.error}`);
+          }
+        }
+      }
+
       mcpServers[server.name] = server;
       installedMcpServers.push(server.name);
       log.info(`安装 MCP 服务器配置 "${server.name}"`);

@@ -10,7 +10,7 @@
 
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import {
-  validateWebURL,
+  validateWebURLAsync,
   upgradeToHttps,
   fetchWithSafeRedirects,
 } from '../security/web-security.js';
@@ -59,8 +59,8 @@ export function createWebFetchTool(opts: WebFetchToolOptions = {}): ToolDefiniti
 
       if (!rawUrl) return '错误：缺少 url 参数';
 
-      // ── 1. URL 安全校验 ──
-      const validation = validateWebURL(rawUrl);
+      // ── 1. URL 安全校验（含 DNS 解析后的 IP 复检，防 DNS rebinding） ──
+      const validation = await validateWebURLAsync(rawUrl);
       if (!validation.ok) {
         return `错误：${validation.reason}`;
       }

@@ -31,6 +31,11 @@ import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { createWebSearchTool } from '../tools/web-search.js';
 import { createWebFetchTool } from '../tools/web-fetch.js';
 import { createSecondaryLLMCallFn } from '../agent/llm-client.js';
+import {
+  evaluateRisk as smartEvaluateRisk,
+  shouldEvaluate as smartShouldEvaluate,
+  SmartDecisionCache,
+} from '../security/smart-approve.js';
 import { createImageTool } from '../tools/image-tool.js';
 import { createPdfTool } from '../tools/pdf-tool.js';
 import { createApplyPatchTool } from '../tools/apply-patch.js';
@@ -890,8 +895,39 @@ export function createChatRoutes(
     // 破坏性操作待发通知（permissionInterceptFn 设置，onEvent 消费）
     let pendingDestructive: { toolName: string; category?: string; warning: string } | null = null;
 
+    // smart-approve session 缓存（一次 chat 请求内复用决策，省 LLM 调用）
+    const smartCache = new SmartDecisionCache();
+
     const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
       const result = interceptor.intercept(agentId, toolName, args);
+
+      // Smart Approve：mode === 'smart' 且静态分析需要确认时调辅助 LLM 评估
+      if (
+        !result.allowed &&
+        result.requiresConfirmation &&
+        interceptor.getMode() === 'smart' &&
+        smartShouldEvaluate(toolName) &&
+        configManager
+      ) {
+        const llmCall = createSecondaryLLMCallFn(configManager);
+        const decision = await smartEvaluateRisk(
+          { toolName, params: args, recentUserMessage: messages[messages.length - 1]?.content },
+          llmCall,
+          smartCache,
+        );
+        if (decision.decision === 'approve') {
+          log.info(`[smart-approve] approve ${toolName}: ${decision.reason}`);
+          denialTracker.recordSuccess();
+          return null; // 放行
+        }
+        if (decision.decision === 'deny') {
+          log.warn(`[smart-approve] deny ${toolName}: ${decision.reason}`);
+          denialTracker.recordDenial();
+          return `[智能评估拒绝] ${decision.reason}`;
+        }
+        // escalate → 落到下方原有 ask 流程
+        log.info(`[smart-approve] escalate ${toolName}: ${decision.reason}`);
+      }
 
       if (!result.allowed && result.requiresConfirmation) {
         // 拒绝追踪

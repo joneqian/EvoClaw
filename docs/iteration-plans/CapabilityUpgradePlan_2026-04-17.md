@@ -402,3 +402,37 @@
 - 连接/状态管理类后端能力（MCP server、Channel、Cron、Provider）
 - 自动修复/清理行为（凭证 sanitize、模型降级、context compaction）
 - 新资源类型（MCP prompts、bundled skills、clawhub 来源）的徽章与筛选
+
+### 7.2 能力提升评估（强制）
+
+> **背景**: 仅写"做什么（改哪些文件、加哪些接口）"不够；开发时容易跑偏 —— 把"接线已有能力"做成"重写"、把"注入配置"做成"新建抽象层"。必须显式声明"改完后每个能力从什么状态变成什么状态"，才能锁住目标。
+
+每个模块的详细计划**必须**在 Context 节（紧随"前端影响"之后）为**每个子任务**列出三栏：
+
+| 字段 | 说明 |
+|---|---|
+| **Before** | 当前状态 / 痛点（可量化或场景化，如"5 次抖动后永久 error"、"用户永远看不到 `mcp:*:*`"） |
+| **After** | 模块落地后的**可验证**状态（对应测试断言、日志输出、UI 可见性、API 返回） |
+| **机制** | 具体文件:行号 + 关键函数 + 数据流链路；明确标注"已有 → 复用"vs"新增"，避免误解为重写 |
+
+**模板示例（M4 T1 实际应用）**:
+
+```markdown
+**T1 能力提升评估**:
+- Before: `<available_skills>` 永远无 `mcp:*:*` 条目；MCP prompts 已拉取但用户不可调用
+- After: MCP server 的 prompts 100% 自动作为 `mcp:{server}:{name}` 出现在技能目录；
+         `invoke_skill({ skill: "mcp:foo:bar" })` 执行路由命中 handleMcpPrompt
+- 机制: chat.ts:585 `createToolRegistryPlugin({ mcpPromptsProvider })` 注入（**新增 1 个回调 + 1 行 import**）
+        → tool-registry.ts:127-134 `beforeTurn` 已有合并逻辑（**复用**）
+        → skill-tool.ts:156 `handleMcpPrompt` 已有执行路由（**复用**）
+```
+
+**判定是否合格**:
+1. Before / After 都是可验证的，不写模糊的"提升可靠性"、"改善体验"
+2. 机制栏列出具体文件:行号 + 函数名，标注"已有 → 复用"或"新增"，让开发者不偏离已有基建去重写
+3. 每个子任务独立评估，不混在一起写"整体提升 XX%"
+
+**PR review 必问**:
+1. "After" 的状态是否真被这次 PR 达成？（测试/日志/UI 有证据）
+2. "机制" 列出的文件是否确实被改了？有没有偏离 plan 引入新文件/新抽象？
+3. "Before / After" 差异能不能直接抄进 release note？（能抄说明写得够具体）

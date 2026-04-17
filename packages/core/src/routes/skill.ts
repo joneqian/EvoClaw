@@ -3,16 +3,49 @@
  */
 
 import { Hono } from 'hono';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs';
 import { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import { SkillInstaller } from '../skill/skill-installer.js';
 import { getLoadedSkills, refreshSkillCache } from '../context/plugins/tool-registry.js';
 import type { SkillSource } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import type { SkillInstallPolicyOverride } from '../skill/install-policy.js';
+import { listManifestsBySource } from '../skill/install-manifest.js';
+
+/** 简易 semver-like 版本比较：返回负数 = a < b，0 = 相等，正数 = a > b */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((s) => parseInt(s, 10));
+  const pb = b.split('.').map((s) => parseInt(s, 10));
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return 0; // 非数字段放弃比较
+    if (x !== y) return x - y;
+  }
+  return 0;
+}
+
+/** Skill 路由选项 */
+export interface SkillRoutesOptions {
+  skillsBaseDir?: string;
+  /** M5 T2: Skill 安装策略矩阵覆盖提供者（企业 IT 配置） */
+  getPolicyOverride?: () => SkillInstallPolicyOverride | undefined;
+}
 
 /** 创建 Skill 管理路由 */
-export function createSkillRoutes(skillsBaseDir?: string): Hono {
+export function createSkillRoutes(
+  skillsBaseDirOrOptions?: string | SkillRoutesOptions,
+): Hono {
+  const opts: SkillRoutesOptions =
+    typeof skillsBaseDirOrOptions === 'string'
+      ? { skillsBaseDir: skillsBaseDirOrOptions }
+      : (skillsBaseDirOrOptions ?? {});
   const app = new Hono();
-  const discoverer = new SkillDiscoverer(skillsBaseDir);
-  const installer = new SkillInstaller(skillsBaseDir);
+  const discoverer = new SkillDiscoverer(opts.skillsBaseDir);
+  const installer = new SkillInstaller(opts.skillsBaseDir, opts.getPolicyOverride);
 
   /** GET /browse — 浏览技能列表（支持分类/排序/分页/搜索） */
   app.get('/browse', async (c) => {
@@ -79,6 +112,66 @@ export function createSkillRoutes(skillsBaseDir?: string): Hono {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 400);
+    }
+  });
+
+  /** POST /check-updates — 查询 ClawHub 来源的已安装 Skill 是否有新版 */
+  app.post('/check-updates', async (c) => {
+    try {
+      // 收集候选 manifest：用户级目录 + 所有 agent 级目录
+      const userDir = opts.skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+      const agentsRoot = path.join(userDir, '..', 'agents');
+      const roots: string[] = [userDir];
+      if (fs.existsSync(agentsRoot)) {
+        for (const e of fs.readdirSync(agentsRoot, { withFileTypes: true })) {
+          if (e.isDirectory()) {
+            roots.push(path.join(agentsRoot, e.name, 'workspace', 'skills'));
+          }
+        }
+      }
+
+      const clawhubManifests = listManifestsBySource(roots, 'clawhub');
+      if (clawhubManifests.length === 0) {
+        return c.json({ updates: [] });
+      }
+
+      // 批量并发查询 ClawHub（30s 全局超时兜底）
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const results = await Promise.allSettled(
+          clawhubManifests.map(async (m) => {
+            const info = await discoverer.getSkillInfo(m.manifest.slug);
+            return { manifest: m, info };
+          }),
+        );
+
+        const updates: Array<{
+          name: string;
+          slug: string;
+          installedVersion?: string;
+          latestVersion: string;
+        }> = [];
+        for (const r of results) {
+          if (r.status !== 'fulfilled' || !r.value.info?.version) continue;
+          const installedVer = r.value.manifest.manifest.installedVersion ?? '0.0.0';
+          const latestVer = r.value.info.version;
+          if (compareVersions(installedVer, latestVer) < 0) {
+            updates.push({
+              name: r.value.manifest.skillName,
+              slug: r.value.manifest.manifest.slug,
+              installedVersion: r.value.manifest.manifest.installedVersion,
+              latestVersion: latestVer,
+            });
+          }
+        }
+        return c.json({ updates });
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ updates: [], error: message }, 200);
     }
   });
 

@@ -93,11 +93,39 @@ export interface SkillSecurityReport {
 
 /** 安全分析发现项 */
 export interface SkillSecurityFinding {
-  type: 'eval' | 'function_constructor' | 'fetch' | 'fs_write' | 'shell_exec' | 'env_access';
+  type:
+    | 'eval'
+    | 'function_constructor'
+    | 'fetch'
+    | 'fs_write'
+    | 'shell_exec'
+    | 'env_access'
+    /** 访问系统级凭据存储（macOS Keychain / Windows Credential Vault / Linux libsecret 等） */
+    | 'keystore'
+    /** 疑似隐蔽外传（base64/hex 编码拼 URL、图片 beacon、模板字面量注入查询串等） */
+    | 'exfiltration'
+    /** 疑似 DNS 隧道（变量插值的 dns.resolve / nslookup / dig） */
+    | 'dns_tunnel'
+    /** 疑似持久化（写入 shell rc / crontab / launchd / systemd user unit） */
+    | 'persistence';
   file: string;
   line: number;
   snippet: string;
   severity: 'low' | 'medium' | 'high';
+}
+
+/** 安装策略决策
+ * - auto: 直接允许（bundled/local 或 clawhub+low 等可信场景）
+ * - require-confirm: 允许但要求用户显式确认"我理解风险"
+ * - block: 无条件拒绝（一般是 high risk 或被管理员黑名单）
+ */
+export type SkillInstallPolicy = 'auto' | 'require-confirm' | 'block';
+
+/** 安装策略附带的原因（UI 展示用） */
+export interface SkillInstallPolicyDecision {
+  policy: SkillInstallPolicy;
+  /** 人类可读的原因（中文），如"来自第三方 GitHub 仓库，未经审核" */
+  reason: string;
 }
 
 /** Skill 安装准备结果 */
@@ -110,6 +138,8 @@ export interface SkillPrepareResult {
   gateResults?: SkillGateResult[];
   /** 临时目录路径 */
   tempPath: string;
+  /** M5 T2: 安装策略决策（由 decideInstallPolicy(source, riskLevel, override) 得出） */
+  installPolicy?: SkillInstallPolicyDecision;
 }
 
 /** 门控检查结果 */

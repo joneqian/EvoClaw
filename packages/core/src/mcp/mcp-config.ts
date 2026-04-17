@@ -21,8 +21,10 @@ export interface McpServerConfig {
   command?: string;
   /** stdio: 命令参数 */
   args?: string[];
-  /** stdio: 环境变量 */
+  /** stdio: 环境变量（用户显式为该 server 设置，会原样传入子进程） */
   env?: Record<string, string>;
+  /** stdio: 用户显式放行的额外 env 变量名白名单（敏感变量仍会被剥离） */
+  envPassthrough?: string[];
   /** sse: 远程 URL */
   url?: string;
   /** sse: 请求 headers */

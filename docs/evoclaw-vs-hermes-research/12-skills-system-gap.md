@@ -977,3 +977,81 @@ model: anthropic/claude-opus   # 声明用 Opus 跑深度研究
 ---
 
 **本章完成**。核心发现：EvoClaw Skills 系统在**生态丰富度**（5 来源）、**注入模型**（Tier 1 XML + Tier 2 按需）、**执行模式分离**（inline/fork）、**模型降级**（fork 时 skill 声明 model）、**MCP 桥接**（自动把 prompts 注册为技能）、**企业扩展包**（evoclaw-pack.json）、**统一安全策略**（allowlist/denylist/disabled 覆盖 Skills + MCP）、**门控系统**（bins/env/os 三类）8 个维度显著反超 hermes；但缺失 **agent 自主创建 skill**（hermes 的 5+ tool-call / 错误恢复 / 用户修正触发机制是自进化核心能力）、**manifest v2 用户编辑保护**（未来 Hub 更新流程的基础设施）、**更新/版本管理**（无版本比对 / 无回滚）3 个维度。后续 P0 建议补齐威胁扫描模式库 + trust level 分级 + 版本比对。P1 核心是"agent 自主创建"补齐，与"自进化 AI 伴侣"定位直接相关。
+
+---
+
+## 7. 专题：Skill 自进化机制三方对比（SkillClaw / Hermes / EvoClaw）
+
+> **额外对标**: SkillClaw (AMAP-ML, arXiv 2604.08377, 2026-04) — 多用户集体技能进化研究框架
+> **设计方案**: [`docs/architecture/SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md)（基于本对比的 4 Phase 渐进落地方案）
+
+### 7.1 背景
+
+Agent 的 Skill 传统靠人工编写和维护，无法随使用量自动扩展。**Skill 自进化**是指系统从运行数据中自动学习并改进技能定义的能力。SkillClaw（阿里高德 ML 团队）在此方向发表了论文级成果，与 Hermes 的工程级实现形成互补视角。
+
+### 7.2 三方概况
+
+**SkillClaw** — 核心创新是**集体技能进化**。聚合多用户交互轨迹，用 LLM 开放式推理识别缺陷并生成改进（Refine/Create/Skip 三元决策）。"白天收集-晚上进化"批处理循环，WildClawBench 88.41% 相对改进。基于 OpenClaw SKILL.md 格式。
+
+**Hermes** — **个体记忆化**模式。Agent 通过 `skill_manage` 工具自主创建/编辑 SKILL.md，触发条件嵌入系统 prompt（≥5 tool call / 试错成功 / 用户纠正）。Manifest v2 保护用户修改 + skills_guard 安全扫描 + 4 级信任。RL 骨架有但未与 skill 系统集成。
+
+**EvoClaw** — **尚无自动进化**，但基础设施最好：5 种来源 + Tier 1/2 注入 + fork 模式 + NameSecurityPolicy + L0/L1/L2 三层记忆（含 skill 类别）+ memory_feedback 表 + Cron/Heartbeat 调度 + ClawHub API。
+
+### 7.3 逐维度对比
+
+| # | 维度 | SkillClaw | Hermes | EvoClaw |
+|---|------|-----------|--------|---------|
+| 1 | **进化范式** | LLM 推理 + 轨迹聚合（群体） | LLM 自觉 + prompt 引导（个体） | 无 |
+| 2 | **信号来源** | PRM/ORM 奖励模型（量化） | Agent 自判（定性） | — |
+| 3 | **进化循环** | 批处理（定时"晚上阶段"） | 实时（会话内触发） | — |
+| 4 | **Skill 格式** | SKILL.md (OpenClaw) | SKILL.md (YAML+MD) | SKILL.md (自研兼容) |
+| 5 | **评估机制** | WildClawBench 60 任务 × 6 域 | 无标准化基准 | 无 |
+| 6 | **知识转移** | 跨用户自动同步 | 单用户本地 | ClawHub 手动上/下载 |
+| 7 | **安全扫描** | 未明确 | skills_guard 8 类威胁 | skill-gate + NameSecurityPolicy |
+| 8 | **版本管理** | 进化轮次追踪 | Manifest v2 (hash + 用户保护) | frontmatter version（无自动管理）|
+| 9 | **保守编辑** | 明确原则 | patch (fuzzy match) | — |
+| 10 | **与记忆关联** | 轨迹→摘要→技能改进（单向） | 记忆与技能分离 | L0/L1/L2 skill 类别 + memory_feedback |
+
+### 7.4 核心判定
+
+- **SkillClaw** 在进化机制的完备性和科学性上领先（量化评估 + 群体智慧 + 保守编辑），但安全和生产化不足
+- **Hermes** 在工程落地和安全保障上领先（Manifest v2 + 威胁扫描 + 即时生效），但缺乏量化评估
+- **EvoClaw** 在**基础设施就绪度**上领先（L0/L1/L2 记忆天然存储 skill 使用经验 + memory_feedback 表 + Cron/Heartbeat 调度 + ClawHub API），是三方中最适合**融合两家所长**的平台
+
+### 7.5 EvoClaw 可借鉴点
+
+**从 SkillClaw**:
+1. 批处理进化循环（利用 `cron-runner.ts` 定期触发）
+2. Refine/Create/Skip 三元决策框架
+3. 保守编辑原则（仅改有证据的缺陷部分）
+4. 轨迹摘要（复用 `session-summarizer.ts`）
+5. PRM/ORM 评估（扩展 `memory_feedback` 表为 skill 反馈）
+
+**从 Hermes**:
+1. Manifest v2 用户修改保护（hash 比对 + bundled 更新不覆盖用户改动）
+2. 系统 prompt 嵌入触发条件（Agent 自主判断创建时机）
+3. 安全扫描 + 信任分级（扩展 `skill-gate.ts`）
+4. patch 操作（fuzzy match 局部修改）
+5. create 后即时生效（清理缓存 + 重新扫描）
+
+**EvoClaw 独有优势**:
+1. L0/L1/L2 记忆的 `skill` 类别天然存储使用经验，L1 摘要可直接作为进化输入
+2. `memory_feedback` 表（Sprint 15.12 已建）可无缝扩展为 skill 反馈存储
+3. ClawHub API（`/api/v1/search` + `/api/v1/download`）可扩展为反馈回传 + 进化同步
+4. NameSecurityPolicy 确保进化产生的新技能同样受统一安全策略管控
+
+### 7.6 参考文献
+
+| 资源 | 链接 |
+|------|------|
+| SkillClaw 论文 | arXiv 2604.08377 |
+| SkillClaw GitHub | https://github.com/AMAP-ML/SkillClaw |
+| WildClawBench | https://github.com/InternLM/WildClawBench |
+| OpenClaw Skill 文档 | https://docs.openclaw.ai/tools/skills |
+| Hermes skill_manager_tool.py | `hermes-agent/tools/skill_manager_tool.py:510-674` |
+| Hermes skills_sync.py | `hermes-agent/tools/skills_sync.py:155-280` |
+| EvoClaw session-summarizer.ts | `packages/core/src/memory/session-summarizer.ts` |
+| EvoClaw memory-feedback-store.ts | `packages/core/src/memory/memory-feedback-store.ts` |
+| EvoClaw cron-runner.ts | `packages/core/src/scheduler/cron-runner.ts` |
+| EvoClaw heartbeat-manager.ts | `packages/core/src/scheduler/heartbeat-manager.ts` |
+| EvoClaw 设计方案 | [`docs/architecture/SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md) |

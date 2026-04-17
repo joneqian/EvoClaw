@@ -96,14 +96,22 @@
 | 33 | 发布流程 | 33-release-process.md | [`33-release-process-gap.md`](./33-release-process-gap.md) | ✅ Wave 2-11 | 🔴 整体落后（13 🔴 / 1 🟡 / 1 🟢，完整缺失发布基础设施，反超点为多品牌参数化隔离） |
 | 34 | 复刻路线图 | 34-rebuild-roadmap.md | [`34-rebuild-roadmap-gap.md`](./34-rebuild-roadmap-gap.md) | ✅ Wave 3 | 🟡 聚合卷：EvoClaw 无需复刻 hermes，选择性补齐 21 项 P0（~4-6 人周）+ 37 项反超全景 |
 
-**总计**: 37 份文档（34 章节 + 包含 19a-f 的 6 份平台 + 全局索引），当前完成 1 份样板。
+**总计**: 40 份差距文档 + README + PLAN = 42 份 md，全部完成。
 
-## 综合结论索引（待全部完成后汇总）
+## 专题研究
 
-完成所有差距文档后，此处将生成：
-- 全维度统计表（🔴 / 🟡 / 🟢 计数）
-- P0/P1/P2 改进优先级聚合
-- EvoClaw 反超能力全览
+| 主题 | 位置 | 说明 |
+|------|------|------|
+| Skill 自进化三方对比 | [`12-skills-system-gap.md §7`](./12-skills-system-gap.md#7-专题skill-自进化机制三方对比skillclaw--hermes--evoclaw) | SkillClaw (AMAP-ML) vs Hermes vs EvoClaw，10 维度对比 |
+
+关联设计文档: [`docs/architecture/SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md)（EvoClaw Skill 自进化系统设计，4 Phase 渐进方案）
+
+## 综合结论索引
+
+已在 [`34-rebuild-roadmap-gap.md`](./34-rebuild-roadmap-gap.md) 中完成聚合：
+- 全维度统计表（§2）：9 🟢 / 16 🟡 / 14 🔴
+- P0 改进优先级聚合（§3）：21 项，~4-6 人周
+- EvoClaw 反超能力全览（§5）：~37 项核心反超
 
 ## 元数据
 

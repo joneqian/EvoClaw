@@ -126,21 +126,40 @@ pnpm test                              ← vitest workspace（core + shared + sc
 
 ## 4. 分支保护（一次性手工配置）
 
-CI 跑完只是**显示状态**，不会**阻塞合并**。要让 PR 合并按钮在 CI 红时变灰：
+CI 跑完只是**显示状态**，不会**阻塞合并**。要让 PR 合并按钮在 CI 红时变灰，配置 **Branch Ruleset**（GitHub 主推的新方式，比 classic branch protection 更灵活）。
 
-1. 浏览器打开 `https://github.com/<owner>/<repo>/settings/branches`
-2. **Add branch protection rule**
-3. **Branch name pattern**: `main`
-4. 勾选：
-   - ✅ **Require status checks to pass before merging**
-     - 输入框搜索 `Test / Lint + Typecheck + Test`，勾选（CI 跑过至少一次后才出现在列表里）
-     - ✅ Require branches to be up to date before merging（推荐）
-   - ✅ **Require a pull request before merging**
-     - ✅ Require approvals: 1（团队协作时）
-   - ✅ **Do not allow bypassing the above settings**（防止管理员误操作）
-5. **Save changes**
+> ⚠️ **前置**：先确保 GHA 至少绿跑过一次，否则 status check 列表里搜不到。
 
-> 第一次 CI 跑完之前，status check 列表为空 — 先 push 触发一次 CI 再来配置。
+### 4.1 操作步骤
+
+1. 打开 `https://github.com/<owner>/<repo>/settings/rules`
+2. 点 **Add branch ruleset**（不是 "Add classic branch protection rule"）
+3. 按下表填写：
+
+| 区段 | 字段 | 值 |
+|---|---|---|
+| Ruleset basics | **Ruleset Name** | `main-protection` |
+| Ruleset basics | **Enforcement status** | `Active` |
+| Targets | **Target branches** → Add target → Include by pattern | `main` |
+| Branch rules | ✅ **Restrict deletions** | 防止 main 被误删 |
+| Branch rules | ✅ **Require a pull request before merging** | Required approvals: `1`（单人项目可设 0） |
+| Branch rules | ✅ **Require status checks to pass** | 搜索勾选 `Test / Lint + Typecheck + Test`<br>勾选 "Require branches to be up to date before merging" |
+| Branch rules | ✅ **Block force pushes** | 防止 force push 覆盖 main |
+
+4. 滚到底点 **Create**
+
+### 4.2 验证生效
+
+- 开一个 PR 故意写 typecheck 失败的代码 → CI 红
+- PR 页面应显示 "Required statuses must pass before merging"
+- 合并按钮变灰，鼠标悬停显示 "Required check ... has not succeeded"
+- 修复后 push → CI 绿 → 合并按钮恢复
+
+### 4.3 Bypass（紧急情况）
+
+Ruleset 默认所有人受约束，包括管理员。如需临时绕过：
+- Ruleset 编辑页 → **Bypass list** → Add bypass → 选择 role / team
+- 仅紧急 hotfix 推荐使用，平时不应配置任何 bypass
 
 ---
 

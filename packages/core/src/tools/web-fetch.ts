@@ -67,19 +67,19 @@ export function createWebFetchTool(opts: WebFetchToolOptions = {}): ToolDefiniti
 
       if (!rawUrl) return '错误：缺少 url 参数';
 
-      // ── 1. URL 安全校验（含 DNS 解析后的 IP 复检，防 DNS rebinding） ──
-      const validation = await validateWebURLAsync(rawUrl);
-      if (!validation.ok) {
-        return `错误：${validation.reason}`;
-      }
-
-      // ── 1.5 M8: 域名黑名单检查 ──
+      // ── 1. M8: 域名黑名单检查（前置于 DNS/SSRF — 策略拒绝优先） ──
       const matchedPattern = findMatchedDenylistPattern(rawUrl, getDenylist());
       if (matchedPattern) {
         return `错误：域名策略拒绝访问 "${rawUrl}"（命中黑名单模式 "${matchedPattern}"）`;
       }
 
-      // ── 2. HTTP → HTTPS 升级 ──
+      // ── 2. URL 安全校验（含 DNS 解析后的 IP 复检，防 DNS rebinding） ──
+      const validation = await validateWebURLAsync(rawUrl);
+      if (!validation.ok) {
+        return `错误：${validation.reason}`;
+      }
+
+      // ── 3. HTTP → HTTPS 升级 ──
       const url = upgradeToHttps(rawUrl);
 
       // ── 3. 缓存查询 ──

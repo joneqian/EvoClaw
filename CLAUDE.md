@@ -116,10 +116,10 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: 阶段 4 待启 — M7 Phase 1（Skill 记忆化）/ M8（会话隔离与环境安全）/ Sprint 16（企微 Channel 生产就绪）/ A3（Provider OAuth device code flow）四选一，详见 `docs/iteration-plans/CapabilityUpgradePlan_2026-04-17.md`
-- **上一冲刺**: M6 Provider 增强 ✅ 已完成 — CredentialPool 多 key 轮换 + fallback + Profile 运行时切换（dev/prod 热重载）+ `/config/profile` REST + `CredentialPoolEditor` / `ProfileManager` 前端（PR #20，OAuth 延后至 §3.X A3）
-- **上上冲刺**: M5 Skills 生态增强 ✅ 已完成 — 威胁扫描模式库扩展（4 类）+ Trust 5 色徽章 + INSTALL_POLICY 决策矩阵 + ClawHub 版本比对 + `tool-registry.securityPolicy` 生产接线（PR #18）
-- **基建维护**: Vite 6→8 + `@vitejs/plugin-react` 4→6 升级（PR #23，配合 engines.node `>=22.12`），Dependabot 阻塞清零
+- **当前冲刺**: M9 Phase 1 暂停（T1/T2 ✅，T3-T5 等 Windows 环境；T6-T7 等 Apple 证书 + 阿里云账号）。下一步可选：M7 Phase 1 / M8 / Sprint 16 / A3（四选一）。详见 `docs/iteration-plans/CapabilityUpgradePlan_2026-04-17.md` + `M9-ReleaseDistribution-Plan.md`
+- **上一冲刺**: M9 Phase 1 T1/T2 ✅ 已完成（PR #26 + #28）— CHANGELOG 自动化（Bun 脚本解析 conventional commits + version-bump 集成 + CHANGELOG.md 初始化 245 commits）+ 多品牌构建抽象（brand.json.release 字段 + `${ENV_VAR}` 占位符 + 幂等性 + 构建治理：brand-apply §3 Rust 段退役 + brands/_base/ 模板 + postinstall + 13 项 gitignore + `docs/release/` 文档 2 份）
+- **上上冲刺**: M6 Provider 增强 ✅ 已完成 — CredentialPool 多 key 轮换 + fallback + Profile 运行时切换（dev/prod 热重载）+ `/config/profile` REST + `CredentialPoolEditor` / `ProfileManager` 前端（PR #20，OAuth 延后至 §3.X A3）
+- **更早**: M5 Skills 生态增强 ✅（PR #18）；Vite 6→8 升级 ✅（PR #23）；tsbuildinfo gitignore + 类型结构化收尾 ✅（PR #27）
 
 ## 协作准则
 

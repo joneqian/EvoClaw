@@ -9,6 +9,27 @@
 > - [`30-build-packaging-gap.md`](../evoclaw-vs-hermes-research/30-build-packaging-gap.md) §3.4 跨平台、§3.8 代码签名
 > - [`33-release-process-gap.md`](../evoclaw-vs-hermes-research/33-release-process-gap.md) §3.6 CHANGELOG、§3.7-§3.8 Release + auto-update
 
+## 执行状态（2026-04-20）
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| T1 CHANGELOG 自动化 | ✅ | PR #26 合并 |
+| T2 多品牌构建抽象 | ✅ | PR #26 核心 + PR #28 根治入库噪声（brands/_base/ 模板 + 13 项 gitignore + postinstall）|
+| **构建治理附加成果** | ✅ | brand-apply.mjs 退役 Rust crate 名改写段；Cargo.toml / main.rs 稳定化 |
+| T3 Windows 打包基础 | 🔒 暂停 | 等 Windows 本地/远程环境就绪 |
+| T4 GitHub Actions release.yml | 🔒 暂停 | 依赖 T3（CI matrix Windows runner 前需本地验证通过）|
+| T5 Auto-update 客户端骨架 | 🔒 暂停 | 建议与 T4 同 PR 起步（密钥 + endpoint placeholder + UI banner）|
+| T6 macOS 签名 + 公证 | 🔒 阻塞 | 等 Apple Developer Program 注册 + Developer ID 证书 |
+| T7 阿里云 OSS + 函数计算 | 🔒 阻塞 | 等阿里云账号 + bucket / 函数计算开通 |
+| T8 Windows 非 EV 签名 | 📋 延后 | 等首客户投诉 SmartScreen 再评估是否升 OV/EV 证书 |
+
+**剩余工作量**：Phase 1 余 3-4.5d（T3/T4/T5），Phase 2 余 3-4d（T6/T7/T8）。
+
+**恢复条件**：任一满足即可开始解锁的任务 —
+- Windows 环境就绪（本地 VM 或远程 runner）→ 解锁 T3 → T4/T5
+- Apple Developer 证书到手 → 解锁 T6
+- 阿里云账号就绪 → 解锁 T7
+
 ---
 
 ## 1. 目标与范围
@@ -84,7 +105,13 @@
 
 ## 3. Phase 1 — 证书无关（4-5d）
 
-### T1 — CHANGELOG 自动化（0.5d）
+### T1 — CHANGELOG 自动化（0.5d）✅ 已完成（PR #26）
+
+**实际产物**（合入 main）：
+- `scripts/lib/changelog-helpers.mjs` + `.d.mts`（5 纯函数 + 32 tests）
+- `scripts/changelog-generate.mjs` CLI（支持 `--version` / `--from` / `--to` / `--dry-run` / `--stdout`）
+- `scripts/version-bump.mjs` 集成：bump 后自动调用 changelog-generate（`--no-changelog` 可跳过）
+- `CHANGELOG.md` 初始化（245 commits 分组覆盖 features/bugfixes/documentation/tests/refactor/chores/other）
 
 **目的**：`git tag v0.2.0 && git push --tags` 前，从 commit 历史自动写入 `CHANGELOG.md`。
 
@@ -104,7 +131,19 @@
 
 ---
 
-### T2 — 多品牌构建抽象强化（1d）
+### T2 — 多品牌构建抽象强化（1d）✅ 已完成（PR #26 + #28）
+
+**实际产物**（合入 main）：
+- `scripts/lib/brand-apply-helpers.mjs` + `.d.mts`（4 纯函数 `resolveEnv/resolveDeep/hasUnset/applyRelease`，24 tests，含幂等性测试）
+- `brands/{evoclaw,healthclaw}/brand.json` 扩展 `release.{macOS,windows,updater}` 字段，`${ENV_VAR}` 占位符
+- `scripts/brand-apply.mjs` 集成 `applyRelease`，BrandConfig TS 接口扩展
+- `docs/release/adding-new-brand.md` 5 步零脚本改动接入指南
+- **附加成果（PR #28 根治）**：
+  - 退役 brand-apply §3 Rust crate 名改写段（Cargo.toml + main.rs 稳定化为 `evoclaw-desktop` / `evoclaw_desktop_lib`，永不被品牌覆写）
+  - `brands/_base/{tauri.conf.json,index.html,index.css}.template` 基础模板抽出
+  - 13 个 brand-apply 生成产物从 git 追踪移除 + `.gitignore`
+  - root `package.json` 加 `postinstall: node scripts/brand-apply.mjs`
+  - `docs/release/brand-apply-generated-files.md` 故障排查文档
 
 **目的**：Tauri signing/updater 字段支持品牌级配置；新品牌只改 `brands/{new}/brand.json` 无需动 script。
 
@@ -151,7 +190,13 @@
 
 ---
 
-### T3 — Windows 打包基础（1.5-2d）
+### T3 — Windows 打包基础（1.5-2d）🔒 暂停
+
+**暂停原因**：子任务 4 "本地 Windows 验证" 需要 Windows 环境（本地 VM 或远程 runner）。用户侧 Windows 环境未就绪，先不开工以免在没法端到端验证的情况下盲写代码。
+
+**恢复条件**：以下任一满足即可开工
+- 准备好本地 Windows 10+ VM（Parallels / UTM / VMware，联网 + 8GB+ 内存）
+- 愿意接受"只做前 3 个子任务，最后一步借 CI windows-latest runner 代验证"——但这样 T3 得和 T4（release workflow）并发推进，初期迭代慢
 
 **目的**：`cargo tauri build --target x86_64-pc-windows-msvc` 能产出可双击运行的 `.exe` 装机包（未签名）。
 
@@ -183,7 +228,9 @@
 
 ---
 
-### T4 — GitHub Actions Release Workflow（1-1.5d）
+### T4 — GitHub Actions Release Workflow（1-1.5d）🔒 暂停
+
+**暂停原因**：依赖 T3 产出的 NSIS 配置 + Windows 适配已本地验证过。未验证直接搭 CI matrix 会把 CI 当"试错环境"浪费 minutes。
 
 **目的**：`git tag v0.2.0 && git push --tags` → CI 自动打所有品牌 + 所有平台 → 上传 GitHub Release assets。
 
@@ -247,7 +294,9 @@ jobs:
 
 ---
 
-### T5 — Auto-update 客户端骨架（0.5-1d）
+### T5 — Auto-update 客户端骨架（0.5-1d）🔒 暂停
+
+**暂停原因**：建议与 T4 release workflow 同 PR 起步（密钥对 + endpoint placeholder + UI banner 能端到端验证从 release artifact 到客户端检测的完整链路）。单独先做客户端骨架无法 smoke-test。
 
 **目的**：装上 `@tauri-apps/plugin-updater`，客户端能拉 endpoint 检测新版、显示 toast（先不真实下载安装，等 Phase 2 证书齐开启）。
 
@@ -289,7 +338,7 @@ jobs:
 
 > **触发时机**：Apple Developer Program 注册完成 + Developer ID 证书生成；阿里云账号就绪 + OSS bucket 建好 + 函数计算开通。
 
-### T6 — macOS 签名 + 公证（1d）
+### T6 — macOS 签名 + 公证（1d）🔒 阻塞（等 Apple 证书）
 
 **步骤**：
 1. Apple Developer Program 注册（$99/年，个人 1-2d 审核 / 企业更久）— 用户侧预备
@@ -309,7 +358,7 @@ jobs:
 
 ---
 
-### T7 — 阿里云 OSS + 函数计算 Update 托管（1.5-2d）
+### T7 — 阿里云 OSS + 函数计算 Update 托管（1.5-2d）🔒 阻塞（等阿里云账号）
 
 **架构**：
 
@@ -376,7 +425,7 @@ jobs:
 
 ---
 
-### T8 — Windows 非 EV 签名（0.5-1d，可再延后）
+### T8 — Windows 非 EV 签名（0.5-1d，可再延后）📋 按需启动
 
 **方案**：
 - 用 OV（Organization Validation）代码签名证书或个人 Code Signing 证书（成本 $100-300/年）

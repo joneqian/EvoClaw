@@ -7,19 +7,20 @@ import { Hono } from 'hono';
 import { createSopRoutes } from '../../routes/sop.js';
 import { SopDocStore } from '../../sop/sop-doc-store.js';
 import { SopTagStore } from '../../sop/sop-tag-store.js';
+import type { LLMCallFn } from '../../sop/sop-generator.js';
 
 describe('SOP routes', () => {
   let tmpBase: string;
   let docStore: SopDocStore;
   let tagStore: SopTagStore;
   let app: Hono;
-  let mockLlm: ReturnType<typeof vi.fn>;
+  let mockLlm: ReturnType<typeof vi.fn<LLMCallFn>>;
 
   beforeEach(() => {
     tmpBase = path.join(os.tmpdir(), `sop-routes-test-${crypto.randomUUID()}`);
     docStore = new SopDocStore(tmpBase);
     tagStore = new SopTagStore(tmpBase);
-    mockLlm = vi.fn();
+    mockLlm = vi.fn<LLMCallFn>();
     app = new Hono();
     app.route('/sop', createSopRoutes({ docStore, tagStore, llmCall: mockLlm }));
   });

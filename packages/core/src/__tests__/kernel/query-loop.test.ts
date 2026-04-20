@@ -34,12 +34,13 @@ vi.mock('../../agent/kernel/context-compactor.js', () => ({
 }));
 
 vi.mock('../../agent/kernel/prompt-cache-monitor.js', () => ({
-  PromptCacheMonitor: vi.fn().mockImplementation(() => ({
-    recordPreCallState: vi.fn(),
-    checkForBreak: vi.fn().mockReturnValue({ detected: false, tokenDrop: 0, prevCacheRead: 0, newCacheRead: 0, reasons: [] }),
-    notifyCompaction: vi.fn(),
-    reset: vi.fn(),
-  })),
+  // vitest 4: vi.fn() 不再默认 constructable，改用 class 表达可 new 的 mock
+  PromptCacheMonitor: class MockPromptCacheMonitor {
+    recordPreCallState = vi.fn();
+    checkForBreak = vi.fn().mockReturnValue({ detected: false, tokenDrop: 0, prevCacheRead: 0, newCacheRead: 0, reasons: [] });
+    notifyCompaction = vi.fn();
+    reset = vi.fn();
+  },
 }));
 
 // 现在导入被测模块 (mock 已就位)

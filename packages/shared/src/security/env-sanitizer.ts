@@ -113,7 +113,7 @@ export interface SanitizeEnvResult {
  * @param options 选项
  */
 export function sanitizeEnv(
-  parentEnv: NodeJS.ProcessEnv | Record<string, string | undefined>,
+  parentEnv: Readonly<Record<string, string | undefined>>,
   options: SanitizeEnvOptions = {},
 ): SanitizeEnvResult {
   const {

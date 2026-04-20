@@ -7,9 +7,11 @@
 //   node scripts/version-bump.mjs major              # 0.1.0 → 1.0.0
 //   node scripts/version-bump.mjs --set 1.2.3        # 直接设为 1.2.3
 //   node scripts/version-bump.mjs --dry-run patch    # 只预览不写入
+//   node scripts/version-bump.mjs patch --no-changelog  # 跳过 CHANGELOG 生成
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { bumpAllAtomic } from './lib/version-helpers.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,11 +19,12 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 function parseArgs(argv) {
-  const opts = { dryRun: false };
+  const opts = { dryRun: false, changelog: true };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') opts.dryRun = true;
+    else if (a === '--no-changelog') opts.changelog = false;
     else if (a === '--set') {
       opts.setVersion = argv[++i];
       if (!opts.setVersion) throw new Error('--set requires a version argument');
@@ -47,7 +50,8 @@ function printUsage() {
   console.log(`Usage:
   node scripts/version-bump.mjs <patch|minor|major>   bump semver part
   node scripts/version-bump.mjs --set <semver>        set absolute version
-  node scripts/version-bump.mjs --dry-run <...>       preview only`);
+  node scripts/version-bump.mjs --dry-run <...>       preview only
+  node scripts/version-bump.mjs --no-changelog <...>  skip CHANGELOG generation`);
 }
 
 function main() {
@@ -70,6 +74,23 @@ function main() {
   for (const p of result.written) {
     console.log(`  • ${path.relative(REPO_ROOT, p)}`);
   }
+
+  if (opts.changelog) {
+    console.log('\n📝 生成 CHANGELOG 新段落...');
+    try {
+      execFileSync(
+        'node',
+        [path.join(__dirname, 'changelog-generate.mjs'), '--version', result.newVersion],
+        { cwd: REPO_ROOT, stdio: 'inherit' },
+      );
+    } catch (err) {
+      console.error('⚠️  CHANGELOG 生成失败（版本 bump 已完成），可手动重试：');
+      console.error(`   node scripts/changelog-generate.mjs --version ${result.newVersion}`);
+      process.exit(1);
+    }
+  }
+
+  console.log(`\n下一步：检查 CHANGELOG.md、git commit -am "chore: release v${result.newVersion}"、git tag v${result.newVersion}`);
 }
 
 main();

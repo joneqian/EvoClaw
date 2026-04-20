@@ -13,6 +13,21 @@
     "gradient": ["#60A5FA", "#2563EB"]
   },
   "windowTitle": "HealthClaw",
+  "release": {
+    "macOS": {
+      "signingIdentity": "${APPLE_SIGNING_IDENTITY_HEALTHCLAW}",
+      "entitlements": "${APPLE_ENTITLEMENTS_HEALTHCLAW}",
+      "minimumSystemVersion": "13.0"
+    },
+    "windows": {
+      "certificateThumbprint": "${WINDOWS_CERT_THUMBPRINT_HEALTHCLAW}",
+      "digestAlgorithm": "sha256"
+    },
+    "updater": {
+      "endpoints": ["${UPDATER_ENDPOINT_HEALTHCLAW}"],
+      "pubkey": "${TAURI_UPDATER_PUBKEY}"
+    }
+  },
   "defaultEnv": {
     "DEEP_HEALTH_AI_SERVER_URL": "http://localhost:9100/api",
     "DEEP_HEALTH_AI_AGENT_KEY": "claw-6c637a625e4715f71d54d7cffd0a07b4",

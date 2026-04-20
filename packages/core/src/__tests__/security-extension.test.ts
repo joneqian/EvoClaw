@@ -85,7 +85,7 @@ describe('SecurityExtension', () => {
   it('listPermissions 返回 Agent 的所有权限', () => {
     security.grantPermission(TEST_AGENT_ID, 'file_read', 'always');
     security.grantPermission(TEST_AGENT_ID, 'shell', 'deny');
-    security.grantPermission(TEST_AGENT_ID, 'network', 'session');
+    security.grantPermission(TEST_AGENT_ID, 'network', 'session', '*', undefined, 'test-session');
     const list = security.listPermissions(TEST_AGENT_ID);
     expect(list).toHaveLength(3);
     const categories = list.map(r => r.category).sort();

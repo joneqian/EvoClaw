@@ -40,8 +40,10 @@ export function createEvoClawTools(deps: {
   secondaryLLMCall?: LLMCallFn;
   /** 调用方已自行添加 web_search/web_fetch 时设为 true，避免重复注册 */
   skipWebTools?: boolean;
+  /** M8: 域名黑名单 getter（热重载支持） */
+  domainDenylist?: readonly string[] | (() => readonly string[] | undefined);
 }): ToolDefinition[] {
-  const { searcher, memoryStore, knowledgeGraph, ftsStore, agentId, braveApiKey, secondaryLLMCall, skipWebTools } = deps;
+  const { searcher, memoryStore, knowledgeGraph, ftsStore, agentId, braveApiKey, secondaryLLMCall, skipWebTools, domainDenylist } = deps;
 
   const tools: ToolDefinition[] = [];
 
@@ -50,7 +52,7 @@ export function createEvoClawTools(deps: {
     if (braveApiKey) {
       tools.push(createWebSearchTool({ braveApiKey }));
     }
-    tools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
+    tools.push(createWebFetchTool({ llmCall: secondaryLLMCall, domainDenylist }));
   }
 
   // 记忆和知识图谱工具

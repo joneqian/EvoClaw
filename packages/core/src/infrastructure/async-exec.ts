@@ -17,6 +17,10 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { sanitizeEnv } from '@evoclaw/shared';
+import { createLogger } from './logger.js';
+
+const envLog = createLogger('async-exec-env');
 
 // ─── Types ───
 
@@ -37,6 +41,8 @@ export interface AsyncExecOptions {
   maxOutputChars?: number;
   /** Shell 环境快照脚本 (future: Sprint 6 Shell Snapshot) */
   shellInit?: string;
+  /** M8: 额外敏感变量名正则（与默认 SENSITIVE_PATTERNS 取并集） */
+  customSensitivePatterns?: readonly RegExp[];
 }
 
 export interface ProgressEvent {
@@ -108,6 +114,7 @@ export async function asyncExec(
     onProgress,
     maxOutputChars = DEFAULT_MAX_OUTPUT_CHARS,
     shellInit,
+    customSensitivePatterns,
   } = options;
 
   // 如果已经取消，直接返回
@@ -120,10 +127,20 @@ export async function asyncExec(
     ? `${shellInit}\n${command}`
     : command;
 
+  // M8: 敏感凭据不继承到 bash 子进程
+  const { env: sanitizedEnv, stripped } = sanitizeEnv(process.env, {
+    mode: 'inherit',
+    extraEnv: { ...env, EVOCLAW_SHELL: 'async-exec' },
+    customSensitivePatterns,
+  });
+  if (stripped.length > 0) {
+    envLog.debug(`剥离敏感 env 变量: ${stripped.join(', ')}`);
+  }
+
   const child = spawn('bash', ['-c', effectiveCommand], {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, ...env, EVOCLAW_SHELL: 'async-exec' },
+    env: sanitizedEnv,
     // 不 detach — 需要正常 I/O 通信
   });
 

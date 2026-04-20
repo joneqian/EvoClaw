@@ -12,5 +12,6 @@ export * from './types/extension-security.js';
 export * from './types/extension-pack.js';
 export * from './types/mcp.js';
 export * from './schemas/index.js';
+export * from './security/env-sanitizer.js';
 export * from './brand.js';
 export * from './constants.js';

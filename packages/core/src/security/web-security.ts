@@ -234,6 +234,86 @@ export function isPrivateIP(hostname: string): boolean {
   return false;
 }
 
+// ─── 域名黑名单（M8） ───────────────────────────────────────────
+
+/**
+ * 将域名或 pattern 规范化：小写 + punycode。
+ *
+ * `new URL('https://中国.example.com').hostname` 会返回 punycode (`xn--fiqs8s.example.com`)，
+ * 所以 denylist pattern 若写中文原文就永远不会命中 — 这里把 pattern 也同样规范化。
+ */
+function normalizeDomain(raw: string): string {
+  const lower = raw.toLowerCase();
+  // 已是纯 ASCII → 无需 URL 往返
+  if (/^[\x00-\x7f]*$/.test(lower)) return lower;
+  try {
+    return new URL(`https://${lower}`).hostname;
+  } catch {
+    return lower;
+  }
+}
+
+/**
+ * 匹配域名模式
+ *
+ * 支持：
+ * - "example.com"   精确匹配（大小写不敏感，自动 punycode 规范化）
+ * - "*.example.com" 子域名通配（匹配 a.example.com / x.y.example.com；不匹配 example.com）
+ *
+ * 不支持其它 glob 语法（`{}`, `?`, `**`）
+ */
+export function matchDomainPattern(hostname: string, pattern: string): boolean {
+  const host = normalizeDomain(hostname);
+  const pat = normalizeDomain(pattern.startsWith('*.') ? pattern.slice(2) : pattern);
+  const isWildcard = pattern.startsWith('*.');
+  if (isWildcard) {
+    if (pat.length === 0) return false;
+    return host.endsWith('.' + pat);
+  }
+  return host === pat;
+}
+
+/**
+ * 判断 URL 的主机名是否命中域名黑名单。
+ * denylist 为空数组或 undefined 时一律返回 false。
+ */
+export function isDomainBlocked(url: string, denylist?: readonly string[]): boolean {
+  if (!denylist || denylist.length === 0) return false;
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return denylist.some((p) => matchDomainPattern(hostname, p));
+}
+
+/** 域名策略拒绝错误（与 SSRF 的 WebSecurityError 区分） */
+export class WebForbiddenError extends Error {
+  constructor(public readonly url: string, public readonly pattern: string) {
+    super(`域名策略拒绝访问: "${url}" 命中黑名单模式 "${pattern}"`);
+    this.name = 'WebForbiddenError';
+  }
+}
+
+/** 返回第一个命中的模式（用于错误消息）；未命中返回 null */
+export function findMatchedDenylistPattern(
+  url: string,
+  denylist?: readonly string[],
+): string | null {
+  if (!denylist || denylist.length === 0) return null;
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return null;
+  }
+  for (const p of denylist) {
+    if (matchDomainPattern(hostname, p)) return p;
+  }
+  return null;
+}
+
 // ─── HTTPS 升级 ──────────────────────────────────────────────────
 
 /**

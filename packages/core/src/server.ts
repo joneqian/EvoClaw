@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { PORT_RANGE, TOKEN_BYTES, DEFAULT_DATA_DIR, BRAND } from '@evoclaw/shared';
+import { PORT_RANGE, TOKEN_BYTES, DEFAULT_DATA_DIR, BRAND, isSensitiveEnvName, compileCustomPatterns } from '@evoclaw/shared';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
 import { ConfigManager } from './infrastructure/config-manager.js';
@@ -490,6 +490,10 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
   const log = createLogger('server');
   const config = configManager.getConfig();
   let count = 0;
+  const sensitiveEnvKeys: string[] = [];
+  const customPatterns = compileCustomPatterns(
+    config.security?.env?.customSensitivePatterns,
+  );
 
   // 品牌默认环境变量（优先级最低，不覆盖已有值）
   if (BRAND.defaultEnv) {
@@ -507,6 +511,9 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
       if (value) {
         process.env[key] = value;
         count++;
+        if (isSensitiveEnvName(key, customPatterns)) {
+          sensitiveEnvKeys.push(key);
+        }
       }
     }
   }
@@ -541,6 +548,11 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
 
   if (count > 0) {
     log.info(`环境变量已注入: ${count} 个`);
+  }
+  if (sensitiveEnvKeys.length > 0) {
+    log.warn(
+      `[env-sandbox] 配置中包含敏感凭据变量（不会透传给 bash/MCP 子进程）: ${sensitiveEnvKeys.join(', ')}`,
+    );
   }
 }
 
@@ -996,6 +1008,8 @@ async function main() {
         const { applySecurityPolicy } = await import('./mcp/mcp-security.js');
 
         const mcpManager = new McpManager();
+        // M8: 注入域名黑名单 getter（支持 config 热重载）
+        mcpManager.setDomainDenylistGetter(() => configManager.getConfig().security?.domainDenylist);
         // 存储到闭包变量，供 getMcpManager getter 访问
         sharedMcpManager = mcpManager;
 

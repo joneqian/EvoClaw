@@ -116,9 +116,9 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: M9 Phase 1 暂停（T1/T2 ✅，T3-T5 等 Windows 环境；T6-T7 等 Apple 证书 + 阿里云账号）。下一步可选：M7 Phase 1 / M8 / Sprint 16 / A3（四选一）。详见 `docs/iteration-plans/CapabilityUpgradePlan_2026-04-17.md` + `M9-ReleaseDistribution-Plan.md`
-- **上一冲刺**: M9 Phase 1 T1/T2 ✅ 已完成（PR #26 + #28）— CHANGELOG 自动化（Bun 脚本解析 conventional commits + version-bump 集成 + CHANGELOG.md 初始化 245 commits）+ 多品牌构建抽象（brand.json.release 字段 + `${ENV_VAR}` 占位符 + 幂等性 + 构建治理：brand-apply §3 Rust 段退役 + brands/_base/ 模板 + postinstall + 13 项 gitignore + `docs/release/` 文档 2 份）
-- **上上冲刺**: M6 Provider 增强 ✅ 已完成 — CredentialPool 多 key 轮换 + fallback + Profile 运行时切换（dev/prod 热重载）+ `/config/profile` REST + `CredentialPoolEditor` / `ProfileManager` 前端（PR #20，OAuth 延后至 §3.X A3）
+- **当前冲刺**: M8 会话隔离与环境安全 ✅ 已完成 — session 级权限隔离（permissions 表加 session_key + SecurityExtension 三层缓存 + SmartCache session 维度）+ env 沙箱（shared/security/env-sanitizer 抽取，bash/background 子进程 inherit 模式自动剥离 SENSITIVE_PATTERNS）+ 域名黑名单（config.security.domainDenylist 支持 `*.x.com` 通配 + punycode 规范化，web_fetch / MCP HTTP 前置检查）。下一步可选：M7 Phase 1 / Sprint 16 / A3 / M9 T3+（Windows 环境就绪后）
+- **上一冲刺**: M9 Phase 1 T1/T2 ✅ 已完成（PR #26 + #28）— CHANGELOG 自动化 + 多品牌构建抽象 + 构建治理
+- **上上冲刺**: M6 Provider 增强 ✅ 已完成（PR #20）— CredentialPool 多 key 轮换 + fallback + Profile 运行时切换 + 前端，OAuth 延后至 §3.X A3
 - **更早**: M5 Skills 生态增强 ✅（PR #18）；Vite 6→8 升级 ✅（PR #23）；tsbuildinfo gitignore + 类型结构化收尾 ✅（PR #27）
 
 ## 协作准则

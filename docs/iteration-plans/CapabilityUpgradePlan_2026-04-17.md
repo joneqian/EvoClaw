@@ -41,12 +41,19 @@
      │ (阶段 4-5)  │             │   (阶段 4)    │
      └──────────────┘             └────────────────┘
                                            │
-            ┌──────────────────────────────┘
-            ▼
+            ┌──────────────────────────────┼──────────────┐
+            ▼                              ▼              ▼
      ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
      │M9 发布与分发  │   │M10 文档站    │   │M11 平台扩展  │
      │ (阶段 5)    │   │ (阶段 5)    │   │ (阶段 6+)   │
      └──────────────┘   └──────────────┘   └──────────────┘
+                                           │
+                         M6 + M8 ──────────┤
+                                           ▼
+                                    ┌──────────────┐
+                                    │M13 团队协作   │
+                                    │ (阶段 6.5)  │
+                                    └──────────────┘
 ```
 
 ---
@@ -69,6 +76,7 @@
 | **M10** | 文档站 | P1 | 5-8d | M0 | ❌ 无（独立站，不嵌入 Tauri） |
 | **M11** | 平台扩展 | P2 | 按需 | M3, M8 | ⚠️ **必评**：各 channel 的配置 / 登录 / 诊断 UI |
 | **M12** | 运营可观测 & 成本治理（新） | P1 | 3-4d | M6, M8 | ⚠️ **必评**：session 成本聚合面板（沿用 UsageTab 风格） |
+| **M13** | Agent 团队协作（新） | P1 | 10-12w | M6, M8 | ⚠️ **必评**：Team 配置界面 / TaskFlow 状态面板 / 子 Agent 流式产出聚合视图 |
 | **M1.1** | Checkpoint Manager（补丁） | P1 | 3-5d | M1 | ❌ 无（静默恢复，未来可加"已恢复 N 文件" toast） |
 | **M3.1** | 全局 IterationBudget（补丁） | P1 | 1-2d | M3 | ❌ 无（利用 M3 既有 UI） |
 
@@ -98,6 +106,7 @@
 | **M9** | [`30-build-packaging-gap.md`](../evoclaw-vs-hermes-research/30-build-packaging-gap.md) | §3.4 跨平台、§3.8 代码签名 + 公证、§3.9 多架构 |
 | | [`33-release-process-gap.md`](../evoclaw-vs-hermes-research/33-release-process-gap.md) | §3.6 CHANGELOG、§3.7 构件构建、§3.8 GitHub Release |
 | **M10** | [`32-docs-website-gap.md`](../evoclaw-vs-hermes-research/32-docs-website-gap.md) | 全文（§3.1-§3.15 文档框架/导航/搜索/CI 部署等 15 个机制） |
+| **M13** | [`multi-agent-team-collab-deepdive.md`](../evoclaw-vs-openclaw-research/multi-agent-team-collab-deepdive.md) | 全文 1633 行：§1 术语 / §2 架构鸟瞰 / §3 数据模型 / §4 渠道路由 / §5 TaskFlow / §6 ACP / §7 跨层联动 / §8 Phase 1-4 复刻方案 |
 | **M11** | [`19a-telegram-gap.md`](../evoclaw-vs-hermes-research/19a-telegram-gap.md) | 全文 |
 | | [`19b-discord-gap.md`](../evoclaw-vs-hermes-research/19b-discord-gap.md) | 全文 |
 | | [`19c-slack-gap.md`](../evoclaw-vs-hermes-research/19c-slack-gap.md) | 全文 |
@@ -329,6 +338,54 @@
 
 ---
 
+### M13 — Agent 团队协作（P1，依赖 M6 + M8）
+
+> **为什么**: EvoClaw 面向非程序员企业用户（CLAUDE.md 定位），典型场景是「在企微/飞书发需求 → 运营策划 + UI 设计 + 文案专家团队协作产出」。当前架构只支持"消息路由到单个 bound Agent + 该 Agent 派生临时子代理"，预置 Agent 无法以独立身份被调起，团队场景能跑但不好用。
+>
+> **详细方案**: [`multi-agent-team-collab-deepdive.md`](../evoclaw-vs-openclaw-research/multi-agent-team-collab-deepdive.md) — 基于 OpenClaw 仓库（`/Users/mac/src/github/openclaw`）的实现级调研，1633 行文档，覆盖 OpenClaw 多 Agent 完整体系 + EvoClaw 1:1 复刻四 Phase 方案。
+>
+> **参考**: OpenClaw 的 `Binding 8 层路由 + TaskFlow 编排引擎 + ACP 协议派生 + stream-to-parent 中继`，无显式 Team 对象，通过 binding/flow/controllerId 组合出团队语义。
+
+| Phase | 主题 | 工作量 | 主要交付 |
+|-------|------|--------|---------|
+| **Phase 1** | 渠道路由扩容 | 2w | migration 027：bindings 加 peer_kind/guild_id/team_id/roles/dm_scope/last_route_policy；8 层匹配重写；mainSessionKey + 多模式 SessionKey；抽象 Envelope Builder |
+| **Phase 2** | TaskFlow 编排引擎 | 3w | migration 028：flows + tasks 双表；状态机 8 态（queued/running/waiting/blocked/succeeded/failed/cancelled/lost）；syncMode=managed/task_mirrored；乐观锁 revision；lookupToken 续场；flow_create / flow_update / flow_wait / flow_finish 四个 Agent 工具 |
+| **Phase 3** | ACP 简化协议 + 派生增强 | 3-4w | migration 029：subagent_runs 表；自建 stdio+ndJson 简化 ACP（text_delta/phase/tool_call 三种消息）；sessions_spawn 全参数（runtime/agentId/mode/thread/sandbox/streamTo/cleanup）；stream-to-parent 中继（2.5s buffer + 60s stall warn + 6h 上限）；加载目标 Agent 完整 SOUL/MEMORY/AGENTS 身份 |
+| **Phase 4** | per-agent 工具/MCP/AuthProfile | 2-3w | Agent config 扩展字段（subagents/tools/skills/mcp/authProfiles/lastRoutePolicy/dmScope）；tool-filter per-agent；MCP `getToolsForAgent()` 按 allowlist 过滤；AuthProfile per-agent order 覆盖；Hook Context 标准化（agentId/sessionKey/flowId） |
+
+**总工作量**: 串行 10-12 人周 / 并行 7-9 人周（Phase 1/2、Phase 2/3、Phase 3/4 各有尾声重叠窗口）
+
+**验收标准**（端到端场景）: 在企微群发 "帮我写一篇公众号文章介绍 X 产品"：
+1. 路由到 lead "运营策划"（binding 按 channel+guild+role 命中）
+2. lead 创建 TaskFlow F1（managed, controllerId=self）
+3. lead 调 `sessions_spawn` 派生 "UI 设计" 和 "文案专家" 两个预置 Agent（加载各自完整身份）
+4. 两个子 Agent 流式输出通过 stream relay 汇入 lead 主会话
+5. lead 汇总回复至企微
+6. 用户后续在同一群发 "再润色一下" → lookupToken 恢复 F1 上下文 → lead 再派发
+
+**不包含（defer 到 M13.1/M13.2）**:
+- 完整 ACP 协议（与 OpenClaw 生态互通）— 当前仅做简化自建协议
+- Gateway 层分布式多节点协同（OpenClaw 有，超出单机场景）
+- Team 一级对象（沿 OpenClaw 的"binding + flow 组合"路线）
+- 团队配置 UI（先 config 文件 + API，Tab 在 M13.1）
+- 跨 Flow 依赖（Flow A 等待 Flow B）— 当前由 controller agent 自己轮询
+
+**风险**:
+- ACP 协议自建 vs 复用外部 SDK（`@agentclientprotocol/sdk`）的权衡，Phase 3 启动前需二次评估
+- 子 Agent 加载目标身份的代价（SOUL/MEMORY/AGENTS 文件 I/O + prompt 构建），可能影响派生延迟，需性能基准测试
+- Phase 1 的 binding 扩容改 DB schema + 路由核心，有回归风险，需充分回归测试（现有 channel 不能坏）
+
+**不确定项**（研究文档 §9 列出 7 条，Phase 2 前需二次调研覆盖）:
+1. OpenClaw `cron/isolated-agent/` 目录是否第三种 runtime
+2. ACP SDK 版本锁定与 wire 兼容
+3. `acp.backend=acpx|pi-embedded` 差异与选择逻辑
+4. `identityLinks` 身份聚合的配置入口
+5. `waitJson`/`stateJson` 的惯例用法
+6. Flow 间依赖机制
+7. Gateway 跨节点能力（超出本次范围）
+
+---
+
 ### M1.1 — Checkpoint Manager（补丁，P1，依赖 M1）
 
 > **为什么**: M8 多 Agent 协作调研发现 Hermes 有「工具回滚」能力，EvoClaw 目前 bash/edit/write 写错文件只能人工修。面向非程序员企业用户（CLAUDE.md 核心定位），必须提供自动兜底。
@@ -443,11 +500,14 @@
 | **阶段 4** | M7 Phase 1 + **M8 ✅** | Skill 记忆化 + 会话隔离 | 10-13d | 🟡 M8 ✅（PR #30），M7 Phase 1 ⏳ |
 | **阶段 5** | M7 Phase 2 + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟡 M9 Phase 1 部分完成（T1/T2 ✅），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
 | **阶段 6** | M7 Phase 3 + M12 | Skill 自动进化 + 运营可观测 | ~3w + 3-4d | ⏳ 待启 |
+| **阶段 6.5** | M13（Phase 1→4 串行） | Agent 团队协作 | 10-12w | ⏳ 待启（依赖 M6 ✅ + M8 ✅，可随时启动） |
 | **阶段 7+** | M11 + M7 Phase 4 | 平台扩展 + 集体进化 | 按需 | ⏳ 待启 |
 | **回归** | Sprint 16（含 30s 活动心跳附带任务） | 企微 Channel 生产就绪 | — | ⏳ 待启 |
 | **补丁** | M1.1 + M3.1 | Checkpoint Manager + 全局 IterationBudget | 4-7d | ⏳ 待启（可穿插进其它阶段） |
 
-> **说明**: 当前已完成阶段 1-3 全部模块 + M8（M0-M6 + M8，OAuth 延后到 A3）。下一步候选：M7 Phase 1（Skill 记忆化，阶段 4 余项）/ Sprint 16 企微 Channel 生产就绪（附带 30s 心跳）/ M1.1 Checkpoint / M3.1 全局预算 / M12 运营可观测 / A3 OAuth。
+> **说明**: 当前已完成阶段 1-3 全部模块 + M8（M0-M6 + M8，OAuth 延后到 A3）。下一步候选：M7 Phase 1（Skill 记忆化）/ M13 Phase 1（Agent 团队协作路由扩容）/ Sprint 16 企微 Channel 生产就绪 / M1.1 Checkpoint / M3.1 全局预算 / M12 运营可观测 / A3 OAuth。
+>
+> **M13 排序建议**：对企业用户价值高（团队协作是真实刚需），但工作量大（10-12w）。可考虑先做 M13 Phase 1（路由扩容 2w）作为独立增量，其余 Phase 按需推进；也可 Phase 1-4 集中冲一个 quarter。
 >
 > **M8 多 Agent 研究派生的 4 个补丁模块**（M1.1 / M3.1 / M12 / Sprint 16 附带 30s 心跳）按「领域归属」拆分而不是聚合，确保每个补齐点落在最熟悉它的上下文里。详见各模块章节。
 

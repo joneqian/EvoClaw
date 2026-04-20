@@ -125,3 +125,19 @@ apps/desktop/src-tauri/bun-bin/
 # Claude Code 本地 session / plans / memory 目录
 .claude/
 
+# brand-apply 生成产物（由 scripts/brand-apply.mjs 运行时生成；不入 git）
+# 新开发者 `pnpm install` 自动触发 postinstall 生成；CI 有 brand:apply 步骤
+packages/shared/src/brand.ts
+apps/desktop/src-tauri/tauri.conf.json
+apps/desktop/src-tauri/icons/32x32.png
+apps/desktop/src-tauri/icons/128x128.png
+apps/desktop/src-tauri/icons/128x128@2x.png
+apps/desktop/src-tauri/icons/brand-header.png
+apps/desktop/src-tauri/icons/icon.png
+apps/desktop/src-tauri/icons/icon.ico
+apps/desktop/public/brand-logo.png
+apps/desktop/public/brand-header.png
+apps/desktop/public/brand-icon.png
+apps/desktop/index.html
+apps/desktop/src/index.css
+

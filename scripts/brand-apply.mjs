@@ -5,8 +5,12 @@
  * 读取 brands/${BRAND}/brand.json，生成/覆写品牌相关文件：
  *   1. packages/shared/src/brand.ts（品牌常量）
  *   2. apps/desktop/src-tauri/tauri.conf.json（productName、identifier、window title）
- *   3. apps/desktop/src-tauri/icons/*（品牌图标）
- *   4. apps/desktop/index.html（<title>）
+ *   3. apps/desktop/src-tauri/icons/* + apps/desktop/public/brand-*.png（品牌图标）
+ *   4. apps/desktop/index.html（<title> + 内联 loading）
+ *   5. apps/desktop/src/index.css（品牌色 CSS 变量）
+ *   6. packages/core/.env.brand（Feature Flag 环境变量）
+ *
+ * 注意：Rust crate 名（Cargo.toml / main.rs）不由本脚本管理，是稳定值 evoclaw-desktop*
  *
  * 用法:
  *   BRAND=healthclaw node scripts/brand-apply.mjs
@@ -103,7 +107,8 @@ console.log(`  ✅ ${brandTsPath}`);
 // ─── 2. 覆写 tauri.conf.json ───
 
 const tauriConfPath = join(ROOT, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
-let tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
+const tauriConfTemplate = join(ROOT, 'brands', '_base', 'tauri.conf.json.template');
+let tauriConf = JSON.parse(readFileSync(tauriConfTemplate, 'utf-8'));
 
 tauriConf.productName = config.name;
 tauriConf.identifier = config.identifier;
@@ -121,32 +126,7 @@ tauriConf = applyRelease(tauriConf, config.release, process.env);
 writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8');
 console.log(`  ✅ ${tauriConfPath}`);
 
-// ─── 3. 覆写 Cargo.toml package name + lib name ───
-
-const cargoTomlPath = join(ROOT, 'apps', 'desktop', 'src-tauri', 'Cargo.toml');
-let cargoToml = readFileSync(cargoTomlPath, 'utf-8');
-// 品牌名转 kebab-case 作为 crate name（如 HealthClaw → healthclaw-desktop）
-const crateName = config.name.toLowerCase().replace(/\s+/g, '-') + '-desktop';
-const libName = crateName.replace(/-/g, '_') + '_lib';
-// 替换 [package] 下的 name（第一个出现）和 [lib] 下的 name（第二个出现）
-let nameIdx = 0;
-cargoToml = cargoToml.replace(/^name = ".*"$/gm, (match) => {
-  nameIdx++;
-  if (nameIdx === 1) return `name = "${crateName}"`;
-  if (nameIdx === 2) return `name = "${libName}"`;
-  return match;
-});
-writeFileSync(cargoTomlPath, cargoToml, 'utf-8');
-console.log(`  ✅ ${cargoTomlPath} (${crateName})`);
-
-// 同步更新 main.rs 中的 lib crate 引用
-const mainRsPath = join(ROOT, 'apps', 'desktop', 'src-tauri', 'src', 'main.rs');
-let mainRs = readFileSync(mainRsPath, 'utf-8');
-mainRs = mainRs.replace(/\w+_desktop_lib::run\(\)/, `${libName}::run()`);
-writeFileSync(mainRsPath, mainRs, 'utf-8');
-console.log(`  ✅ ${mainRsPath} (${libName})`);
-
-// ─── 4. 复制品牌图标 ───
+// ─── 3. 复制品牌图标 ───
 
 const brandIconsDir = join(brandDir, 'icons');
 const tauriIconsDir = join(ROOT, 'apps', 'desktop', 'src-tauri', 'icons');
@@ -184,10 +164,11 @@ if (existsSync(brandIconsDir)) {
   console.log(`  ⚠️  品牌图标目录不存在: ${brandIconsDir}，跳过`);
 }
 
-// ─── 5. 更新 index.html <title> + 内联 loading ───
+// ─── 4. 更新 index.html <title> + 内联 loading ───
 
 const indexHtmlPath = join(ROOT, 'apps', 'desktop', 'index.html');
-let indexHtml = readFileSync(indexHtmlPath, 'utf-8');
+const indexHtmlTemplate = join(ROOT, 'brands', '_base', 'index.html.template');
+let indexHtml = readFileSync(indexHtmlTemplate, 'utf-8');
 indexHtml = indexHtml.replace(/<title>[^<]*<\/title>/, `<title>${config.name}</title>`);
 
 // 替换内联 loading 块（BRAND_LOADING_START ~ BRAND_LOADING_END）
@@ -213,10 +194,11 @@ indexHtml = indexHtml.replace(
 writeFileSync(indexHtmlPath, indexHtml, 'utf-8');
 console.log(`  ✅ ${indexHtmlPath}`);
 
-// ─── 6. 更新 index.css 品牌色 ───
+// ─── 5. 更新 index.css 品牌色 ───
 
 const indexCssPath = join(ROOT, 'apps', 'desktop', 'src', 'index.css');
-let indexCss = readFileSync(indexCssPath, 'utf-8');
+const indexCssTemplate = join(ROOT, 'brands', '_base', 'index.css.template');
+let indexCss = readFileSync(indexCssTemplate, 'utf-8');
 
 // 从品牌主色派生 hover / active / muted 变体
 function hexToRgb(hex) {
@@ -261,7 +243,7 @@ indexCss = indexCss.replace(
 writeFileSync(indexCssPath, indexCss, 'utf-8');
 console.log(`  ✅ ${indexCssPath} (brand: ${brandPrimary})`);
 
-// ─── 7. 生成 Feature Flag 环境变量文件 ───
+// ─── 6. 生成 Feature Flag 环境变量文件 ───
 
 const features = config.features || {};
 const envLines = [

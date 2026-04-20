@@ -1,0 +1,58 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ─── EvoClaw Design System v2 ─── */
+
+@theme {
+  /* Brand palette */
+  --color-brand: #00d4aa;
+  --color-brand-hover: #00c39c;
+  --color-brand-active: #00a88a;
+  --color-brand-muted: oklch(0.93 0.05 168);
+
+  /* Semantic */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+:root {
+  font-size: 17px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  letter-spacing: -0.011em;
+}
+
+/* 亮色模式：纯白底 */
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* macOS 交通灯区域占位 */
+.titlebar-pad {
+  padding-top: 38px;
+}

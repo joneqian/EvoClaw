@@ -107,7 +107,8 @@ console.log(`  ✅ ${brandTsPath}`);
 // ─── 2. 覆写 tauri.conf.json ───
 
 const tauriConfPath = join(ROOT, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
-let tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
+const tauriConfTemplate = join(ROOT, 'brands', '_base', 'tauri.conf.json.template');
+let tauriConf = JSON.parse(readFileSync(tauriConfTemplate, 'utf-8'));
 
 tauriConf.productName = config.name;
 tauriConf.identifier = config.identifier;
@@ -166,7 +167,8 @@ if (existsSync(brandIconsDir)) {
 // ─── 4. 更新 index.html <title> + 内联 loading ───
 
 const indexHtmlPath = join(ROOT, 'apps', 'desktop', 'index.html');
-let indexHtml = readFileSync(indexHtmlPath, 'utf-8');
+const indexHtmlTemplate = join(ROOT, 'brands', '_base', 'index.html.template');
+let indexHtml = readFileSync(indexHtmlTemplate, 'utf-8');
 indexHtml = indexHtml.replace(/<title>[^<]*<\/title>/, `<title>${config.name}</title>`);
 
 // 替换内联 loading 块（BRAND_LOADING_START ~ BRAND_LOADING_END）
@@ -195,7 +197,8 @@ console.log(`  ✅ ${indexHtmlPath}`);
 // ─── 5. 更新 index.css 品牌色 ───
 
 const indexCssPath = join(ROOT, 'apps', 'desktop', 'src', 'index.css');
-let indexCss = readFileSync(indexCssPath, 'utf-8');
+const indexCssTemplate = join(ROOT, 'brands', '_base', 'index.css.template');
+let indexCss = readFileSync(indexCssTemplate, 'utf-8');
 
 // 从品牌主色派生 hover / active / muted 变体
 function hexToRgb(hex) {

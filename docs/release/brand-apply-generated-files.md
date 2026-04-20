@@ -21,7 +21,12 @@
 | `apps/desktop/src/index.css` | brand-apply §5 | 品牌色 CSS 变量 |
 | `packages/core/.env.brand` | brand-apply §6 | Feature Flag 环境变量（已在 .gitignore 更前面忽略） |
 
-**真正入 git 的"品牌源"**：`brands/{brand}/brand.json` + `brands/{brand}/icons/*`。
+**真正入 git 的"品牌源"**：
+- `brands/{brand}/brand.json` —— 品牌特化配置（每品牌一份）
+- `brands/{brand}/icons/*` —— 品牌图标
+- `brands/_base/*.template` —— 所有品牌共享的基础模板（tauri.conf.json / index.html / index.css）
+
+**为什么需要 `_base/` 模板**：tauri.conf.json / index.html / index.css 是 "基础 + 品牌覆写" 模式 —— brand-apply 从 `_base/` 模板读取，覆写品牌相关字段后写到 `apps/desktop/*` 实际位置。所以生成物能完全 gitignore，不依赖 dest 文件先前存在。
 
 ## 这些文件何时生成？
 

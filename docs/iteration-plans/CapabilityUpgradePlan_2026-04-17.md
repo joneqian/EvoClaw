@@ -490,6 +490,33 @@
 
 ---
 
+### A4 — TypeScript 5.9 → 6.0 升级（P2）
+
+> **触因**: 2026-04-20 dependabot PR #6 提出升级 TypeScript 5.9.3 → 6.0.3（跨大版本）。同批次的 vitest 4（PR #36）和 esbuild 0.28（PR #37）已落地；TS 6 挂起是**主动延后**，不是技术阻塞。
+>
+> **为什么延后**:
+> - TS 6 是大版本升级，历史上 TS 主版本典型会引入 20-100 个类型严格化报错（`any` / `as` 断言密集处首当其冲），EvoClaw core 包 500+ 源文件 + 200+ 测试文件规模下需要一个独立冲刺处理
+> - 工具链未卡在 TS 5.9（vitest 4 / Vite 8 / oxlint / esbuild 0.28 都兼容 TS 5.9）；升级 TS 6 没有即时的功能或性能收益
+> - 非阻塞其他模块：M7/M12/M13 / 各种补丁均不需要 TS 6 新特性
+>
+> **何时启动**:
+> - dependabot 继续推 TS 6.x 补丁版本，积累到 6.1/6.2 时（新大版本稳定期）一并升级
+> - 或遇到 TS 5.9 的 Bug 被 TS 6 修复
+> - 或其它工具链升级（如 vitest 5、Vite 9）要求 TS 6 基线
+
+| 项目 | 工作量 | 备注 |
+|------|--------|------|
+| 升级 `typescript` devDep + `pnpm install` | 0.5h | 自动化 |
+| 跑 `tsc --noEmit` 并分类汇总所有 TS 6 新增报错 | 0.5d | 经验预估 20-100 个报错 |
+| 修复类型报错（显式类型断言 / `satisfies` 收窄 / `never` 排除） | 1-2d | 核心在 `packages/core/src/agent/kernel/` 和 `packages/core/src/memory/` 两大复杂子系统 |
+| 回归测试（shared 61/61 + core 2729/2729 + lint + build） | 0.5d | 对齐 vitest 4 升级流程 |
+
+**预估**: 2-3d
+**前置依赖**: 无
+**验收标准**: `pnpm build` + `pnpm lint` + `pnpm test` 全绿，`pnpm-lock.yaml` 内 typescript 字段升至 6.x，零运行时回归。
+
+---
+
 ## 4. Sprint 排期建议
 
 | 阶段 | 模块 | 主题 | 预估 | 状态 |

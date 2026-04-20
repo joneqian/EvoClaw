@@ -116,10 +116,10 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: M8 会话隔离与环境安全 ✅ 已完成 — session 级权限隔离（permissions 表加 session_key + SecurityExtension 三层缓存 + SmartCache session 维度）+ env 沙箱（shared/security/env-sanitizer 抽取，bash/background 子进程 inherit 模式自动剥离 SENSITIVE_PATTERNS）+ 域名黑名单（config.security.domainDenylist 支持 `*.x.com` 通配 + punycode 规范化，web_fetch / MCP HTTP 前置检查）。下一步可选：M7 Phase 1 / Sprint 16 / A3 / M9 T3+（Windows 环境就绪后）
-- **上一冲刺**: M9 Phase 1 T1/T2 ✅ 已完成（PR #26 + #28）— CHANGELOG 自动化 + 多品牌构建抽象 + 构建治理
-- **上上冲刺**: M6 Provider 增强 ✅ 已完成（PR #20）— CredentialPool 多 key 轮换 + fallback + Profile 运行时切换 + 前端，OAuth 延后至 §3.X A3
-- **更早**: M5 Skills 生态增强 ✅（PR #18）；Vite 6→8 升级 ✅（PR #23）；tsbuildinfo gitignore + 类型结构化收尾 ✅（PR #27）
+- **当前冲刺**: 依赖升级 + 计划同步（2026-04-20）— 接管 dependabot PR：vitest 3.2.4→4.1.4（PR #36，适配 2 处 breaking change）+ esbuild 0.27.4→0.28.0（PR #37，零改动）；修复 M8 遗留的 shared 包 NodeJS 类型耦合（PR #35）；OpenClaw 多 Agent 协作深度研究（PR #32，1633 行）+ M13 模块写入路线图（PR #34）；M12/M1.1/M3.1/Sprint16 补丁模块规划（PR #31）。TypeScript 5.9→6.0 主动延后至 §3.X A4
+- **上一冲刺**: M8 会话隔离与环境安全 ✅（PR #30）— session 级权限隔离 + env 沙箱 + 域名黑名单
+- **上上冲刺**: M9 Phase 1 T1/T2 ✅（PR #26 + #28）— CHANGELOG 自动化 + 多品牌构建抽象 + 构建治理
+- **更早**: M6 Provider 增强 ✅（PR #20，OAuth→A3）；M5 Skills 生态增强 ✅（PR #18）；Vite 6→8 升级 ✅（PR #23）；tsbuildinfo gitignore + 类型结构化收尾 ✅（PR #27）
 
 ## 协作准则
 

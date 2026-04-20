@@ -65,7 +65,7 @@
 | **M6** | Provider 增强 ✅（OAuth→A3） | P1 | 4-6d | M2 | ✅ **本模块同 PR 落地**：CredentialPool 编辑器 + Profile 切换器（PR #20）；OAuth 登录流随 A3 一起做 |
 | **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 | ⚠️ **必评**：进化日志查看、技能推荐卡片、Cron 进化审核界面 |
 | **M8** | 会话隔离与环境安全 | P1 | 5-8d | M1, M3 | ⚠️ **必评**：权限按 session 显示；网站黑名单管理界面 |
-| **M9** | 发布与分发 | P1 | 7-13d | M0 | ⚠️ **必评**：应用内更新检查 / 下载进度提示 |
+| **M9** | 发布与分发 🟡 Phase 1 部分完成（T1/T2 ✅，T3-T8 暂停）| P1 | 7-9d | M0 | ✅ **T2 已落地 + 构建治理**：brand-apply 多品牌抽象 + gitignore 根治 + postinstall；⚠️ T5 前端 banner 待后续 |
 | **M10** | 文档站 | P1 | 5-8d | M0 | ❌ 无（独立站，不嵌入 Tauri） |
 | **M11** | 平台扩展 | P2 | 按需 | M3, M8 | ⚠️ **必评**：各 channel 的配置 / 登录 / 诊断 UI |
 
@@ -253,20 +253,26 @@
 
 ---
 
-### M9 — 发布与分发（P1，依赖 M0）
+### M9 — 发布与分发 🟡 Phase 1 部分完成（P1，依赖 M0）
 
 > **为什么在 M0 后**: 代码签名和 auto-update 建立在 CI/CD + 版本管理基础之上。
 >
 > **详细方案**: [`M9-ReleaseDistribution-Plan.md`](./M9-ReleaseDistribution-Plan.md)（Phase 1 证书无关 4-5d + Phase 2 证书就绪后 3-4d，共 7-9d；阿里云 OSS + 函数计算支持灰度/回滚；多品牌可扩展）
 
-| 项目 | 工作量 | 来源 |
-|------|--------|------|
-| 代码签名 + macOS 公证 | 2-3d | 30 §3.8 |
-| CHANGELOG 自动生成（Conventional Commits → Markdown） | 1d | 33 §3.6 |
-| GitHub Release + auto-update 集成 | 2-3d | 33 §3.7-§3.8 |
-| Windows / Linux 构建支持 | 5-10d | 30 §3.4 |
+| 项目 | 工作量 | 状态 | 说明 |
+|------|--------|------|------|
+| T1 CHANGELOG 自动化 | 0.5d | ✅ | PR #26 |
+| T2 多品牌构建抽象 | 1d | ✅ | PR #26 + #28（含构建治理：brand-apply 入库根治、postinstall、_base/ 模板）|
+| T3 Windows 打包基础 | 1.5-2d | 🔒 暂停 | 等 Windows 环境 |
+| T4 GitHub Actions release.yml | 1-1.5d | 🔒 暂停 | 等 T3 |
+| T5 Auto-update 客户端骨架 | 0.5-1d | 🔒 暂停 | 建议与 T4 同 PR |
+| T6 macOS 签名 + 公证 | 1d | 🔒 阻塞 | 等 Apple Developer 证书 |
+| T7 阿里云 OSS + 函数计算 | 1.5-2d | 🔒 阻塞 | 等阿里云账号 |
+| T8 Windows 非 EV 签名 | 0.5-1d | 📋 延后 | 按首客户 SmartScreen 投诉触发 |
 
 **验收标准**: DMG 双击安装无 Gatekeeper 警告，应用内检测到新版本并提示更新。
+
+**剩余工作量**: Phase 1 余 3-4.5d（T3/T4/T5），Phase 2 余 3-4d。**恢复条件**：Windows 环境就绪（解锁 T3→T4→T5）/ Apple 证书就绪（解锁 T6）/ 阿里云账号就绪（解锁 T7）。
 
 ---
 
@@ -369,7 +375,7 @@
 | **阶段 2** | M3 + M4 + M4.1 | Agent 核心 + MCP 生产化 + 前端补齐 | 3.5-4.5d | ✅ 完成 |
 | **阶段 3** | **M5 ✅** + **M6 ✅**（OAuth→A3） | Skills 生态 + Provider 增强 | 7-11d | ✅ 完成 |
 | **阶段 4** | M7 Phase 1 + M8 | Skill 记忆化 + 会话隔离 | 10-13d | ⏳ 待启 |
-| **阶段 5** | M7 Phase 2 + M9 + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | ⏳ 待启 |
+| **阶段 5** | M7 Phase 2 + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟡 M9 Phase 1 部分完成（T1/T2 ✅），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
 | **阶段 6** | M7 Phase 3 | Skill 自动进化 | ~3w | ⏳ 待启 |
 | **阶段 7+** | M11 + M7 Phase 4 | 平台扩展 + 集体进化 | 按需 | ⏳ 待启 |
 | **回归** | Sprint 16 | 企微 Channel 生产就绪 | — | ⏳ 待启 |

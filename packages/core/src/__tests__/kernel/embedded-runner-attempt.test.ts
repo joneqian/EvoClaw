@@ -60,7 +60,8 @@ vi.mock('../../agent/kernel/context-compactor.js', () => ({
 }));
 
 vi.mock('../../agent/tool-safety.js', () => ({
-  ToolSafetyGuard: vi.fn().mockImplementation(() => ({})),
+  // vitest 4: vi.fn() 不再默认 constructable，改用 class 表达可 new 的 mock
+  ToolSafetyGuard: class MockToolSafetyGuard {},
 }));
 
 vi.mock('../../skill/skill-tool.js', () => ({
@@ -95,10 +96,10 @@ vi.mock('../../agent/kernel/runtime-state-store.js', () => ({
 }));
 
 vi.mock('../../agent/kernel/incremental-persister.js', () => ({
-  IncrementalPersister: vi.fn().mockImplementation(() => ({
-    finalize: vi.fn(),
-    dispose: vi.fn(),
-  })),
+  IncrementalPersister: class MockIncrementalPersister {
+    finalize = vi.fn();
+    dispose = vi.fn();
+  },
 }));
 
 vi.mock('../../cost/tool-use-summary.js', () => ({

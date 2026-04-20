@@ -119,3 +119,9 @@ prompt/
 apps/desktop/src-tauri/node-bin/
 apps/desktop/src-tauri/bun-bin/
 
+# TypeScript 增量构建缓存
+*.tsbuildinfo
+
+# Claude Code 本地 session / plans / memory 目录
+.claude/
+

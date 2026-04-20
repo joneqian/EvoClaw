@@ -10,6 +10,7 @@
   },
   "packageManager": "pnpm@10.14.0",
   "scripts": {
+    "postinstall": "node scripts/brand-apply.mjs",
     "brand:apply": "bun scripts/brand-apply.mjs",
     "test": "turbo run test",
     "lint": "turbo run lint",

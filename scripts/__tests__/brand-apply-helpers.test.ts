@@ -105,7 +105,7 @@ describe('applyRelease', () => {
       macOS: { signingIdentity: '${APPLE_ID_EVOCLAW}' },
     };
     const out = applyRelease(baseTauriConf(), release, { APPLE_ID_EVOCLAW: 'Developer ID: Foo' });
-    expect(out.bundle.macOS.signingIdentity).toBe('Developer ID: Foo');
+    expect(out.bundle.macOS!.signingIdentity).toBe('Developer ID: Foo');
   });
 
   it('signing identity 缺失时不写入该字段', () => {
@@ -113,8 +113,8 @@ describe('applyRelease', () => {
       macOS: { signingIdentity: '${APPLE_ID_EVOCLAW}' },
     };
     const out = applyRelease(baseTauriConf(), release, {});
-    expect(out.bundle.macOS.signingIdentity).toBeUndefined();
-    expect(out.bundle.macOS.minimumSystemVersion).toBe('13.0');
+    expect(out.bundle.macOS!.signingIdentity).toBeUndefined();
+    expect(out.bundle.macOS!.minimumSystemVersion).toBe('13.0');
   });
 
   it('updater 完整配置时 plugins.updater 建立', () => {
@@ -130,8 +130,8 @@ describe('applyRelease', () => {
       PUBKEY: 'abc123',
     });
     expect(out.plugins.updater).toBeDefined();
-    expect(out.plugins.updater.endpoints).toEqual(['https://u.example.com/latest.json']);
-    expect(out.plugins.updater.pubkey).toBe('abc123');
+    expect(out.plugins.updater!.endpoints).toEqual(['https://u.example.com/latest.json']);
+    expect(out.plugins.updater!.pubkey).toBe('abc123');
   });
 
   it('updater pubkey 缺失时整个 updater plugin 不配置', () => {
@@ -150,8 +150,8 @@ describe('applyRelease', () => {
       windows: { certificateThumbprint: '${WIN_THUMB}', digestAlgorithm: 'sha256' },
     };
     const out = applyRelease(baseTauriConf(), release, { WIN_THUMB: 'DEADBEEF' });
-    expect(out.bundle.windows.certificateThumbprint).toBe('DEADBEEF');
-    expect(out.bundle.windows.digestAlgorithm).toBe('sha256');
+    expect(out.bundle.windows!.certificateThumbprint).toBe('DEADBEEF');
+    expect(out.bundle.windows!.digestAlgorithm).toBe('sha256');
   });
 
   it('空 release 配置不触碰 tauri conf', () => {
@@ -195,8 +195,8 @@ describe('applyRelease', () => {
       macOS: { signingIdentity: '${ID}', minimumSystemVersion: '13.0' },
     };
     const out = applyRelease(tauriConf, release, {});
-    expect(out.bundle.macOS.signingIdentity).toBeUndefined();
-    expect(out.bundle.macOS.minimumSystemVersion).toBe('13.0');
+    expect(out.bundle.macOS!.signingIdentity).toBeUndefined();
+    expect(out.bundle.macOS!.minimumSystemVersion).toBe('13.0');
   });
 
   it('Windows digestAlgorithm 存在但 certificateThumbprint 缺失时不建 windows 块', () => {

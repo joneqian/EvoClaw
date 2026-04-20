@@ -33,7 +33,7 @@ describe('E2E: 权限管理', () => {
   });
 
   it('授予权限后可列出', async () => {
-    // 授予权限
+    // 授予权限（M8: scope='session' 需要 sessionKey）
     const grantRes = await env.app.request(`/security/${agentId}/permissions`, {
       method: 'POST',
       headers: jsonHeaders(),
@@ -41,6 +41,7 @@ describe('E2E: 权限管理', () => {
         category: 'file_read',
         scope: 'session',
         resource: '/tmp/test',
+        sessionKey: 'test-session-1',
       }),
     });
     expect(grantRes.status).toBe(200);
@@ -154,7 +155,7 @@ describe('E2E: 权限管理', () => {
   });
 
   it('session scope 持续有效', async () => {
-    // 授予 session 权限
+    // 授予 session 权限（M8: 需要 sessionKey）
     const grantRes = await env.app.request(`/security/${agentId}/permissions`, {
       method: 'POST',
       headers: jsonHeaders(),
@@ -162,6 +163,7 @@ describe('E2E: 权限管理', () => {
         category: 'mcp',
         scope: 'session',
         resource: 'test-mcp',
+        sessionKey: 'test-session-2',
       }),
     });
     expect(grantRes.status).toBe(200);

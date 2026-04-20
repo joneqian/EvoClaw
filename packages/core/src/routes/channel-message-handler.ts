@@ -393,7 +393,9 @@ export async function handleChannelMessage(
 
   if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
   const secondaryLLMCall = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
-  enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
+  // M8: 域名黑名单 — 通过 getter 支持热重载
+  const getDomainDenylist = () => configManager?.getConfig().security?.domainDenylist;
+  enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall, domainDenylist: getDomainDenylist }));
 
   // 记忆和知识图谱工具（与 chat.ts 路径一致）
   if (hybridSearcher && memoryStore && ftsStore && knowledgeGraph) {
@@ -460,7 +462,7 @@ export async function handleChannelMessage(
   );
 
   const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
-    const result = interceptor.intercept(agentId, toolName, args);
+    const result = interceptor.intercept(agentId, toolName, args, sessionKey);
     if (!result.allowed) {
       // 渠道模式没有 UI 弹框，区分处理：
       // - 需要确认的（requiresConfirmation）→ 自动放行（用户已绑定 Agent，隐式信任）

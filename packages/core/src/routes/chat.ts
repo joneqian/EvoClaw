@@ -722,7 +722,9 @@ export function createChatRoutes(
     // Web 工具
     if (braveApiKey) enhancedTools.push(createWebSearchTool({ braveApiKey }));
     const secondaryLLMCall = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
-    enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall }));
+    // M8: 域名黑名单 — 通过 getter 支持热重载
+    const getDomainDenylist = () => configManager?.getConfig().security?.domainDenylist;
+    enhancedTools.push(createWebFetchTool({ llmCall: secondaryLLMCall, domainDenylist: getDomainDenylist }));
 
     // 记忆和知识图谱工具（read: search/get/knowledge_query；write: write/update/delete/forget_topic/pin）
     if (hybridSearcher && memoryStore && ftsStore && knowledgeGraph) {
@@ -914,7 +916,7 @@ export function createChatRoutes(
     const smartCache = new SmartDecisionCache();
 
     const permissionInterceptFn = async (toolName: string, args: Record<string, unknown>): Promise<string | null> => {
-      const result = interceptor.intercept(agentId, toolName, args);
+      const result = interceptor.intercept(agentId, toolName, args, sessionKey);
 
       // Smart Approve：mode === 'smart' 且静态分析需要确认时调辅助 LLM 评估
       // escalate 时把 reason 带到 pendingPermissions，前端弹窗展示"AI 评估理由"
@@ -928,7 +930,7 @@ export function createChatRoutes(
       ) {
         const llmCall = createSecondaryLLMCallFn(configManager);
         const decision = await smartEvaluateRisk(
-          { toolName, params: args, recentUserMessage: messages[messages.length - 1]?.content },
+          { toolName, params: args, recentUserMessage: messages[messages.length - 1]?.content, sessionKey },
           llmCall,
           smartCache,
         );

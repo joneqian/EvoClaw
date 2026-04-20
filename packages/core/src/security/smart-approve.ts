@@ -29,6 +29,8 @@ export interface SmartContext {
   params: Record<string, unknown>;
   /** Agent 当前会话的最近用户消息（可选，提供上下文） */
   recentUserMessage?: string;
+  /** 会话隔离键：缓存不跨 session 复用（M8） */
+  sessionKey?: string;
 }
 
 /** LLM 调用函数签名（callLLMSecondary 风格） */
@@ -70,7 +72,8 @@ export class SmartDecisionCache {
 
   private key(ctx: SmartContext): string {
     const paramsStr = JSON.stringify(ctx.params, Object.keys(ctx.params).sort());
-    return `${ctx.toolName}:${createHash('sha256').update(paramsStr).digest('hex').slice(0, 16)}`;
+    const hash = createHash('sha256').update(paramsStr).digest('hex').slice(0, 16);
+    return `${ctx.sessionKey ?? ''}:${ctx.toolName}:${hash}`;
   }
 }
 

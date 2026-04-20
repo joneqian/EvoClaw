@@ -134,12 +134,18 @@ export function createEnhancedExecTool() {
 /** 后台执行命令 (detached, unref) */
 function runAsBackground(command: string, cwd: string): string {
   const { spawn } = require('node:child_process') as typeof import('node:child_process');
+  const { sanitizeEnv } = require('@evoclaw/shared') as typeof import('@evoclaw/shared');
   try {
+    // M8: 敏感凭据不继承到 background 子进程
+    const { env: sanitizedEnv } = sanitizeEnv(process.env, {
+      mode: 'inherit',
+      extraEnv: { EVOCLAW_SHELL: 'background' },
+    });
     const bg = spawn('bash', ['-c', command], {
       cwd,
       detached: true,
       stdio: 'ignore',
-      env: { ...process.env, EVOCLAW_SHELL: 'background' },
+      env: sanitizedEnv,
     });
     bg.unref();
     return `后台进程已启动 (PID: ${bg.pid})。\n使用 process 工具查看输出。`;

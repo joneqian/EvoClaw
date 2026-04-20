@@ -14,15 +14,24 @@ export interface PermissionRecord {
   grantedAt: string;
   expiresAt: string | null;
   grantedBy: 'user' | 'system';
+  /** session 作用域的会话键；always/deny/once 为 null */
+  sessionKey: string | null;
 }
 
 /**
  * 安全扩展 — 权限拦截与管理
  * 使用内存缓存加速频繁的权限检查
+ *
+ * M8 会话隔离：
+ * - always/deny 权限：agent 级缓存，跨 session 复用
+ * - session 权限：按 (agentId, sessionKey) 分片存储，session 间隔离
  */
 export class SecurityExtension {
-  /** 权限缓存: Map<agentId, Map<category:resource, PermissionRecord>> */
+  /** Agent 级权限缓存（always/deny）: Map<agentId, Map<category:resource, PermissionRecord>> */
   private cache = new Map<string, Map<string, PermissionRecord>>();
+
+  /** Session 级权限缓存: Map<sessionKey, Map<agentId, Map<category:resource, PermissionRecord>>> */
+  private sessionCache = new Map<string, Map<string, Map<string, PermissionRecord>>>();
 
   constructor(private db: SqliteStore) {
     this.loadCache();
@@ -41,6 +50,20 @@ export class SecurityExtension {
 
   private setCacheEntry(record: PermissionRecord): void {
     const key = `${record.category}:${record.resource}`;
+    if (record.scope === 'session' && record.sessionKey) {
+      let perSession = this.sessionCache.get(record.sessionKey);
+      if (!perSession) {
+        perSession = new Map();
+        this.sessionCache.set(record.sessionKey, perSession);
+      }
+      let perAgent = perSession.get(record.agentId);
+      if (!perAgent) {
+        perAgent = new Map();
+        perSession.set(record.agentId, perAgent);
+      }
+      perAgent.set(key, record);
+      return;
+    }
     if (!this.cache.has(record.agentId)) {
       this.cache.set(record.agentId, new Map());
     }
@@ -49,12 +72,19 @@ export class SecurityExtension {
 
   /**
    * 检查权限
-   * 1. 查缓存中的 always/deny
-   * 2. 查 session 级权限（DB）
-   * 3. 返回 'ask' 让前端弹窗
+   * 1. 查 agent 级缓存（always/deny）
+   * 2. 查 session 级缓存（按 sessionKey 隔离）
+   * 3. DB fallback
+   * 4. once 消费
+   * 5. 返回 'ask' 让前端弹窗
    */
-  checkPermission(agentId: string, category: PermissionCategory, resource: string = '*'): PermissionResult {
-    // 检查缓存（always / deny）
+  checkPermission(
+    agentId: string,
+    category: PermissionCategory,
+    resource: string = '*',
+    sessionKey?: string,
+  ): PermissionResult {
+    // 1. 检查 agent 级缓存（always / deny）— 跨 session 共享
     const agentCache = this.cache.get(agentId);
     if (agentCache) {
       // 精确匹配
@@ -75,8 +105,7 @@ export class SecurityExtension {
           return wildcard.scope === 'deny' ? 'deny' : 'allow';
         }
       }
-      // 模式匹配：支持 ToolName(content) 格式（参考 Claude Code 规则语法）
-      // 如 resource="git push --force"，规则 "git:*" 可匹配
+      // 模式匹配
       for (const [key, record] of agentCache) {
         if (!key.startsWith(`${category}:`)) continue;
         if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
@@ -90,36 +119,43 @@ export class SecurityExtension {
       }
     }
 
-    // 检查 session 级权限（缓存优先，降低 DB 查询）
-    if (agentCache) {
-      for (const [key, record] of agentCache) {
-        if (key.startsWith(`${category}:`) && record.scope === 'session') {
+    // 2. 检查 session 级缓存（按 sessionKey 隔离）
+    if (sessionKey) {
+      const sessionAgentCache = this.sessionCache.get(sessionKey)?.get(agentId);
+      if (sessionAgentCache) {
+        for (const [key, record] of sessionAgentCache) {
+          if (!key.startsWith(`${category}:`)) continue;
           if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
             this.revokePermission(record.id);
             continue;
           }
-          return 'allow';
+          const ruleResource = key.slice(category.length + 1);
+          if (matchResourcePattern(ruleResource, resource)) {
+            return 'allow';
+          }
         }
       }
-    }
-    // Fallback: 查 DB（缓存中可能没有——极端情况如进程重启后未加载）
-    const session = this.db.get<Record<string, unknown>>(
-      `SELECT * FROM permissions WHERE agent_id = ? AND category = ? AND (resource = ? OR resource = '*') AND scope = 'session' ORDER BY granted_at DESC LIMIT 1`,
-      agentId, category, resource,
-    );
-    if (session) {
-      // 写入缓存供后续快速查找
-      this.setCacheEntry(rowToRecord(session));
-      return 'allow';
+
+      // 3. DB fallback（仅在 session 模式下查询 scope='session'）
+      const session = this.db.get<Record<string, unknown>>(
+        `SELECT * FROM permissions
+         WHERE agent_id = ? AND session_key = ? AND category = ?
+           AND (resource = ? OR resource = '*') AND scope = 'session'
+         ORDER BY granted_at DESC LIMIT 1`,
+        agentId, sessionKey, category, resource,
+      );
+      if (session) {
+        this.setCacheEntry(rowToRecord(session));
+        return 'allow';
+      }
     }
 
-    // 检查 once 级权限
+    // 4. 检查 once 级权限（不区分 session）
     const once = this.db.get<Record<string, unknown>>(
       `SELECT * FROM permissions WHERE agent_id = ? AND category = ? AND (resource = ? OR resource = '*') AND scope = 'once' ORDER BY granted_at DESC LIMIT 1`,
       agentId, category, resource,
     );
     if (once) {
-      // 使用后删除
       this.db.run('DELETE FROM permissions WHERE id = ?', once['id']);
       return 'allow';
     }
@@ -127,13 +163,28 @@ export class SecurityExtension {
     return 'ask';
   }
 
-  /** 授予权限 */
-  grantPermission(agentId: string, category: PermissionCategory, scope: PermissionScope, resource: string = '*', expiresAt?: string): string {
+  /**
+   * 授予权限
+   *
+   * @param sessionKey 当 scope='session' 时必填，用于会话隔离
+   */
+  grantPermission(
+    agentId: string,
+    category: PermissionCategory,
+    scope: PermissionScope,
+    resource: string = '*',
+    expiresAt?: string,
+    sessionKey?: string,
+  ): string {
+    if (scope === 'session' && !sessionKey) {
+      throw new Error(`grantPermission: scope='session' 需要提供 sessionKey`);
+    }
     const id = crypto.randomUUID();
+    const effectiveSessionKey = scope === 'session' ? sessionKey! : null;
     this.db.run(
-      `INSERT INTO permissions (id, agent_id, category, scope, resource, granted_at, expires_at, granted_by)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), ?, 'user')`,
-      id, agentId, category, scope, resource, expiresAt ?? null,
+      `INSERT INTO permissions (id, agent_id, category, scope, resource, granted_at, expires_at, granted_by, session_key)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), ?, 'user', ?)`,
+      id, agentId, category, scope, resource, expiresAt ?? null, effectiveSessionKey,
     );
 
     // 非 once 权限加入缓存（always/deny/session）
@@ -143,14 +194,16 @@ export class SecurityExtension {
         grantedAt: new Date().toISOString(),
         expiresAt: expiresAt ?? null,
         grantedBy: 'user',
+        sessionKey: effectiveSessionKey,
       });
     }
 
-    // 记录审计日志
+    // 记录审计日志（含 session_key）
     this.db.run(
-      'INSERT INTO audit_log (agent_id, action, details) VALUES (?, ?, ?)',
+      'INSERT INTO audit_log (agent_id, action, details, session_key) VALUES (?, ?, ?, ?)',
       agentId, 'permission_grant',
       JSON.stringify({ category, scope, resource }),
+      effectiveSessionKey,
     );
 
     return id;
@@ -158,18 +211,35 @@ export class SecurityExtension {
 
   /** 撤销权限 */
   revokePermission(id: string): void {
-    // 先获取记录用于清除缓存
     const row = this.db.get<Record<string, unknown>>('SELECT * FROM permissions WHERE id = ?', id);
     if (!row) return;
 
     this.db.run('DELETE FROM permissions WHERE id = ?', id);
 
-    // 清除缓存
     const record = rowToRecord(row);
-    const agentCache = this.cache.get(record.agentId);
-    if (agentCache) {
-      agentCache.delete(`${record.category}:${record.resource}`);
+    if (record.scope === 'session' && record.sessionKey) {
+      this.sessionCache.get(record.sessionKey)?.get(record.agentId)
+        ?.delete(`${record.category}:${record.resource}`);
+    } else {
+      this.cache.get(record.agentId)?.delete(`${record.category}:${record.resource}`);
     }
+  }
+
+  /**
+   * 清除指定 session 的所有 scope='session' 权限
+   *
+   * 语义说明（M8）：
+   * - Session 权限的 TTL 绑定 sessionKey 物理会话（如 `agent:X:wechat:dm:user1`），
+   *   一条 sessionKey 在多个 chat 请求间保持稳定 → 跨请求复用授权是预期行为。
+   * - 本函数不会在 chat 请求结束时自动调用。需要显式触发的场景：
+   *     * Channel 解绑 / 退出登录（Agent 在该 channel 的 sessionKey 失效）
+   *     * Agent 删除（DB 已通过 ON DELETE CASCADE 处理，此处清内存缓存）
+   *     * IT 管理员通过 API 强制回收
+   * - 进程重启会丢失所有 session 缓存（DB 仍保留），首次使用触发 DB fallback 重建。
+   */
+  clearSessionPermissions(sessionKey: string): void {
+    this.db.run(`DELETE FROM permissions WHERE session_key = ? AND scope = 'session'`, sessionKey);
+    this.sessionCache.delete(sessionKey);
   }
 
   /** 列出 Agent 的所有权限 */
@@ -184,6 +254,7 @@ export class SecurityExtension {
   /** 清除缓存（用于测试） */
   clearCache(): void {
     this.cache.clear();
+    this.sessionCache.clear();
   }
 }
 
@@ -198,6 +269,7 @@ function rowToRecord(row: Record<string, unknown>): PermissionRecord {
     grantedAt: row['granted_at'] as string,
     expiresAt: (row['expires_at'] as string) ?? null,
     grantedBy: row['granted_by'] as 'user' | 'system',
+    sessionKey: (row['session_key'] as string) ?? null,
   };
 }
 

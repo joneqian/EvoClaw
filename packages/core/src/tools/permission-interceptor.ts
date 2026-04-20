@@ -137,9 +137,15 @@ export class PermissionInterceptor {
 
   /**
    * 拦截工具调用
+   * @param sessionKey 会话级权限隔离键（scope='session' 权限按此隔离）
    * @returns InterceptResult — 是否允许执行及原因
    */
-  intercept(agentId: string, toolName: string, params: Record<string, unknown>): InterceptResult {
+  intercept(
+    agentId: string,
+    toolName: string,
+    params: Record<string, unknown>,
+    sessionKey?: string,
+  ): InterceptResult {
     // 0. 只读工具自动放行（但仍检查受限路径）
     if (AUTO_ALLOW_TOOLS.has(toolName)) {
       const filePath = (params['path'] as string) ?? (params['file_path'] as string) ?? '';
@@ -237,7 +243,7 @@ export class PermissionInterceptor {
 
     // 4. 消息发送类工具强制确认
     if (MESSAGE_TOOLS.has(toolName)) {
-      const result = this.security.checkPermission(agentId, 'network', toolName);
+      const result = this.security.checkPermission(agentId, 'network', toolName, sessionKey);
       if (result === 'ask') {
         return {
           allowed: false,
@@ -277,7 +283,7 @@ export class PermissionInterceptor {
     } else {
       resource = (params['command'] as string) ?? (params['path'] as string) ?? (params['file_path'] as string) ?? (params['url'] as string) ?? (params['query'] as string) ?? '*';
     }
-    const result = this.security.checkPermission(agentId, category, resource);
+    const result = this.security.checkPermission(agentId, category, resource, sessionKey);
     if (result === 'deny') {
       return { allowed: false, reason: `Agent 没有 ${category} 权限` };
     }

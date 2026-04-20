@@ -16,6 +16,7 @@ import { buildMcpEnv } from './mcp-env.js';
 import { wrapWithWarningIfSuspicious } from '../security/prompt-injection-detector.js';
 import { startWithReconnect } from './mcp-reconnect.js';
 import { createLogger } from '../infrastructure/logger.js';
+import { findMatchedDenylistPattern } from '../security/web-security.js';
 
 const log = createLogger('mcp-client');
 
@@ -55,7 +56,14 @@ export class McpClient {
   private _error?: string;
   private _instructions?: string;
 
-  constructor(private readonly config: McpServerConfig) {}
+  /**
+   * @param config MCP server 配置
+   * @param domainDenylistGetter M8: 域名黑名单 getter（热重载）
+   */
+  constructor(
+    private readonly config: McpServerConfig,
+    private readonly domainDenylistGetter?: () => readonly string[] | undefined,
+  ) {}
 
   get status(): McpServerStatus { return this._status; }
   get tools(): ReadonlyArray<McpToolInfo> { return this._tools; }
@@ -90,6 +98,13 @@ export class McpClient {
         });
       } else if (this.config.type === 'sse') {
         if (!this.config.url) throw new Error('sse 类型需要 url 字段');
+        // M8: 域名黑名单检查
+        const pattern = findMatchedDenylistPattern(this.config.url, this.domainDenylistGetter?.());
+        if (pattern) {
+          throw new Error(
+            `MCP "${this.config.name}" URL 命中域名黑名单模式 "${pattern}"，已拒绝连接`,
+          );
+        }
         transport = new StreamableHTTPClientTransport(new URL(this.config.url));
       } else {
         throw new Error(`不支持的传输类型: ${(this.config as any).type}`);
@@ -214,10 +229,17 @@ export class McpManager {
   private readonly clients = new Map<string, McpClient>();
   /** 保留每个 server 的原始 config，供 reconnect 重建 client 使用 */
   private readonly configs = new Map<string, McpServerConfig>();
+  /** M8: 域名黑名单 getter（热重载支持） */
+  private domainDenylistGetter?: () => readonly string[] | undefined;
+
+  /** M8: 设置域名黑名单 getter（server.ts 启动时注入，config hot-reload 自动透传） */
+  setDomainDenylistGetter(getter: () => readonly string[] | undefined): void {
+    this.domainDenylistGetter = getter;
+  }
 
   async addServer(config: McpServerConfig): Promise<void> {
     if (this.clients.has(config.name)) await this.removeServer(config.name);
-    const client = new McpClient(config);
+    const client = new McpClient(config, this.domainDenylistGetter);
     this.clients.set(config.name, client);
     this.configs.set(config.name, config);
     // 首启失败时自动指数退避重试（1s→2s→4s→8s→16s，最多 5 次）；
@@ -299,7 +321,7 @@ export class McpManager {
     if (!config) return null;
     const existing = this.clients.get(name);
     if (existing) { await existing.dispose(); }
-    const client = new McpClient(config);
+    const client = new McpClient(config, this.domainDenylistGetter);
     this.clients.set(name, client);
     if (config.enabled === false) return true;
     return startWithReconnect(client);

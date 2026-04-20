@@ -13,6 +13,7 @@ import {
   validateWebURLAsync,
   upgradeToHttps,
   fetchWithSafeRedirects,
+  findMatchedDenylistPattern,
 } from '../security/web-security.js';
 import { urlCache } from './web-cache.js';
 
@@ -35,11 +36,18 @@ export interface WebFetchToolOptions {
    * 不提供时退化为截断模式
    */
   readonly llmCall?: LLMCallFn;
+  /**
+   * M8: 域名黑名单（getter 支持热重载 / 也可直接传数组）
+   * 命中则拒绝请求，错误消息含命中的模式
+   */
+  readonly domainDenylist?: readonly string[] | (() => readonly string[] | undefined);
 }
 
 /** 创建 web_fetch 工具 */
 export function createWebFetchTool(opts: WebFetchToolOptions = {}): ToolDefinition {
-  const { llmCall } = opts;
+  const { llmCall, domainDenylist } = opts;
+  const getDenylist = (): readonly string[] | undefined =>
+    typeof domainDenylist === 'function' ? domainDenylist() : domainDenylist;
   return {
     name: 'web_fetch',
     description: '抓取指定 URL 的网页内容并返回。可提供 prompt 参数指定需要提取的信息，系统会用小型模型从页面中精准提取，大幅减少返回内容量。注意：无法访问需要登录认证的页面。',
@@ -63,6 +71,12 @@ export function createWebFetchTool(opts: WebFetchToolOptions = {}): ToolDefiniti
       const validation = await validateWebURLAsync(rawUrl);
       if (!validation.ok) {
         return `错误：${validation.reason}`;
+      }
+
+      // ── 1.5 M8: 域名黑名单检查 ──
+      const matchedPattern = findMatchedDenylistPattern(rawUrl, getDenylist());
+      if (matchedPattern) {
+        return `错误：域名策略拒绝访问 "${rawUrl}"（命中黑名单模式 "${matchedPattern}"）`;
       }
 
       // ── 2. HTTP → HTTPS 升级 ──

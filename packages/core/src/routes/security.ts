@@ -25,9 +25,21 @@ export function createSecurityRoutes(db: SqliteStore): Hono {
       category: PermissionCategory;
       scope: PermissionScope;
       resource?: string;
+      /** scope='session' 时必填，用于会话隔离（M8） */
+      sessionKey?: string;
     }>();
-    const id = security.grantPermission(agentId, body.category, body.scope, body.resource);
-    return c.json({ id });
+    if (body.scope === 'session' && !body.sessionKey) {
+      return c.json({ error: 'scope="session" 需要提供 sessionKey' }, 400);
+    }
+    try {
+      const id = security.grantPermission(
+        agentId, body.category, body.scope, body.resource,
+        undefined, body.sessionKey,
+      );
+      return c.json({ id });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
   });
 
   // DELETE /:id/permissions/:permId — 撤销权限

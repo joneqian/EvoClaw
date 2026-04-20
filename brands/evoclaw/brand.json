@@ -13,6 +13,21 @@
     "gradient": ["#00d4aa", "#00a88a"]
   },
   "windowTitle": "EvoClaw",
+  "release": {
+    "macOS": {
+      "signingIdentity": "${APPLE_SIGNING_IDENTITY_EVOCLAW}",
+      "entitlements": "${APPLE_ENTITLEMENTS_EVOCLAW}",
+      "minimumSystemVersion": "13.0"
+    },
+    "windows": {
+      "certificateThumbprint": "${WINDOWS_CERT_THUMBPRINT_EVOCLAW}",
+      "digestAlgorithm": "sha256"
+    },
+    "updater": {
+      "endpoints": ["${UPDATER_ENDPOINT_EVOCLAW}"],
+      "pubkey": "${TAURI_UPDATER_PUBKEY}"
+    }
+  },
   "defaultLanguage": "zh",
   "features": {
     "WEIXIN": true,

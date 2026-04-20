@@ -16,6 +16,7 @@
 import { readFileSync, writeFileSync, copyFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyRelease } from './lib/brand-apply-helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -59,6 +60,25 @@ export interface BrandConfig {
   defaultLanguage?: 'zh' | 'en';
   /** 品牌级 Feature Flag 默认值 */
   features?: Record<string, boolean>;
+  /** 签名 / 公证 / auto-update 配置（支持 \${ENV_VAR} 占位符） */
+  release?: {
+    macOS?: {
+      signingIdentity?: string;
+      entitlements?: string;
+      minimumSystemVersion?: string;
+      providerShortName?: string;
+    };
+    windows?: {
+      certificateThumbprint?: string;
+      digestAlgorithm?: string;
+      timestampUrl?: string;
+      tsp?: boolean;
+    };
+    updater?: {
+      endpoints?: string[];
+      pubkey?: string;
+    };
+  };
 }
 
 /** 当前品牌配置 */
@@ -83,7 +103,7 @@ console.log(`  ✅ ${brandTsPath}`);
 // ─── 2. 覆写 tauri.conf.json ───
 
 const tauriConfPath = join(ROOT, 'apps', 'desktop', 'src-tauri', 'tauri.conf.json');
-const tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
+let tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf-8'));
 
 tauriConf.productName = config.name;
 tauriConf.identifier = config.identifier;
@@ -94,6 +114,9 @@ if (tauriConf.app?.windows?.[0]) {
   delete tauriConf.app.windows[0].titleBarStyle;
   delete tauriConf.app.windows[0].hiddenTitle;
 }
+
+// 注入 release 字段（签名/公证/updater）— 占位符 ${ENV_VAR} 缺失时静默跳过该字段
+tauriConf = applyRelease(tauriConf, config.release, process.env);
 
 writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf-8');
 console.log(`  ✅ ${tauriConfPath}`);

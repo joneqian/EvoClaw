@@ -31,7 +31,7 @@
             │                                │
             ▼                                ▼
      ┌──────────────┐             ┌────────────────┐
-     │M5 Skills生态✅│             │M6 Provider 增强 │
+     │M5 Skills生态✅│             │M6 Provider✅   │
      │  (阶段 3)   │             │   (阶段 3)     │
      └──────┬───────┘             └────────┬───────┘
             │                              │
@@ -62,7 +62,7 @@
 | **M4** | MCP 生产化 ✅ | P0 | 1d | M1, M2 | ✅ **已 M4.1 补**：MCP Server 管理 Tab + Skill `mcp:` 徽章 |
 | **M4.1** | 前端补齐 ✅ | P1 | 3d | M1, M2, M4 | ✅ 本身即前端冲刺（Smart Approve UI + MCP Tab + 凭证 toast） |
 | **M5** | Skills 生态增强 ✅ | P0 | 3-5d | M4 | ✅ **本模块同 PR 落地**：Trust 5 色徽章、"有新版可用"紫条 + 升级按钮、威胁扫描详情折叠、require-confirm checkbox（PR #18） |
-| **M6** | Provider 增强 | P1 | 4-6d | M2 | ⚠️ **必评**：CredentialPool 管理 UI、OAuth 登录流、Profile 切换器 |
+| **M6** | Provider 增强 ✅（OAuth→A3） | P1 | 4-6d | M2 | ✅ **本模块同 PR 落地**：CredentialPool 编辑器 + Profile 切换器（PR #20）；OAuth 登录流随 A3 一起做 |
 | **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 | ⚠️ **必评**：进化日志查看、技能推荐卡片、Cron 进化审核界面 |
 | **M8** | 会话隔离与环境安全 | P1 | 5-8d | M1, M3 | ⚠️ **必评**：权限按 session 显示；网站黑名单管理界面 |
 | **M9** | 发布与分发 | P1 | 7-13d | M0 | ⚠️ **必评**：应用内更新检查 / 下载进度提示 |
@@ -204,17 +204,21 @@
 
 ---
 
-### M6 — Provider 增强（P1，依赖 M2）
+### M6 — Provider 增强 ✅（P1，依赖 M2，核心完成于 2026-04-17，OAuth 延后 A3）
 
 > **为什么在 M2 后**: OAuth 凭据需要正确的文件权限和 Unicode 清洗（M2 输出）。
 
-| 项目 | 工作量 | 来源 |
-|------|--------|------|
-| CredentialPool 凭据池（多 key 轮换 + fallback） | 2-3d | 06 §3.X |
-| OAuth token 刷新（device code flow） | 1-2d | 28 §3.6 |
-| Profile 隔离（运行时配置切换 dev/prod） | 2-3d | 28 §3.8 |
+| 项目 | 工作量 | 来源 | 状态 |
+|------|--------|------|------|
+| CredentialPool 凭据池（多 key 轮换 + fallback） | 2-3d | 06 §3.X | ✅ |
+| OAuth token 刷新（device code flow） | 1-2d | 28 §3.6 | ⏳ 延后 → §3.X A3 |
+| Profile 隔离（运行时配置切换 dev/prod） | 2-3d | 28 §3.8 | ✅ |
 
-**验收标准**: 单个 API key 失败时自动切换下一个，OAuth token 过期前自动刷新。
+**前端影响**: ✅ 已落地 — `CredentialPoolEditor` 多 key 轮换/禁用 UI、`ProfileManager` 切换器、`config-profile` REST 端点（PR #20 同 PR 落地）。
+
+**验收标准**: 单个 API key 失败时自动切换下一个（✅ failover 测试覆盖），Profile 切换后 Provider/MCP 热重载（✅ `/config/profile` 接口 + reload-all 测试）。OAuth token 刷新延后到 §3.X A3。
+
+**范围外（已决策放未排期）**: OAuth 2.1 device code flow → 见 §3.X A3
 
 ---
 
@@ -336,20 +340,39 @@
 
 ---
 
+### A3 — Provider OAuth 2.1 Device Code Flow（P1）
+
+> **触因**: M6 实施时交付了 CredentialPool 多 key 轮换 + Profile 热切换（PR #20），但 OAuth 登录流涉及浏览器打开/回调端口/token 存 Keychain/401 自动刷新一整套链路，独立于 API key 管道。为不阻塞 M6 核心能力落地，OAuth 单独延后。
+>
+> **何时启动**: 需要对接强制 OAuth 的 Provider（如企业版 Claude/ChatGPT）时；或客户要求 "不落磁盘明文 key"（配合 A1 磁盘加密一起做更顺）。
+
+| 项目 | 工作量 | 备注 |
+|------|--------|------|
+| Provider 配置扩展 `auth?: { type: 'oauth', ... }` schema + Zod 验证 | 0.5d | 复用 Sprint 15.11 MCP OAuth 设计模板 |
+| OAuth 2.1 + PKCE device code flow（Tauri `shell.open` + Node `http.createServer` 本地回调） | 1-1.5d | 参考 `packages/core/src/mcp/mcp-oauth.ts` 计划产物 |
+| Token 存 Keychain（access_token + refresh_token + expires_at）+ 401 自动刷新 | 0.5d | 复用 `apps/desktop/src-tauri/src/credential.rs` IPC |
+| 前端登录流 UI（"用浏览器登录" 按钮 + loading 态 + 失败重试） | 0.5d | 并入 `CredentialPoolEditor` 或独立 `ProviderOAuthButton` |
+
+**预估**: 2-3d（可与 A1 磁盘加密合并一周内落地）
+**前置依赖**: M6 ✅ 已完成（Provider 编辑 UI + 凭证池基础）；Sprint 15.11 MCP OAuth 落地后可共享 OAuth 公用模块
+**验收标准**: Claude.ai OAuth 登录成功后 token 存于 Keychain（命令行 `security find-generic-password -s com.evoclaw.app` 可见但 key 值不可读），Provider 调用 401 时自动刷新重试一次，过期 refresh_token 触发重新登录引导。
+
+---
+
 ## 4. Sprint 排期建议
 
 | 阶段 | 模块 | 主题 | 预估 | 状态 |
 |------|------|------|------|------|
 | **阶段 1** | M0 + M1 + M2 | 基础工程 + 安全 + 配置（三者可并行） | 9-14d | ✅ 完成 |
 | **阶段 2** | M3 + M4 + M4.1 | Agent 核心 + MCP 生产化 + 前端补齐 | 3.5-4.5d | ✅ 完成 |
-| **阶段 3** | **M5 ✅** + M6 | Skills 生态 ✅ + Provider ⏳ | 7-11d | 🟡 **进行中（M5 ✅，M6 待启）** |
+| **阶段 3** | **M5 ✅** + **M6 ✅**（OAuth→A3） | Skills 生态 + Provider 增强 | 7-11d | ✅ 完成 |
 | **阶段 4** | M7 Phase 1 + M8 | Skill 记忆化 + 会话隔离 | 10-13d | ⏳ 待启 |
 | **阶段 5** | M7 Phase 2 + M9 + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | ⏳ 待启 |
 | **阶段 6** | M7 Phase 3 | Skill 自动进化 | ~3w | ⏳ 待启 |
 | **阶段 7+** | M11 + M7 Phase 4 | 平台扩展 + 集体进化 | 按需 | ⏳ 待启 |
 | **回归** | Sprint 16 | 企微 Channel 生产就绪 | — | ⏳ 待启 |
 
-> **说明**: 当前已完成阶段 1-2 全部模块 + 阶段 3 的 M5。下一步启动 M6 Provider 增强或回 Sprint 16。
+> **说明**: 当前已完成阶段 1-3 全部模块（M0-M6，OAuth 延后到 A3）。下一步候选：阶段 4（M7 Phase 1 / M8）或回归 Sprint 16 企微 Channel 生产就绪，或清理 A3 OAuth 小尾巴。
 
 ---
 

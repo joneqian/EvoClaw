@@ -116,9 +116,10 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: Sprint 16 — 企微 Channel 生产就绪（Sprint 15.11 MCP 客户端企业化 + Sprint 15.12 记忆企业可见度 待验证后并入）
-- **上一冲刺**: Sprint 15.12 ✅ 已完成 — 记忆系统企业可见度（5 LLM 写工具 + 退役本地 diary 文件 + memory_feedback 表 + 5 个新 REST 端点 + 前端编辑/反馈/新鲜度/4 Tab + 聊天页 Show Your Work 折叠条 → 完整 write→search→flag→decay→show 闭环）
-- **上上冲刺**: Sprint 15.10 ✅ 已完成 — API 集成增强（成本追踪、重试策略增强、Tool Use Summary）+ 扩展性系统（Bundled Skills、Skill Fork/whenToUse/model、MCP Prompt 桥接、企业扩展包、安全白名单/黑名单、Zod 验证）
+- **当前冲刺**: 阶段 4 待启 — M7 Phase 1（Skill 记忆化）/ M8（会话隔离与环境安全）/ Sprint 16（企微 Channel 生产就绪）/ A3（Provider OAuth device code flow）四选一，详见 `docs/iteration-plans/CapabilityUpgradePlan_2026-04-17.md`
+- **上一冲刺**: M6 Provider 增强 ✅ 已完成 — CredentialPool 多 key 轮换 + fallback + Profile 运行时切换（dev/prod 热重载）+ `/config/profile` REST + `CredentialPoolEditor` / `ProfileManager` 前端（PR #20，OAuth 延后至 §3.X A3）
+- **上上冲刺**: M5 Skills 生态增强 ✅ 已完成 — 威胁扫描模式库扩展（4 类）+ Trust 5 色徽章 + INSTALL_POLICY 决策矩阵 + ClawHub 版本比对 + `tool-registry.securityPolicy` 生产接线（PR #18）
+- **基建维护**: Vite 6→8 + `@vitejs/plugin-react` 4→6 升级（PR #23，配合 engines.node `>=22.12`），Dependabot 阻塞清零
 
 ## 协作准则
 

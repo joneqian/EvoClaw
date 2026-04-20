@@ -256,6 +256,8 @@
 ### M9 — 发布与分发（P1，依赖 M0）
 
 > **为什么在 M0 后**: 代码签名和 auto-update 建立在 CI/CD + 版本管理基础之上。
+>
+> **详细方案**: [`M9-ReleaseDistribution-Plan.md`](./M9-ReleaseDistribution-Plan.md)（Phase 1 证书无关 4-5d + Phase 2 证书就绪后 3-4d，共 7-9d；阿里云 OSS + 函数计算支持灰度/回滚；多品牌可扩展）
 
 | 项目 | 工作量 | 来源 |
 |------|--------|------|

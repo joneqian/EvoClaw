@@ -64,10 +64,13 @@
 | **M5** | Skills 生态增强 ✅ | P0 | 3-5d | M4 | ✅ **本模块同 PR 落地**：Trust 5 色徽章、"有新版可用"紫条 + 升级按钮、威胁扫描详情折叠、require-confirm checkbox（PR #18） |
 | **M6** | Provider 增强 ✅（OAuth→A3） | P1 | 4-6d | M2 | ✅ **本模块同 PR 落地**：CredentialPool 编辑器 + Profile 切换器（PR #20）；OAuth 登录流随 A3 一起做 |
 | **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 | ⚠️ **必评**：进化日志查看、技能推荐卡片、Cron 进化审核界面 |
-| **M8** | 会话隔离与环境安全 | P1 | 5-8d | M1, M3 | ⚠️ **必评**：权限按 session 显示；网站黑名单管理界面 |
+| **M8** | 会话隔离与环境安全 ✅ | P1 | 5-8d | M1, M3 | ⚠️ **后端已完成（PR #30）**：session_key 列 + env sandbox + 域名黑名单；UI（权限按 session 显示 + 黑名单管理）defer 到 M8.1 |
 | **M9** | 发布与分发 🟡 Phase 1 部分完成（T1/T2 ✅，T3-T8 暂停）| P1 | 7-9d | M0 | ✅ **T2 已落地 + 构建治理**：brand-apply 多品牌抽象 + gitignore 根治 + postinstall；⚠️ T5 前端 banner 待后续 |
 | **M10** | 文档站 | P1 | 5-8d | M0 | ❌ 无（独立站，不嵌入 Tauri） |
 | **M11** | 平台扩展 | P2 | 按需 | M3, M8 | ⚠️ **必评**：各 channel 的配置 / 登录 / 诊断 UI |
+| **M12** | 运营可观测 & 成本治理（新） | P1 | 3-4d | M6, M8 | ⚠️ **必评**：session 成本聚合面板（沿用 UsageTab 风格） |
+| **M1.1** | Checkpoint Manager（补丁） | P1 | 3-5d | M1 | ❌ 无（静默恢复，未来可加"已恢复 N 文件" toast） |
+| **M3.1** | 全局 IterationBudget（补丁） | P1 | 1-2d | M3 | ❌ 无（利用 M3 既有 UI） |
 
 > **规划约束**（见 §7）：每个模块的详细计划必须在 Context 节显式列出"前端影响"字段（含"无"的显式声明）。无 UI 任务的模块视为"完成度 100%"，有 UI 任务但未在本模块内做的必须在路线图/未排期候选区明确 defer 目标（如 M4 → M4.1 的模式）。
 
@@ -239,17 +242,21 @@
 
 ---
 
-### M8 — 会话隔离与环境安全（P1，依赖 M1 + M3）
+### M8 — 会话隔离与环境安全 ✅ 已完成（P1，依赖 M1 + M3）
 
 > **为什么在 M1/M3 后**: 需要安全基础（M1 env 白名单）+ Agent 核心稳定（M3 无回归）。
+>
+> **交付**: PR #30（2026-04-20）。详细方案见 `/Users/mac/.claude/plans/humming-forging-bubble.md`。
 
-| 项目 | 工作量 | 来源 |
-|------|--------|------|
-| AsyncLocalStorage 会话级隔离（权限按 sessionId 分离） | 2-3d | 29 §3.19 |
-| 环境变量白名单 + 凭据 sandbox（子 Agent 不继承全部 env） | 2-3d | 29 §3.20 |
-| 网站黑名单 + 通配符匹配 | 1-2d | 29 §3.16 |
+| 项目 | 工作量 | 状态 | 实现摘要 |
+|------|--------|------|----------|
+| 会话级权限隔离（显式 sessionKey 透传） | 2-3d | ✅ | migration 026 加 `session_key` 列 + SecurityExtension 三层缓存（agent 级 always/deny 共享 × session 级按 sessionKey 分片）+ SmartDecisionCache session 维度 |
+| 环境变量白名单 + 凭据 sandbox | 2-3d | ✅ | 抽取 `@evoclaw/shared/security/env-sanitizer`；bash/background 默认 inherit 模式自动剥离 SENSITIVE_PATTERNS；`customSensitivePatterns` 配置扩展 |
+| 网站黑名单 + 通配符匹配 | 1-2d | ✅ | `config.security.domainDenylist` 支持 `*.example.com` 通配 + punycode 规范化；web_fetch 与 MCP HTTP 前置检查 |
 
-**验收标准**: Agent A 的 session-scope 授权不被 Agent B 的会话复用，子 Agent env 只含白名单变量。
+**验收**: 9 + 3 + 6 + 8 + 4 = 30 项新单测全部通过，回归 2729/2729 core + 61/61 shared 全绿。
+
+**Defer 到 M8.1（前端补齐）**: 权限历史 Tab 加 "会话" 列（sessionKey 前 8 位）；Settings 加 "域名策略" 小节（列表 + 增删 UI）；env 剥离一次性 toast 提示。
 
 ---
 
@@ -303,6 +310,65 @@
 | ACP 适配器（IDE 集成） | 2-3w | 20 |
 
 按市场需求逐个评估启动。
+
+---
+
+### M12 — 运营可观测 & 成本治理（P1，依赖 M6 + M8）
+
+> **为什么**: M8 多 Agent 协作调研（2026-04-20）发现 EvoClaw 相对 Hermes 仍缺「按 session 查询成本」能力；企业计费、用量分摊、按 Agent 统计 API 开销都需要 `session_usage` 聚合表。M6 已提供 Credential Pool 基础，M8 已提供 sessionKey 语义，此时做聚合成本最低。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| `session_usage` 聚合表（session_key, agent_id, model, input/output/cache tokens, cost）+ 写入点 hook | 1.5-2d | Hermes 对比（多 Agent 协作 §4） |
+| `/usage/session` 聚合查询 API（按 agentId/时间范围/模型过滤） | 1d | — |
+| 前端 UsageTab 增加「按 session 分组」视图 | 1-1.5d | 沿用 M6 Usage 组件风格 |
+
+**验收标准**: 给定 agentId + 时间窗口，能返回每个 sessionKey 的总 token 消耗和 USD 成本，与 `tool_audit_log` / `audit_log` 数据对齐。
+
+**不包含（defer 到 M12.1）**: 预算告警规则、Provider 成本报表导出 CSV、按团队/部门分摊维度。
+
+---
+
+### M1.1 — Checkpoint Manager（补丁，P1，依赖 M1）
+
+> **为什么**: M8 多 Agent 协作调研发现 Hermes 有「工具回滚」能力，EvoClaw 目前 bash/edit/write 写错文件只能人工修。面向非程序员企业用户（CLAUDE.md 核心定位），必须提供自动兜底。
+>
+> **参考**: Hermes `checkpoint_manager.py` 实现 — 在破坏性工具执行前快照受影响文件到 `.evoclaw/checkpoints/<toolInvocationId>/`，失败/显式 revert 时原样还原。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| Checkpoint 写入层（edit/write/apply_patch 前自动备份） | 1-1.5d | Hermes hermes_state.py |
+| Checkpoint Revert API + `/revert/<toolInvocationId>` 路由 | 1d | — |
+| 失败工具自动 revert（`tool_audit_log.status='error'` 时触发） | 0.5-1d | — |
+| 保留策略（按 agent_id 保留最近 100 个 + 7 天过期清理） | 0.5d | — |
+| 单元测试 + 集成测试（edit 失败后文件恢复原状） | 1d | — |
+
+**验收标准**: Agent 用 edit 工具改坏 `/path/to/file.ts`，下一次对话 Agent 自己意识到错误时能调 `revert` 还原；或用户手动点 UI「撤回最后操作」按钮还原。
+
+---
+
+### M3.1 — 全局 IterationBudget（补丁，P1，依赖 M3）
+
+> **为什么**: M3 已做单 session 内的 IterationBudget + Grace call，但 subagent 爆量时无顶层保护。Hermes 有「全局 + 单 session 双层预算」。
+>
+> **参考**: `packages/core/src/agent/kernel/iteration-budget.ts` 扩展一列 `globalUsed` 跨 session 共享。
+
+| 项目 | 工作量 | 来源 |
+|------|--------|------|
+| `IterationBudget` 增加全局计数器（单例 + `globalMax` 配置） | 0.5d | Hermes run_agent.py:170-211 |
+| 超限时返回明确错误（区分单 session 耗尽 vs 全局耗尽） | 0.5d | — |
+| 配置项 `agent.globalIterationBudget`（默认 10000，0=禁用） | 0.5d | — |
+| 单元测试（两 session 共享、单 session 独占） | 0.5-1d | — |
+
+**验收标准**: 配置 `globalIterationBudget=100`，开 3 个 session 各跑 40 轮应被拒（总 120 > 100）。
+
+---
+
+### Sprint 16 附带任务 — 30s 活动心跳
+
+> **为什么**: M8 多 Agent 协作调研发现 Hermes 有「长任务期间向平台发 typing 事件」机制，防止 Telegram/企微 webhook 5s timeout 假超时。EvoClaw 现有 `HeartbeatManager` 是 Agent 主动唤醒机制，与此不同。应当在每个 channel adapter 实现层加入平台特定的保活事件（Telegram `sendChatAction('typing')` / 企微占位消息 / Slack typing indicator）。
+
+**归属**: Sprint 16（企微 Channel 生产就绪）附带完成，不独立成模块。工作量估 0.5-1d 每 channel。
 
 ---
 
@@ -374,13 +440,16 @@
 | **阶段 1** | M0 + M1 + M2 | 基础工程 + 安全 + 配置（三者可并行） | 9-14d | ✅ 完成 |
 | **阶段 2** | M3 + M4 + M4.1 | Agent 核心 + MCP 生产化 + 前端补齐 | 3.5-4.5d | ✅ 完成 |
 | **阶段 3** | **M5 ✅** + **M6 ✅**（OAuth→A3） | Skills 生态 + Provider 增强 | 7-11d | ✅ 完成 |
-| **阶段 4** | M7 Phase 1 + M8 | Skill 记忆化 + 会话隔离 | 10-13d | ⏳ 待启 |
+| **阶段 4** | M7 Phase 1 + **M8 ✅** | Skill 记忆化 + 会话隔离 | 10-13d | 🟡 M8 ✅（PR #30），M7 Phase 1 ⏳ |
 | **阶段 5** | M7 Phase 2 + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟡 M9 Phase 1 部分完成（T1/T2 ✅），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
-| **阶段 6** | M7 Phase 3 | Skill 自动进化 | ~3w | ⏳ 待启 |
+| **阶段 6** | M7 Phase 3 + M12 | Skill 自动进化 + 运营可观测 | ~3w + 3-4d | ⏳ 待启 |
 | **阶段 7+** | M11 + M7 Phase 4 | 平台扩展 + 集体进化 | 按需 | ⏳ 待启 |
-| **回归** | Sprint 16 | 企微 Channel 生产就绪 | — | ⏳ 待启 |
+| **回归** | Sprint 16（含 30s 活动心跳附带任务） | 企微 Channel 生产就绪 | — | ⏳ 待启 |
+| **补丁** | M1.1 + M3.1 | Checkpoint Manager + 全局 IterationBudget | 4-7d | ⏳ 待启（可穿插进其它阶段） |
 
-> **说明**: 当前已完成阶段 1-3 全部模块（M0-M6，OAuth 延后到 A3）。下一步候选：阶段 4（M7 Phase 1 / M8）或回归 Sprint 16 企微 Channel 生产就绪，或清理 A3 OAuth 小尾巴。
+> **说明**: 当前已完成阶段 1-3 全部模块 + M8（M0-M6 + M8，OAuth 延后到 A3）。下一步候选：M7 Phase 1（Skill 记忆化，阶段 4 余项）/ Sprint 16 企微 Channel 生产就绪（附带 30s 心跳）/ M1.1 Checkpoint / M3.1 全局预算 / M12 运营可观测 / A3 OAuth。
+>
+> **M8 多 Agent 研究派生的 4 个补丁模块**（M1.1 / M3.1 / M12 / Sprint 16 附带 30s 心跳）按「领域归属」拆分而不是聚合，确保每个补齐点落在最熟悉它的上下文里。详见各模块章节。
 
 ---
 

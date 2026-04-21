@@ -23,8 +23,9 @@ import {
   type FeishuSdkBundle,
 } from './client.js';
 import { parseFeishuCredentials, type FeishuCredentials } from './config.js';
-import { registerInboundHandlers } from './inbound.js';
-import { sendTextMessage } from './outbound.js';
+import { registerInboundHandlers, type MediaDownloader } from './inbound.js';
+import { sendMediaMessage, sendSmartMessage } from './outbound.js';
+import { downloadMessageResource } from './media.js';
 
 const log = createLogger('feishu-adapter');
 
@@ -69,6 +70,8 @@ export class FeishuAdapter implements ChannelAdapter {
   private credentials: FeishuCredentials | null = null;
   private bundle: FeishuSdkBundle | null = null;
   private botOpenId: string | null = null;
+  /** 媒体下载器，connect() 时构造，disconnect() 后置空 */
+  private mediaDownloader: MediaDownloader | null = null;
 
   constructor(private readonly options: FeishuAdapterOptions = {}) {}
 
@@ -88,9 +91,20 @@ export class FeishuAdapter implements ChannelAdapter {
         getAccountId: () => this.credentials?.appId ?? '',
         getBotOpenId: () => this.botOpenId,
         getHandler: () => this.handler,
+        getMediaDownloader: () => this.mediaDownloader,
       });
 
       await bundle.wsClient.start({ eventDispatcher: bundle.dispatcher });
+
+      // 绑定媒体下载器（闭包捕获 client）
+      this.mediaDownloader = async (p) => {
+        return await downloadMessageResource(bundle.client, {
+          messageId: p.messageId,
+          fileKey: p.fileKey,
+          msgType: p.msgType,
+          ...(p.fileName !== undefined ? { fileName: p.fileName } : {}),
+        });
+      };
 
       // 连接成功后拉 bot 身份（失败不阻塞，只会让群 @ 过滤偏保守）
       const hydrate = this.options.hydrateBotOpenId ?? defaultHydrateBotOpenId;
@@ -118,6 +132,7 @@ export class FeishuAdapter implements ChannelAdapter {
     await this.cleanupBundle();
     this.credentials = null;
     this.botOpenId = null;
+    this.mediaDownloader = null;
     this.status = { ...this.status, status: 'disconnected', error: undefined };
   }
 
@@ -131,7 +146,22 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    await sendTextMessage(client, peerId, content, chatType);
+    // 智能发送：看起来像 Markdown 则走 Post，失败降级纯文本
+    await sendSmartMessage(client, peerId, content, chatType);
+  }
+
+  async sendMediaMessage(
+    peerId: string,
+    filePath: string,
+    text?: string,
+    chatType?: 'private' | 'group',
+  ): Promise<void> {
+    const client = this.requireClient();
+    await sendMediaMessage(client, peerId, filePath, chatType);
+    if (text && text.trim()) {
+      // 媒体后紧跟一条文本说明（飞书无 caption 字段）
+      await sendSmartMessage(client, peerId, text, chatType);
+    }
   }
 
   getStatus(): ChannelStatusInfo {

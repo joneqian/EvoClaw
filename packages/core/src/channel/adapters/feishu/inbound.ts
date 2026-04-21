@@ -6,11 +6,13 @@
  * - 把 SDK 事件载荷桥接到 `normalizeFeishuMessage`
  * - 群聊过滤：未 @机器人 的消息直接忽略
  * - 忽略机器人自己发送的消息
+ * - 媒体消息（image/file/audio/media）可选通过 downloader 下载到本地
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { MessageHandler } from '../../channel-adapter.js';
 import { normalizeFeishuMessage } from '../../message-normalizer.js';
+import { parseFeishuContent } from './parse-content.js';
 
 /** im.message.receive_v1 事件载荷（与 SDK 类型同构，取必要字段） */
 export interface FeishuReceiveEvent {
@@ -38,11 +40,20 @@ export interface FeishuReceiveEvent {
   };
 }
 
+/** 媒体下载回调签名 */
+export type MediaDownloader = (params: {
+  messageId: string;
+  fileKey: string;
+  msgType: string;
+  fileName?: string;
+}) => Promise<{ path: string; mimeType: string | null } | null>;
+
 /** 入站处理所需的上下文（用函数而非快照，支持运行时变化） */
 export interface InboundContext {
   getAccountId: () => string;
   getBotOpenId: () => string | null;
   getHandler: () => MessageHandler | null;
+  getMediaDownloader?: () => MediaDownloader | null;
 }
 
 /**
@@ -109,6 +120,28 @@ export async function handleReceiveMessage(
     },
     ctx.getAccountId(),
   );
+
+  // 媒体下载（如果有 key + downloader）
+  const parsed = parseFeishuContent(message.message_type, message.content);
+  if (parsed.mediaKey) {
+    const downloader = ctx.getMediaDownloader?.() ?? null;
+    if (downloader) {
+      try {
+        const downloaded = await downloader({
+          messageId: message.message_id,
+          fileKey: parsed.mediaKey,
+          msgType: message.message_type,
+          ...(parsed.fileName !== undefined ? { fileName: parsed.fileName } : {}),
+        });
+        if (downloaded) {
+          normalized.mediaPath = downloaded.path;
+          if (downloaded.mimeType) normalized.mediaType = downloaded.mimeType;
+        }
+      } catch {
+        // 下载失败不阻塞消息流，normalized.content 里已有占位文本（如 "[图片]"）
+      }
+    }
+  }
 
   await handler(normalized);
 }

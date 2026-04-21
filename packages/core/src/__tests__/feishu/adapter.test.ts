@@ -512,6 +512,100 @@ describe('handleReceiveMessage', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it('image 消息若有 downloader 应下载并挂载 mediaPath', async () => {
+    const handler = vi.fn();
+    const downloader = vi.fn().mockResolvedValue({
+      path: '/tmp/img.png',
+      mimeType: 'image/png',
+    });
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+      getMediaDownloader: () => downloader,
+    };
+
+    const event: FeishuReceiveEvent = {
+      sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_1',
+        chat_id: 'oc_x',
+        chat_type: 'p2p',
+        message_type: 'image',
+        content: '{"image_key":"img_x"}',
+      },
+    };
+    await handleReceiveMessage(event, ctx);
+
+    expect(downloader).toHaveBeenCalledWith({
+      messageId: 'om_1',
+      fileKey: 'img_x',
+      msgType: 'image',
+    });
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.mediaPath).toBe('/tmp/img.png');
+    expect(msg.mediaType).toBe('image/png');
+    expect(msg.content).toBe('[图片]');
+  });
+
+  it('file 消息 downloader 失败不阻塞 handler', async () => {
+    const handler = vi.fn();
+    const downloader = vi.fn().mockRejectedValue(new Error('403'));
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+      getMediaDownloader: () => downloader,
+    };
+
+    await handleReceiveMessage(
+      {
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+        message: {
+          message_id: 'om_2',
+          chat_id: 'oc_x',
+          chat_type: 'p2p',
+          message_type: 'file',
+          content: '{"file_key":"f1","file_name":"a.pdf"}',
+        },
+      },
+      ctx,
+    );
+
+    expect(downloader).toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledOnce();
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).toBe('[文件: a.pdf]');
+    expect(msg.mediaPath).toBeUndefined();
+  });
+
+  it('无 downloader 时 image 消息仍正常发给 handler', async () => {
+    const handler = vi.fn();
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+    };
+
+    await handleReceiveMessage(
+      {
+        sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+        message: {
+          message_id: 'om_3',
+          chat_id: 'oc_x',
+          chat_type: 'p2p',
+          message_type: 'image',
+          content: '{"image_key":"img_x"}',
+        },
+      },
+      ctx,
+    );
+    expect(handler).toHaveBeenCalledOnce();
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).toBe('[图片]');
+    expect(msg.mediaPath).toBeUndefined();
+  });
+
   it('sender.sender_id.open_id 缺失不应抛错', async () => {
     const { ctx, handler } = makeCtx();
     const event: FeishuReceiveEvent = {

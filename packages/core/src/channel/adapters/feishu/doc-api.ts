@@ -20,8 +20,17 @@ export type CommentElement =
   | { type: 'docs_link'; docs_link: { url: string } }
   | { type: 'person'; person: { user_id: string } };
 
-/** 文档类型（飞书支持评论的文档类型枚举子集） */
+/** 文档类型（飞书支持评论的文档类型枚举子集，与 event-handlers 保持一致） */
 export type FeishuFileType = 'doc' | 'docx' | 'sheet' | 'file' | 'slides';
+
+/** 运行时白名单：SDK 类型只是编译时 hint，飞书事件可能推 bitable / mindnote 等扩展值 */
+const SUPPORTED_FILE_TYPES = new Set<FeishuFileType>(['doc', 'docx', 'sheet', 'file', 'slides']);
+
+function assertFileType(fileType: string, action: string): asserts fileType is FeishuFileType {
+  if (!SUPPORTED_FILE_TYPES.has(fileType as FeishuFileType)) {
+    throw new Error(`${action} 不支持的 file_type: ${fileType}`);
+  }
+}
 
 /** 把一段纯文本转为单 text_run 元素 */
 export function toTextElements(text: string): CommentElement[] {
@@ -76,8 +85,13 @@ export async function replyToComment(
     text: string;
   },
 ): Promise<string | null> {
+  assertFileType(params.fileType, '回复文档评论');
+  // fileToken / commentId 来自 drive 事件推送，属外部输入，必须 URL 编码防跨路径 / query 注入
+  const ft = encodeURIComponent(params.fileToken);
+  const cid = encodeURIComponent(params.commentId);
+  const ftype = encodeURIComponent(params.fileType);
   const res = (await client.request({
-    url: `/open-apis/drive/v1/files/${params.fileToken}/comments/${params.commentId}/replies?file_type=${params.fileType}`,
+    url: `/open-apis/drive/v1/files/${ft}/comments/${cid}/replies?file_type=${ftype}`,
     method: 'POST',
     data: {
       content: { elements: toTextElements(params.text) },
@@ -135,7 +149,8 @@ export async function listCommentReplies(
           : el.type === 'docs_link'
           ? el.docs_link?.url ?? ''
           : el.type === 'person'
-          ? `@${el.person?.user_id}`
+          // 用 <user:id> 前缀让 LLM 明确识别这是用户引用而非字面文本
+          ? `<user:${el.person?.user_id ?? '?'}>`
           : '',
       )
       .join('');

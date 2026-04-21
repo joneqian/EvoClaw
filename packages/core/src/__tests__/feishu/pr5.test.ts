@@ -140,6 +140,35 @@ describe('doc-api', () => {
     expect(arg.url).toContain('file_type=docx');
   });
 
+  it('replyToComment 对含特殊字符的 token 做 URL 编码', async () => {
+    const request = vi.fn().mockResolvedValue({ code: 0, data: { reply_id: 'rp' } });
+    const client = { request } as any;
+    await replyToComment(client, {
+      fileToken: 'abc/../etc',
+      commentId: 'c?x=1',
+      fileType: 'docx',
+      text: 'y',
+    });
+    const url = request.mock.calls[0][0].url as string;
+    // 路径段 / 查询串分隔符都应被转义
+    expect(url).toContain('/files/abc%2F..%2Fetc/comments/c%3Fx%3D1/replies');
+    expect(url).not.toContain('/abc/../etc/');
+  });
+
+  it('replyToComment 非法 fileType 运行时拒绝', async () => {
+    const request = vi.fn();
+    const client = { request } as any;
+    await expect(
+      replyToComment(client, {
+        fileToken: 'x',
+        commentId: 'y',
+        fileType: 'bitable' as any, // 运行时应拒绝
+        text: 'z',
+      }),
+    ).rejects.toThrow(/不支持.*bitable/);
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('listCommentReplies 将 elements 扁平化为 text', async () => {
     const list = vi.fn().mockResolvedValue({
       code: 0,
@@ -171,7 +200,8 @@ describe('doc-api', () => {
       fileType: 'docx',
     });
     expect(res.replies).toHaveLength(1);
-    expect(res.replies[0]!.text).toBe('这里有问题 https://x.com@ou_mention');
+    // person 元素扁平为 <user:id> 前缀，避免 LLM 误读为字面文本
+    expect(res.replies[0]!.text).toBe('这里有问题 https://x.com<user:ou_mention>');
     expect(res.hasMore).toBe(false);
     expect(res.replies[0]!.reply_id).toBe('rp_1');
   });
@@ -198,11 +228,28 @@ describe('isRetryableFeishuError', () => {
     ).toBe(false);
   });
 
-  it('transient 网络错误可重试', () => {
+  it('transient 网络错误：message 兜底仍工作', () => {
     expect(isRetryableFeishuError(new Error('ECONNRESET'))).toBe(true);
     expect(isRetryableFeishuError(new Error('socket hang up'))).toBe(true);
     expect(isRetryableFeishuError(new Error('HTTP 503 Service Unavailable'))).toBe(true);
-    expect(isRetryableFeishuError(new Error('connect ETIMEDOUT'))).toBe(true);
+  });
+
+  it('transient 网络错误：优先走 err.code 结构化字段', () => {
+    const err = new Error('unhelpful');
+    (err as any).code = 'ETIMEDOUT';
+    expect(isRetryableFeishuError(err)).toBe(true);
+  });
+
+  it('transient 网络错误：err.cause.code 也识别', () => {
+    const err = new Error('wrap');
+    (err as any).cause = { code: 'ECONNRESET' };
+    expect(isRetryableFeishuError(err)).toBe(true);
+  });
+
+  it('transient 网络错误：HTTP 5xx 走 response.statusCode', () => {
+    const err = new Error('wrap');
+    (err as any).response = { statusCode: 503 };
+    expect(isRetryableFeishuError(err)).toBe(true);
   });
 
   it('普通业务错误不重试', () => {
@@ -252,7 +299,7 @@ describe('withFeishuRetry', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('指数退避：delay 依次为 base, 2*base, 4*base', async () => {
+  it('指数退避（equal jitter）：delay 落在 [max/2, max) 区间', async () => {
     const delays: number[] = [];
     const sleep = async (ms: number) => {
       delays.push(ms);
@@ -261,9 +308,45 @@ describe('withFeishuRetry', () => {
       .fn()
       .mockRejectedValue(new FeishuApiError('send', 99991400, 'rate'));
     await expect(
-      withFeishuRetry(fn, { sleep, baseDelayMs: 10, maxAttempts: 4 }),
+      withFeishuRetry(fn, {
+        sleep,
+        baseDelayMs: 100,
+        maxAttempts: 4,
+        random: () => 0.5, // 固定随机，便于精确断言
+      }),
     ).rejects.toBeTruthy();
-    expect(delays).toEqual([10, 20, 40]);
+    // attempt=0: base=100, range [50, 100), random=0.5 → 75
+    // attempt=1: base=200, range [100, 200), random=0.5 → 150
+    // attempt=2: base=400, range [200, 400), random=0.5 → 300
+    expect(delays).toEqual([75, 150, 300]);
+  });
+
+  it('指数退避：jitter=0 取 max/2 下限；jitter→1 逼近 max', async () => {
+    const delaysLow: number[] = [];
+    const fnFail = () =>
+      vi.fn().mockRejectedValue(new FeishuApiError('s', 99991400, 'r'));
+
+    await expect(
+      withFeishuRetry(fnFail(), {
+        sleep: async (ms) => { delaysLow.push(ms); },
+        baseDelayMs: 100,
+        maxAttempts: 2,
+        random: () => 0,
+      }),
+    ).rejects.toBeTruthy();
+    expect(delaysLow[0]).toBe(50); // 100/2 * (1 + 0)
+
+    const delaysHigh: number[] = [];
+    await expect(
+      withFeishuRetry(fnFail(), {
+        sleep: async (ms) => { delaysHigh.push(ms); },
+        baseDelayMs: 100,
+        maxAttempts: 2,
+        random: () => 0.999,
+      }),
+    ).rejects.toBeTruthy();
+    // Math.floor(50 + 0.999 * 50) = 99
+    expect(delaysHigh[0]).toBe(99);
   });
 
   it('自定义 maxAttempts 生效', async () => {

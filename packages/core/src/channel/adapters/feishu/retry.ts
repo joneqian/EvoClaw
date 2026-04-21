@@ -31,15 +31,34 @@ const RETRYABLE_CODES = new Set<number>([
   99991663, // too many requests
 ]);
 
-/** 非飞书业务错误但属于网络异常（HTTP 5xx / timeout） */
+/** Node 系列网络异常 code 白名单 */
+const TRANSIENT_NET_CODES = /^E(CONNRESET|CONNREFUSED|TIMEDOUT|AI_AGAIN|NOTFOUND|PIPE|HOSTUNREACH)$/;
+
+/** 非飞书业务错误但属于网络异常（HTTP 5xx / transient code / timeout） */
 function looksLikeTransientNetworkError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const m = err.message;
-  // Node http / undici / axios 常见 transient 错误
-  return (
-    /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|network|timeout/i.test(m) ||
-    /HTTP 5\d{2}|status code 5\d{2}/i.test(m)
-  );
+  if (!err || typeof err !== 'object') return false;
+
+  // 优先检测 Node / undici / axios 都会挂的结构化字段（跨版本稳定）
+  const code =
+    (err as { code?: unknown }).code ??
+    (err as { cause?: { code?: unknown } }).cause?.code;
+  if (typeof code === 'string' && TRANSIENT_NET_CODES.test(code)) return true;
+
+  const status =
+    (err as { status?: unknown }).status ??
+    (err as { statusCode?: unknown }).statusCode ??
+    (err as { response?: { status?: unknown; statusCode?: unknown } }).response?.status ??
+    (err as { response?: { status?: unknown; statusCode?: unknown } }).response?.statusCode;
+  if (typeof status === 'number' && status >= 500 && status < 600) return true;
+
+  // 兜底：消息字符串匹配（最后手段，防 SDK 只在 message 里体现）
+  if (err instanceof Error) {
+    return (
+      /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|network|timeout/i.test(err.message) ||
+      /HTTP 5\d{2}|status code 5\d{2}/i.test(err.message)
+    );
+  }
+  return false;
 }
 
 /** 判断是否可重试 */
@@ -59,6 +78,8 @@ export interface RetryOptions {
   label?: string;
   /** 测试注入：等待实现（默认 setTimeout） */
   sleep?: (ms: number) => Promise<void>;
+  /** 测试注入：随机源（默认 Math.random），用于 jitter */
+  random?: () => number;
 }
 
 /** 默认 sleep 实现 */
@@ -72,6 +93,20 @@ function defaultSleep(ms: number): Promise<void> {
  * @example
  *   await withFeishuRetry(() => sendTextMessage(client, ...), { label: 'send' });
  */
+/**
+ * 计算第 N 次失败后的退避延迟：equal jitter 算法
+ * delay = max/2 + random * max/2，避免多实例同时限流时整齐重试造成"雪崩"
+ */
+export function computeBackoffDelay(
+  attempt: number,
+  baseDelayMs: number,
+  random: () => number = Math.random,
+): number {
+  const max = baseDelayMs * Math.pow(2, attempt);
+  const halfMax = max / 2;
+  return Math.floor(halfMax + random() * halfMax);
+}
+
 export async function withFeishuRetry<T>(
   fn: () => Promise<T>,
   options: RetryOptions = {},
@@ -79,6 +114,7 @@ export async function withFeishuRetry<T>(
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const baseDelay = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
   const sleep = options.sleep ?? defaultSleep;
+  const random = options.random ?? Math.random;
   const label = options.label ?? 'feishu';
 
   let lastError: unknown;
@@ -90,7 +126,7 @@ export async function withFeishuRetry<T>(
       if (attempt >= maxAttempts - 1 || !isRetryableFeishuError(err)) {
         throw err;
       }
-      const delay = baseDelay * Math.pow(2, attempt);
+      const delay = computeBackoffDelay(attempt, baseDelay, random);
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(
         `[${label}] 第 ${attempt + 1}/${maxAttempts} 次失败，${delay}ms 后重试: ${msg}`,
@@ -99,5 +135,5 @@ export async function withFeishuRetry<T>(
     }
   }
   // 理论不可达（循环内 throw），但 TS 要求
-  throw lastError;
+  throw lastError ?? new Error(`withFeishuRetry unreachable for ${label}`);
 }

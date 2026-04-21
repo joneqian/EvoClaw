@@ -38,12 +38,18 @@ export interface FeishuP2pEnteredEvent {
   last_message_id?: string;
 }
 
+/** 飞书已知文档类型 */
+export type FeishuDriveFileType = 'doc' | 'docx' | 'sheet' | 'bitable' | 'mindnote' | 'file' | 'slides';
+
 /** 文档评论新增事件（对应 drive.notice.comment_add_v1） */
 export interface FeishuDriveCommentEvent {
   /** 文档唯一标识（doc / docx / sheet 等） */
   file_token?: string;
-  /** 文档类型 */
-  file_type?: 'doc' | 'docx' | 'sheet' | 'bitable' | 'mindnote' | 'file' | string;
+  /**
+   * 文档类型（`(string & {})` 保留字面量自动补全同时允许未来扩展值透传，
+   * 不像纯 `| string` 会把前置枚举完全 widen）
+   */
+  file_type?: FeishuDriveFileType | (string & {});
   /** 评论 id（新建评论时即父评论 id） */
   comment_id?: string;
   /** 回复 id（仅在已有评论上回复时出现） */

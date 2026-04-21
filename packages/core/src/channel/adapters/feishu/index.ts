@@ -33,6 +33,15 @@ import {
   type ApprovalDecision,
 } from './send-approval.js';
 import { registerCardActionHandlers } from './card-action.js';
+import {
+  beginStreamingCard,
+  type StreamingCardHandle,
+  type StreamingCardOptions,
+} from './cardkit-streaming.js';
+import {
+  registerOtherEventHandlers,
+  type FeishuEventCallbacks,
+} from './event-handlers.js';
 
 const log = createLogger('feishu-adapter');
 
@@ -81,6 +90,8 @@ export class FeishuAdapter implements ChannelAdapter {
   private mediaDownloader: MediaDownloader | null = null;
   /** 审批注册表（每个 adapter 实例独立，跨重连保留 */
   private readonly approvalRegistry = new ApprovalRegistry();
+  /** 非消息事件回调（reactions / 入群 / 离群 / p2p_entered） */
+  private eventCallbacks: FeishuEventCallbacks = {};
 
   constructor(private readonly options: FeishuAdapterOptions = {}) {}
 
@@ -107,6 +118,10 @@ export class FeishuAdapter implements ChannelAdapter {
       registerCardActionHandlers(bundle.dispatcher, {
         getRegistry: () => this.approvalRegistry,
         getClient: () => this.bundle?.client ?? null,
+      });
+
+      registerOtherEventHandlers(bundle.dispatcher, {
+        getCallbacks: () => this.eventCallbacks,
       });
 
       await bundle.wsClient.start({ eventDispatcher: bundle.dispatcher });
@@ -166,8 +181,24 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    // 智能发送：看起来像 Markdown 则走 Post，失败降级纯文本
+    // 智能发送：Markdown 自动走 Post，失败降级纯文本
+    // 流式卡片由调用方通过 beginStreaming 显式发起（例如 chat.ts SSE 接入后）
     await sendSmartMessage(client, peerId, content, chatType);
+  }
+
+  /**
+   * 显式发起流式卡片（供外部 SSE / 逐步输出场景使用）
+   *
+   * 返回 handle，调用方负责 append / finish / abort。
+   * 调用方应自行保证 append 串行（每次 await 后再发下一条）以避免乱序。
+   */
+  async beginStreaming(
+    peerId: string,
+    options: StreamingCardOptions = {},
+    chatType?: 'private' | 'group',
+  ): Promise<StreamingCardHandle> {
+    const client = this.requireClient();
+    return await beginStreamingCard(client, peerId, options, chatType);
   }
 
   async sendMediaMessage(
@@ -206,9 +237,18 @@ export class FeishuAdapter implements ChannelAdapter {
     return { ...this.status };
   }
 
-  /** 覆盖 bot open_id（测试 / Phase H 场景用，正常通过 connect() 自动拉取） */
+  /** 覆盖 bot open_id（测试场景用；生产环境通过 connect() 自动拉取） */
   setBotOpenId(openId: string | null): void {
     this.botOpenId = openId;
+  }
+
+  /**
+   * 注册非消息事件回调（reactions / 入群 / 离群 / p2p_entered）
+   *
+   * 注意：**完全替换旧 callbacks**。多订阅者场景请在外层自行聚合（EventEmitter 等）。
+   */
+  setEventCallbacks(callbacks: FeishuEventCallbacks): void {
+    this.eventCallbacks = callbacks;
   }
 
   private requireClient(): Lark.Client {

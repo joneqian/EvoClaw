@@ -42,6 +42,7 @@ import {
   registerOtherEventHandlers,
   type FeishuEventCallbacks,
 } from './event-handlers.js';
+import { withFeishuRetry } from './retry.js';
 
 const log = createLogger('feishu-adapter');
 
@@ -181,9 +182,11 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    // 智能发送：Markdown 自动走 Post，失败降级纯文本
-    // 流式卡片由调用方通过 beginStreaming 显式发起（例如 chat.ts SSE 接入后）
-    await sendSmartMessage(client, peerId, content, chatType);
+    // 智能发送：Markdown 自动走 Post，失败降级纯文本；网络 / 限流错误做 3 次指数退避
+    await withFeishuRetry(
+      () => sendSmartMessage(client, peerId, content, chatType),
+      { label: 'sendMessage' },
+    );
   }
 
   /**
@@ -208,10 +211,16 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    await sendMediaMessage(client, peerId, filePath, chatType);
+    await withFeishuRetry(
+      () => sendMediaMessage(client, peerId, filePath, chatType),
+      { label: 'sendMedia' },
+    );
     if (text && text.trim()) {
       // 媒体后紧跟一条文本说明（飞书无 caption 字段）
-      await sendSmartMessage(client, peerId, text, chatType);
+      await withFeishuRetry(
+        () => sendSmartMessage(client, peerId, text, chatType),
+        { label: 'sendMediaCaption' },
+      );
     }
   }
 

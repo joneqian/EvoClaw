@@ -3,6 +3,7 @@ import { get, post, del } from '../lib/api';
 import { BRAND_NAME } from '@evoclaw/shared';
 import SkillSourceBadge from '../components/SkillSourceBadge';
 import SkillEffectivenessPanel from '../components/SkillEffectivenessPanel';
+import EvolutionLogPanel from '../components/EvolutionLogPanel';
 import { useAppStore } from '../stores/app-store';
 
 // ─── 类型 ───
@@ -61,7 +62,7 @@ interface PrepareResult {
   };
 }
 
-type TabType = 'brand' | 'store' | 'my' | 'effectiveness';
+type TabType = 'brand' | 'store' | 'my' | 'effectiveness' | 'evolution';
 
 // ─── 品牌自有技能数据 ───
 
@@ -351,6 +352,9 @@ export default function SkillPage() {
           <button onClick={() => setTab('effectiveness')}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'effectiveness' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
           >效能</button>
+          <button onClick={() => setTab('evolution')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'evolution' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+          >进化历史</button>
         </div>
         <div className="flex-1" />
 
@@ -547,7 +551,11 @@ export default function SkillPage() {
       )}
 
       {/* ─── 内容 ─── */}
-      {tab === 'effectiveness' ? (
+      {tab === 'evolution' ? (
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <EvolutionLogPanel />
+        </div>
+      ) : tab === 'effectiveness' ? (
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <SkillEffectivenessPanelWrapper />
         </div>

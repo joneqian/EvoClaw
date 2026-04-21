@@ -196,6 +196,11 @@ export const ROUTE_MANIFEST: readonly RouteMeta[] = [
   r('GET',    '/skill-usage/summaries',     'skill', '单 Skill session 摘要列表'),
   r('POST',   '/skill-usage/:id/feedback',  'skill', '用户 👍/👎 反馈回写'),
 
+  // ── Skill Evolution (M7.1 进化日志 + 回滚) ──
+  r('GET',    '/skill-evolution/log',          'skill', '进化决策日志列表'),
+  r('GET',    '/skill-evolution/log/:id',      'skill', '进化决策详情（含 before/after 内容）'),
+  r('POST',   '/skill-evolution/log/:id/rollback', 'skill', '回滚一次 refine 决策'),
+
   // ── SOP ──
   r('GET',    '/sop/docs',              'sop', '列出 SOP 文档'),
   r('POST',   '/sop/docs/upload',       'sop', '上传 SOP 文档'),

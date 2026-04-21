@@ -913,12 +913,16 @@ async function main() {
   // 优雅关闭 — 注册各资源的关闭处理器（按优先级执行）
   const { registerShutdownHandler, installShutdownHandlers } = await import('./infrastructure/graceful-shutdown.js');
 
+  // M7 Phase 3: Skill Evolver 调度器（延迟初始化，Phase 3 延迟启动）
+  let skillEvolverScheduler: import('./skill/skill-evolver-scheduler.js').SkillEvolverScheduler | null = null;
+
   registerShutdownHandler({ name: '调度器', priority: 10, handler: () => {
     cronRunner.stop();
     heartbeatManager?.stopAll();
     decayScheduler?.stop();
     consolidator?.stop();
     memoryMonitor.stop();
+    skillEvolverScheduler?.stop();
   }});
   registerShutdownHandler({ name: '渠道', priority: 20, handler: () => { channelManager.disconnectAll(); }});
   // MCP shutdown handler 在 mcpManager 初始化后注册（见 Phase 3a.5）
@@ -986,6 +990,21 @@ async function main() {
   cronRunner.start();
   memoryMonitor.start();
   log.info('CronRunner + MemoryMonitor 已启动（Phase 3 延迟）');
+
+  // M7 Phase 3: Skill Evolver Scheduler（仅 DB + ConfigManager 就绪时启动）
+  if (db && configManager) {
+    const { SkillEvolverScheduler } = await import('./skill/skill-evolver-scheduler.js');
+    const { createSecondaryLLMCallFn } = await import('./agent/llm-client.js');
+    const evolverUserSkillsDir = path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+    skillEvolverScheduler = new SkillEvolverScheduler({
+      db,
+      userSkillsDir: evolverUserSkillsDir,
+      getConfig: () => configManager?.getConfig()?.security?.skillEvolver,
+      getLLMCall: () => configManager ? createSecondaryLLMCallFn(configManager) : undefined,
+    });
+    skillEvolverScheduler.start();
+    log.info('SkillEvolverScheduler 已启动（按 config.security.skillEvolver 触发）');
+  }
 
   // 3a.1. API 预连接 — 提前建立 TCP+TLS，减少首次 LLM 调用延迟
   preconnectProviders(configManager);

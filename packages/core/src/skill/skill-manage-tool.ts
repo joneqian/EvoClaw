@@ -78,6 +78,60 @@ export function defaultUserSkillsDir(): string {
   return path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
 }
 
+/**
+ * M7 Phase 3: 供 Evolver 直接调用的内部 API（绕过工具层的 JSON 序列化）。
+ *
+ * Evolver 在 Cron context 运行，不注入 invoke_skill / skill_manage 工具，
+ * 但需要在决策执行阶段真实写入 SKILL.md。这些内部 API 直接传结构化入参，
+ * 复用 scan + atomic write + manifest 更新 + 回滚的完整链路。
+ *
+ * 返回与 performAction 相同的 SkillManageResult（含 scan / error）。
+ */
+export async function createSkillInternal(params: {
+  name: string;
+  content: string;
+  userSkillsDir?: string;
+}): Promise<SkillManageResult> {
+  const parsed = SkillManageInputSchema.safeParse({
+    action: 'create',
+    name: params.name,
+    content: params.content,
+  });
+  if (!parsed.success) {
+    return {
+      success: false,
+      action: 'create',
+      name: params.name,
+      path: '',
+      error: `参数校验失败: ${parsed.error.issues.map(i => i.message).join('; ')}`,
+    };
+  }
+  return performAction(parsed.data, params.userSkillsDir ?? defaultUserSkillsDir());
+}
+
+/** 供 Evolver 调用的 edit 内部 API（整文件覆盖） */
+export async function editSkillInternal(params: {
+  name: string;
+  content: string;
+  userSkillsDir?: string;
+}): Promise<SkillManageResult> {
+  const parsed = SkillManageInputSchema.safeParse({
+    action: 'edit',
+    name: params.name,
+    content: params.content,
+  });
+  if (!parsed.success) {
+    return {
+      success: false,
+      action: 'edit',
+      name: params.name,
+      path: '',
+      error: `参数校验失败: ${parsed.error.issues.map(i => i.message).join('; ')}`,
+    };
+  }
+  return performAction(parsed.data, params.userSkillsDir ?? defaultUserSkillsDir());
+}
+
 /** 创建 skill_manage 工具定义 */
 export function createSkillManageTool(options: SkillManageOptions = {}): ToolDefinition {
   return {

@@ -116,10 +116,10 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: 依赖升级 + 计划同步（2026-04-20）— 接管 dependabot PR：vitest 3.2.4→4.1.4（PR #36，适配 2 处 breaking change）+ esbuild 0.27.4→0.28.0（PR #37，零改动）；修复 M8 遗留的 shared 包 NodeJS 类型耦合（PR #35）；OpenClaw 多 Agent 协作深度研究（PR #32，1633 行）+ M13 模块写入路线图（PR #34）；M12/M1.1/M3.1/Sprint16 补丁模块规划（PR #31）。TypeScript 5.9→6.0 主动延后至 §3.X A4
-- **上一冲刺**: M8 会话隔离与环境安全 ✅（PR #30）— session 级权限隔离 + env 沙箱 + 域名黑名单
-- **上上冲刺**: M9 Phase 1 T1/T2 ✅（PR #26 + #28）— CHANGELOG 自动化 + 多品牌构建抽象 + 构建治理
-- **更早**: M6 Provider 增强 ✅（PR #20，OAuth→A3）；M5 Skills 生态增强 ✅（PR #18）；Vite 6→8 升级 ✅（PR #23）；tsbuildinfo gitignore + 类型结构化收尾 ✅（PR #27）
+- **当前冲刺**: M7 Skill 自进化 Phase 1-3 ✅（2026-04-21，PR #39 + #40 + #41）— Agent 可调 skill_manage 创建/修改/删除自己的 Skill（Manifest v2 + atomic write + 安全扫描）；invoke_skill 三路径（inline/fork/MCP）自动采集 telemetry + 辅助 LLM 生成 per-skill 摘要 + 前端"效能" Tab + 👍/👎 反馈；系统级 Evolver Scheduler 周期性分析低效 Skill → 决策 Refine/Create/Skip，全链路 FAIL-CLOSED（用户手改 hash 守护 + 严格子串 patch + evolved 内容重扫描 + LLM 熔断）。新增 102 测试用例，core 2836/2836 全绿。Phase 4 ClawHub 回传按计划 defer
+- **上一冲刺**: 依赖升级 + 计划同步（2026-04-20）— dependabot vitest 4 / esbuild 0.28（PR #36/#37）+ shared NodeJS 解耦（PR #35）+ OpenClaw 多 Agent 研究（PR #32）+ M13 + 补丁模块规划（PR #31/#34）
+- **上上冲刺**: M8 会话隔离与环境安全 ✅（PR #30）— session 级权限隔离 + env 沙箱 + 域名黑名单
+- **更早**: M9 Phase 1 T1/T2 ✅（PR #26 + #28）；M6 Provider 增强 ✅（PR #20）；M5 Skills 生态增强 ✅（PR #18）；Vite 6→8 升级 ✅（PR #23）；tsbuildinfo gitignore + 类型结构化收尾 ✅（PR #27）
 
 ## 协作准则
 

@@ -1,9 +1,13 @@
 import type { ChannelType, ChannelMessage } from '@evoclaw/shared';
 import type { WeixinMessage } from './adapters/weixin-types.js';
 import { WeixinItemType } from './adapters/weixin-types.js';
+import { parseFeishuContent } from './adapters/feishu/parse-content.js';
 
 /**
  * 飞书事件消息 → ChannelMessage
+ *
+ * 支持的 msg_type: text / post / image / file / audio / media / sticker /
+ * interactive / merge_forward / share_chat（未知类型降级为文本描述）
  */
 export function normalizeFeishuMessage(event: {
   message_id: string;
@@ -18,14 +22,7 @@ export function normalizeFeishuMessage(event: {
     ? event.sender.sender_id.open_id
     : event.chat_id;
 
-  // 飞书消息 content 是 JSON 字符串
-  let text = '';
-  try {
-    const parsed = JSON.parse(event.content);
-    text = parsed.text ?? event.content;
-  } catch {
-    text = event.content;
-  }
+  const parsed = parseFeishuContent(event.msg_type, event.content);
 
   return {
     channel: 'feishu' as ChannelType,
@@ -34,7 +31,7 @@ export function normalizeFeishuMessage(event: {
     peerId,
     senderId: event.sender.sender_id.open_id,
     senderName: '',
-    content: text,
+    content: parsed.text,
     messageId: event.message_id,
     timestamp: Date.now(),
   };

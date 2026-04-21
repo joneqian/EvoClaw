@@ -71,6 +71,60 @@ describe('normalizeFeishuMessage', () => {
 
     expect(msg.content).toBe('纯文本内容');
   });
+
+  it('image 消息 peerId / senderId 与 content 文本标注', () => {
+    const msg = normalizeFeishuMessage(
+      {
+        message_id: 'msg-img',
+        chat_type: 'p2p',
+        chat_id: 'chat-001',
+        sender: { sender_id: { open_id: 'ou_user1' }, sender_type: 'user' },
+        content: '{"image_key":"img_abc"}',
+        msg_type: 'image',
+      },
+      'app',
+    );
+    expect(msg.content).toBe('[图片]');
+    expect(msg.peerId).toBe('ou_user1');
+    expect(msg.accountId).toBe('app');
+    expect(msg.messageId).toBe('msg-img');
+  });
+
+  it('post 消息提取富文本纯文本', () => {
+    const msg = normalizeFeishuMessage(
+      {
+        message_id: 'msg-post',
+        chat_type: 'group',
+        chat_id: 'oc_x',
+        sender: { sender_id: { open_id: 'ou_user1' }, sender_type: 'user' },
+        content: JSON.stringify({
+          zh_cn: { content: [[{ tag: 'text', text: '公告' }]] },
+        }),
+        msg_type: 'post',
+      },
+      'app',
+    );
+    expect(msg.content).toBe('公告');
+    expect(msg.chatType).toBe('group');
+    expect(msg.peerId).toBe('oc_x'); // 群聊 peerId = chat_id
+  });
+
+  it('未知 msg_type 保留基本字段不崩溃', () => {
+    const msg = normalizeFeishuMessage(
+      {
+        message_id: 'msg-x',
+        chat_type: 'p2p',
+        chat_id: 'chat-x',
+        sender: { sender_id: { open_id: 'ou_x' }, sender_type: 'user' },
+        content: '{"foo":1}',
+        msg_type: 'exotic',
+      },
+      'app',
+    );
+    expect(msg.channel).toBe('feishu');
+    expect(msg.messageId).toBe('msg-x');
+    expect(msg.content).toContain('[exotic]');
+  });
 });
 
 describe('normalizeWecomMessage', () => {

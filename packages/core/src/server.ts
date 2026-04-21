@@ -27,6 +27,7 @@ import { SopTagStore } from './sop/sop-tag-store.js';
 import { VectorStore } from './infrastructure/db/vector-store.js';
 import { createEmbeddingProvider } from './rag/embedding-provider.js';
 import { createSkillRoutes } from './routes/skill.js';
+import { createSkillUsageRoutes } from './routes/skill-usage.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createProviderRoutes } from './routes/provider.js';
 import { createConfigRoutes } from './routes/config.js';
@@ -344,6 +345,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/skill', createSkillRoutes({
       getPolicyOverride: () => configManager?.getConfig()?.security?.skillInstallPolicy,
     }));
+    app.route('/skill-usage', createSkillUsageRoutes({ db: store }));
     if (Feature.MCP && (options as any).mcpManager && (options as any).createMcpRoutes) {
       app.route('/mcp', (options as any).createMcpRoutes((options as any).mcpManager));
     }

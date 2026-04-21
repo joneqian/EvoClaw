@@ -213,10 +213,20 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   const modelResolverFn = (config as unknown as Record<string, unknown>).modelResolver as
     import('../skill/skill-tool.js').ModelResolverFn | undefined;
 
+  // M7 Phase 2: Skill 调用 telemetry sink（store 可用时启用）
+  let skillTelemetry: import('../skill/skill-usage-store.js').SkillTelemetrySink | undefined;
+  if (store) {
+    const { SkillUsageStore } = await import('../skill/skill-usage-store.js');
+    skillTelemetry = new SkillUsageStore(store);
+  }
+
   const skillTool = createSkillTool(skillSearchPaths, {
     forkConfig,
     mcpPromptExecutor,
     modelResolver: modelResolverFn,
+    telemetry: skillTelemetry,
+    agentId: config.agent?.id,
+    sessionKey: config.sessionKey,
   }) as import('./kernel/types.js').KernelTool;
 
   // 先构建基础工具池（不含 ToolSearch，因为 ToolSearch 需要完整工具列表）

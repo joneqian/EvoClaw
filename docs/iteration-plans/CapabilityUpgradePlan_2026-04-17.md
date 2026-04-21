@@ -70,7 +70,7 @@
 | **M4.1** | 前端补齐 ✅ | P1 | 3d | M1, M2, M4 | ✅ 本身即前端冲刺（Smart Approve UI + MCP Tab + 凭证 toast） |
 | **M5** | Skills 生态增强 ✅ | P0 | 3-5d | M4 | ✅ **本模块同 PR 落地**：Trust 5 色徽章、"有新版可用"紫条 + 升级按钮、威胁扫描详情折叠、require-confirm checkbox（PR #18） |
 | **M6** | Provider 增强 ✅（OAuth→A3） | P1 | 4-6d | M2 | ✅ **本模块同 PR 落地**：CredentialPool 编辑器 + Profile 切换器（PR #20）；OAuth 登录流随 A3 一起做 |
-| **M7** | Skill 自进化 | P1 | 6+ 人周 | M5, M8 | ⚠️ **必评**：进化日志查看、技能推荐卡片、Cron 进化审核界面 |
+| **M7** | Skill 自进化 🟢 Phase 1-3 ✅（Phase 4 defer）| P1 | 6+ 人周 | M5, M8 | ✅ **Phase 2 已落地前端"效能" Tab**（SkillEffectivenessPanel，PR #40）；进化日志查看 / Cron 进化审核界面 defer 到 M7.1 |
 | **M8** | 会话隔离与环境安全 ✅ | P1 | 5-8d | M1, M3 | ⚠️ **后端已完成（PR #30）**：session_key 列 + env sandbox + 域名黑名单；UI（权限按 session 显示 + 黑名单管理）defer 到 M8.1 |
 | **M9** | 发布与分发 🟡 Phase 1 部分完成（T1/T2 ✅，T3-T8 暂停）| P1 | 7-9d | M0 | ✅ **T2 已落地 + 构建治理**：brand-apply 多品牌抽象 + gitignore 根治 + postinstall；⚠️ T5 前端 banner 待后续 |
 | **M10** | 文档站 | P1 | 5-8d | M0 | ❌ 无（独立站，不嵌入 Tauri） |
@@ -234,20 +234,26 @@
 
 ---
 
-### M7 — Skill 自进化（P1，依赖 M5 + M8）
+### M7 — Skill 自进化 🟢 Phase 1-3 ✅（P1，依赖 M5 + M8）
 
 > **为什么在 M5/M8 后**: Phase 1 需要 trust level 分级（M5），Phase 2-3 需要会话隔离保障进化 Cron 安全（M8）。
+>
+> **交付**: PR #39 + PR #40 + PR #41（2026-04-21）。详细方案见 `/Users/mac/.claude/plans/humming-forging-bubble.md`。
 
 详见 [`SkillEvolutionDesign.md`](../architecture/SkillEvolutionDesign.md)，分 4 个 Phase：
 
-| Phase | 内容 | 工作量 | 依赖 |
-|-------|------|--------|------|
-| Phase 1: 基础记忆化 | `skill_manage` 工具 + Manifest v2 + 安全扫描 | ~1w | M5 |
-| Phase 2: 评估反馈 | `skill_usage` 表 + 使用追踪 + 轨迹摘要 | ~2w | Phase 1 |
-| Phase 3: 自动进化 | Agentic Evolver + Cron + Refine/Create/Skip | ~3w | Phase 2 + M8 |
-| Phase 4: 集体进化 | ClawHub 反馈回传 + 匿名聚合 | 长期 | Phase 2 |
+| Phase | 内容 | 工作量 | 状态 | PR | 实现摘要 |
+|-------|------|--------|------|----|----------|
+| Phase 1: 基础记忆化 | `skill_manage` 工具 + Manifest v2 + 安全扫描 | ~1w | ✅ | #39 | 4 actions（create/edit/patch/delete）+ atomic write + `.bak` 回滚 + `syncBundledSkills` 四态状态机 + 复用 21 条威胁模式 + 凭据赋值扫描 |
+| Phase 2: 评估反馈 | `skill_usage` 表 + 使用追踪 + 轨迹摘要 | ~2w | ✅ | #40 | migration 027（skill_usage + skill_usage_summary）+ 三路径 telemetry 注入（inline/fork/MCP）+ 辅助 LLM 摘要 + 5 REST endpoints + 前端 "效能" Tab（SkillEffectivenessPanel）+ 👍/👎 反馈 |
+| Phase 3: 自动进化 | Agentic Evolver + Cron + Refine/Create/Skip | ~3w | ✅ | #41 | migration 028 + SkillEvolverScheduler（系统级 cron，默认关）+ 证据聚合（summaries + usages + feedback）+ 辅助 LLM 决策 + 手改 hash 守护 + 严格子串 patch + FAIL-CLOSED 安全扫描重检 + 熔断器（3 连败终止）|
+| Phase 4: 集体进化 | ClawHub 反馈回传 + 匿名聚合 | 长期 | ⏳ defer | — | 等 Phase 2/3 生产环境累积真实数据后再设计 |
 
-**验收标准**: Agent 自主创建 skill 后下次会话可用；低效 skill 被 Cron 自动改进。
+**验收标准**: ✅ Agent 自主创建 skill 后下次会话可用；✅ 低效 skill 被 Cron 自动改进。
+
+**测试规模**: 新增 102 用例（47 Phase 1 + 34 Phase 2 + 21 Phase 3）。回归 core 2836/2836 + shared 61/61 + desktop build 全绿。
+
+**Defer 到 M7.1（前端补齐）**: 进化日志查看器（skill_evolution_log UI + 一键回滚）、SKILL.md diff 对照预览、Cron 触发频率 / 候选门槛配置 UI。
 
 ---
 
@@ -524,15 +530,15 @@
 | **阶段 1** | M0 + M1 + M2 | 基础工程 + 安全 + 配置（三者可并行） | 9-14d | ✅ 完成 |
 | **阶段 2** | M3 + M4 + M4.1 | Agent 核心 + MCP 生产化 + 前端补齐 | 3.5-4.5d | ✅ 完成 |
 | **阶段 3** | **M5 ✅** + **M6 ✅**（OAuth→A3） | Skills 生态 + Provider 增强 | 7-11d | ✅ 完成 |
-| **阶段 4** | M7 Phase 1 + **M8 ✅** | Skill 记忆化 + 会话隔离 | 10-13d | 🟡 M8 ✅（PR #30），M7 Phase 1 ⏳ |
-| **阶段 5** | M7 Phase 2 + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟡 M9 Phase 1 部分完成（T1/T2 ✅），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
-| **阶段 6** | M7 Phase 3 + M12 | Skill 自动进化 + 运营可观测 | ~3w + 3-4d | ⏳ 待启 |
+| **阶段 4** | **M7 Phase 1 ✅** + **M8 ✅** | Skill 记忆化 + 会话隔离 | 10-13d | ✅ M8（PR #30）+ M7 Phase 1（PR #39）|
+| **阶段 5** | **M7 Phase 2 ✅** + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟢 M7 Phase 2 ✅（PR #40），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
+| **阶段 6** | **M7 Phase 3 ✅** + M12 | Skill 自动进化 + 运营可观测 | ~3w + 3-4d | 🟢 M7 Phase 3 ✅（PR #41），M12 ⏳ 待启 |
 | **阶段 6.5** | M13（Phase 1→4 串行） | Agent 团队协作 | 10-12w | ⏳ 待启（依赖 M6 ✅ + M8 ✅，可随时启动） |
 | **阶段 7+** | M11 + M7 Phase 4 | 平台扩展 + 集体进化 | 按需 | ⏳ 待启 |
 | **回归** | Sprint 16（含 30s 活动心跳附带任务） | 企微 Channel 生产就绪 | — | ⏳ 待启 |
 | **补丁** | M1.1 + M3.1 | Checkpoint Manager + 全局 IterationBudget | 4-7d | ⏳ 待启（可穿插进其它阶段） |
 
-> **说明**: 当前已完成阶段 1-3 全部模块 + M8（M0-M6 + M8，OAuth 延后到 A3）。下一步候选：M7 Phase 1（Skill 记忆化）/ M13 Phase 1（Agent 团队协作路由扩容）/ Sprint 16 企微 Channel 生产就绪 / M1.1 Checkpoint / M3.1 全局预算 / M12 运营可观测 / A3 OAuth。
+> **说明**: 当前已完成阶段 1-3 全部模块 + M7 Phase 1-3 + M8（M0-M8，OAuth 延后到 A3，M7 Phase 4 defer）。下一步候选：M13 Phase 1（Agent 团队协作路由扩容）/ Sprint 16 企微 Channel 生产就绪 / M1.1 Checkpoint / M3.1 全局预算 / M12 运营可观测 / M7.1 进化日志前端 / A3 OAuth。
 >
 > **M13 排序建议**：对企业用户价值高（团队协作是真实刚需），但工作量大（10-12w）。可考虑先做 M13 Phase 1（路由扩容 2w）作为独立增量，其余 Phase 按需推进；也可 Phase 1-4 集中冲一个 quarter。
 >

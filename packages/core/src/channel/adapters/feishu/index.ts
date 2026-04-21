@@ -26,6 +26,13 @@ import { parseFeishuCredentials, type FeishuCredentials } from './config.js';
 import { registerInboundHandlers, type MediaDownloader } from './inbound.js';
 import { sendMediaMessage, sendSmartMessage } from './outbound.js';
 import { downloadMessageResource } from './media.js';
+import {
+  ApprovalRegistry,
+  requestApprovalViaCard,
+  type ApprovalRequestOptions,
+  type ApprovalDecision,
+} from './send-approval.js';
+import { registerCardActionHandlers } from './card-action.js';
 
 const log = createLogger('feishu-adapter');
 
@@ -72,6 +79,8 @@ export class FeishuAdapter implements ChannelAdapter {
   private botOpenId: string | null = null;
   /** 媒体下载器，connect() 时构造，disconnect() 后置空 */
   private mediaDownloader: MediaDownloader | null = null;
+  /** 审批注册表（每个 adapter 实例独立，跨重连保留 */
+  private readonly approvalRegistry = new ApprovalRegistry();
 
   constructor(private readonly options: FeishuAdapterOptions = {}) {}
 
@@ -92,6 +101,12 @@ export class FeishuAdapter implements ChannelAdapter {
         getBotOpenId: () => this.botOpenId,
         getHandler: () => this.handler,
         getMediaDownloader: () => this.mediaDownloader,
+        getGroupSessionScope: () => this.credentials?.groupSessionScope ?? 'group',
+      });
+
+      registerCardActionHandlers(bundle.dispatcher, {
+        getRegistry: () => this.approvalRegistry,
+        getClient: () => this.bundle?.client ?? null,
       });
 
       await bundle.wsClient.start({ eventDispatcher: bundle.dispatcher });
@@ -133,6 +148,8 @@ export class FeishuAdapter implements ChannelAdapter {
     this.credentials = null;
     this.botOpenId = null;
     this.mediaDownloader = null;
+    // 取消所有待审批，释放等待的 Promise
+    this.approvalRegistry.cancelAll();
     this.status = { ...this.status, status: 'disconnected', error: undefined };
   }
 
@@ -162,6 +179,24 @@ export class FeishuAdapter implements ChannelAdapter {
       // 媒体后紧跟一条文本说明（飞书无 caption 字段）
       await sendSmartMessage(client, peerId, text, chatType);
     }
+  }
+
+  /**
+   * 请求用户审批（发送审批卡，等待按钮点击）
+   *
+   * @returns Promise<{decision, operatorOpenId?}>  超时或拒绝返回对应值
+   */
+  async requestApproval(
+    peerId: string,
+    options: ApprovalRequestOptions,
+    chatType?: 'private' | 'group',
+  ): Promise<{ decision: ApprovalDecision; operatorOpenId?: string }> {
+    const client = this.requireClient();
+    return await requestApprovalViaCard(client, this.approvalRegistry, {
+      peerId,
+      ...(chatType !== undefined ? { chatType } : {}),
+      ...options,
+    });
   }
 
   getStatus(): ChannelStatusInfo {

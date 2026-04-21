@@ -9,6 +9,7 @@
  */
 
 import { z } from 'zod';
+import { FEISHU_GROUP_SESSION_SCOPES } from './session-key.js';
 
 /** Domain 枚举值 */
 export const FEISHU_DOMAINS = ['feishu', 'lark'] as const;
@@ -21,6 +22,14 @@ export const FeishuCredentialsSchema = z.object({
   encryptKey: z.string().optional(),
   verificationToken: z.string().optional(),
   domain: z.enum(FEISHU_DOMAINS).default('feishu'),
+  /**
+   * 群聊会话隔离策略
+   * - group (默认)           整群共享一个会话
+   * - group_sender           群内按成员分离
+   * - group_topic            群内按话题分离
+   * - group_topic_sender     群内按「话题 × 成员」分离（最细）
+   */
+  groupSessionScope: z.enum(FEISHU_GROUP_SESSION_SCOPES).default('group'),
 });
 
 export type FeishuCredentials = z.infer<typeof FeishuCredentialsSchema>;
@@ -38,6 +47,7 @@ export function parseFeishuCredentials(raw: Record<string, string>): FeishuCrede
     encryptKey: raw['encryptKey'] || undefined,
     verificationToken: raw['verificationToken'] || undefined,
     domain: raw['domain'] ?? 'feishu',
+    groupSessionScope: raw['groupSessionScope'] ?? 'group',
   });
   if (!result.success) {
     const first = result.error.issues[0];

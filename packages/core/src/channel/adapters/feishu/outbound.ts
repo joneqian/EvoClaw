@@ -1,10 +1,11 @@
 /**
  * 出站消息发送
  *
- * 当前支持：
- * - 纯文本 (sendTextMessage)
- * - Post 富文本 (sendPostMessage) — Markdown 自动转 Post，失败降级纯文本
- * - 图片 / 文件 (sendImageMessage / sendFileMessage) — 上传取 key 后发送
+ * 支持：
+ * - sendTextMessage  纯文本
+ * - sendPostMessage  Post 富文本（payload 已构造完成）
+ * - sendSmartMessage Markdown → Post（识别特征自动渲染，内容错降级纯文本）
+ * - sendImageMessage / sendFileMessage / sendMediaMessage 媒体上传后发送
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
@@ -17,6 +18,28 @@ interface FeishuSendResponse {
   msg?: string;
 }
 
+/** 自定义错误：保留飞书 code 便于上层判断是否降级 */
+export class FeishuApiError extends Error {
+  constructor(
+    public readonly action: string,
+    public readonly code: number,
+    public readonly msg: string,
+  ) {
+    super(`飞书${action}失败: code=${code} msg=${msg}`);
+    this.name = 'FeishuApiError';
+  }
+}
+
+/**
+ * Post 内容被服务端拒绝的 code 集合（可降级为纯文本）
+ * - 230001 参数错误
+ * - 230002 content 格式非法
+ * - 230003 参数过长
+ * - 230011 / 230012 content 结构错误
+ * 其他 code（网络、权限、限流等）不应降级，避免双发
+ */
+const POST_FALLBACK_CODES = new Set([230001, 230002, 230003, 230011, 230012]);
+
 /** 根据 chatType 推断 receive_id_type */
 export function inferReceiveIdType(
   chatType?: 'private' | 'group',
@@ -26,7 +49,7 @@ export function inferReceiveIdType(
 
 function throwIfError(res: FeishuSendResponse, action: string): void {
   if (res.code) {
-    throw new Error(`飞书${action}失败: code=${res.code} msg=${res.msg ?? ''}`);
+    throw new FeishuApiError(action, res.code, res.msg ?? '');
   }
 }
 
@@ -85,7 +108,9 @@ export async function sendPostMessage(
 
 /**
  * 智能发送：如果内容看起来是 Markdown，尝试 Post；否则发纯文本
- * Post 发送失败会降级为纯文本重试
+ *
+ * 降级策略：仅在"Post 内容被飞书判非法"（code in POST_FALLBACK_CODES）时
+ * 回退到纯文本发送；网络错误 / 权限错误 / 限流等一律上抛，避免重复投递。
  */
 export async function sendSmartMessage(
   client: Lark.Client,
@@ -101,9 +126,12 @@ export async function sendSmartMessage(
   const payload = buildPostPayload(content);
   try {
     await sendPostMessage(client, peerId, serializePostContent(payload), chatType);
-  } catch {
-    // 降级为纯文本
-    await sendTextMessage(client, peerId, content, chatType);
+  } catch (err) {
+    if (err instanceof FeishuApiError && POST_FALLBACK_CODES.has(err.code)) {
+      await sendTextMessage(client, peerId, content, chatType);
+      return;
+    }
+    throw err;
   }
 }
 

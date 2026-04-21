@@ -16,6 +16,10 @@ type FeishuFileType = 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.ico', '.tiff']);
 
+/** 飞书官方上限：image.create 10MB，file.create 30MB（附带留 1MB 余量） */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 30 * 1024 * 1024;
+
 /** 默认缓存目录 */
 function defaultCacheDir(): string {
   return path.join(os.tmpdir(), 'evoclaw-feishu-media');
@@ -61,8 +65,16 @@ export function resourceTypeFor(msgType: string): 'image' | 'file' {
   return msgType === 'image' ? 'image' : 'file';
 }
 
-/** 从本地路径读取为 Buffer（用于 SDK file 字段） */
-async function readFileBuffer(filePath: string): Promise<Buffer> {
+/** 从本地路径读取为 Buffer（含大小门控，防 OOM / 服务端拒绝） */
+async function readBoundedBuffer(filePath: string, maxBytes: number, kind: string): Promise<Buffer> {
+  const stat = await fs.stat(filePath);
+  if (stat.size === 0) {
+    throw new Error(`飞书${kind}上传失败：文件为空 (${filePath})`);
+  }
+  if (stat.size > maxBytes) {
+    const mb = (maxBytes / (1024 * 1024)).toFixed(0);
+    throw new Error(`飞书${kind}上传失败：超出 ${mb}MB 上限 (实际 ${stat.size} 字节)`);
+  }
   return await fs.readFile(filePath);
 }
 
@@ -71,7 +83,7 @@ export async function uploadImage(
   client: Lark.Client,
   filePath: string,
 ): Promise<string> {
-  const buf = await readFileBuffer(filePath);
+  const buf = await readBoundedBuffer(filePath, MAX_IMAGE_BYTES, '图片');
   const res = await client.im.v1.image.create({
     data: { image_type: 'message', image: buf },
   });
@@ -86,7 +98,7 @@ export async function uploadFile(
   filePath: string,
   options?: { fileType?: FeishuFileType; fileName?: string; duration?: number },
 ): Promise<string> {
-  const buf = await readFileBuffer(filePath);
+  const buf = await readBoundedBuffer(filePath, MAX_FILE_BYTES, '文件');
   const fileType = options?.fileType ?? inferFileType(filePath);
   const fileName = options?.fileName ?? path.basename(filePath);
   const res = await client.im.v1.file.create({

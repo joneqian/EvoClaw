@@ -15,7 +15,8 @@ export interface PostBuilderElement {
   tag: 'text' | 'a' | 'code_block' | 'md';
   text?: string;
   href?: string;
-  style?: string[];
+  /** 飞书 Post 支持：'bold' / 'italic' / 'underline' / 'lineThrough' */
+  style?: Array<'bold' | 'italic' | 'underline' | 'lineThrough'>;
 }
 
 type PostBuilderRow = PostBuilderElement[];
@@ -133,12 +134,65 @@ function splitByInlineCode(segment: string): PostBuilderRow {
 /**
  * 切出加粗 / 斜体
  *
- * 当前实现：保留原始 Markdown 标记（**...** / *...*）直接作为纯文本，
- * 飞书 Post 不原生支持样式交集时降级。避免过度解析导致嵌套错位。
+ * 飞书 Post text 元素 style 支持 'bold' / 'italic' / 'underline' / 'lineThrough'。
+ * 按从长到短的顺序匹配：**b**、__b__ → bold；*i*、_i_ → italic；~~s~~ → lineThrough。
+ * 嵌套（如 ***粗斜***）仅支持一层样式，外层规则优先。
  */
+const EMPHASIS_PATTERNS: Array<{
+  re: RegExp;
+  style: NonNullable<PostBuilderElement['style']>;
+}> = [
+  { re: /\*\*([^*\n]+)\*\*/g, style: ['bold'] },
+  { re: /__([^_\n]+)__/g, style: ['bold'] },
+  { re: /~~([^~\n]+)~~/g, style: ['lineThrough'] },
+  { re: /(?<![\w*])\*([^*\n]+)\*(?![\w*])/g, style: ['italic'] },
+  { re: /(?<![\w_])_([^_\n]+)_(?![\w_])/g, style: ['italic'] },
+];
+
 function splitByEmphasis(segment: string): PostBuilderRow {
   if (!segment) return [];
-  return [{ tag: 'text', text: segment }];
+
+  // 收集所有命中位置
+  type Hit = {
+    start: number;
+    end: number;
+    text: string;
+    style: NonNullable<PostBuilderElement['style']>;
+  };
+  const hits: Hit[] = [];
+  for (const { re, style } of EMPHASIS_PATTERNS) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(segment)) !== null) {
+      hits.push({ start: m.index, end: m.index + m[0].length, text: m[1]!, style });
+    }
+  }
+  if (hits.length === 0) return [{ tag: 'text', text: segment }];
+
+  // 按 start 升序；遇到重叠取先到者
+  hits.sort((a, b) => a.start - b.start);
+  const selected: Hit[] = [];
+  let cursor = 0;
+  for (const h of hits) {
+    if (h.start >= cursor) {
+      selected.push(h);
+      cursor = h.end;
+    }
+  }
+
+  const out: PostBuilderRow = [];
+  let idx = 0;
+  for (const h of selected) {
+    if (h.start > idx) {
+      out.push({ tag: 'text', text: segment.slice(idx, h.start) });
+    }
+    out.push({ tag: 'text', text: h.text, style: h.style });
+    idx = h.end;
+  }
+  if (idx < segment.length) {
+    out.push({ tag: 'text', text: segment.slice(idx) });
+  }
+  return out.length ? out : [{ tag: 'text', text: segment }];
 }
 
 /** 序列化 PostBuilderPayload 为可直接作为 message.create content 字段的 JSON 字符串 */

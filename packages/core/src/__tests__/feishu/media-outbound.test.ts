@@ -166,6 +166,33 @@ describe('uploadImage / uploadFile', () => {
     const call = client.im.v1.file.create.mock.calls[0][0];
     expect(call.data.duration).toBe(1200);
   });
+
+  it('uploadImage 超出 10MB 应拒绝（不触达 SDK）', async () => {
+    const big = path.join(os.tmpdir(), `feishu-big-${Date.now()}.png`);
+    // 写入 11MB 假数据
+    await fs.writeFile(big, Buffer.alloc(11 * 1024 * 1024, 0));
+    try {
+      const create = vi.fn();
+      const client = { im: { v1: { image: { create } } } } as any;
+      await expect(uploadImage(client, big)).rejects.toThrow(/10MB/);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      await fs.unlink(big).catch(() => {});
+    }
+  });
+
+  it('uploadImage 空文件应拒绝', async () => {
+    const empty = path.join(os.tmpdir(), `feishu-empty-${Date.now()}.png`);
+    await fs.writeFile(empty, '');
+    try {
+      const create = vi.fn();
+      const client = { im: { v1: { image: { create } } } } as any;
+      await expect(uploadImage(client, empty)).rejects.toThrow(/为空/);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      await fs.unlink(empty).catch(() => {});
+    }
+  });
 });
 
 describe('downloadMessageResource', () => {
@@ -285,9 +312,8 @@ describe('outbound 各发送方法', () => {
     expect(call.data.msg_type).toBe('post');
   });
 
-  it('sendSmartMessage Post 失败应降级纯文本重试', async () => {
+  it('sendSmartMessage Post 被判内容非法时降级纯文本重试', async () => {
     const client = createMockMessageClient();
-    // 第一次（post）返回错误，第二次（text）成功
     client.im.v1.message.create
       .mockResolvedValueOnce({ code: 230001, msg: 'bad post' })
       .mockResolvedValueOnce({ code: 0 });
@@ -296,6 +322,19 @@ describe('outbound 各发送方法', () => {
     expect(client.im.v1.message.create).toHaveBeenCalledTimes(2);
     const secondCall = client.im.v1.message.create.mock.calls[1][0];
     expect(secondCall.data.msg_type).toBe('text');
+  });
+
+  it('sendSmartMessage 限流/权限等非内容错应直接抛错，不重复投递', async () => {
+    const client = createMockMessageClient();
+    client.im.v1.message.create.mockResolvedValueOnce({
+      code: 99991400,
+      msg: 'rate limited',
+    });
+    await expect(
+      sendSmartMessage(client as any, 'ou_x', '**加粗**', 'private'),
+    ).rejects.toThrow(/99991400/);
+    // 只调一次，未降级
+    expect(client.im.v1.message.create).toHaveBeenCalledTimes(1);
   });
 
   it('sendImageMessage 先上传后发送 image_key', async () => {

@@ -192,6 +192,39 @@ describe('Markdown → Post 构造', () => {
     expect(link?.text).toBe('主页');
   });
 
+  it('buildPostPayload 粗体解析为 text + style:bold', () => {
+    const payload = buildPostPayload('这是 **很重要** 的提示');
+    const row = payload.zh_cn.content[0]!;
+    const bold = row.find((el) => el.style?.includes('bold'));
+    expect(bold?.text).toBe('很重要');
+    // 原始 ** 符号不应作为字面字符出现
+    const joined = row.map((el) => el.text).join('');
+    expect(joined).not.toContain('**');
+  });
+
+  it('buildPostPayload 斜体解析（* 包裹）', () => {
+    const payload = buildPostPayload('请阅读 *附件* 内容');
+    const row = payload.zh_cn.content[0]!;
+    const italic = row.find((el) => el.style?.includes('italic'));
+    expect(italic?.text).toBe('附件');
+    const joined = row.map((el) => el.text).join('');
+    expect(joined).not.toContain('*');
+  });
+
+  it('buildPostPayload 删除线解析为 lineThrough', () => {
+    const payload = buildPostPayload('这段 ~~已废弃~~');
+    const row = payload.zh_cn.content[0]!;
+    const strike = row.find((el) => el.style?.includes('lineThrough'));
+    expect(strike?.text).toBe('已废弃');
+  });
+
+  it('buildPostPayload __bold__ 也识别', () => {
+    const payload = buildPostPayload('__粗体__');
+    const row = payload.zh_cn.content[0]!;
+    const bold = row.find((el) => el.style?.includes('bold'));
+    expect(bold?.text).toBe('粗体');
+  });
+
   it('buildPostPayload 多行保留每行作为独立 row', () => {
     const payload = buildPostPayload('第一行\n第二行\n第三行');
     expect(payload.zh_cn.content).toHaveLength(3);

@@ -43,6 +43,12 @@ import {
   type FeishuEventCallbacks,
 } from './event-handlers.js';
 import { withFeishuRetry } from './retry.js';
+import {
+  addWholeCommentReply as apiAddWholeCommentReply,
+  replyToComment as apiReplyToComment,
+  listCommentReplies as apiListCommentReplies,
+  type FeishuFileType as DocFileType,
+} from './doc-api.js';
 
 const log = createLogger('feishu-adapter');
 
@@ -251,6 +257,54 @@ export class FeishuAdapter implements ChannelAdapter {
       ...(chatType !== undefined ? { chatType } : {}),
       ...options,
     });
+  }
+
+  /**
+   * 对整篇文档追加一条全文评论（代理到 doc-api）
+   * @returns 新建的 comment_id
+   */
+  async addWholeCommentReply(params: {
+    fileToken: string;
+    fileType: 'doc' | 'docx';
+    text: string;
+  }): Promise<string | null> {
+    const client = this.requireClient();
+    return await withFeishuRetry(
+      () => apiAddWholeCommentReply(client, params),
+      { label: 'addWholeCommentReply' },
+    );
+  }
+
+  /**
+   * 对已有文档评论追加回复（代理到 doc-api）
+   * @returns 新建的 reply_id
+   */
+  async replyToComment(params: {
+    fileToken: string;
+    commentId: string;
+    fileType: DocFileType;
+    text: string;
+  }): Promise<string | null> {
+    const client = this.requireClient();
+    return await withFeishuRetry(
+      () => apiReplyToComment(client, params),
+      { label: 'replyToComment' },
+    );
+  }
+
+  /** 列出文档评论的所有回复（代理到 doc-api；读操作也套 retry，幂等代价低） */
+  async listCommentReplies(params: {
+    fileToken: string;
+    commentId: string;
+    fileType: DocFileType;
+    pageSize?: number;
+    pageToken?: string;
+  }): ReturnType<typeof apiListCommentReplies> {
+    const client = this.requireClient();
+    return await withFeishuRetry(
+      () => apiListCommentReplies(client, params),
+      { label: 'listCommentReplies' },
+    );
   }
 
   getStatus(): ChannelStatusInfo {

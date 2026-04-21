@@ -734,6 +734,10 @@ async function main() {
         const weixinAdapter = new WeixinAdapter(channelStateRepo);
         channelManager.registerAdapter(weixinAdapter);
       }
+      if (Feature.FEISHU) {
+        const { FeishuAdapter } = await import('./channel/adapters/feishu/index.js');
+        channelManager.registerAdapter(new FeishuAdapter());
+      }
       const bindingRouter = new BindingRouter(db);
       profiler.checkpoint('channel_ready');
       return { channelManager, channelStateRepo, bindingRouter };

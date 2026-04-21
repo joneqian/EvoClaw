@@ -116,11 +116,11 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: M7.1 进化日志 UI + Phase 4 永废（2026-04-21，PR #43 + #44）— migration 029 扩 previous/new content 列；新增 3 REST endpoints（/skill-evolution/log + /:id + /:id/rollback）；前端 SkillPage 第 5 Tab "进化历史"（列表 + before/after diff + 一键回滚）。回滚走 editSkillInternal 完整 scan + atomic + manifest 链路，拒绝 create/skip/已回滚/legacy，成功后追加 audit 条目保留完整回溯链。同步决策：**M7 Phase 4 ClawHub 回传永远不做**（数据 local-only），版本链 / lineage tree 也随之永不做（hash 回滚成为最终方案）。新增 8 测试，core 2847/2847 全绿
-- **上一冲刺**: M7 Skill 自进化 Phase 1-3 ✅（2026-04-21，PR #39 + #40 + #41 + #42）— Agent skill_manage + invoke_skill telemetry + Agentic Evolver Cron + "效能" Tab
-- **上上冲刺**: 依赖升级 + 计划同步（2026-04-20）— dependabot vitest 4 / esbuild 0.28（PR #36/#37）+ OpenClaw 多 Agent 研究（PR #32）+ M13 规划（PR #31/#34）
-- **更早**: M8 会话隔离 ✅（PR #30）；M9 Phase 1 T1/T2 ✅（PR #26 + #28）；M6 Provider 增强 ✅（PR #20）；M5 Skills 生态增强 ✅（PR #18）
-- **下一冲刺候选**（推荐序）: **M11.1 飞书 Channel（新，M13 前置基建，6-8d）** → M13 Phase 1 路由扩容 → M12 运营可观测 / M1.1 Checkpoint / M3.1 全局预算。Sprint 16 企微推迟到 M9 部署架构 + 中转层就绪后（桌面 sidecar 无公网 IP 无法直接对接企微 webhook）
+- **当前冲刺**: M11.1 飞书 Channel 完整复刻（2026-04-21 启动，4w，分支 `feat/m11.1-feishu-channel`）— 基于 Hermes (Python) + OpenClaw (TS) 两份源码调研，范围从 MVP 6-8d 升级为完整复刻 4w，覆盖审批卡 + 流式卡 + 媒体 + 文档评论四大能力。SDK 用 `@larksuiteoapi/node-sdk`，只做 WebSocket 长连接（桌面 sidecar 无公网 IP），4 档群会话隔离（group/sender/topic/topic_sender），流式卡片 >500 字符阈值。分 5 个 PR：PR1 (A+B, 5d) SDK+WS 长连接+Zod+Keychain+前端 Tab → PR2 (C+D, 5-6d) 消息类型全覆盖+Markdown→Post+媒体 → PR3 (E+F, 6-7d) 4 档会话隔离+审批卡 ocf1 envelope → PR4 (G+H, 5d) 流式卡+反应事件+入群 → PR5 (I+J, 7-8d) 文档评论闭环+重试限流+测试 80%+。详见 `docs/iteration-plans/M11.1-FeishuChannel-Plan.md`
+- **上一冲刺**: M7.1 进化日志 UI + Phase 4 永废（2026-04-21，PR #43 + #44）— migration 029 扩 previous/new content 列；新增 3 REST endpoints（/skill-evolution/log + /:id + /:id/rollback）；前端 SkillPage 第 5 Tab "进化历史"（列表 + before/after diff + 一键回滚）。回滚走 editSkillInternal 完整 scan + atomic + manifest 链路，拒绝 create/skip/已回滚/legacy，成功后追加 audit 条目保留完整回溯链。同步决策：**M7 Phase 4 ClawHub 回传永远不做**（数据 local-only），版本链 / lineage tree 也随之永不做（hash 回滚成为最终方案）。新增 8 测试，core 2847/2847 全绿
+- **上上冲刺**: M7 Skill 自进化 Phase 1-3 ✅（2026-04-21，PR #39 + #40 + #41 + #42）— Agent skill_manage + invoke_skill telemetry + Agentic Evolver Cron + "效能" Tab
+- **更早**: 依赖升级 + 计划同步（2026-04-20，PR #36/#37）；M8 会话隔离 ✅（PR #30）；M9 Phase 1 T1/T2 ✅（PR #26 + #28）；M6 Provider 增强 ✅（PR #20）；M5 Skills 生态增强 ✅（PR #18）
+- **下一冲刺候选**（推荐序，M11.1 完成后）: M13 Phase 1 路由扩容 → M12 运营可观测 / M1.1 Checkpoint / M3.1 全局预算。Sprint 16 企微推迟到 M9 部署架构 + 中转层就绪后（桌面 sidecar 无公网 IP 无法直接对接企微 webhook）
 
 ## 协作准则
 

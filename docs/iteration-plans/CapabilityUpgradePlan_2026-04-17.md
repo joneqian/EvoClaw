@@ -75,7 +75,7 @@
 | **M9** | 发布与分发 🟡 Phase 1 部分完成（T1/T2 ✅，T3-T8 暂停）| P1 | 7-9d | M0 | ✅ **T2 已落地 + 构建治理**：brand-apply 多品牌抽象 + gitignore 根治 + postinstall；⚠️ T5 前端 banner 待后续 |
 | **M10** | 文档站 | P1 | 5-8d | M0 | ❌ 无（独立站，不嵌入 Tauri） |
 | **M11** | 平台扩展（Telegram/Discord/Slack/浏览器栈/ACP）| P2 | 按需 | M3, M8 | ⚠️ **必评**：各 channel 的配置 / 登录 / 诊断 UI |
-| **M11.1** | 飞书 Channel（M13 前置基建，新）| P1 | 6-8d | M3, M8 | ⚠️ **必评**：飞书配置面板（长连接状态 + 绑定 Agent）~200 行 React |
+| **M11.1** | 飞书 Channel 完整复刻（M13 前置基建，新）| P1 | 4w | M3, M8 | ⚠️ **必评**：飞书配置面板 + 审批卡按钮 + 流式卡片（~300 行 React） |
 | **M12** | 运营可观测 & 成本治理（新） | P1 | 3-4d | M6, M8 | ⚠️ **必评**：session 成本聚合面板（沿用 UsageTab 风格） |
 | **M13** | Agent 团队协作（新） | P1 | 10-12w | M6, M8 | ⚠️ **必评**：Team 配置界面 / TaskFlow 状态面板 / 子 Agent 流式产出聚合视图 |
 | **M1.1** | Checkpoint Manager（补丁） | P1 | 3-5d | M1 | ❌ 无（静默恢复，未来可加"已恢复 N 文件" toast） |
@@ -329,34 +329,31 @@
 
 ---
 
-### M11.1 — 飞书 Channel（P1，依赖 M3 + M8，**M13 前置基建**）
+### M11.1 — 飞书 Channel 完整复刻（P1，依赖 M3 + M8 + M6，**M13 前置基建**）
 
 > **为什么从 M11 前置出来**: 2026-04-21 决策——接入一个真实渠道对后续开发有三重价值：
-> 1. **喂数据给 M7 Phase 3**: Evolver 需要真实 `skill_usage` 才能出有说服力的 Refine 建议，桌面单人一天几十条，多人渠道一天上千
-> 2. **M13 团队协作的前置基建**: M13 Phase 1 路由扩容的本质是"多 channel 互通"，没有 channel 无从路由
+> 1. **喂数据给 M7 Phase 3**: Evolver 需要真实 `skill_usage` 才能出有说服力的 Refine 建议
+> 2. **M13 团队协作的前置基建**: M13 Phase 1 路由扩容的本质是"多 channel 互通"
 > 3. **企业客户 PoC 说服力**: "在飞书 @ 机器人说需求" 比 "打开桌面 app" 高一个量级
 >
 > **为什么选飞书先做**: 当前架构是"桌面 app + 本地 sidecar，无固定公网 IP"。**飞书支持长连接 / WebSocket 模式**，桌面 sidecar 可直接对接；**企微只支持 webhook push**，必须有公网中转层。企微放 Sprint 16，等 M9 部署架构就绪后做。
 >
-> **详细方案**: 开工前单独出 `M11.1-FeishuChannel-Plan.md`（本次仅总体路线图登记）
+> **范围升级 (2026-04-21)**: 基于 Hermes + OpenClaw 两份源码深度调研（详见 `/Users/mac/.claude/plans/hermes-openclaw-users-mac-src-github-he-joyful-clover.md`），决策从 MVP 6-8d 扩展到**完整复刻 4w**，覆盖审批卡 + 流式卡 + 媒体 + 文档评论四大高价值能力。详细落地 Plan 见 [`M11.1-FeishuChannel-Plan.md`](./M11.1-FeishuChannel-Plan.md)。
 
-| 项目 | 工作量 | 说明 |
-|------|--------|------|
-| FeishuAdapter（`packages/core/src/channel/adapters/feishu.ts`）| 2.5-3d | 长连接 SDK 初始化 + 消息接收 / 转发 + 加密验签（SDK 封装）+ 群 / DM 区分 |
-| Config schema 扩展（appId/appSecret/verifyToken/encryptKey + 凭据走 Keychain）| 0.5d | 复用 M6 Credential Pool 凭据加密 |
-| ChannelManager 注册 + BindingRouter 适配 | 0.5d | sessionKey 格式复用 `agent:<agentId>:feishu:dm:<peerId>` / `group:<groupId>` |
-| 消息格式渲染（飞书 post 富文本 + Markdown + image/file 附件） | 1d | 参考现有微信个人号 iLink Bot 格式 |
-| Slash 命令路由（/echo /debug /model /cost 等复用 CommandRegistry） | 0.5d | 零改动 CommandDispatcher，只加 feishu @ trigger |
-| 前端 ChannelPage 飞书配置 Tab（长连接状态 + 绑定 Agent）| 1-1.5d | 沿用现有 channel 配置 UI 风格 |
-| 测试 + 调试（adapter 单测 + 端到端 mock + 真飞书账号验证）| 1d | |
+| PR | 覆盖 Phase | 工作量 | 核心交付 |
+|----|-----------|-------|---------|
+| **PR1** | A + B | 5d | `@larksuiteoapi/node-sdk` 接入 + WS 长连接 + EventDispatcher + Zod schema + Keychain + 前端飞书 Tab |
+| **PR2** | C + D | 5-6d | 10 种消息类型全覆盖 + Markdown→Post 渲染器 + 图片/文件/音频/视频上传下载 |
+| **PR3** | E + F | 6-7d | 4 档群会话隔离（group/sender/topic/topic_sender）+ 审批卡片 + ocf1 envelope + 权限拦截 |
+| **PR4** | G + H | 5d | 流式卡片（>500 字符阈值）+ reactions / 入群离群事件 |
+| **PR5** | I + J | 7-8d | 飞书文档评论闭环 + feishu_doc/drive 工具 + 重试退避 + 文本批处理 debounce + 测试 80%+ |
+| **合计** | — | **28-31d ≈ 4w** | — |
 
-**验收标准**: 飞书机器人在群 / 私聊 @ 时 → 桌面 sidecar 长连接收消息 → 路由到 bound Agent → Agent 回复写回飞书；Slash 命令（/model /cost）在飞书生效。
+**验收标准**: 端到端覆盖单聊/群聊/@/Slash/Markdown/图片/文件/审批按钮/流式回复/断网重连/文档评论协作，详见 `M11.1-FeishuChannel-Plan.md` 验收清单。
 
-**前端影响**: ChannelPage 新增飞书配置面板；现有多通道 UI 框架复用，预计 ~200 行 React。
+**前端影响**: ChannelPage 新增飞书 Tab（配置表单 + 连接状态 + 绑定 + 测试按钮，~300 行 React）；审批卡 UI 由飞书原生卡片承载，无需桌面端实现。
 
-**工作量小结**: ~6-8d（含 PoC → 生产化 + 前后端 + 测试）
-
-**不包含（defer）**: 飞书多维表格 / 飞书文档 / 飞书日程集成 —— 只做 IM 机器人 channel，其他功能后续 M11.2 评估。
+**不包含（defer）**: 飞书多维表格 / 日程集成（→ M11.2）；Pairing 配对码 / 多账户（→ M13 Phase 4）；Webhook 模式（桌面 sidecar 无公网 IP，永不做）。
 
 ---
 
@@ -565,7 +562,7 @@
 | **阶段 4** | **M7 Phase 1 ✅** + **M8 ✅** | Skill 记忆化 + 会话隔离 | 10-13d | ✅ M8（PR #30）+ M7 Phase 1（PR #39）|
 | **阶段 5** | **M7 Phase 2 ✅** + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟢 M7 Phase 2 ✅（PR #40），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
 | **阶段 6** | **M7 Phase 3 ✅** + M12 | Skill 自动进化 + 运营可观测 | ~3w + 3-4d | 🟢 M7 Phase 3 ✅（PR #41），M12 ⏳ 待启 |
-| **阶段 6.5** | **M11.1 飞书 Channel（新）** | 真实 channel 接入 → 喂 M7 Phase 3 数据 + M13 前置基建 | 6-8d | ⏳ 待启（可随时启动，M13 前置建议） |
+| **阶段 6.5** | **M11.1 飞书 Channel 完整复刻（新）** | 真实 channel 接入 → 喂 M7 Phase 3 数据 + M13 前置基建（含审批卡/流式卡/媒体/文档评论） | 4w | 🟡 进行中（2026-04-21 启动，分支 `feat/m11.1-feishu-channel`） |
 | **阶段 6.6** | M13（Phase 1→4 串行） | Agent 团队协作 | 10-12w | ⏳ 待启（依赖 M6 ✅ + M8 ✅ + **M11.1 先行可加速**） |
 | **阶段 7+** | M11（Telegram / Discord / Slack / 浏览器栈 / ACP）| 平台扩展 | 按需 | ⏳ 待启 |
 | **回归** | Sprint 16（含 30s 活动心跳附带任务） | 企微 Channel 生产就绪 | — | 🔒 **推迟到 M9 就绪后**（需要中转层支持企微 webhook，桌面 sidecar 无公网 IP 无法直接对接）|
@@ -573,7 +570,9 @@
 
 > **说明**: 当前已完成阶段 1-3 全部模块 + M7 Phase 1-3 + M7.1 + M8（M0-M8 + M7.1，OAuth 延后到 A3，**M7 Phase 4 永远不做**）。下一步候选（推荐序）：**M11.1 飞书 Channel（新，M13 前置）** → M13 Phase 1 → M12 运营可观测 / M1.1 Checkpoint / M3.1 全局预算 / A3 OAuth。Sprint 16 企微推迟到 M9 部署架构 + 中转层就绪后。
 >
-> **M11.1 先行的理由**（2026-04-21 决策）：飞书是当前"桌面 app + 本地 sidecar"架构下**唯一可直接对接的企业 IM**（长连接 vs 企微 webhook push）。真实渠道接入后：(1) `skill_usage` 数据量跃升 → M7 Phase 3 Evolver 可灰度开启；(2) M13 多 channel 路由有真实输入；(3) 企业客户 PoC 说服力提升一个量级。工作量小（6-8d），ROI 极高。
+> **M11.1 先行的理由**（2026-04-21 决策）：飞书是当前"桌面 app + 本地 sidecar"架构下**唯一可直接对接的企业 IM**（长连接 vs 企微 webhook push）。真实渠道接入后：(1) `skill_usage` 数据量跃升 → M7 Phase 3 Evolver 可灰度开启；(2) M13 多 channel 路由有真实输入；(3) 企业客户 PoC 说服力提升一个量级。
+>
+> **范围升级**（2026-04-21）：从原 MVP 6-8d 升级为**完整复刻 4w**，一次性对齐 Hermes + OpenClaw 的 IM 机器人能力（审批卡/流式卡/媒体/文档评论全部落地），避免后续分次返工。详见 [`M11.1-FeishuChannel-Plan.md`](./M11.1-FeishuChannel-Plan.md)。
 >
 > **M13 排序建议**：对企业用户价值高（团队协作是真实刚需），但工作量大（10-12w）。**建议在 M11.1 飞书落地后启动 M13 Phase 1**（路由扩容 2w，基于飞书单渠道扩展到跨 agent/channel），其余 Phase 按需推进；也可 Phase 1-4 集中冲一个 quarter。
 >

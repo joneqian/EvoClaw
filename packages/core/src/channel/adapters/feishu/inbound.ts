@@ -13,6 +13,10 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { MessageHandler } from '../../channel-adapter.js';
 import { normalizeFeishuMessage } from '../../message-normalizer.js';
 import { parseFeishuContent } from './parse-content.js';
+import {
+  buildFeishuGroupPeerId,
+  type FeishuGroupSessionScope,
+} from './session-key.js';
 
 /** im.message.receive_v1 事件载荷（与 SDK 类型同构，取必要字段） */
 export interface FeishuReceiveEvent {
@@ -31,6 +35,9 @@ export interface FeishuReceiveEvent {
     chat_type: string;
     message_type: string;
     content: string;
+    thread_id?: string;
+    root_id?: string;
+    parent_id?: string;
     mentions?: Array<{
       key: string;
       id: { open_id?: string; user_id?: string; union_id?: string };
@@ -54,6 +61,8 @@ export interface InboundContext {
   getBotOpenId: () => string | null;
   getHandler: () => MessageHandler | null;
   getMediaDownloader?: () => MediaDownloader | null;
+  /** 群会话隔离策略（默认 'group'） */
+  getGroupSessionScope?: () => FeishuGroupSessionScope;
 }
 
 /**
@@ -120,6 +129,17 @@ export async function handleReceiveMessage(
     },
     ctx.getAccountId(),
   );
+
+  // 群聊：按 session scope 重写 peerId
+  if (normalized.chatType === 'group') {
+    const scope = ctx.getGroupSessionScope?.() ?? 'group';
+    normalized.peerId = buildFeishuGroupPeerId({
+      scope,
+      chatId: message.chat_id,
+      ...(senderOpenId ? { senderOpenId } : {}),
+      ...(message.thread_id ? { threadId: message.thread_id } : {}),
+    });
+  }
 
   // 媒体下载（如果有 key + downloader）
   const parsed = parseFeishuContent(message.message_type, message.content);

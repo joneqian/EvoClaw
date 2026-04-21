@@ -11,6 +11,7 @@
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import { buildPostPayload, looksLikeMarkdown, serializePostContent } from './markdown-to-post.js';
 import { isImageFile, uploadFile, uploadImage } from './media.js';
+import { parseFeishuGroupPeerId } from './session-key.js';
 
 /** 飞书发送 API 返回（部分字段） */
 interface FeishuSendResponse {
@@ -47,6 +48,23 @@ export function inferReceiveIdType(
   return chatType === 'group' ? 'chat_id' : 'open_id';
 }
 
+/**
+ * 把业务层 peerId（可能被 session scope 重写为 `oc_x:sender:ou_u` 等）
+ * 还原为飞书 API 能识别的原始 receive_id。
+ *
+ * - chatType='private'：peerId 直接是 open_id
+ * - chatType='group'：去掉 :sender:/:topic: 后缀，只取 chatId
+ */
+export function resolveFeishuReceiveId(
+  peerId: string,
+  chatType?: 'private' | 'group',
+): string {
+  if (chatType !== 'group') return peerId;
+  if (!peerId.includes(':')) return peerId;
+  const parsed = parseFeishuGroupPeerId(peerId);
+  return parsed?.chatId ?? peerId;
+}
+
 function throwIfError(res: FeishuSendResponse, action: string): void {
   if (res.code) {
     throw new FeishuApiError(action, res.code, res.msg ?? '');
@@ -65,7 +83,7 @@ async function createMessage(
   const res = (await client.im.v1.message.create({
     params: { receive_id_type: inferReceiveIdType(args.chatType) },
     data: {
-      receive_id: args.peerId,
+      receive_id: resolveFeishuReceiveId(args.peerId, args.chatType),
       msg_type: args.msgType,
       content: args.content,
     },

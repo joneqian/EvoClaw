@@ -213,10 +213,19 @@ function InlineWeixinConnect({ agentId, onConnect }: { agentId: string; onConnec
 
 // ─── 飞书连接表单（内联） ───
 
+type GroupScope = 'group' | 'group_sender' | 'group_topic' | 'group_topic_sender';
+const GROUP_SCOPE_OPTIONS: Array<{ value: GroupScope; label: string }> = [
+  { value: 'group', label: '整群共享一个会话（默认）' },
+  { value: 'group_sender', label: '群内按成员分离' },
+  { value: 'group_topic', label: '群内按话题分离' },
+  { value: 'group_topic_sender', label: '群内按「话题 × 成员」分离' },
+];
+
 function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
   const [domain, setDomain] = useState<'feishu' | 'lark'>('feishu');
+  const [groupScope, setGroupScope] = useState<GroupScope>('group');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [encryptKey, setEncryptKey] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
@@ -232,6 +241,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
         appId: appId.trim(),
         appSecret: appSecret.trim(),
         domain,
+        groupSessionScope: groupScope,
       };
       if (encryptKey.trim()) credentials['encryptKey'] = encryptKey.trim();
       if (verificationToken.trim()) credentials['verificationToken'] = verificationToken.trim();
@@ -248,7 +258,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     } finally {
       setConnecting(false);
     }
-  }, [appId, appSecret, domain, encryptKey, verificationToken, agentId, onConnect]);
+  }, [appId, appSecret, domain, groupScope, encryptKey, verificationToken, agentId, onConnect]);
 
   return (
     <div className="space-y-2 p-3 bg-slate-50 rounded-xl">
@@ -292,6 +302,20 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
           Lark（海外）
         </label>
       </div>
+
+      {/* 群会话隔离策略 */}
+      <label className="block text-xs text-slate-600">
+        <span className="block mb-1">群聊会话策略</span>
+        <select
+          value={groupScope}
+          onChange={(e) => setGroupScope(e.target.value as GroupScope)}
+          className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-brand"
+        >
+          {GROUP_SCOPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </label>
 
       {/* 高级选项 */}
       <button

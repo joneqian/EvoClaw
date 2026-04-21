@@ -17,6 +17,7 @@ import {
 } from '../../channel/adapters/feishu/media.js';
 import {
   inferReceiveIdType,
+  resolveFeishuReceiveId,
   sendTextMessage,
   sendPostMessage,
   sendSmartMessage,
@@ -386,5 +387,44 @@ describe('outbound 各发送方法', () => {
   it('inferReceiveIdType 旧接口仍能工作', () => {
     expect(inferReceiveIdType('group')).toBe('chat_id');
     expect(inferReceiveIdType('private')).toBe('open_id');
+  });
+
+  it('resolveFeishuReceiveId 群聊剥离 session scope 后缀', () => {
+    // 原始群聊
+    expect(resolveFeishuReceiveId('oc_x', 'group')).toBe('oc_x');
+    // group_sender
+    expect(resolveFeishuReceiveId('oc_x:sender:ou_u', 'group')).toBe('oc_x');
+    // group_topic_sender
+    expect(resolveFeishuReceiveId('oc_x:topic:t1:sender:ou_u', 'group')).toBe('oc_x');
+    // private 直接透传
+    expect(resolveFeishuReceiveId('ou_user', 'private')).toBe('ou_user');
+    // 未指定 chatType 透传
+    expect(resolveFeishuReceiveId('anything')).toBe('anything');
+  });
+
+  it('群聊 sendText 以 session scope peerId 为入参，底层 receive_id 应被还原', async () => {
+    const client = createMockMessageClient();
+    await sendTextMessage(client as any, 'oc_x:sender:ou_u', '回群', 'group');
+    const call = client.im.v1.message.create.mock.calls[0][0];
+    expect(call.params.receive_id_type).toBe('chat_id');
+    expect(call.data.receive_id).toBe('oc_x');
+  });
+
+  it('群聊 sendImage 以 scope peerId 入参也要还原 receive_id', async () => {
+    const client = createMockMessageClient();
+    const tmpPath = path.join(os.tmpdir(), `test-${Date.now()}.png`);
+    await fs.writeFile(tmpPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    try {
+      await sendImageMessage(
+        client as any,
+        'oc_x:topic:t1:sender:ou_u',
+        tmpPath,
+        'group',
+      );
+      const msgCall = client.im.v1.message.create.mock.calls[0][0];
+      expect(msgCall.data.receive_id).toBe('oc_x');
+    } finally {
+      await fs.unlink(tmpPath).catch(() => {});
+    }
   });
 });

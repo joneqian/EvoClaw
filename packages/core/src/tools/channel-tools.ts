@@ -8,6 +8,7 @@
 import type { ChannelManager } from '../channel/channel-manager.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { FeishuAdapter } from '../channel/adapters/feishu/index.js';
+import { isImageFile } from '../channel/adapters/feishu/media.js';
 
 /** JSON Schema 子集（只用到的字段） */
 export interface ToolParameters {
@@ -121,6 +122,10 @@ export function createChannelTools(
         const caption = params['caption'] as string | undefined;
         const chatType = (params['chatType'] as 'private' | 'group') ?? 'private';
         if (!peerId || !filePath) return '错误：缺少 peerId 或 filePath';
+        // FAIL-FAST：非图片扩展名不允许走此工具，避免静默降级为 file 路径
+        if (!isImageFile(filePath)) {
+          return `错误：filePath 不是图片扩展名（${filePath}），请改用 feishu_send_file`;
+        }
         await channelManager.sendMediaMessage('feishu', peerId, filePath, caption, chatType);
         return `已发送图片到飞书 ${peerId}: ${filePath}`;
       },
@@ -161,20 +166,20 @@ export function createChannelTools(
         properties: {
           title: { type: 'string', description: '卡片标题' },
           body: { type: 'string', description: '卡片正文（Markdown）' },
-          sessionKey: { type: 'string', description: '关联的会话 key，用于校验点击者会话一致' },
           ttlMs: { type: 'number', description: 'TTL 毫秒数（默认 24 小时）' },
           operatorOpenId: { type: 'string', description: '限定的操作者 open_id（可选）' },
         },
-        required: ['title', 'body', 'sessionKey'],
+        required: ['title', 'body'],
       },
       execute: async (params) => {
+        // peerId 与 sessionKey 都由 channel-message-handler 自动注入（防 agent 伪造跨会话 key）
         const peerId = params['peerId'] as string;
+        const sessionKey = params['sessionKey'] as string;
         const title = params['title'] as string;
         const body = params['body'] as string;
-        const sessionKey = params['sessionKey'] as string;
         const chatType = (params['chatType'] as 'private' | 'group') ?? 'private';
-        if (!peerId || !title || !body || !sessionKey) {
-          return '错误：缺少 peerId / title / body / sessionKey';
+        if (!peerId || !sessionKey || !title || !body) {
+          return '错误：缺少 peerId / sessionKey / title / body';
         }
         const adapter = requireFeishuAdapter(channelManager);
         const options: {

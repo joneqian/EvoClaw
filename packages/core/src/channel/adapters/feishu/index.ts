@@ -292,7 +292,7 @@ export class FeishuAdapter implements ChannelAdapter {
     );
   }
 
-  /** 列出文档评论的所有回复（代理到 doc-api） */
+  /** 列出文档评论的所有回复（代理到 doc-api；读操作也套 retry，幂等代价低） */
   async listCommentReplies(params: {
     fileToken: string;
     commentId: string;
@@ -301,7 +301,10 @@ export class FeishuAdapter implements ChannelAdapter {
     pageToken?: string;
   }): ReturnType<typeof apiListCommentReplies> {
     const client = this.requireClient();
-    return await apiListCommentReplies(client, params);
+    return await withFeishuRetry(
+      () => apiListCommentReplies(client, params),
+      { label: 'listCommentReplies' },
+    );
   }
 
   getStatus(): ChannelStatusInfo {

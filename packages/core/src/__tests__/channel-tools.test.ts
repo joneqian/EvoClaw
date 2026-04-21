@@ -127,6 +127,25 @@ describe('createChannelTools', () => {
     );
   });
 
+  it('feishu_send_image 非图片扩展名 FAIL-FAST 提示改用 send_file', async () => {
+    const cm = createMockChannelManager();
+    const tools = createChannelTools(cm, 'feishu');
+    const tool = tools.find((t) => t.name === 'feishu_send_image')!;
+    const result = await tool.execute({ peerId: 'ou_u', filePath: '/tmp/a.pdf' });
+    expect(result).toContain('不是图片');
+    expect(result).toContain('feishu_send_file');
+    expect(cm.sendMediaMessage).not.toHaveBeenCalled();
+  });
+
+  it('feishu_request_approval schema 不再 require sessionKey（由 handler 注入）', () => {
+    const cm = createMockChannelManager();
+    const tools = createChannelTools(cm, 'feishu');
+    const tool = tools.find((t) => t.name === 'feishu_request_approval')!;
+    expect(tool.parameters.required).toEqual(['title', 'body']);
+    // sessionKey 仍然可在 description 里说明，但不是 agent-facing 的必填
+    expect(tool.parameters.required).not.toContain('sessionKey');
+  });
+
   it('feishu_send_file 复用 sendMediaMessage 管道', async () => {
     const cm = createMockChannelManager();
     const tools = createChannelTools(cm, 'feishu');
@@ -247,20 +266,28 @@ describe('createChannelTools', () => {
     expect(parsed.hasMore).toBe(false);
   });
 
-  it('飞书 adapter 未注册时 requestApproval/doc 工具抛错', async () => {
+  it.each([
+    'feishu_request_approval',
+    'feishu_reply_comment',
+    'feishu_add_whole_comment',
+    'feishu_list_comment_replies',
+  ])('%s 在飞书 adapter 未注册时抛错', async (toolName) => {
     const cm = {
       sendMessage: vi.fn(),
       sendMediaMessage: vi.fn(),
       getAdapter: vi.fn().mockReturnValue(undefined),
     } as unknown as ChannelManager;
-    const tools = createChannelTools(cm, 'feishu');
-    const approvalTool = tools.find((t) => t.name === 'feishu_request_approval')!;
+    const tool = createChannelTools(cm, 'feishu').find((t) => t.name === toolName)!;
     await expect(
-      approvalTool.execute({
+      tool.execute({
         peerId: 'ou_u',
+        sessionKey: 's',
         title: 't',
         body: 'b',
-        sessionKey: 's',
+        fileToken: 'f',
+        commentId: 'c',
+        fileType: 'docx',
+        text: 't',
       }),
     ).rejects.toThrow(/未注册/);
   });

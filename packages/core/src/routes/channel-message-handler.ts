@@ -432,9 +432,10 @@ export async function handleChannelMessage(
     enhancedTools.push({
       name: ct.name,
       description: ct.description,
-      // JSON Schema 结构化类型与下游 Record<string, unknown> 等价，cast 透传
+      // JSON Schema 结构化类型与下游 Record 宽类型等价，需 unknown 中转 cast
       parameters: ct.parameters as unknown as Record<string, unknown>,
-      execute: async (args) => ct.execute({ ...args, peerId }),  // 自动注入 peerId
+      // 自动注入 peerId + sessionKey，防止 agent 伪造跨会话 key
+      execute: async (args) => ct.execute({ ...args, peerId, sessionKey }),
     });
   }
 

@@ -142,13 +142,29 @@ export function analyzeSkillSecurity(dirPath: string): SkillSecurityReport {
     }
   }
 
-  // 确定总体风险等级
+  return summarizeFindings(allFindings);
+}
+
+/**
+ * M7 Phase 1：扫描单个 SKILL.md 内容字符串（不落盘）。
+ *
+ * Agent 通过 skill_manage 工具创建 Skill 时，需要在写入前校验内容安全性。
+ * 复用 DANGER_PATTERNS，扩展名按给定 filename 推断（默认 SKILL.md）。
+ */
+export function scanSkillMdContent(
+  content: string,
+  filename: string = 'SKILL.md',
+): SkillSecurityReport {
+  const findings = scanFile(filename, content);
+  return summarizeFindings(findings);
+}
+
+function summarizeFindings(findings: SkillSecurityFinding[]): SkillSecurityReport {
   let riskLevel: SkillSecurityReport['riskLevel'] = 'low';
-  if (allFindings.some(f => f.severity === 'high')) {
+  if (findings.some(f => f.severity === 'high')) {
     riskLevel = 'high';
-  } else if (allFindings.some(f => f.severity === 'medium')) {
+  } else if (findings.some(f => f.severity === 'medium')) {
     riskLevel = 'medium';
   }
-
-  return { riskLevel, findings: allFindings };
+  return { riskLevel, findings };
 }

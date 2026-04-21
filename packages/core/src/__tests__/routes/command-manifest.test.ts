@@ -91,6 +91,7 @@ describe('TOOL_MANIFEST', () => {
       fetch: 'network',
       http: 'network',
       browse: 'browser',
+      skill_manage: 'skill',
     };
     // 方向 1: snapshot 里的工具都在 MANIFEST 中，类别一致
     for (const [name, cat] of Object.entries(SNAPSHOT_BEFORE_T3A)) {

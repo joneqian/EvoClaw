@@ -735,6 +735,7 @@ export function createChatRoutes(
         ftsStore,
         agentId,
         skipWebTools: true,
+        enableSkillManage: true,
       }));
     }
 

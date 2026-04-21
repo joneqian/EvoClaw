@@ -12,6 +12,8 @@ import type { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
 import type { FtsStore } from '../infrastructure/db/fts-store.js';
 import { createWebSearchTool } from './web-search.js';
 import { createWebFetchTool, type LLMCallFn } from './web-fetch.js';
+import { createSkillManageTool } from '../skill/skill-manage-tool.js';
+import { refreshSkillCache } from '../context/plugins/tool-registry.js';
 
 /** 9 种合法记忆类别 */
 const VALID_CATEGORIES: readonly MemoryCategory[] = [
@@ -42,8 +44,16 @@ export function createEvoClawTools(deps: {
   skipWebTools?: boolean;
   /** M8: 域名黑名单 getter（热重载支持） */
   domainDenylist?: readonly string[] | (() => readonly string[] | undefined);
+  /** M7 Phase 1: 启用 skill_manage 工具（Agent 可创建/修改自己的 Skill） */
+  enableSkillManage?: boolean;
+  /** M7 Phase 1: 用户级 Skills 目录（默认 ~/.evoclaw/skills） */
+  userSkillsDir?: string;
 }): ToolDefinition[] {
-  const { searcher, memoryStore, knowledgeGraph, ftsStore, agentId, braveApiKey, secondaryLLMCall, skipWebTools, domainDenylist } = deps;
+  const {
+    searcher, memoryStore, knowledgeGraph, ftsStore, agentId,
+    braveApiKey, secondaryLLMCall, skipWebTools, domainDenylist,
+    enableSkillManage, userSkillsDir,
+  } = deps;
 
   const tools: ToolDefinition[] = [];
 
@@ -335,6 +345,15 @@ export function createEvoClawTools(deps: {
       },
     },
   );
+
+  // M7 Phase 1: skill_manage 工具（按需注入）
+  if (enableSkillManage) {
+    tools.push(createSkillManageTool({
+      userSkillsDir,
+      agentId,
+      refreshCache: refreshSkillCache,
+    }));
+  }
 
   return tools;
 }

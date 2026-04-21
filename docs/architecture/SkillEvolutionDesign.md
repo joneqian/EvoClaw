@@ -1,7 +1,8 @@
 # EvoClaw Skill 自进化系统设计
 
-> **版本**: v1.0 Draft
-> **日期**: 2026-04-17
+> **版本**: v1.1（2026-04-21 修订：Phase 4 永久移出路线图）
+> **日期**: 2026-04-17 / 修订 2026-04-21
+> **交付状态**: Phase 1-3 ✅ 已合并（PR #39 / #40 / #41）。**Phase 4 ❌ 永远不做**（见第 6 节顶部）
 > **前置研究**: [`skill-evolution-comparison.md`](../evoclaw-vs-hermes-research/skill-evolution-comparison.md)
 > **关联章节**: 12-skills-system-gap / 34-rebuild-roadmap-gap
 
@@ -15,14 +16,14 @@
 - Agent 自主创建可复用的技能（记忆化）
 - 基于使用数据评估技能有效性（评估反馈）
 - 定期自动改进低效技能（自动进化）
-- 跨用户/Agent 的技能改进共享（集体进化，长期）
+- ~~跨用户/Agent 的技能改进共享（集体进化，长期）~~ → **❌ 2026-04-21 决策永远不做**，数据不离本地
 
 ### 1.2 设计原则
 
 1. **渐进式**：4 个 Phase 独立交付，每个 Phase 自身有价值
 2. **复用优先**：最大化利用 EvoClaw 已有基础设施（记忆/调度/安全/Hub）
 3. **企业安全**：Agent 创建的技能必须受 NameSecurityPolicy 管控 + 威胁扫描
-4. **数据隐私**：集体进化阶段（Phase 4）的轨迹上传必须 PII 脱敏
+4. ~~**数据隐私**：集体进化阶段（Phase 4）的轨迹上传必须 PII 脱敏~~ → Phase 4 已废除，所有 Skill 数据不离开本地 SQLite
 5. **保守编辑**：进化修改仅针对有证据的缺陷，不做投机性重构
 6. **用户至上**：用户手动修改的技能不被自动进化覆盖
 
@@ -392,9 +393,19 @@ CREATE TABLE IF NOT EXISTS skill_evolution_log (
 
 ---
 
-## 6. Phase 4: 集体进化（长期）
+## 6. ~~Phase 4: 集体进化（长期）~~ — ❌ 永远不做
 
-**目标**: 通过 ClawHub 实现跨用户的技能改进共享。
+> **状态**: 2026-04-21 用户决策正式废除本 Phase。
+>
+> **原因**:
+> 1. 数据主权 —— 所有 Skill 相关数据（SKILL.md / 调用 telemetry / 摘要 / 进化日志）不离开本地 SQLite
+> 2. ClawHub 聚合 + 跨用户推荐的生态价值不值当下投入
+> 3. hash 前后比对 + 本地 `skill_evolution_log` 已是回滚最终方案，不再需要 Phase 4 引入的版本链
+>
+> **本节以下内容仅作归档**，不再作为实施目标。新代码不得引用 `anonymizedSummary` / `reportId` /
+> `communityInvocations` / `/api/v1/skills/*/feedback` 等 Phase 4 字段与端点。
+
+**（归档）目标**: 通过 ClawHub 实现跨用户的技能改进共享。
 
 ### 6.1 匿名轨迹上报
 
@@ -461,7 +472,7 @@ interface AnonymousSkillReport {
 | Agent 创建低质量/危险技能 | 内容安全扫描 + NameSecurityPolicy + 用户确认 |
 | 自动进化导致技能退化 | 保守编辑原则 + 改前备份 + 进化日志可回滚 |
 | LLM Evolver 幻觉 | 结构化 JSON 输出 + 严格 schema 校验 + 变更 diff 审计 |
-| 隐私数据泄露（Phase 4） | 默认 opt-out + PII 脱敏 + 服务端聚合后丢弃原始数据 |
+| ~~隐私数据泄露（Phase 4）~~ | ~~默认 opt-out + PII 脱敏~~ → Phase 4 已废除，所有数据 local-only，不存在上传路径 |
 | 进化 Cron 成本（LLM 调用） | 使用辅助低成本模型 + 每次仅处理有证据的候选 |
 | 多 Agent 并发修改同一 skill | 文件级锁（`lockfile` 或 SQLite 事务）+ 先读后写 |
 | Manifest v2 hash 冲突 | SHA-256 冲突概率可忽略 |
@@ -472,12 +483,12 @@ interface AnonymousSkillReport {
 
 | Sprint | Phase | 交付 | 预估 |
 |--------|-------|------|------|
-| Sprint 20 | Phase 1 | skill_manage 工具 + Manifest v2 + 安全扫描 | 1 人周 |
-| Sprint 21-22 | Phase 2 | skill_usage 表 + 使用追踪 + 轨迹摘要 + 反馈 UI | 2 人周 |
-| Sprint 23-25 | Phase 3 | Agentic Evolver + Cron + 进化日志 + 保守编辑 | 3 人周 |
-| Sprint 30+ | Phase 4 | ClawHub 反馈 API + 匿名上报 + 社区同步 | 长期 |
+| Sprint 20 | Phase 1 ✅ | skill_manage 工具 + Manifest v2 + 安全扫描 | 1 人周（PR #39）|
+| Sprint 21-22 | Phase 2 ✅ | skill_usage 表 + 使用追踪 + 轨迹摘要 + 反馈 UI | 2 人周（PR #40）|
+| Sprint 23-25 | Phase 3 ✅ | Agentic Evolver + Cron + 进化日志 + 保守编辑 | 3 人周（PR #41）|
+| ~~Sprint 30+~~ | ~~Phase 4~~ | ❌ **永远不做**（2026-04-21 决策） | — |
 
-**依赖关系**: Phase 1 → Phase 2 → Phase 3（严格串行），Phase 4 可在 Phase 2 之后并行启动 API 设计。
+**依赖关系**: Phase 1 → Phase 2 → Phase 3（严格串行，已全部交付）。~~Phase 4 可在 Phase 2 之后并行启动 API 设计~~ → Phase 4 永远不做。
 
 ---
 
@@ -490,7 +501,7 @@ interface AnonymousSkillReport {
 | PRM/ORM 评分 | Phase 2 success 字段 + user_feedback | EvoClaw 简化为二值 vs SkillClaw 连续分数 |
 | Refine/Create/Skip | Phase 3 Evolver | 相同三元决策框架 |
 | 保守编辑 | Phase 3 patch 操作 | 相同原则 |
-| 跨用户同步 | Phase 4 ClawHub | EvoClaw 走 ClawHub API vs SkillClaw 中央仓库 |
+| ~~跨用户同步~~ | ~~Phase 4 ClawHub~~ | ❌ 永远不做（2026-04-21）：EvoClaw 坚持 local-only，不引入跨用户 Skill 同步 |
 
 | Hermes 机制 | EvoClaw 对应 Phase | 实现差异 |
 |-------------|-------------------|----------|

@@ -346,10 +346,14 @@
 | **PR2** | C + D | 5-6d | 10 种消息类型全覆盖 + Markdown→Post 渲染器 + 图片/文件/音频/视频上传下载 |
 | **PR3** | E + F | 6-7d | 4 档群会话隔离（group/sender/topic/topic_sender）+ 审批卡片 + ocf1 envelope + 权限拦截 |
 | **PR4** | G + H | 5d | 流式卡片（>500 字符阈值）+ reactions / 入群离群事件 |
-| **PR5** | I + J | 7-8d | 飞书文档评论闭环 + feishu_doc/drive 工具 + 重试退避 + 文本批处理 debounce + 测试 80%+ |
+| **PR5** | I + J-1 | 7-8d | drive.notice.comment_add_v1 事件 + doc-api 薄封装 + withFeishuRetry 指数退避 + 测试 3013/3013（J-2 文本 debounce 与 agent 文档协作闭环推迟，见下方 M11.1 defer） |
 | **合计** | — | **28-31d ≈ 4w** | — |
 
-**验收标准**: 端到端覆盖单聊/群聊/@/Slash/Markdown/图片/文件/审批按钮/流式回复/断网重连/文档评论协作，详见 `M11.1-FeishuChannel-Plan.md` 验收清单。
+**验收标准**: 端到端覆盖单聊/群聊/@/Slash/Markdown/图片/文件/审批按钮/流式回复/断网重连/飞书文档新评论 → `onDriveCommentAdd` 回调触发（完整 agent 协作链路见 defer），详见 `M11.1-FeishuChannel-Plan.md` 验收清单。
+
+**M11.1 推迟到后续（明确归属）**:
+- **Phase J-2 文本 debounce 批处理**：EvoClaw agent response 多 <4KB，飞书客户端自动分段风险低；Phase J-1 重试已覆盖主要生产稳定性。→ **按需再立项**（不强制）
+- **Agent 飞书文档协作闭环**（add_ok_reaction → query meta+timeline → build prompt → run agent → reply → clean reaction，像 Hermes `feishu_comment.py` 那样）：依赖 `handleChannelMessage` 针对 comment 事件的二次扩展，与 M13 多 Agent 协作议题重叠。→ **归属 M13**（PR5 已交付事件订阅 + 底层 doc-api，M13 在此基础上拼装 agent 链路）
 
 **前端影响**: ChannelPage 新增飞书 Tab（配置表单 + 连接状态 + 绑定 + 测试按钮，~300 行 React）；审批卡 UI 由飞书原生卡片承载，无需桌面端实现。
 
@@ -387,8 +391,9 @@
 | **Phase 2** | TaskFlow 编排引擎 | 3w | migration 028：flows + tasks 双表；状态机 8 态（queued/running/waiting/blocked/succeeded/failed/cancelled/lost）；syncMode=managed/task_mirrored；乐观锁 revision；lookupToken 续场；flow_create / flow_update / flow_wait / flow_finish 四个 Agent 工具 |
 | **Phase 3** | ACP 简化协议 + 派生增强 | 3-4w | migration 029：subagent_runs 表；自建 stdio+ndJson 简化 ACP（text_delta/phase/tool_call 三种消息）；sessions_spawn 全参数（runtime/agentId/mode/thread/sandbox/streamTo/cleanup）；stream-to-parent 中继（2.5s buffer + 60s stall warn + 6h 上限）；加载目标 Agent 完整 SOUL/MEMORY/AGENTS 身份 |
 | **Phase 4** | per-agent 工具/MCP/AuthProfile | 2-3w | Agent config 扩展字段（subagents/tools/skills/mcp/authProfiles/lastRoutePolicy/dmScope）；tool-filter per-agent；MCP `getToolsForAgent()` 按 allowlist 过滤；AuthProfile per-agent order 覆盖；Hook Context 标准化（agentId/sessionKey/flowId） |
+| **Phase 5**（**M11.1 遗留**）| 飞书文档 agent 协作闭环 | 1-1.5w | 在 PR5 已交付的 `drive.notice.comment_add_v1` 事件 hook 和 `doc-api.ts` 底层 API 之上，拼装完整 agent 协作链路：`add_ok_reaction → query meta + comment timeline → build doc-context prompt → handleChannelMessage.run → replyToComment / addWholeCommentReply → clean reaction`。参考 Hermes `feishu_comment.py`。依赖 Phase 1 的 binding 扩容（文档 comment 也需独立 session scope） |
 
-**总工作量**: 串行 10-12 人周 / 并行 7-9 人周（Phase 1/2、Phase 2/3、Phase 3/4 各有尾声重叠窗口）
+**总工作量**: 串行 11-13.5 人周 / 并行 8-10 人周（Phase 1/2、Phase 2/3、Phase 3/4 各有尾声重叠窗口，Phase 5 可与 Phase 4 并行）
 
 **验收标准**（端到端场景）: 在企微群发 "帮我写一篇公众号文章介绍 X 产品"：
 1. 路由到 lead "运营策划"（binding 按 channel+guild+role 命中）

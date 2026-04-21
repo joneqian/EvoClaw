@@ -42,6 +42,7 @@ import {
   registerOtherEventHandlers,
   type FeishuEventCallbacks,
 } from './event-handlers.js';
+import { withFeishuRetry } from './retry.js';
 
 const log = createLogger('feishu-adapter');
 
@@ -175,15 +176,28 @@ export class FeishuAdapter implements ChannelAdapter {
     this.handler = handler;
   }
 
+  /**
+   * 发送消息（外层 retry + 内层 smart 降级）
+   *
+   * 行为：
+   * - 内层 sendSmart：Markdown 自动 Post，Post 内容非法（230001 族）时降级为纯文本
+   * - 外层 withFeishuRetry：网络 / 限流（99991400 族）时最多 3 次指数退避
+   *
+   * **注意**：Markdown 内容在限流场景下最坏情况会发起 3 次 Post 请求（每次重试
+   * 都会重走 Markdown→Post 路径），属可接受成本。如未来发现 Post 与限流叠加
+   * 造成雪崩，可把 retry 下沉到 sendPost/sendText 原子调用处，把 sendSmart
+   * 降级为无重试的组合器。
+   */
   async sendMessage(
     peerId: string,
     content: string,
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    // 智能发送：Markdown 自动走 Post，失败降级纯文本
-    // 流式卡片由调用方通过 beginStreaming 显式发起（例如 chat.ts SSE 接入后）
-    await sendSmartMessage(client, peerId, content, chatType);
+    await withFeishuRetry(
+      () => sendSmartMessage(client, peerId, content, chatType),
+      { label: 'sendMessage' },
+    );
   }
 
   /**
@@ -208,10 +222,16 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    await sendMediaMessage(client, peerId, filePath, chatType);
+    await withFeishuRetry(
+      () => sendMediaMessage(client, peerId, filePath, chatType),
+      { label: 'sendMedia' },
+    );
     if (text && text.trim()) {
       // 媒体后紧跟一条文本说明（飞书无 caption 字段）
-      await sendSmartMessage(client, peerId, text, chatType);
+      await withFeishuRetry(
+        () => sendSmartMessage(client, peerId, text, chatType),
+        { label: 'sendMediaCaption' },
+      );
     }
   }
 

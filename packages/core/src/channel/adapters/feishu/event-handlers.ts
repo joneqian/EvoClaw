@@ -5,6 +5,7 @@
  * - im.message.reaction.created_v1 / deleted_v1：通过可选回调传递给上层
  * - im.chat.member.bot.added_v1 / deleted_v1：机器人入群 / 被移出群
  * - im.chat.access_event.bot_p2p_chat_entered_v1：用户首次打开与机器人的单聊
+ * - drive.notice.comment_add_v1：飞书文档新增评论（SDK 未强类型，走 custom key）
  *
  * 注意：这里注册的 event key 不能与 inbound.ts（im.message.receive_v1）或
  * card-action.ts（card.action.trigger）重复，否则 SDK 会 logger.error 告警。
@@ -37,6 +38,30 @@ export interface FeishuP2pEnteredEvent {
   last_message_id?: string;
 }
 
+/** 飞书已知文档类型 */
+export type FeishuDriveFileType = 'doc' | 'docx' | 'sheet' | 'bitable' | 'mindnote' | 'file' | 'slides';
+
+/** 文档评论新增事件（对应 drive.notice.comment_add_v1） */
+export interface FeishuDriveCommentEvent {
+  /** 文档唯一标识（doc / docx / sheet 等） */
+  file_token?: string;
+  /**
+   * 文档类型（`(string & {})` 保留字面量自动补全同时允许未来扩展值透传，
+   * 不像纯 `| string` 会把前置枚举完全 widen）
+   */
+  file_type?: FeishuDriveFileType | (string & {});
+  /** 评论 id（新建评论时即父评论 id） */
+  comment_id?: string;
+  /** 回复 id（仅在已有评论上回复时出现） */
+  reply_id?: string;
+  /** 评论者的 open_id */
+  from_open_id?: string;
+  /** 是否为全文评论 */
+  is_whole?: boolean;
+  /** 评论原文（富文本 JSON 字符串或纯文本，以飞书实际推送为准） */
+  content?: string;
+}
+
 // ─── 可选回调 ────────────────────────────────────────────────────────
 
 export interface FeishuEventCallbacks {
@@ -45,6 +70,8 @@ export interface FeishuEventCallbacks {
   onBotAddedToChat?: (event: FeishuChatMemberBotEvent) => void | Promise<void>;
   onBotRemovedFromChat?: (event: FeishuChatMemberBotEvent) => void | Promise<void>;
   onP2pChatEntered?: (event: FeishuP2pEnteredEvent) => void | Promise<void>;
+  /** 文档新评论（drive.notice.comment_add_v1） */
+  onDriveCommentAdd?: (event: FeishuDriveCommentEvent) => void | Promise<void>;
 }
 
 /** 注册事件处理器上下文 */
@@ -87,6 +114,13 @@ export function registerOtherEventHandlers(
     'im.chat.access_event.bot_p2p_chat_entered_v1': async (data: FeishuP2pEnteredEvent) => {
       log.info(`p2p chat entered chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
       await safeInvoke(ctx.getCallbacks().onP2pChatEntered, data);
+    },
+    // 文档新评论（SDK 未强类型，key 透传）
+    'drive.notice.comment_add_v1': async (data: FeishuDriveCommentEvent) => {
+      log.info(
+        `drive comment added file=${data.file_token} from=${data.from_open_id ?? '?'} whole=${data.is_whole}`,
+      );
+      await safeInvoke(ctx.getCallbacks().onDriveCommentAdd, data);
     },
   } as unknown as Parameters<typeof dispatcher.register>[0]);
   return dispatcher;

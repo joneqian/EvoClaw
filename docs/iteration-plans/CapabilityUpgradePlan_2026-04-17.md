@@ -75,7 +75,7 @@
 | **M9** | 发布与分发 🟡 Phase 1 部分完成（T1/T2 ✅，T3-T8 暂停）| P1 | 7-9d | M0 | ✅ **T2 已落地 + 构建治理**：brand-apply 多品牌抽象 + gitignore 根治 + postinstall；⚠️ T5 前端 banner 待后续 |
 | **M10** | 文档站 | P1 | 5-8d | M0 | ❌ 无（独立站，不嵌入 Tauri） |
 | **M11** | 平台扩展（Telegram/Discord/Slack/浏览器栈/ACP）| P2 | 按需 | M3, M8 | ⚠️ **必评**：各 channel 的配置 / 登录 / 诊断 UI |
-| **M11.1** | 飞书 Channel 完整复刻（M13 前置基建，新）| P1 | 4w | M3, M8 | ⚠️ **必评**：飞书配置面板 + 审批卡按钮 + 流式卡片（~300 行 React） |
+| **M11.1** | 飞书 Channel 完整复刻 ✅（M13 前置基建）| P1 | 4w ✅ | M3, M8 | ✅ 已完成 2026-04-21，PR #46-#50 + #52（PR6 Phase K Channel tools 补齐） |
 | **M12** | 运营可观测 & 成本治理（新） | P1 | 3-4d | M6, M8 | ⚠️ **必评**：session 成本聚合面板（沿用 UsageTab 风格） |
 | **M13** | Agent 团队协作（新） | P1 | 10-12w | M6, M8 | ⚠️ **必评**：Team 配置界面 / TaskFlow 状态面板 / 子 Agent 流式产出聚合视图 |
 | **M1.1** | Checkpoint Manager（补丁） | P1 | 3-5d | M1 | ❌ 无（静默恢复，未来可加"已恢复 N 文件" toast） |
@@ -567,8 +567,8 @@
 | **阶段 4** | **M7 Phase 1 ✅** + **M8 ✅** | Skill 记忆化 + 会话隔离 | 10-13d | ✅ M8（PR #30）+ M7 Phase 1（PR #39）|
 | **阶段 5** | **M7 Phase 2 ✅** + **M9 🟡** + M10 | Skill 评估 + 发布 + 文档站 | 14-23d | 🟢 M7 Phase 2 ✅（PR #40），M9 剩余工作等 Windows / Apple 证书 / 阿里云账号资源就绪 |
 | **阶段 6** | **M7 Phase 3 ✅** + M12 | Skill 自动进化 + 运营可观测 | ~3w + 3-4d | 🟢 M7 Phase 3 ✅（PR #41），M12 ⏳ 待启 |
-| **阶段 6.5** | **M11.1 飞书 Channel 完整复刻（新）** | 真实 channel 接入 → 喂 M7 Phase 3 数据 + M13 前置基建（含审批卡/流式卡/媒体/文档评论） | 4w | 🟡 进行中（2026-04-21 启动，分支 `feat/m11.1-feishu-channel`） |
-| **阶段 6.6** | M13（Phase 1→4 串行） | Agent 团队协作 | 10-12w | ⏳ 待启（依赖 M6 ✅ + M8 ✅ + **M11.1 先行可加速**） |
+| **阶段 6.5** | **M11.1 飞书 Channel 完整复刻 ✅** | 真实 channel 接入 → 喂 M7 Phase 3 数据 + M13 前置基建 | 4w | ✅ **完成**（2026-04-21，PR #46 + #47 + #48 + #49 + #50 + #52；Review 8.2/10；3033 测试；含 Phase K Channel tools 补齐给 Agent 调用） |
+| **阶段 6.6** | M13（Phase 1→5 串行，Phase 5 为 M11.1 遗留飞书文档 agent 协作闭环） | Agent 团队协作 | 11-13.5w | ⏳ 待启（依赖 M6 ✅ + M8 ✅ + **M11.1 ✅ 已铺垫**） |
 | **阶段 7+** | M11（Telegram / Discord / Slack / 浏览器栈 / ACP）| 平台扩展 | 按需 | ⏳ 待启 |
 | **回归** | Sprint 16（含 30s 活动心跳附带任务） | 企微 Channel 生产就绪 | — | 🔒 **推迟到 M9 就绪后**（需要中转层支持企微 webhook，桌面 sidecar 无公网 IP 无法直接对接）|
 | **补丁** | M1.1 + M3.1 | Checkpoint Manager + 全局 IterationBudget | 4-7d | ⏳ 待启（可穿插进其它阶段） |

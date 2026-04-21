@@ -8,7 +8,6 @@ import type { ChannelConfig } from '../channel/channel-adapter.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { BindingRouter } from '../routing/binding-router.js';
 import type { ChannelStateRepo } from '../channel/channel-state-repo.js';
-import type { FeishuAdapter } from '../channel/adapters/feishu.js';
 import type { WecomAdapter } from '../channel/adapters/wecom.js';
 import { Feature } from '../infrastructure/feature.js';
 import { createLogger } from '../infrastructure/logger.js';
@@ -108,34 +107,7 @@ export function createChannelRoutes(
     return c.json({ bindings });
   });
 
-  /** POST /webhook/feishu — 飞书 Webhook 接收 */
-  app.post('/webhook/feishu', async (c) => {
-    const event = await c.req.json();
-
-    // URL 验证
-    if (event.type === 'url_verification') {
-      return c.json({ challenge: event.challenge });
-    }
-
-    const adapter = channelManager.getStatus('feishu');
-    if (!adapter || adapter.status !== 'connected') {
-      return c.json({ error: '飞书 Channel 未连接' }, 503);
-    }
-
-    // 获取飞书适配器实例并处理事件
-    try {
-      // 通过 ChannelManager 内部的适配器处理
-      const feishuAdapter = (channelManager as any).adapters.get('feishu') as FeishuAdapter | undefined;
-      if (feishuAdapter) {
-        const challenge = await feishuAdapter.handleWebhookEvent(event);
-        if (challenge) return c.json({ challenge });
-      }
-    } catch (err) {
-      log.error('feishu webhook 处理失败', err);
-    }
-
-    return c.json({ success: true });
-  });
+  // 注：飞书 Channel 使用 WebSocket 长连接，无 Webhook 路由（桌面 sidecar 无公网 IP）
 
   /** POST /webhook/wecom — 企微回调接收 */
   app.post('/webhook/wecom', async (c) => {

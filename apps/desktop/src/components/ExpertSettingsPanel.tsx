@@ -216,6 +216,10 @@ function InlineWeixinConnect({ agentId, onConnect }: { agentId: string; onConnec
 function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
+  const [domain, setDomain] = useState<'feishu' | 'lark'>('feishu');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [encryptKey, setEncryptKey] = useState('');
+  const [verificationToken, setVerificationToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
 
@@ -224,10 +228,18 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     setConnecting(true);
     setError('');
     try {
+      const credentials: Record<string, string> = {
+        appId: appId.trim(),
+        appSecret: appSecret.trim(),
+        domain,
+      };
+      if (encryptKey.trim()) credentials['encryptKey'] = encryptKey.trim();
+      if (verificationToken.trim()) credentials['verificationToken'] = verificationToken.trim();
+
       await post('/channel/connect', {
         type: 'feishu',
-        name: '飞书',
-        credentials: { appId: appId.trim(), appSecret: appSecret.trim() },
+        name: domain === 'lark' ? 'Lark' : '飞书',
+        credentials,
         agentId,
       });
       onConnect();
@@ -236,7 +248,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     } finally {
       setConnecting(false);
     }
-  }, [appId, appSecret, agentId, onConnect]);
+  }, [appId, appSecret, domain, encryptKey, verificationToken, agentId, onConnect]);
 
   return (
     <div className="space-y-2 p-3 bg-slate-50 rounded-xl">
@@ -254,6 +266,61 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
         placeholder="App Secret"
         className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
       />
+
+      {/* 域名选择 */}
+      <div className="flex items-center gap-3 text-xs text-slate-600">
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input
+            type="radio"
+            name="feishu-domain"
+            value="feishu"
+            checked={domain === 'feishu'}
+            onChange={() => setDomain('feishu')}
+            className="accent-brand"
+          />
+          飞书（中国）
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input
+            type="radio"
+            name="feishu-domain"
+            value="lark"
+            checked={domain === 'lark'}
+            onChange={() => setDomain('lark')}
+            className="accent-brand"
+          />
+          Lark（海外）
+        </label>
+      </div>
+
+      {/* 高级选项 */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+      >
+        {showAdvanced ? '▼ 隐藏高级选项' : '▶ 高级选项（Encrypt Key / Verification Token）'}
+      </button>
+
+      {showAdvanced && (
+        <>
+          <input
+            type="password"
+            value={encryptKey}
+            onChange={(e) => setEncryptKey(e.target.value)}
+            placeholder="Encrypt Key（可选）"
+            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+          />
+          <input
+            type="password"
+            value={verificationToken}
+            onChange={(e) => setVerificationToken(e.target.value)}
+            placeholder="Verification Token（可选）"
+            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+          />
+        </>
+      )}
+
       {error && <p className="text-xs text-red-500">{error}</p>}
       <button
         onClick={handleConnect}

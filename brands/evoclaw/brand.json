@@ -34,7 +34,7 @@
     "MCP": true,
     "SILK_VOICE": true,
     "WECOM": false,
-    "FEISHU": false,
+    "FEISHU": true,
     "CACHED_MICROCOMPACT": false,
     "REACTIVE_COMPACT": false
   }

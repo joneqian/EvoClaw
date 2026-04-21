@@ -31,9 +31,6 @@ export class FeishuApiError extends Error {
   }
 }
 
-/** 长回复阈值：超过则走 streaming card，提升感知体验 */
-export const STREAMING_CARD_THRESHOLD = 500;
-
 /**
  * Post 内容被服务端拒绝的 code 集合（可降级为纯文本）
  * - 230001 参数错误

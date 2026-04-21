@@ -252,21 +252,4 @@ describe('registerOtherEventHandlers', () => {
       }),
     ).resolves.toBeUndefined();
   });
-
-  it('recalled_v1 不崩溃（仅 debug 日志）', async () => {
-    await expect(
-      handlers['im.message.recalled_v1']!({
-        message_id: 'om_x',
-      }),
-    ).resolves.toBeUndefined();
-  });
-
-  it('message_read_v1 不崩溃（仅 debug 日志）', async () => {
-    await expect(
-      handlers['im.message.message_read_v1']!({
-        reader: { reader_id: { open_id: 'ou_u' } },
-        message_id_list: ['om_1'],
-      }),
-    ).resolves.toBeUndefined();
-  });
 });

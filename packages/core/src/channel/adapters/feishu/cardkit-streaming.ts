@@ -17,6 +17,9 @@
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from './outbound.js';
+import { createLogger } from '../../../infrastructure/logger.js';
+
+const log = createLogger('feishu-streaming');
 
 /** 空闲看门狗默认 60s */
 const DEFAULT_IDLE_WATCHDOG_MS = 60_000;
@@ -151,11 +154,15 @@ function createHandle(
     if (idleMs <= 0) return;
     clearWatchdog();
     watchdog = setTimeout(() => {
-      // 超时：静默 finish（保留已累计内容）
-      if (!closed) {
-        void finalize('timeout').catch(() => {});
-      }
+      if (closed) return;
+      // setTimeout 回调无处抛错，只能记录日志
+      void finalize('timeout').catch((err) => {
+        log.warn(
+          `流式卡超时 finalize 失败 cardId=${cardId}: ${err instanceof Error ? err.message : err}`,
+        );
+      });
     }, idleMs);
+    watchdog.unref?.();
   };
 
   const clearWatchdog = () => {

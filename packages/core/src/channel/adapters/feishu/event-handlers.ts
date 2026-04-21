@@ -5,7 +5,9 @@
  * - im.message.reaction.created_v1 / deleted_v1：通过可选回调传递给上层
  * - im.chat.member.bot.added_v1 / deleted_v1：机器人入群 / 被移出群
  * - im.chat.access_event.bot_p2p_chat_entered_v1：用户首次打开与机器人的单聊
- * - im.message.recalled_v1 / message_read_v1：仅 debug 日志（未来扩展用）
+ *
+ * 注意：这里注册的 event key 不能与 inbound.ts（im.message.receive_v1）或
+ * card-action.ts（card.action.trigger）重复，否则 SDK 会 logger.error 告警。
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
@@ -33,18 +35,6 @@ export interface FeishuP2pEnteredEvent {
   chat_id?: string;
   operator_id?: { open_id?: string; user_id?: string; union_id?: string };
   last_message_id?: string;
-}
-
-export interface FeishuRecalledEvent {
-  message_id?: string;
-  chat_id?: string;
-  recall_time?: string;
-  recall_type?: string;
-}
-
-export interface FeishuMessageReadEvent {
-  reader?: { reader_id?: { open_id?: string; user_id?: string; union_id?: string } };
-  message_id_list?: string[];
 }
 
 // ─── 可选回调 ────────────────────────────────────────────────────────
@@ -97,13 +87,6 @@ export function registerOtherEventHandlers(
     'im.chat.access_event.bot_p2p_chat_entered_v1': async (data: FeishuP2pEnteredEvent) => {
       log.info(`p2p chat entered chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
       await safeInvoke(ctx.getCallbacks().onP2pChatEntered, data);
-    },
-    // 撤回 / 已读（仅 debug log，不触发业务回调）
-    'im.message.recalled_v1': async (data: FeishuRecalledEvent) => {
-      log.debug(`message recalled msg=${data.message_id}`);
-    },
-    'im.message.message_read_v1': async (data: FeishuMessageReadEvent) => {
-      log.debug(`message read reader=${data.reader?.reader_id?.open_id ?? '?'} count=${data.message_id_list?.length ?? 0}`);
     },
   } as unknown as Parameters<typeof dispatcher.register>[0]);
   return dispatcher;

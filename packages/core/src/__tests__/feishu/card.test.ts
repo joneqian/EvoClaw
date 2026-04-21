@@ -299,6 +299,46 @@ describe('ApprovalRegistry / requestApprovalViaCard', () => {
     expect(r1.decision).toBe('timeout');
     expect(r2.decision).toBe('timeout');
     expect(registry.size).toBe(0);
+    expect(registry.isClosed).toBe(true);
+  });
+
+  it('cancelAll 之后再 register 立即 resolve timeout（不留僵尸）', async () => {
+    registry.cancelAll();
+    let resolved: string | null = null;
+    registry.register({
+      actionId: 'ap_zombie',
+      sessionKey: 's',
+      messageId: null,
+      title: 't',
+      body: 'b',
+      createdAt: 0,
+      expiresAt: Date.now() + 60_000,
+      resolve: (d) => { resolved = d; },
+      timer: setTimeout(() => {}, 60_000),
+    });
+    expect(resolved).toBe('timeout');
+    expect(registry.size).toBe(0);
+  });
+
+  it('reopen 后 register 恢复正常登记', async () => {
+    registry.cancelAll();
+    expect(registry.isClosed).toBe(true);
+    registry.reopen();
+    expect(registry.isClosed).toBe(false);
+
+    registry.register({
+      actionId: 'ap_ok',
+      sessionKey: 's',
+      messageId: null,
+      title: 't',
+      body: 'b',
+      createdAt: 0,
+      expiresAt: Date.now() + 60_000,
+      resolve: () => {},
+      timer: setTimeout(() => {}, 60_000),
+    });
+    expect(registry.size).toBe(1);
+    registry.cancelAll();
   });
 });
 
@@ -336,6 +376,8 @@ describe('handleCardAction', () => {
       actionId: 'ap_1',
       sessionKey: 's',
       messageId: 'om_1',
+      title: 't',
+      body: 'b',
       createdAt: 0,
       expiresAt: Date.now() + 60_000,
       resolve: approveFn,
@@ -355,6 +397,46 @@ describe('handleCardAction', () => {
     );
 
     expect(approveFn).toHaveBeenCalledWith('approve', 'ou_actor');
+  });
+
+  it('resolve 后结算卡复用原 title/body（不再写死"审批"）', async () => {
+    const registry = new ApprovalRegistry();
+    const patch = vi.fn().mockResolvedValue({ code: 0 });
+    const clientStub = {
+      im: { v1: { message: { patch } } },
+    } as any;
+
+    registry.register({
+      actionId: 'ap_ctx',
+      sessionKey: 's',
+      messageId: 'om_x',
+      title: '执行删除？',
+      body: '即将删除 a.txt',
+      createdAt: 0,
+      expiresAt: Date.now() + 60_000,
+      resolve: () => {},
+      timer: setTimeout(() => {}, 60_000),
+    });
+
+    const env = createEnvelope({
+      kind: 'approval',
+      actionId: 'ap_ctx',
+      sessionKey: 's',
+      metadata: { decision: 'deny' },
+    });
+
+    await handleCardAction(
+      { operator: { open_id: 'ou_u' }, action: { value: env } },
+      { getRegistry: () => registry, getClient: () => clientStub },
+    );
+    // patch 可能是异步发起，等一轮事件循环
+    await new Promise((r) => setTimeout(r, 10));
+    expect(patch).toHaveBeenCalled();
+    const content = JSON.parse(patch.mock.calls[0][0].data.content);
+    const headerTitle = content.header.title.content;
+    expect(headerTitle).toBe('执行删除？'); // 复用原 title
+    const bodyDiv = content.elements.find((e: any) => e.tag === 'div');
+    expect(bodyDiv.text.content).toBe('即将删除 a.txt'); // 复用原 body
   });
 
   it('过期 envelope 不触发 resolve', async () => {

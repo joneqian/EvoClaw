@@ -111,6 +111,9 @@ export class FeishuAdapter implements ChannelAdapter {
 
       await bundle.wsClient.start({ eventDispatcher: bundle.dispatcher });
 
+      // 重连后允许 registry 再次 register（上次 disconnect 调用过 cancelAll）
+      this.approvalRegistry.reopen();
+
       // 绑定媒体下载器（闭包捕获 client）
       this.mediaDownloader = async (p) => {
         return await downloadMessageResource(bundle.client, {

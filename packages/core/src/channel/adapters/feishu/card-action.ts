@@ -93,24 +93,30 @@ export async function handleCardAction(
   const registry = ctx.getRegistry();
   if (!registry) return;
 
+  // resolve 前先 peek，拿到原 title/body 以复用在结算卡中
   const entry = registry.resolveAction(env.a, decision, operatorOpenId);
   if (!entry) return;
 
-  // 尝试把卡片更新为"已批准 / 已拒绝"状态（失败不影响结果）
+  // 尝试把卡片更新为"已批准 / 已拒绝"状态（保留原标题与正文，失败不影响结果）
   const client = ctx.getClient();
   const messageId = entry.messageId ?? data.open_message_id ?? data.context?.open_message_id;
-  if (client && messageId) {
-    updateInteractiveCard(
-      client,
-      messageId,
-      buildResolvedApprovalCard({
-        title: '审批',
-        body: `已收到决定：${decision}`,
-        decision,
-        ...(operatorOpenId ? { operatorOpenId } : {}),
-      }),
-    ).catch((err) => {
-      log.warn(`卡片更新失败：${err instanceof Error ? err.message : err}`);
-    });
+  if (!client || !messageId) {
+    log.warn(
+      `无 client/messageId，卡片状态未更新 actionId=${env.a} decision=${decision}`,
+    );
+    return;
   }
+
+  updateInteractiveCard(
+    client,
+    messageId,
+    buildResolvedApprovalCard({
+      title: entry.title,
+      body: entry.body,
+      decision,
+      ...(operatorOpenId ? { operatorOpenId } : {}),
+    }),
+  ).catch((err) => {
+    log.warn(`卡片更新失败：${err instanceof Error ? err.message : err}`);
+  });
 }

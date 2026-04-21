@@ -406,6 +406,7 @@ export async function handleChannelMessage(
       ftsStore,
       agentId,
       skipWebTools: true,
+      enableSkillManage: true,
     }));
   }
 

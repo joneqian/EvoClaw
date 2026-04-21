@@ -270,6 +270,8 @@ export const TOOL_MANIFEST: readonly ToolMeta[] = [
   { name: 'http',       category: 'network', description: 'HTTP 请求（别名）',    destructive: false, source: 'enhanced' },
   // 浏览器
   { name: 'browse', category: 'browser', description: '浏览器自动化', destructive: false, source: 'enhanced' },
+  // Skill 自管理（M7 Phase 1）
+  { name: 'skill_manage', category: 'skill', description: '创建/修改/删除用户级 Skill', destructive: true, source: 'enhanced' },
 ];
 
 /** 工具权限类别映射（供 permission-interceptor.ts 读取） */

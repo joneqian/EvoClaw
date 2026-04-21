@@ -195,6 +195,46 @@ Before answering the user, you should:
     label: 'memory_recall',
   });
 
+  // § 5.1 Skill 记忆化（M7 Phase 1 — 全局静态指令）
+  blocks.push({
+    text: `<skill_memorization>
+## 把重复流程沉淀为 Skill
+当你在对话中完成了一个**可复用的多步流程**（例如"搜索 → 摘要 → 汇总"、"解析 CSV → 校验 → 输出报告"等），
+可调用 \`skill_manage\` 工具把它固化为 Skill，下次对话起 <available_skills> 目录即可直接 invoke。
+
+**何时应创建 Skill**：
+- 用户要求"以后遇到 X 都这么做"
+- 同一类任务你在本次或历史会话中执行了 ≥2 次且步骤相似
+- 可以清晰列出步骤、输入、输出、边界条件
+
+**何时应避免创建**：
+- 一次性、情景强相关的任务（"帮我查下今天的天气"）
+- 涉及硬编码凭据/密码/Token（写入必被安全扫描拒绝）
+- 与现有 Skill 高度重叠
+
+**skill_manage 用法**：
+| action | 场景 |
+|--------|------|
+| create | 新建 Skill：提供完整 SKILL.md 内容（含 frontmatter + body） |
+| edit   | 覆盖已有 Skill 的 SKILL.md（会自动备份 .bak） |
+| patch  | 只改局部：提供 patch_old（精确子串）+ patch_new |
+| delete | 删除 Skill：必须提供 confirm=true |
+
+**必备 frontmatter**（YAML）：
+\`\`\`yaml
+---
+name: <与工具参数的 name 一致，2-64 位小写字母/数字/连字符>
+description: <一句话描述用途，<=1000 字符>
+when-to-use: <可选：触发场景>
+---
+\`\`\`
+
+**安全红线**（命中即 FAIL-CLOSED 拒绝）：eval / new Function / 硬编码 API key/token/secret / 写 shell rc 文件 / 写 crontab / 写 launchd plist。
+</skill_memorization>`,
+    cacheControl: { type: 'ephemeral', scope: 'global' },
+    label: 'skill_memorization',
+  });
+
   // § 6 Tool call style（全局静态指令 — autonomous 模式跳过）
   if (mode === 'interactive') {
     blocks.push({

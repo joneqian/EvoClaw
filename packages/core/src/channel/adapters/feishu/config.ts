@@ -25,13 +25,25 @@ export const FeishuCredentialsSchema = z.object({
 
 export type FeishuCredentials = z.infer<typeof FeishuCredentialsSchema>;
 
-/** 从任意 credentials 对象解析出规范化的飞书凭据 */
+/**
+ * 从任意 credentials 对象解析出规范化的飞书凭据
+ *
+ * 使用 safeParse + 翻译为中文错误（CLAUDE.md 约定：外部输入走 safeParse，不抛异常）
+ * @throws Error 凭据不合法时抛出中文错误消息
+ */
 export function parseFeishuCredentials(raw: Record<string, string>): FeishuCredentials {
-  return FeishuCredentialsSchema.parse({
+  const result = FeishuCredentialsSchema.safeParse({
     appId: raw['appId'] ?? '',
     appSecret: raw['appSecret'] ?? '',
     encryptKey: raw['encryptKey'] || undefined,
     verificationToken: raw['verificationToken'] || undefined,
-    domain: (raw['domain'] as FeishuDomain | undefined) ?? 'feishu',
+    domain: raw['domain'] ?? 'feishu',
   });
+  if (!result.success) {
+    const first = result.error.issues[0];
+    const field = first?.path.join('.') ?? '未知字段';
+    const msg = first?.message ?? '配置不合法';
+    throw new Error(`飞书配置不合法 [${field}]: ${msg}`);
+  }
+  return result.data;
 }

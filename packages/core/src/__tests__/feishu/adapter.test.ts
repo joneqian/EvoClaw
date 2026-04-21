@@ -33,6 +33,7 @@ interface MockClient {
       };
     };
   };
+  request: ReturnType<typeof vi.fn>;
 }
 
 interface MockWSClient {
@@ -68,6 +69,8 @@ function createMockSdk(): {
         },
       },
     };
+    // bot 身份发现默认返回合法 bot
+    request = vi.fn().mockResolvedValue({ code: 0, bot: { open_id: 'ou_bot' } });
     constructor() {
       state.lastClient = this as unknown as MockClient;
     }
@@ -182,6 +185,87 @@ describe('FeishuAdapter', () => {
       adapter.connect({ type: 'feishu', name: '空', credentials: {} }),
     ).rejects.toThrow(/appId/);
     expect(adapter.getStatus().status).toBe('error');
+  });
+
+  it('connect 应自动拉取 bot open_id 并用于群 @ 过滤', async () => {
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await adapter.connect({
+      type: 'feishu',
+      name: '飞书',
+      credentials: { appId: 'cli_bot', appSecret: 's' },
+    });
+
+    // bot 发现 API 被调用
+    expect(mock.lastClient?.request).toHaveBeenCalledWith(
+      expect.objectContaining({ url: '/open-apis/bot/v3/info' }),
+    );
+
+    // 群聊 @机器人 消息应通过
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_user' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_1',
+        chat_id: 'oc_x',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"hi"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('bot hydrate 失败不应阻塞 connect', async () => {
+    await adapter.connect({
+      type: 'feishu',
+      name: '飞书',
+      credentials: { appId: 'cli_x', appSecret: 's' },
+    });
+    // 覆盖 request 为失败
+    mock.lastClient!.request.mockRejectedValueOnce(new Error('403'));
+    await adapter.disconnect();
+    mock = createMockSdk();
+    const adapter2 = new FeishuAdapter({ sdk: mock.sdk });
+    mock.sdk.Client = class {
+      im = { v1: { message: { create: vi.fn() } } };
+      request = vi.fn().mockRejectedValue(new Error('403'));
+    } as unknown as FeishuSdk['Client'];
+    await adapter2.connect({
+      type: 'feishu',
+      name: '飞书',
+      credentials: { appId: 'a', appSecret: 'b' },
+    });
+    expect(adapter2.getStatus().status).toBe('connected');
+  });
+
+  it('重复 connect 应清理旧 WS（防 leak）', async () => {
+    await adapter.connect({
+      type: 'feishu',
+      name: '飞书',
+      credentials: { appId: 'a', appSecret: 'b' },
+    });
+    const firstWs = mock.lastWs!;
+    await adapter.connect({
+      type: 'feishu',
+      name: '飞书',
+      credentials: { appId: 'a', appSecret: 'b' },
+    });
+    expect(firstWs.close).toHaveBeenCalled();
+  });
+
+  it('disconnect 应幂等（未连接时不抛错）', async () => {
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+    await expect(adapter.disconnect()).resolves.toBeUndefined();
+  });
+
+  it('domain=lark 应通过校验并构造 WS', async () => {
+    await adapter.connect({
+      type: 'feishu',
+      name: 'Lark',
+      credentials: { appId: 'a', appSecret: 'b', domain: 'lark' },
+    });
+    expect(adapter.getStatus().status).toBe('connected');
   });
 
   it('WSClient start 失败应进入 error 状态', async () => {
@@ -412,6 +496,36 @@ describe('handleReceiveMessage', () => {
       ctx,
     );
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('群聊 mention 用 union_id 应通过（鲁棒性）', async () => {
+    const { ctx, handler } = makeCtx({ getBotOpenId: () => 'on_bot_union' });
+    await handleReceiveMessage(
+      buildEvent({
+        chat_type: 'group',
+        mentions: [
+          { key: '@_bot', id: { union_id: 'on_bot_union' }, name: 'Bot' },
+        ],
+      }),
+      ctx,
+    );
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('sender.sender_id.open_id 缺失不应抛错', async () => {
+    const { ctx, handler } = makeCtx();
+    const event: FeishuReceiveEvent = {
+      sender: { sender_type: 'user' }, // 缺 sender_id
+      message: {
+        message_id: 'om_x',
+        chat_id: 'oc_x',
+        chat_type: 'p2p',
+        message_type: 'text',
+        content: '{"text":"hi"}',
+      },
+    };
+    await expect(handleReceiveMessage(event, ctx)).resolves.toBeUndefined();
+    expect(handler).toHaveBeenCalledOnce();
   });
 
   it('handler 运行期变化应动态生效', async () => {

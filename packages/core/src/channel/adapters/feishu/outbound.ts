@@ -35,7 +35,7 @@ export async function sendTextMessage(
     },
   });
 
-  if (res.code !== undefined && res.code !== 0) {
+  if (res.code) {
     throw new Error(`飞书发送失败: code=${res.code} msg=${res.msg ?? ''}`);
   }
 }

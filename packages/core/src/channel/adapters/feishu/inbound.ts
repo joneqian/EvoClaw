@@ -84,7 +84,13 @@ export async function handleReceiveMessage(
     const botOpenId = ctx.getBotOpenId();
     const mentioned = mentions.some((m) => {
       if (m.key === '@_all') return true;
-      return botOpenId !== null && m.id.open_id === botOpenId;
+      if (botOpenId === null) return false;
+      // 鲁棒性：同时匹配 open_id / user_id / union_id 的任一（飞书通常只填 open_id）
+      return (
+        m.id.open_id === botOpenId ||
+        m.id.user_id === botOpenId ||
+        m.id.union_id === botOpenId
+      );
     });
     if (!mentioned) return;
   }

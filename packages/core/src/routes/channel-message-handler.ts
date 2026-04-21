@@ -429,15 +429,11 @@ export async function handleChannelMessage(
   const channelTools = createChannelTools(channelManager, channel as ChannelType);
   for (const ct of channelTools) {
     if (ct.name === 'desktop_notify') continue; // 渠道模式不需要桌面通知
-    const isMedia = ct.name.endsWith('_send_media');
     enhancedTools.push({
       name: ct.name,
-      description: isMedia
-        ? '发送文件给用户（图片/视频/文档），需提供本地文件路径'
-        : '发送文本消息给用户',
-      parameters: isMedia
-        ? { type: 'object', properties: { filePath: { type: 'string', description: '本地文件绝对路径' }, text: { type: 'string', description: '附带说明文字（可选）' } }, required: ['filePath'] }
-        : { type: 'object', properties: { content: { type: 'string', description: '消息内容' } }, required: ['content'] },
+      description: ct.description,
+      // JSON Schema 结构化类型与下游 Record<string, unknown> 等价，cast 透传
+      parameters: ct.parameters as unknown as Record<string, unknown>,
       execute: async (args) => ct.execute({ ...args, peerId }),  // 自动注入 peerId
     });
   }

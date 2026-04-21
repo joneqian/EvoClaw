@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { get, post, del } from '../lib/api';
 import { BRAND_NAME } from '@evoclaw/shared';
 import SkillSourceBadge from '../components/SkillSourceBadge';
+import SkillEffectivenessPanel from '../components/SkillEffectivenessPanel';
+import { useAppStore } from '../stores/app-store';
 
 // ─── 类型 ───
 
@@ -59,7 +61,7 @@ interface PrepareResult {
   };
 }
 
-type TabType = 'brand' | 'store' | 'my';
+type TabType = 'brand' | 'store' | 'my' | 'effectiveness';
 
 // ─── 品牌自有技能数据 ───
 
@@ -346,6 +348,9 @@ export default function SkillPage() {
           <button onClick={() => setTab('my')}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'my' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
           >我的技能{skills.length > 0 && ` (${skills.length})`}</button>
+          <button onClick={() => setTab('effectiveness')}
+            className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'effectiveness' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}
+          >效能</button>
         </div>
         <div className="flex-1" />
 
@@ -542,7 +547,11 @@ export default function SkillPage() {
       )}
 
       {/* ─── 内容 ─── */}
-      {tab === 'brand' ? (
+      {tab === 'effectiveness' ? (
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <SkillEffectivenessPanelWrapper />
+        </div>
+      ) : tab === 'brand' ? (
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* 品牌 Banner */}
           <div className="relative rounded-2xl bg-gradient-to-r from-brand to-brand-hover overflow-hidden mb-6 p-6">
@@ -838,4 +847,13 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade }: MySkillCardP
       </div>
     </div>
   );
+}
+
+/** 效能面板包装：读取 appStore.selectedAgentId，不传则提示 */
+function SkillEffectivenessPanelWrapper() {
+  const selectedAgentId = useAppStore((s) => s.selectedAgentId);
+  if (!selectedAgentId) {
+    return <div className="p-8 text-center text-slate-500 text-sm">请先在侧边栏选择一个 Agent</div>;
+  }
+  return <SkillEffectivenessPanel agentId={selectedAgentId} days={7} />;
 }

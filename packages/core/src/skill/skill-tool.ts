@@ -12,6 +12,8 @@ import path from 'node:path';
 import { parseSkillMd } from './skill-parser.js';
 import { substituteArguments } from './skill-arguments.js';
 import { forkExecuteSkill, type ForkExecuteParams } from './skill-fork-executor.js';
+import type { SkillTelemetrySink, SkillUsageRecord } from './skill-usage-store.js';
+import { sanitizeErrorSummary } from './skill-usage-store.js';
 
 // 避免跨层导入 agent/kernel/types.ts — 使用兼容接口
 interface ToolLike {
@@ -53,6 +55,12 @@ export interface SkillToolOptions {
   mcpPromptExecutor?: McpPromptExecutorFn;
   /** 模型解析器（将 skill 指定的 model 字段解析为 API 配置） */
   modelResolver?: ModelResolverFn;
+  /** M7 Phase 2: 调用 telemetry 接收器（失败静默，不阻塞执行） */
+  telemetry?: SkillTelemetrySink;
+  /** M7 Phase 2: 当前 Agent ID（telemetry 需要） */
+  agentId?: string;
+  /** M7 Phase 2: 当前 sessionKey（telemetry 需要） */
+  sessionKey?: string;
 }
 
 /**
@@ -107,6 +115,26 @@ Skill 提供专业的多步工作流，比直接使用基础工具更可靠、�
       const skillName = String(input.skill ?? '').trim();
       const args = String(input.args ?? '').trim();
       const modeOverride = input.mode as string | undefined;
+      const startTime = Date.now();
+
+      // Telemetry helper — 失败静默，不阻塞 Agent
+      const emit = (
+        partial: Partial<SkillUsageRecord> & Pick<SkillUsageRecord, 'success' | 'executionMode'>,
+      ): void => {
+        if (!options?.telemetry || !options.agentId || !options.sessionKey) return;
+        try {
+          options.telemetry.record({
+            skillName: skillName || '<unknown>',
+            agentId: options.agentId,
+            sessionKey: options.sessionKey,
+            triggerType: 'invoke_skill',
+            durationMs: Date.now() - startTime,
+            ...partial,
+          });
+        } catch {
+          // 永不阻塞
+        }
+      };
 
       if (!skillName) {
         return { content: '请指定 Skill 名称', isError: true };
@@ -114,17 +142,30 @@ Skill 提供专业的多步工作流，比直接使用基础工具更可靠、�
 
       // MCP Prompt 路由: mcp:{serverName}:{promptName}
       if (skillName.startsWith('mcp:') && options?.mcpPromptExecutor) {
-        return handleMcpPrompt(skillName, args, options.mcpPromptExecutor);
+        try {
+          const result = await handleMcpPrompt(skillName, args, options.mcpPromptExecutor);
+          emit({ success: !result.isError, executionMode: 'inline' });
+          return result;
+        } catch (err) {
+          emit({
+            success: false,
+            executionMode: 'inline',
+            errorSummary: sanitizeErrorSummary(String(err)),
+          });
+          throw err;
+        }
       }
 
       // 在所有 skill 路径中搜索匹配的 SKILL.md
       const skillMdContent = findSkillContent(skillName, skillPaths);
       if (!skillMdContent) {
+        emit({ success: false, executionMode: 'inline', errorSummary: `skill not found: ${skillName}` });
         return { content: `未找到 Skill: ${skillName}。请检查名称是否正确，或使用 ToolSearch 搜索可用 Skill。`, isError: true };
       }
 
       const parsed = parseSkillMd(skillMdContent);
       if (!parsed) {
+        emit({ success: false, executionMode: 'inline', errorSummary: `invalid SKILL.md: ${skillName}` });
         return { content: `Skill ${skillName} 的 SKILL.md 格式无效`, isError: true };
       }
 
@@ -139,11 +180,32 @@ Skill 提供专业的多步工作流，比直接使用基础工具更可靠、�
 
       // Fork 模式
       if (effectiveMode === 'fork' && options?.forkConfig?.enabled) {
-        return handleForkExecution(skillName, body, parsed.metadata.description, args, options.forkConfig, parsed.metadata.model, options.modelResolver);
+        try {
+          const result = await handleForkExecution(
+            skillName, body, parsed.metadata.description, args,
+            options.forkConfig, parsed.metadata.model, options.modelResolver,
+          );
+          emit({
+            success: !result.isError,
+            executionMode: 'fork',
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            errorSummary: result.isError ? sanitizeErrorSummary(result.content ?? '') : undefined,
+          });
+          return { content: result.content, isError: result.isError };
+        } catch (err) {
+          emit({
+            success: false,
+            executionMode: 'fork',
+            errorSummary: sanitizeErrorSummary(String(err)),
+          });
+          throw err;
+        }
       }
 
-      // Inline 模式（默认）
+      // Inline 模式（默认）— Skill 指令注入后不做进一步执行，视为成功
       const header = `# Skill: ${parsed.metadata.name}\n> ${parsed.metadata.description}\n\n`;
+      emit({ success: true, executionMode: 'inline' });
       return { content: header + body };
     },
 
@@ -180,7 +242,7 @@ async function handleForkExecution(
   forkConfig: ForkConfig,
   skillModel?: string,
   modelResolver?: ModelResolverFn,
-): Promise<{ content: string; isError?: boolean }> {
+): Promise<{ content: string; isError?: boolean; inputTokens?: number; outputTokens?: number }> {
   // 尝试使用 skill 指定的模型，未配置时降级为当前默认模型
   let apiConfig = forkConfig.apiConfig;
   if (skillModel && modelResolver) {
@@ -200,7 +262,12 @@ async function handleForkExecution(
   });
 
   const header = `# Skill Fork 结果: ${skillName}\n> token 消耗: ${result.tokenUsage.input} in / ${result.tokenUsage.output} out\n\n`;
-  return { content: header + result.result, isError: result.isError };
+  return {
+    content: header + result.result,
+    isError: result.isError,
+    inputTokens: result.tokenUsage.input,
+    outputTokens: result.tokenUsage.output,
+  };
 }
 
 /**

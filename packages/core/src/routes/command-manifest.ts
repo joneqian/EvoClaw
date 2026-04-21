@@ -189,6 +189,13 @@ export const ROUTE_MANIFEST: readonly RouteMeta[] = [
   r('DELETE', '/skill/:name',         'skill', '卸载技能'),
   r('POST',   '/skill/refresh-cache', 'skill', '刷新技能扫描缓存'),
 
+  // ── Skill Usage (M7 Phase 2 调用 telemetry) ──
+  r('GET',    '/skill-usage/effectiveness', 'skill', 'Agent 近 N 天所有 Skill 效能排行'),
+  r('GET',    '/skill-usage/stats',         'skill', '单 Skill 聚合统计'),
+  r('GET',    '/skill-usage/recent',        'skill', '单 Skill 最近调用详情'),
+  r('GET',    '/skill-usage/summaries',     'skill', '单 Skill session 摘要列表'),
+  r('POST',   '/skill-usage/:id/feedback',  'skill', '用户 👍/👎 反馈回写'),
+
   // ── SOP ──
   r('GET',    '/sop/docs',              'sop', '列出 SOP 文档'),
   r('POST',   '/sop/docs/upload',       'sop', '上传 SOP 文档'),

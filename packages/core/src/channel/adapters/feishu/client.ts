@@ -25,7 +25,14 @@ export interface FeishuSdkBundleOptions {
    * adapter 可据此观察运行期 WS 状态（连接/断开/重连）。
    */
   wsLogger?: FeishuSdkLogger;
-  /** WSClient 日志级别（默认 info，确保能收到连接 / 重连类 info 日志） */
+  /**
+   * WSClient 日志级别（默认 debug）
+   *
+   * 调 debug 是必要的 —— SDK 把关键诊断信息（`get connect config success, ws url: ...` /
+   * `client closed` / `reconnect success`）都放在 debug 级别。info 级会错过这些，
+   * 导致 WS 握手失败时排查完全没线索。debug 级的额外噪声（trace 级 ping 不包含）
+   * 可接受。
+   */
   wsLoggerLevel?: Lark.LoggerLevel;
 }
 
@@ -71,8 +78,9 @@ export function createFeishuSdkBundle(
     appId: credentials.appId,
     appSecret: credentials.appSecret,
     domain,
-    // WSClient 默认 info，保证 observer 能收到 'ws client ready' / 'reconnect' 等关键 info 日志
-    loggerLevel: options.wsLoggerLevel ?? sdk.LoggerLevel.info,
+    // WSClient 默认 debug —— SDK 把 ws url、client closed、reconnect success 等关键
+    // 诊断信息放在 debug 级别。上线产品排查 WS 问题必须能看到这些，info 级会漏掉。
+    loggerLevel: options.wsLoggerLevel ?? sdk.LoggerLevel.debug,
     // SDK WSClient 构造函数接受 `logger` 参数（见 node-sdk lib/index.js class WSClient），
     // 但 TS 类型定义未导出；用类型断言传入。SDK logger 接口为 `{error/warn/info/debug/trace}`
     ...(options.wsLogger ? { logger: options.wsLogger } : {}),

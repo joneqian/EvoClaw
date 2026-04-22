@@ -375,6 +375,10 @@ export class FeishuAdapter implements ChannelAdapter {
   /**
    * 响应 SDK WSClient 的真实状态变化（见 ws-logger.ts）
    *
+   * 注意 `client_ready` 的语义坑：SDK 在 reConnect(isStart=true) 末尾**无论成功
+   * 失败都会打 `[ws] ws client ready`**（见 node-sdk lib/index.js L85436），所以
+   * 它不代表连接成功，只代表首次 start() 流程已结束。**不要**用它改 status。
+   *
    * disconnect 后 bundle 已清空；此时仍可能收到旧 WSClient 残留日志（SDK 内部
    * reconnect 定时器），用 bundle 为空作为信号忽略，避免把 status 打回 error。
    */
@@ -384,7 +388,6 @@ export class FeishuAdapter implements ChannelAdapter {
     switch (ev.kind) {
       case 'connect_success':
       case 'reconnect_success':
-      case 'client_ready':
         if (this.status.status !== 'connected') {
           this.status = {
             ...this.status,
@@ -394,6 +397,12 @@ export class FeishuAdapter implements ChannelAdapter {
           };
           log.info(`飞书 WS 已恢复连接 (${ev.kind})`);
         }
+        break;
+      case 'client_ready':
+        // 仅 start() 流程结束信号，不代表连接真实建立。只记 debug 不改 status，
+        // 防止失败路径下把 error 覆盖为 connected（见日志里 connect_failed →
+        // client_ready 的 false recovery）。
+        log.debug('飞书 WS start 流程结束 (client_ready)');
         break;
       case 'reconnecting':
         // 保守起见不立刻降级为 error —— reconnect 可能很快成功。仅在 client_closed 降级。

@@ -44,7 +44,8 @@
       "../../../packages/core/dist/package.json",
       "../../../packages/core/dist/server.mjs",
       "../../../packages/core/dist/migrations/*",
-      "../../../packages/core/dist/skill/bundled/**/*"
+      "../../../packages/core/dist/skill/bundled/**/*",
+      "../../../packages/core/dist/node_modules/**/*"
     ]
   },
   "plugins": {

@@ -695,6 +695,28 @@ async function main() {
   const port = getRandomPort();
   log.info(`日志文件: ${LOG_PATH}`);
 
+  // 诊断：打印代理相关 env —— Tauri 从 Dock 启动 GUI 时，子进程 sidecar
+  // 会继承 GUI 会话的环境变量，若系统/用户配置了 HTTP 代理会导致 `ws` 模块
+  // 尝试走代理走失败。命令行启动时一般为空，对照一下可以秒判。
+  const proxyEnv = [
+    'HTTP_PROXY',
+    'HTTPS_PROXY',
+    'ALL_PROXY',
+    'NO_PROXY',
+    'http_proxy',
+    'https_proxy',
+    'all_proxy',
+    'no_proxy',
+  ]
+    .map((k) => `${k}=${process.env[k] ?? ''}`)
+    .filter((s) => s.split('=')[1] !== '')
+    .join(' ');
+  if (proxyEnv) {
+    log.warn(`检测到代理 env: ${proxyEnv}`);
+  } else {
+    log.info('代理 env 干净（无 HTTP_PROXY / HTTPS_PROXY 等）');
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // Phase 1（真正并行）: Config 加载 + DB 初始化 + Skills 预装
   // 三路 Promise.all — Config/DB/Skills 互不依赖，同时执行

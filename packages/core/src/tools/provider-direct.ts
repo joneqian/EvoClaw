@@ -17,8 +17,25 @@ export interface ProviderConfig {
 /** 支持原生 PDF 输入的 provider */
 export const NATIVE_PDF_PROVIDERS = new Set(['anthropic', 'google']);
 
-/** 支持 vision（图片）输入的 provider */
-export const NATIVE_IMAGE_PROVIDERS = new Set(['anthropic', 'openai', 'google']);
+/**
+ * 判定 provider 是否支持 vision（图片）输入
+ *
+ * 两个放行通道：
+ * 1. 硬编码白名单（anthropic / openai / google）—— 各自专有 API
+ * 2. `apiProtocol === 'openai-completions'` —— OpenAI 兼容协议（qwen / glm /
+ *    minimax / doubao 等国产模型走自定义 baseUrl 接入），它们的 OpenAI 兼容
+ *    endpoint 原生支持 `image_url` content type，与 openai 本家同路径
+ *
+ * 注意：放行后具体模型是否支持 vision 仍取决于模型本身（如 qwen-turbo 不支持，
+ * qwen3.6-plus 支持）。不支持的模型 API 层会报 400，让调用方看到真实错误。
+ */
+export function supportsVision(config: ProviderConfig): boolean {
+  if (config.provider === 'anthropic') return true;
+  if (config.provider === 'google') return true;
+  if (config.provider === 'openai') return true;
+  if (config.apiProtocol === 'openai-completions') return true;
+  return false;
+}
 
 /** 请求超时 */
 const REQUEST_TIMEOUT_MS = 30_000;

@@ -10,6 +10,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
+import type { QuotedMessage } from '@evoclaw/shared';
 import type { MessageHandler } from '../../channel-adapter.js';
 import { normalizeFeishuMessage } from '../../message-normalizer.js';
 import { parseFeishuContent } from './parse-content.js';
@@ -28,6 +29,10 @@ import {
   resolveBroadcastTargets,
   type BroadcastConfig,
 } from './broadcast.js';
+import type {
+  FeishuMessageCache,
+  FeishuMessageCacheEntry,
+} from './message-cache.js';
 
 const log = createLogger('feishu-inbound');
 
@@ -116,6 +121,15 @@ export type MediaDownloader = (params: {
   fileName?: string;
 }) => Promise<{ path: string; mimeType: string | null } | null>;
 
+/**
+ * 按 messageId 回查被引用消息的签名（LRU miss 后的兜底）
+ *
+ * 返回 null 表示查询失败，inbound 会降级为 `[引用消息]` 占位，不阻塞主流程。
+ */
+export type FeishuMessageFetcher = (
+  messageId: string,
+) => Promise<FeishuMessageCacheEntry | null>;
+
 /** 入站处理所需的上下文（用函数而非快照，支持运行时变化） */
 export interface InboundContext {
   getAccountId: () => string;
@@ -132,10 +146,25 @@ export interface InboundContext {
   getBroadcastConfig?: () => BroadcastConfig | null;
   /** 该群内已知机器人 open_id → agentId 映射（mention-first / any-mention 判定用） */
   getBotIdToAgentId?: () => Record<string, string>;
+  /**
+   * 入站消息缓存（供引用消息 O(1) 命中），每条入站消息都会写入供后续回查
+   *
+   * 未提供时退化为"不缓存 + 必走 fetcher（也不提供时降级为占位）"
+   */
+  getMessageCache?: () => FeishuMessageCache | null;
+  /** LRU miss 时的 API 回查，缺省或失败时降级为 `[引用消息]` 占位 */
+  getMessageFetcher?: () => FeishuMessageFetcher | null;
 }
 
 /**
  * 把 EventDispatcher 的 im.message.receive_v1 回调接入到 handler
+ *
+ * Fire-and-forget：dispatcher 回调不 await handleReceiveMessage。SDK 一进来就能
+ * ACK 事件给飞书服务端，避免服务端在 10s 未 ACK 后重推（相同 messageId，会被
+ * 我们的 dedupe 过滤成"忽略重复推送"，用户表现为消息丢失）。
+ *
+ * handleReceiveMessage 内部的所有 await（parent_id 回查、媒体下载、Agent 管线）
+ * 都在这条 fire-and-forget 链里执行，跑多久都不阻塞 SDK。
  */
 export function registerInboundHandlers(
   dispatcher: Lark.EventDispatcher,
@@ -143,7 +172,17 @@ export function registerInboundHandlers(
 ): Lark.EventDispatcher {
   dispatcher.register({
     'im.message.receive_v1': async (data: FeishuReceiveEvent) => {
-      await handleReceiveMessage(data, ctx);
+      // 诊断日志（临时）：确认事件有派发进来 + 记录 msg_type / 是否带 parent_id
+      // 配合 WS 层的 `[feishu-ws] receive message, data: undefined` 一起看，
+      // 如果有 WS 日志但没这行，说明 SDK dispatcher 没派发到本回调
+      log.info(
+        `事件派发 messageId=${data.message?.message_id} msg_type=${data.message?.message_type} parent_id=${data.message?.parent_id ?? '-'} chat_type=${data.message?.chat_type}`,
+      );
+      handleReceiveMessage(data, ctx).catch((err) => {
+        log.error(
+          `入站处理失败 messageId=${data.message?.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
     },
   });
   return dispatcher;
@@ -219,6 +258,28 @@ export async function handleReceiveMessage(
     ctx.getAccountId(),
   );
 
+  // 把当前消息写入缓存，供后续"引用该消息"时回查
+  const cache = ctx.getMessageCache?.() ?? null;
+  if (cache) {
+    cache.put({
+      messageId: message.message_id,
+      senderId: senderOpenId,
+      ...(resolveSenderName(message.mentions, senderOpenId) ?? senderName
+        ? { senderName: resolveSenderName(message.mentions, senderOpenId) ?? senderName }
+        : {}),
+      content: parsed.text,
+      timestamp: normalized.timestamp,
+    });
+  }
+
+  // 解析引用消息（parent_id 存在时）：LRU 优先 → API 兜底 → 占位降级
+  //
+  // fetcher 内置 2s 超时，不阻塞 SDK ACK（registerInboundHandlers 已把本函数
+  // 整体放到 fire-and-forget，即使超时 Agent 也顶多晚 2 秒看到引用信息）。
+  if (message.parent_id) {
+    normalized.quoted = await resolveQuotedMessage(ctx, message.parent_id);
+  }
+
   // 群聊：按 session scope 重写 peerId
   if (normalized.chatType === 'group') {
     const scope = ctx.getGroupSessionScope?.() ?? 'group';
@@ -276,14 +337,12 @@ export async function handleReceiveMessage(
     }
   }
 
-  // Fire-and-forget：handler 会触发 Agent 处理管线（可能耗时 10+ 秒）。
-  // 如果 await 等到完成才 return，SDK 也会等到那时才 ACK 事件给飞书服务端，
-  // 服务端会判定客户端失效并重推事件（相同 trace_id，不同 message_id），
-  // 导致用户发一条消息收到多次回复。这里立即返回让 SDK 秒 ACK。
+  // handler 会触发 Agent 处理管线（可能耗时 10+ 秒）。SDK ACK 已由
+  // registerInboundHandlers 层的 fire-and-forget 保障，这里直接 await 即可。
   //
   // Promise.resolve() 包装：handler 可能是非 async 的 mock（测试场景返回
   // undefined），直接 `.catch` 会 NPE；先 resolve 统一包成 Promise。
-  Promise.resolve(handler(normalized)).catch((err) => {
+  await Promise.resolve(handler(normalized)).catch((err) => {
     log.error(
       `agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -360,6 +419,90 @@ function peekGroupHistory(
   });
   if (!historyKey) return [];
   return buffer.peek(historyKey, config);
+}
+
+/**
+ * 按 parentId 解析被引用消息 —— LRU 命中优先，miss 走 fetcher，失败降级占位
+ *
+ * 永远返回一个 QuotedMessage（不返回 null/undefined）：哪怕完全查不到，也保留
+ * messageId 这条线索，Agent 至少知道"有一条引用"。
+ *
+ * 诊断要点：fetcher 调用不设硬超时，让飞书 SDK / 网络层的真实错误原样抛上来
+ * （业务 code/msg、HTTP 状态等）。registerInboundHandlers 已把整个流程放到
+ * fire-and-forget，即便 fetcher 慢也不会阻塞 SDK ACK。
+ */
+async function resolveQuotedMessage(
+  ctx: InboundContext,
+  parentId: string,
+): Promise<QuotedMessage> {
+  const cache = ctx.getMessageCache?.() ?? null;
+  const hit = cache?.get(parentId) ?? null;
+  if (hit) {
+    return entryToQuoted(hit);
+  }
+
+  const fetcher = ctx.getMessageFetcher?.() ?? null;
+  if (fetcher) {
+    try {
+      const fetched = await fetcher(parentId);
+      if (fetched) {
+        // 回填缓存，避免连续引用同一条消息反复调 API
+        cache?.put(fetched);
+        return entryToQuoted(fetched);
+      }
+      log.warn(`引用消息回查返回 null parentId=${parentId}（权限不足 / 消息不存在 / 机器人不在会话中）`);
+    } catch (err) {
+      log.warn(
+        `引用消息回查失败 parentId=${parentId}: ${describeFetchError(err)}`,
+      );
+    }
+  }
+
+  return {
+    messageId: parentId,
+    senderId: '',
+    content: '[引用消息]',
+  };
+}
+
+/**
+ * 把飞书 SDK / fetch 抛出的错误展开成可诊断的字符串
+ *
+ * SDK 错误对象通常带：code / msg / response.status / response.data，直接打
+ * `err.message` 只会看到外层封装（比如 "socket closed"），看不到飞书真实返回的
+ * 业务 code。把能拿到的字段都 stringify 出来，才能判断是权限 / 参数 / 网络问题。
+ */
+function describeFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const parts: string[] = [err.message];
+  const e = err as unknown as Record<string, unknown>;
+  if (typeof e.code === 'number' || typeof e.code === 'string') {
+    parts.push(`code=${e.code}`);
+  }
+  if (typeof e.msg === 'string') parts.push(`msg=${e.msg}`);
+  const response = e.response as Record<string, unknown> | undefined;
+  if (response) {
+    if (typeof response.status === 'number') parts.push(`http=${response.status}`);
+    if (response.data !== undefined) {
+      try {
+        parts.push(`data=${JSON.stringify(response.data).slice(0, 500)}`);
+      } catch {
+        // 忽略循环引用
+      }
+    }
+  }
+  return parts.join(' | ');
+}
+
+function entryToQuoted(entry: FeishuMessageCacheEntry): QuotedMessage {
+  const quoted: QuotedMessage = {
+    messageId: entry.messageId,
+    senderId: entry.senderId,
+    content: entry.content,
+    timestamp: entry.timestamp,
+  };
+  if (entry.senderName) quoted.senderName = entry.senderName;
+  return quoted;
 }
 
 /** 从 mentions 里找到发送者的展示名（飞书 mention 有 name 字段，sender 自己没有） */

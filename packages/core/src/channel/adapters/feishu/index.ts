@@ -23,7 +23,13 @@ import {
   type FeishuSdkBundle,
 } from './client.js';
 import { parseFeishuCredentials, type FeishuCredentials } from './config.js';
-import { registerInboundHandlers, type MediaDownloader } from './inbound.js';
+import {
+  registerInboundHandlers,
+  type MediaDownloader,
+  type FeishuMessageFetcher,
+} from './inbound.js';
+import { createFeishuMessageCache } from './message-cache.js';
+import { parseFeishuContent } from './parse-content.js';
 import { sendMediaMessage, sendSmartMessage } from './outbound.js';
 import {
   GroupHistoryBuffer,
@@ -67,6 +73,63 @@ export interface FeishuAdapterOptions {
   hydrateBotOpenId?: (client: Lark.Client) => Promise<string | null>;
 }
 
+/**
+ * 按 messageId 取被引用消息快照 —— inbound LRU miss 时的兜底回查
+ *
+ * 走 `client.request` 低层 API（与 bot/v3/info 自动发现同路径）而非 SDK 的
+ * `im.v1.message.get` 强类型包装。实测 Bun 运行时下 SDK 包装层的 axios 调用
+ * 在部分路径参数场景触发 `ECONNRESET`，但同一 client 的 `request` 调用正常。
+ *
+ * 调用失败时抛出原始错误（含飞书 code/msg、网络层 ECONNRESET 等），
+ * inbound 的 describeFetchError 会展开诊断字段。
+ */
+async function fetchFeishuMessageSnapshot(
+  client: Lark.Client,
+  messageId: string,
+): Promise<import('./message-cache.js').FeishuMessageCacheEntry | null> {
+  const res = await client.request<{
+    code?: number;
+    msg?: string;
+    data?: {
+      items?: Array<{
+        message_id?: string;
+        msg_type?: string;
+        create_time?: string;
+        sender?: { id?: string; id_type?: string };
+        body?: { content?: string };
+      }>;
+    };
+  }>({
+    url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+    method: 'GET',
+  });
+
+  // 飞书业务错误：code !== 0 时抛出，让上层看到具体 code/msg
+  if (res.code !== 0) {
+    const err = new Error(`飞书 message.get 返回非零 code`);
+    (err as unknown as Record<string, unknown>).code = res.code;
+    (err as unknown as Record<string, unknown>).msg = res.msg;
+    throw err;
+  }
+  const item = res.data?.items?.[0];
+  if (!item) {
+    log.warn(`message.get 成功但 items 为空 messageId=${messageId}`);
+    return null;
+  }
+
+  const msgType = item.msg_type ?? 'text';
+  const rawContent = item.body?.content ?? '';
+  const parsed = parseFeishuContent(msgType, rawContent);
+  const ts = item.create_time ? Number(item.create_time) : Date.now();
+
+  return {
+    messageId: item.message_id ?? messageId,
+    senderId: item.sender?.id ?? '',
+    content: parsed.text,
+    timestamp: Number.isFinite(ts) ? ts : Date.now(),
+  };
+}
+
 /** 默认的 bot 身份发现：调用 /open-apis/bot/v3/info */
 async function defaultHydrateBotOpenId(client: Lark.Client): Promise<string | null> {
   try {
@@ -103,6 +166,14 @@ export class FeishuAdapter implements ChannelAdapter {
   private botOpenId: string | null = null;
   /** 媒体下载器，connect() 时构造，disconnect() 后置空 */
   private mediaDownloader: MediaDownloader | null = null;
+  /**
+   * 入站消息 LRU 缓存（供引用消息 O(1) 命中）
+   *
+   * adapter 实例内单例，跨重连保留（引用回查的命中率只增不减）。
+   */
+  private readonly messageCache = createFeishuMessageCache();
+  /** LRU miss 时回查 im/v1/messages/:message_id 的兜底 fetcher，disconnect 后置空 */
+  private messageFetcher: FeishuMessageFetcher | null = null;
   /** 审批注册表（每个 adapter 实例独立，跨重连保留 */
   private readonly approvalRegistry = new ApprovalRegistry();
   /** 非消息事件回调（reactions / 入群 / 离群 / p2p_entered） */
@@ -145,6 +216,8 @@ export class FeishuAdapter implements ChannelAdapter {
         getGroupHistoryConfig: () => this.credentials?.groupHistory ?? null,
         getBroadcastConfig: () => this.credentials?.broadcast ?? null,
         getBotIdToAgentId: () => this.botIdToAgentId,
+        getMessageCache: () => this.messageCache,
+        getMessageFetcher: () => this.messageFetcher,
       });
 
       registerCardActionHandlers(bundle.dispatcher, {
@@ -169,6 +242,11 @@ export class FeishuAdapter implements ChannelAdapter {
           msgType: p.msgType,
           ...(p.fileName !== undefined ? { fileName: p.fileName } : {}),
         });
+      };
+
+      // 绑定引用消息兜底回查：im.v1.message.get，解析首条 item 为 cache entry
+      this.messageFetcher = async (messageId) => {
+        return await fetchFeishuMessageSnapshot(bundle.client, messageId);
       };
 
       // 连接成功后拉 bot 身份（失败不阻塞，只会让群 @ 过滤偏保守）
@@ -198,6 +276,7 @@ export class FeishuAdapter implements ChannelAdapter {
     this.credentials = null;
     this.botOpenId = null;
     this.mediaDownloader = null;
+    this.messageFetcher = null;
     // 取消所有待审批，释放等待的 Promise
     this.approvalRegistry.cancelAll();
     // 清空群聊旁听缓冲（断开视为会话边界重置）

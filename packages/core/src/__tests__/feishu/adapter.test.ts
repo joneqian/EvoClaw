@@ -421,6 +421,7 @@ describe('handleReceiveMessage', () => {
         message_type: partial.message_type ?? 'text',
         content: partial.content ?? '{"text":"hi"}',
         mentions: partial.mentions,
+        ...(partial.parent_id !== undefined ? { parent_id: partial.parent_id } : {}),
       },
     };
   }
@@ -616,6 +617,117 @@ describe('handleReceiveMessage', () => {
     };
     await expect(handleReceiveMessage(event, ctx)).resolves.toBeUndefined();
     expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('parent_id 命中 cache → normalized.quoted 填充自缓存条目', async () => {
+    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/message-cache.js');
+    const cache = createFeishuMessageCache({ maxSize: 10, ttlMs: 60_000 });
+    cache.put({
+      messageId: 'om_parent',
+      senderId: 'ou_bot',
+      senderName: '龙虾-CEO',
+      content: '今天是 2026年4月22日，星期三。请问有什么我可以帮您的吗？',
+      timestamp: 1700000000000,
+    });
+
+    const handler = vi.fn();
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+      getMessageCache: () => cache,
+    };
+    await handleReceiveMessage(
+      buildEvent({ parent_id: 'om_parent', content: '{"text":"你这条消息说了什么？"}' }),
+      ctx,
+    );
+    expect(handler).toHaveBeenCalledOnce();
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.quoted).toBeDefined();
+    expect(msg.quoted).toMatchObject({
+      messageId: 'om_parent',
+      senderId: 'ou_bot',
+      senderName: '龙虾-CEO',
+      content: '今天是 2026年4月22日，星期三。请问有什么我可以帮您的吗？',
+    });
+  });
+
+  it('parent_id miss cache → 走 fetcher 并回填缓存', async () => {
+    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/message-cache.js');
+    const cache = createFeishuMessageCache({ maxSize: 10, ttlMs: 60_000 });
+    const fetcher = vi.fn().mockResolvedValue({
+      messageId: 'om_parent',
+      senderId: 'ou_alice',
+      senderName: 'Alice',
+      content: '之前的话',
+      timestamp: 1700000000000,
+    });
+
+    const handler = vi.fn();
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+      getMessageCache: () => cache,
+      getMessageFetcher: () => fetcher,
+    };
+    await handleReceiveMessage(
+      buildEvent({ parent_id: 'om_parent' }),
+      ctx,
+    );
+    expect(fetcher).toHaveBeenCalledWith('om_parent');
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.quoted.content).toBe('之前的话');
+    // 回填：再来一次引用 om_parent 时不应再调 fetcher
+    await handleReceiveMessage(
+      buildEvent({ message_id: 'om_new', parent_id: 'om_parent' }),
+      ctx,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('parent_id 全部失败 → quoted 降级为占位', async () => {
+    const handler = vi.fn();
+    const fetcher = vi.fn().mockRejectedValue(new Error('not found'));
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+      getMessageFetcher: () => fetcher,
+    };
+    await handleReceiveMessage(buildEvent({ parent_id: 'om_gone' }), ctx);
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.quoted).toEqual({
+      messageId: 'om_gone',
+      senderId: '',
+      content: '[引用消息]',
+    });
+  });
+
+  it('无 parent_id 时 quoted 不设置', async () => {
+    const { ctx, handler } = makeCtx();
+    await handleReceiveMessage(buildEvent(), ctx);
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.quoted).toBeUndefined();
+  });
+
+  it('每条入站消息都写入 cache（供后续引用回查）', async () => {
+    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/message-cache.js');
+    const cache = createFeishuMessageCache({ maxSize: 10, ttlMs: 60_000 });
+    const handler = vi.fn();
+    const ctx: InboundContext = {
+      getAccountId: () => 'app',
+      getBotOpenId: () => null,
+      getHandler: () => handler,
+      getMessageCache: () => cache,
+    };
+    await handleReceiveMessage(
+      buildEvent({ message_id: 'om_first', content: '{"text":"你好"}' }),
+      ctx,
+    );
+    const cached = cache.get('om_first');
+    expect(cached?.content).toBe('你好');
+    expect(cached?.senderId).toBe('ou_user');
   });
 
   it('handler 运行期变化应动态生效', async () => {

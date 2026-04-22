@@ -6,7 +6,8 @@
  */
 
 import crypto from 'node:crypto';
-import type { ChatMessage } from '@evoclaw/shared';
+import type { ChatMessage, QuotedMessage } from '@evoclaw/shared';
+import { composeMessageWithQuote } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
@@ -70,6 +71,13 @@ export interface ChannelMessageContext {
   chatType: 'private' | 'group';
   mediaPath?: string;
   mediaType?: string;
+  /**
+   * 用户"引用回复"的原始消息（若有）
+   *
+   * handler 会用 composeMessageWithQuote 把它拼成文本前缀注入 Agent context，
+   * DB 里的 user 行也会带上这段前缀，history 自动携带引用上下文。
+   */
+  quoted?: QuotedMessage;
 }
 
 /** 处理器依赖 */
@@ -221,7 +229,9 @@ export async function handleChannelMessage(
   ctx: ChannelMessageContext,
   deps: ChannelMessageDeps,
 ): Promise<string> {
-  const { agentId, sessionKey, message, channel, peerId, chatType } = ctx;
+  const { agentId, sessionKey, channel, peerId, chatType } = ctx;
+  // 引用回复：把被引用消息拼成 <quoted_message> 前缀一起喂给 Agent + 存 DB + 进历史
+  const message = composeMessageWithQuote(ctx.message, ctx.quoted);
   const { store, agentManager, channelManager, configManager, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, laneQueue, memoryStore, ftsStore, knowledgeGraph } = deps;
 
   // 1. 获取 Agent 配置

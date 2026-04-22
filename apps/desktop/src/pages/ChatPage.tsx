@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BRAND_EVENT_PREFIX } from '@evoclaw/shared';
+import { BRAND_EVENT_PREFIX, parseQuotedPrefix } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall, type ToolSegment, type RecallMeta } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import { useMemoryStore, type MemoryFeedbackType } from '../stores/memory-store';
@@ -1059,10 +1059,22 @@ function MessageBubble({ message }: { message: Message }) {
   const isEmpty = !isUser && !hasContent && !hasTools && !hasSegments;
 
   if (isUser) {
+    const { quoted, rest } = parseQuotedPrefix(message.content);
+    const displayAuthor = quoted?.senderName?.trim() || quoted?.senderId || '';
     return (
       <div className="flex justify-end py-3">
         <div className="max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed bg-slate-100 text-slate-900 rounded-br-sm">
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          {quoted && (
+            <div className="mb-2 border-l-2 border-slate-400 pl-2 text-xs text-slate-600">
+              <div className="font-medium truncate">
+                回复 {displayAuthor || '消息'}
+              </div>
+              <div className="line-clamp-3 whitespace-pre-wrap break-words opacity-80">
+                {quoted.content}
+              </div>
+            </div>
+          )}
+          <div className="whitespace-pre-wrap break-words">{rest}</div>
         </div>
       </div>
     );

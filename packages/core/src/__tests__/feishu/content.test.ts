@@ -158,6 +158,27 @@ describe('postPayloadToText', () => {
   it('parsePostContent 失败时降级原样返回', () => {
     expect(parsePostContent('not-json')).toBe('not-json');
   });
+
+  it('parsePostContent 兼容非语言包装结构（im.v1.message.get 返回）', () => {
+    // im.v1.message.get 对 post 消息返回的是拍平的 language payload 本身，
+    // 不像入站事件那样再包一层 zh_cn / en_us
+    const input = JSON.stringify({
+      title: '',
+      content: [
+        [
+          { tag: 'text', text: '今天是 ', style: [] },
+          { tag: 'text', text: '2026年4月22日', style: ['bold'] },
+          { tag: 'text', text: '，星期三。', style: [] },
+        ],
+        [{ tag: 'text', text: '', style: [] }],
+        [{ tag: 'text', text: '请问有什么我可以帮您的吗？', style: [] }],
+      ],
+    });
+    const result = parsePostContent(input);
+    expect(result).toContain('今天是');
+    expect(result).toContain('2026年4月22日');
+    expect(result).toContain('请问有什么我可以帮您的吗？');
+  });
 });
 
 // ─── Markdown → Post ─────────────────────────────────────────────────────

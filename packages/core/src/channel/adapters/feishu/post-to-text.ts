@@ -65,12 +65,26 @@ export function postPayloadToText(payload: PostPayload): string {
 
 /**
  * 入口：content 为 JSON 字符串（飞书原样给出），解析并转纯文本；失败降级原样返回
+ *
+ * 兼容两种飞书给出的 Post 结构：
+ * - 语言包装（入站 im.message.receive_v1 事件）：`{zh_cn: {title, content}, en_us: {...}}`
+ * - 非语言包装（im.v1.message.get 回查消息）：`{title, content}`（已经是 language payload 本身）
+ *
+ * 检测方法：如果顶层有 `title` 或 `content` 字段，就当作非语言包装直接渲染；
+ * 否则走 pickLanguage 挑选一个语言版本。
  */
 export function parsePostContent(content: string): string {
   try {
     const parsed = JSON.parse(content) as unknown;
     if (!parsed || typeof parsed !== 'object') return '';
-    return postPayloadToText(parsed as PostPayload);
+    const obj = parsed as Record<string, unknown>;
+
+    // 非语言包装：顶层直接带 title / content
+    if ('title' in obj || 'content' in obj) {
+      return postPayloadToText({ _: obj as PostLanguagePayload });
+    }
+
+    return postPayloadToText(obj as PostPayload);
   } catch {
     return content;
   }

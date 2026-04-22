@@ -199,22 +199,11 @@ describe('uploadImage / uploadFile', () => {
 describe('downloadMessageResource', () => {
   it('写入到临时目录并返回 MIME', async () => {
     const cacheDir = path.join(os.tmpdir(), `feishu-dl-test-${Date.now()}`);
-    const writeFile = vi.fn(async (p: string) => {
-      await fs.writeFile(p, 'fake');
+    const requestMock = vi.fn().mockResolvedValue({
+      data: Buffer.from('fake-png-bytes'),
+      headers: { 'content-type': 'image/png; charset=utf-8' },
     });
-    const client = {
-      im: {
-        v1: {
-          messageResource: {
-            get: vi.fn().mockResolvedValue({
-              writeFile,
-              getReadableStream: () => null,
-              headers: { 'content-type': 'image/png; charset=utf-8' },
-            }),
-          },
-        },
-      },
-    } as any;
+    const client = { request: requestMock } as any;
 
     const result = await downloadMessageResource(client, {
       messageId: 'om_1',
@@ -225,27 +214,26 @@ describe('downloadMessageResource', () => {
 
     expect(result.mimeType).toBe('image/png');
     expect(result.path.startsWith(cacheDir)).toBe(true);
-    expect(writeFile).toHaveBeenCalled();
+    expect(requestMock).toHaveBeenCalledOnce();
+    const requestArgs = requestMock.mock.calls[0]![0];
+    expect(requestArgs.method).toBe('GET');
+    expect(requestArgs.url).toContain('/open-apis/im/v1/messages/');
+    expect(requestArgs.url).toContain('/resources/');
+    expect(requestArgs.responseType).toBe('arraybuffer');
+    expect(requestArgs.params).toEqual({ type: 'image' });
+    // 实际文件存在且内容正确
+    const fileContent = await fs.readFile(result.path, 'utf8');
+    expect(fileContent).toBe('fake-png-bytes');
     await cleanupMediaCache(cacheDir);
   });
 
   it('MIME 缺失时返回 null', async () => {
     const cacheDir = path.join(os.tmpdir(), `feishu-dl-nomime-${Date.now()}`);
-    const writeFile = vi.fn(async (p: string) => {
-      await fs.writeFile(p, '');
-    });
     const client = {
-      im: {
-        v1: {
-          messageResource: {
-            get: vi.fn().mockResolvedValue({
-              writeFile,
-              getReadableStream: () => null,
-              headers: {},
-            }),
-          },
-        },
-      },
+      request: vi.fn().mockResolvedValue({
+        data: Buffer.from(''),
+        headers: {},
+      }),
     } as any;
 
     const r = await downloadMessageResource(client, {
@@ -255,6 +243,28 @@ describe('downloadMessageResource', () => {
       cacheDir,
     });
     expect(r.mimeType).toBeNull();
+    await cleanupMediaCache(cacheDir);
+  });
+
+  it('ArrayBuffer 类型响应也能写入', async () => {
+    const cacheDir = path.join(os.tmpdir(), `feishu-dl-ab-${Date.now()}`);
+    const bytes = new Uint8Array([1, 2, 3, 4, 5]);
+    const client = {
+      request: vi.fn().mockResolvedValue({
+        data: bytes.buffer,
+        headers: { 'content-type': 'image/jpeg' },
+      }),
+    } as any;
+
+    const r = await downloadMessageResource(client, {
+      messageId: 'om_ab',
+      fileKey: 'img_ab',
+      msgType: 'image',
+      cacheDir,
+    });
+    const content = await fs.readFile(r.path);
+    expect(content.length).toBe(5);
+    expect(content[0]).toBe(1);
     await cleanupMediaCache(cacheDir);
   });
 });

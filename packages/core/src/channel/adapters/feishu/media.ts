@@ -114,7 +114,16 @@ export async function uploadFile(
   return key;
 }
 
-/** 下载消息中的媒体资源到本地缓存目录，返回本地路径 */
+/**
+ * 下载消息中的媒体资源到本地缓存目录，返回本地路径
+ *
+ * SDK `client.im.v1.messageResource.get` 用 axios `responseType: 'stream'`，
+ * 在 Bun 运行时下长连接会触发 `The socket connection was closed unexpectedly`
+ * （ECONNRESET，类似 im.v1.message.get 的包装层兼容 bug）。
+ *
+ * 这里绕过 SDK 强类型包装，走 `client.request` 手写 URL + `responseType:
+ * 'arraybuffer'` 一次性拿完整二进制 body。一张图片通常 <10MB，不会产生内存压力。
+ */
 export async function downloadMessageResource(
   client: Lark.Client,
   params: {
@@ -129,17 +138,41 @@ export async function downloadMessageResource(
   await fs.mkdir(cacheDir, { recursive: true });
 
   const type = resourceTypeFor(params.msgType);
-  const resource = await client.im.v1.messageResource.get({
+  const url =
+    `/open-apis/im/v1/messages/${encodeURIComponent(params.messageId)}` +
+    `/resources/${encodeURIComponent(params.fileKey)}`;
+
+  // 用 client.request 低层 API 绕过 SDK 的 stream response 兼容坑
+  // $return_headers 让响应同时返回 headers（用来拿 Content-Type）
+  const res = (await (client as unknown as {
+    request: (options: {
+      url: string;
+      method: string;
+      params?: Record<string, unknown>;
+      responseType?: string;
+      $return_headers?: boolean;
+    }) => Promise<{
+      data: ArrayBuffer | Uint8Array | Buffer;
+      headers: Record<string, string | string[] | undefined>;
+    }>;
+  }).request({
+    url,
+    method: 'GET',
     params: { type },
-    path: { message_id: params.messageId, file_key: params.fileKey },
-  });
+    responseType: 'arraybuffer',
+    $return_headers: true,
+  }));
+
+  const buffer = Buffer.isBuffer(res.data)
+    ? res.data
+    : Buffer.from(res.data as ArrayBuffer);
 
   const ext = extForType(params.msgType, params.fileName);
   const safeName = `${params.messageId}_${sanitizeKey(params.fileKey)}${ext}`;
   const outPath = path.join(cacheDir, safeName);
-  await resource.writeFile(outPath);
+  await fs.writeFile(outPath, buffer);
 
-  const mimeType = extractMimeType(resource.headers);
+  const mimeType = extractMimeType(res.headers);
   return { path: outPath, mimeType };
 }
 

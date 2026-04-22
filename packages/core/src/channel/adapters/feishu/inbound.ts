@@ -172,6 +172,12 @@ export function registerInboundHandlers(
 ): Lark.EventDispatcher {
   dispatcher.register({
     'im.message.receive_v1': async (data: FeishuReceiveEvent) => {
+      // 诊断日志（临时）：确认事件有派发进来 + 记录 msg_type / 是否带 parent_id
+      // 配合 WS 层的 `[feishu-ws] receive message, data: undefined` 一起看，
+      // 如果有 WS 日志但没这行，说明 SDK dispatcher 没派发到本回调
+      log.info(
+        `事件派发 messageId=${data.message?.message_id} msg_type=${data.message?.message_type} parent_id=${data.message?.parent_id ?? '-'} chat_type=${data.message?.chat_type}`,
+      );
       handleReceiveMessage(data, ctx).catch((err) => {
         log.error(
           `入站处理失败 messageId=${data.message?.message_id}: ${err instanceof Error ? err.message : String(err)}`,

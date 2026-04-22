@@ -23,6 +23,10 @@ import {
   formatGroupHistoryContext,
   type GroupHistoryConfig,
 } from './group-history.js';
+import {
+  resolveBroadcastTargets,
+  type BroadcastConfig,
+} from './broadcast.js';
 
 /** im.message.receive_v1 事件载荷（与 SDK 类型同构，取必要字段） */
 export interface FeishuReceiveEvent {
@@ -73,6 +77,10 @@ export interface InboundContext {
   getGroupHistory?: () => GroupHistoryBuffer | null;
   /** 群聊旁听缓冲配置，null 或 disabled 时跳过 */
   getGroupHistoryConfig?: () => GroupHistoryConfig | null;
+  /** 广播配置（Phase B），null 或 disabled 时走单路路由 */
+  getBroadcastConfig?: () => BroadcastConfig | null;
+  /** 该群内已知机器人 open_id → agentId 映射（mention-first / any-mention 判定用） */
+  getBotIdToAgentId?: () => Record<string, string>;
 }
 
 /**
@@ -202,9 +210,39 @@ export async function handleReceiveMessage(
       body: parsed.text,
       fromBot: false,
     });
+
+    // Phase B: 群聊广播 fanout —— 命中时把目标 agent 列表挂到 normalized.broadcastTargets
+    // 由 server.ts 路由层循环派发，绕过 BindingRouter
+    const broadcastTargets = resolveBroadcastFanout(ctx, message);
+    if (broadcastTargets && broadcastTargets.length > 0) {
+      normalized.broadcastTargets = broadcastTargets;
+    }
   }
 
   await handler(normalized);
+}
+
+/**
+ * 基于 BroadcastConfig 决定是否把该条群消息 fanout 到多个 agent。
+ *
+ * 注意：peerId 在群聊下可能被 scope 重写（如 `oc_x:sender:ou_u`），但
+ * broadcast 配置用户写的是原始 chat_id，所以这里直接用 `message.chat_id`。
+ */
+function resolveBroadcastFanout(
+  ctx: InboundContext,
+  message: FeishuReceiveEvent['message'],
+): string[] | null {
+  const config = ctx.getBroadcastConfig?.() ?? null;
+  if (!config || !config.enabled) return null;
+  const mentions = message.mentions ?? [];
+  const mentionedAll = mentions.some((m) => m.key === '@_all');
+  return resolveBroadcastTargets({
+    config,
+    peerId: message.chat_id,
+    botIdToAgentId: ctx.getBotIdToAgentId?.() ?? {},
+    mentions,
+    mentionedAll,
+  });
 }
 
 /** 把一条消息记入旁听缓冲（enabled=false / buffer 缺失时安静跳过） */

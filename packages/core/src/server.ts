@@ -48,6 +48,7 @@ import { BindingRouter } from './routing/binding-router.js';
 import { generateSessionKey } from './routing/session-key.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
+import type { ChannelMessage } from '@evoclaw/shared';
 import { CommandRegistry } from './channel/command/command-registry.js';
 import { createOpenApiRoutes } from './routes/openapi.js';
 import { createCommandsRoutes } from './routes/commands.js';
@@ -645,6 +646,42 @@ function initVectorStore(
   return new VectorStore(db);
 }
 
+/**
+ * Phase B: 广播 fanout —— 把一条渠道消息派发到多个 agent 的独立 session
+ *
+ * 每个 agent 用 generateSessionKey 构造独立的 `agent:<id>:<channel>:<peerKind>:<peerId>`
+ * key，handleChannelMessage 各自独立处理、独立回复。失败不影响其他 agent。
+ */
+async function dispatchBroadcastMessage(
+  msg: ChannelMessage,
+  targets: readonly string[],
+  channelMsgDeps: ChannelMessageDeps,
+  log: ReturnType<typeof createLogger>,
+): Promise<void> {
+  const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
+  // 并发度有限：每个 agent 串行等待，避免一条大消息同时占用 LLM 并发配额导致限流
+  for (const agentId of targets) {
+    const sessionKey = generateSessionKey(agentId, msg.channel, chatTypeForKey, msg.peerId);
+    try {
+      await handleChannelMessage(
+        {
+          agentId,
+          sessionKey,
+          message: msg.content,
+          channel: msg.channel,
+          peerId: msg.peerId,
+          chatType: msg.chatType,
+          mediaPath: msg.mediaPath,
+          mediaType: msg.mediaType,
+        },
+        channelMsgDeps,
+      );
+    } catch (err) {
+      log.error(`广播消息处理失败 (agent=${agentId}): ${err}`);
+    }
+  }
+}
+
 /** 主入口 — 仅在直接执行时运行 */
 async function main() {
   const profiler = new StartupProfiler();
@@ -787,6 +824,12 @@ async function main() {
 
   // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理
   channelManager.onMessage(async (msg) => {
+    // Phase B: 若 channel adapter 指定了广播目标，fanout 到每个 agent
+    if (msg.broadcastTargets && msg.broadcastTargets.length > 0) {
+      await dispatchBroadcastMessage(msg, msg.broadcastTargets, channelMsgDeps, log);
+      return;
+    }
+
     const targetAgentId = bindingRouter.resolveAgent({
       channel: msg.channel,
       accountId: msg.accountId,

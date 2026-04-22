@@ -40,13 +40,32 @@ describe('image 工具', () => {
     expect(tool.parameters).toBeDefined();
   });
 
-  it('不支持的 provider 应返回错误', async () => {
+  it('真正不支持的 provider（非 openai-completions 协议且不在白名单）应返回错误', async () => {
     const tool = createImageTool({
-      apiKey: 'key', provider: 'qwen', modelId: 'qwen-vl', baseUrl: '', apiProtocol: 'openai-completions',
+      apiKey: 'key',
+      provider: 'cohere',
+      modelId: 'command-r',
+      baseUrl: '',
+      apiProtocol: 'anthropic-messages',
     });
     const result = await tool.execute({ path: 'test.png' });
     expect(result).toContain('不支持图片分析');
-    expect(result).toContain('qwen');
+    expect(result).toContain('cohere');
+  });
+
+  it('openai-completions 协议的国产 provider（qwen/glm/minimax）应通过 supportsVision 放行', async () => {
+    // qwen3.6-plus 走 dashscope 的 OpenAI 兼容接口，原生支持 image_url content type
+    const tool = createImageTool({
+      apiKey: 'key',
+      provider: 'qwen',
+      modelId: 'qwen3.6-plus',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      apiProtocol: 'openai-completions',
+    });
+    // 缺少 path 时返回参数错误，而不是"不支持图片分析"—— 证明 supportsVision 已放行
+    const result = await tool.execute({});
+    expect(result).not.toContain('不支持图片分析');
+    expect(result).toContain('缺少 path');
   });
 
   it('缺少 path 应返回错误', async () => {

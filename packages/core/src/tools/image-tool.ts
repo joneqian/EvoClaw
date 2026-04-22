@@ -8,7 +8,7 @@ import path from 'node:path';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { ProviderConfig } from './provider-direct.js';
 import {
-  NATIVE_IMAGE_PROVIDERS,
+  supportsVision,
   callAnthropic,
   callGoogle,
   callOpenAI,
@@ -66,8 +66,8 @@ export function createImageTool(config: ProviderConfig): ToolDefinition {
 
       if (!imagePath) return '错误：缺少 path 参数';
 
-      if (!NATIVE_IMAGE_PROVIDERS.has(config.provider)) {
-        return `错误：当前 provider "${config.provider}" 不支持图片分析。支持的 provider: ${[...NATIVE_IMAGE_PROVIDERS].join(', ')}`;
+      if (!supportsVision(config)) {
+        return `错误：当前 provider "${config.provider}" / protocol "${config.apiProtocol ?? '未知'}" 不支持图片分析。请使用 anthropic / openai / google，或走 openai-completions 协议接入支持 vision 的模型（如 qwen3.6-plus）。`;
       }
 
       try {
@@ -115,33 +115,36 @@ async function loadImage(imagePath: string): Promise<{ base64: string; mimeType:
   return { base64, mimeType };
 }
 
-/** 根据 provider 调用 vision API */
+/**
+ * 根据 provider 调用 vision API
+ *
+ * anthropic / google 各自专有协议；openai 本家和所有走 openai-completions 协议
+ * 的国产 provider（qwen / glm / minimax / doubao）统一走 OpenAI 兼容通道，
+ * 共用 `{type: 'image_url', image_url: {url: 'data:...;base64,...'}}` 格式。
+ */
 async function callVisionAPI(
   config: ProviderConfig,
   base64: string,
   mimeType: string,
   prompt: string,
 ): Promise<string> {
-  switch (config.provider) {
-    case 'anthropic':
-      return callAnthropic(config, [
-        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
-        { type: 'text', text: prompt },
-      ]);
-
-    case 'google':
-      return callGoogle(config, [
-        { inline_data: { mime_type: mimeType, data: base64 } },
-        { text: prompt },
-      ]);
-
-    case 'openai':
-      return callOpenAI(config, [
-        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
-        { type: 'text', text: prompt },
-      ]);
-
-    default:
-      throw new Error(`不支持的 provider: ${config.provider}`);
+  if (config.provider === 'anthropic') {
+    return callAnthropic(config, [
+      { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+      { type: 'text', text: prompt },
+    ]);
   }
+
+  if (config.provider === 'google') {
+    return callGoogle(config, [
+      { inline_data: { mime_type: mimeType, data: base64 } },
+      { text: prompt },
+    ]);
+  }
+
+  // openai 本家 + 所有 openai-completions 兼容（qwen / glm / minimax / ...）
+  return callOpenAI(config, [
+    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+    { type: 'text', text: prompt },
+  ]);
 }

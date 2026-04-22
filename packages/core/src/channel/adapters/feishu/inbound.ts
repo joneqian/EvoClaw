@@ -415,17 +415,15 @@ function peekGroupHistory(
   return buffer.peek(historyKey, config);
 }
 
-/** fetcher 超时 —— 飞书服务端 10s 后重推事件，留余量给 handler 调度 */
-const QUOTE_FETCH_TIMEOUT_MS = 2000;
-
 /**
  * 按 parentId 解析被引用消息 —— LRU 命中优先，miss 走 fetcher，失败降级占位
  *
  * 永远返回一个 QuotedMessage（不返回 null/undefined）：哪怕完全查不到，也保留
  * messageId 这条线索，Agent 至少知道"有一条引用"。
  *
- * fetcher 设 2 秒超时：网络抖动时与其让 Agent 陪跑 10+ 秒（还会顶撞 SDK ACK），
- * 不如直接降级占位，至少回复及时。
+ * 诊断要点：fetcher 调用不设硬超时，让飞书 SDK / 网络层的真实错误原样抛上来
+ * （业务 code/msg、HTTP 状态等）。registerInboundHandlers 已把整个流程放到
+ * fire-and-forget，即便 fetcher 慢也不会阻塞 SDK ACK。
  */
 async function resolveQuotedMessage(
   ctx: InboundContext,
@@ -440,15 +438,16 @@ async function resolveQuotedMessage(
   const fetcher = ctx.getMessageFetcher?.() ?? null;
   if (fetcher) {
     try {
-      const fetched = await withTimeout(fetcher(parentId), QUOTE_FETCH_TIMEOUT_MS);
+      const fetched = await fetcher(parentId);
       if (fetched) {
         // 回填缓存，避免连续引用同一条消息反复调 API
         cache?.put(fetched);
         return entryToQuoted(fetched);
       }
+      log.warn(`引用消息回查返回 null parentId=${parentId}（权限不足 / 消息不存在 / 机器人不在会话中）`);
     } catch (err) {
       log.warn(
-        `引用消息回查失败 parentId=${parentId}: ${err instanceof Error ? err.message : String(err)}`,
+        `引用消息回查失败 parentId=${parentId}: ${describeFetchError(err)}`,
       );
     }
   }
@@ -460,23 +459,33 @@ async function resolveQuotedMessage(
   };
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`timeout after ${ms}ms`)),
-      ms,
-    );
-    p.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e);
-      },
-    );
-  });
+/**
+ * 把飞书 SDK / fetch 抛出的错误展开成可诊断的字符串
+ *
+ * SDK 错误对象通常带：code / msg / response.status / response.data，直接打
+ * `err.message` 只会看到外层封装（比如 "socket closed"），看不到飞书真实返回的
+ * 业务 code。把能拿到的字段都 stringify 出来，才能判断是权限 / 参数 / 网络问题。
+ */
+function describeFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const parts: string[] = [err.message];
+  const e = err as unknown as Record<string, unknown>;
+  if (typeof e.code === 'number' || typeof e.code === 'string') {
+    parts.push(`code=${e.code}`);
+  }
+  if (typeof e.msg === 'string') parts.push(`msg=${e.msg}`);
+  const response = e.response as Record<string, unknown> | undefined;
+  if (response) {
+    if (typeof response.status === 'number') parts.push(`http=${response.status}`);
+    if (response.data !== undefined) {
+      try {
+        parts.push(`data=${JSON.stringify(response.data).slice(0, 500)}`);
+      } catch {
+        // 忽略循环引用
+      }
+    }
+  }
+  return parts.join(' | ');
 }
 
 function entryToQuoted(entry: FeishuMessageCacheEntry): QuotedMessage {

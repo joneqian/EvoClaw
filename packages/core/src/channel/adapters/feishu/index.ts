@@ -76,57 +76,58 @@ export interface FeishuAdapterOptions {
 /**
  * 按 messageId 取被引用消息快照 —— inbound LRU miss 时的兜底回查
  *
- * 失败（网络错 / 机器人不在群 / 权限不足 / 消息已撤回）时返回 null，
- * inbound 会降级为 `[引用消息]` 占位，不阻塞主流程。
+ * 调用失败（网络错 / 权限不足 / 消息已撤回 / 机器人不在会话中）时**抛出原始错误**，
+ * 让 inbound 的 describeFetchError 拿到飞书 code/msg/HTTP 状态做诊断日志。
+ * 只有飞书返回 code=0 但 items 为空时才返回 null（"API 调通但确实没数据"）。
  */
 async function fetchFeishuMessageSnapshot(
   client: Lark.Client,
   messageId: string,
 ): Promise<import('./message-cache.js').FeishuMessageCacheEntry | null> {
-  try {
-    // SDK 未泄露 get 的强类型，用结构化类型断言
-    const res = await (client as unknown as {
-      im: {
-        v1: {
-          message: {
-            get: (p: { path: { message_id: string } }) => Promise<{
-              code?: number;
-              data?: {
-                items?: Array<{
-                  message_id?: string;
-                  msg_type?: string;
-                  create_time?: string;
-                  sender?: { id?: string; id_type?: string };
-                  body?: { content?: string };
-                }>;
-              };
-            }>;
-          };
+  // SDK 未泄露 get 的强类型，用结构化类型断言
+  const res = await (client as unknown as {
+    im: {
+      v1: {
+        message: {
+          get: (p: { path: { message_id: string } }) => Promise<{
+            code?: number;
+            msg?: string;
+            data?: {
+              items?: Array<{
+                message_id?: string;
+                msg_type?: string;
+                create_time?: string;
+                sender?: { id?: string; id_type?: string };
+                body?: { content?: string };
+              }>;
+            };
+          }>;
         };
       };
-    }).im.v1.message.get({ path: { message_id: messageId } });
-
-    if (res.code !== 0) return null;
-    const item = res.data?.items?.[0];
-    if (!item) return null;
-
-    const msgType = item.msg_type ?? 'text';
-    const rawContent = item.body?.content ?? '';
-    const parsed = parseFeishuContent(msgType, rawContent);
-    const ts = item.create_time ? Number(item.create_time) : Date.now();
-
-    return {
-      messageId: item.message_id ?? messageId,
-      senderId: item.sender?.id ?? '',
-      content: parsed.text,
-      timestamp: Number.isFinite(ts) ? ts : Date.now(),
     };
-  } catch (err) {
-    log.warn(
-      `回查被引用消息失败 messageId=${messageId}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
+  }).im.v1.message.get({ path: { message_id: messageId } });
+
+  // 飞书业务错误：code !== 0 时抛出，让上层看到具体 code/msg
+  if (res.code !== 0) {
+    const err = new Error(`飞书 message.get 返回非零 code`);
+    (err as unknown as Record<string, unknown>).code = res.code;
+    (err as unknown as Record<string, unknown>).msg = res.msg;
+    throw err;
   }
+  const item = res.data?.items?.[0];
+  if (!item) return null;
+
+  const msgType = item.msg_type ?? 'text';
+  const rawContent = item.body?.content ?? '';
+  const parsed = parseFeishuContent(msgType, rawContent);
+  const ts = item.create_time ? Number(item.create_time) : Date.now();
+
+  return {
+    messageId: item.message_id ?? messageId,
+    senderId: item.sender?.id ?? '',
+    content: parsed.text,
+    timestamp: Number.isFinite(ts) ? ts : Date.now(),
+  };
 }
 
 /** 默认的 bot 身份发现：调用 /open-apis/bot/v3/info */

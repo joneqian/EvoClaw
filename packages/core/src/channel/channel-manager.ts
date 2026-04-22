@@ -57,7 +57,12 @@ export class ChannelManager {
   async connect(config: ChannelConfig): Promise<void> {
     const adapter = this.adapters.get(config.type);
     if (!adapter) {
-      throw new Error(`未注册 ${config.type} Channel 适配器`);
+      // 典型场景：当前品牌构建关闭了对应 Feature Flag（见 brands/{brand}/brand.json
+      // 的 features 段 + packages/core/src/infrastructure/feature.ts）
+      const registered = Array.from(this.adapters.keys()).join(', ') || '无';
+      throw new Error(
+        `未注册 ${config.type} Channel 适配器（当前构建可能未启用该渠道）。已注册：${registered}`,
+      );
     }
 
     this.configs.set(config.type, config);

@@ -565,18 +565,32 @@ export async function handleChannelMessage(
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
+  // 诊断：明确报告响应状态，便于排查"Agent 回了但渠道没发"问题
+  log.info(
+    `渠道回复准备发送 channel=${channel} peer=${peerId} ` +
+      `fullResponse=${fullResponse.length}字符 clean=${cleanResponse.length}字符 ` +
+      `isNoReply=${cleanResponse === NO_REPLY_TOKEN}`,
+  );
+
   // 10. 通过 Channel 发送回复（跳过 NO_REPLY 和空响应）
   if (cleanResponse && cleanResponse !== NO_REPLY_TOKEN) {
     try {
+      log.info(`开始发送渠道回复: channel=${channel} peer=${peerId} chars=${cleanResponse.length}`);
       await channelManager.sendMessage(
         channel as any,
         peerId,
         cleanResponse,
         chatType === 'group' ? 'group' : 'private',
       );
+      log.info(`渠道回复发送成功: channel=${channel} peer=${peerId}`);
     } catch (sendErr) {
       log.error(`渠道回复发送失败 (channel=${channel} peer=${peerId}):`, sendErr);
     }
+  } else {
+    log.warn(
+      `渠道回复被跳过 (cleanResponse 空或 NO_REPLY): channel=${channel} peer=${peerId} ` +
+        `原始长度=${fullResponse.length}`,
+    );
   }
 
   // 11. 通知前端有新会话/消息（携带新消息数据，前端无需二次请求）

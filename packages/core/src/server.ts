@@ -48,7 +48,7 @@ import { BindingRouter } from './routing/binding-router.js';
 import { generateSessionKey } from './routing/session-key.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
-import type { ChannelMessage } from '@evoclaw/shared';
+import type { ChannelMessage, ChannelType } from '@evoclaw/shared';
 import { CommandRegistry } from './channel/command/command-registry.js';
 import { createOpenApiRoutes } from './routes/openapi.js';
 import { createCommandsRoutes } from './routes/commands.js';
@@ -321,7 +321,50 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       ? (systemPrompt: string, userMessage: string) =>
           callLLM(configManager, { systemPrompt, userMessage })
       : undefined;
-    app.route('/agents', createAgentRoutes(agentManager, llmGenerateFn, store));
+    app.route(
+      '/agents',
+      createAgentRoutes(agentManager, llmGenerateFn, store, {
+        /**
+         * 删 Agent 前的外部资源清理：
+         * 1. 停 HeartbeatRunner 定时器（否则进程内泄漏）
+         * 2. 断该 Agent **独占**的渠道账号（Agent↔账号 1:1；若同账号还被其他
+         *    Agent 绑，不动，保留那条 WS 给他们继续用）
+         * 3. 独占账号的 channel_state 凭据一并 purge
+         * bindings 表由 DB ON DELETE CASCADE 自动清理，不需在这里手动。
+         */
+        onBeforeDelete: async (agentId) => {
+          // Step 1: 停 heartbeat（没启动时 no-op）
+          options.getHeartbeatManager?.()?.removeRunner(agentId);
+
+          // Step 2+3: 断独占的渠道账号 + 清凭据
+          if (!channelManager || !bindingRouter) return;
+          const myBindings = bindingRouter.listBindings(agentId);
+          for (const b of myBindings) {
+            if (b.channel === 'local') continue; // 桌面本地渠道不处理
+            const accountId = b.accountId ?? '';
+            // 判断"是否独占"：看同一 (channel, accountId) 除本 Agent 外还有没有其他 binding
+            const others = bindingRouter
+              .listBindings()
+              .filter(
+                (x) =>
+                  x.channel === b.channel &&
+                  (x.accountId ?? '') === accountId &&
+                  x.agentId !== agentId,
+              );
+            if (others.length > 0) continue; // 有其他 Agent 共用，跳过
+            try {
+              await channelManager.disconnect(b.channel as ChannelType, accountId);
+            } catch {
+              // 断开失败不阻塞删除；adapter 内部会自行 cleanup
+            }
+            if (channelStateRepo) {
+              channelStateRepo.deleteState(b.channel as ChannelType, accountId, 'credentials');
+              channelStateRepo.deleteState(b.channel as ChannelType, accountId, 'name');
+            }
+          }
+        },
+      }),
+    );
   }
   if (store && agentManager) {
     app.route(

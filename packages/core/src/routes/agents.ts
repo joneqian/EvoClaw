@@ -6,7 +6,21 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { SkillDiscoverer } from '../skill/skill-discoverer.js';
 
 /** 创建 Agent CRUD 路由 */
-export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMGenerateFn, db?: SqliteStore) {
+export function createAgentRoutes(
+  agentManager: AgentManager,
+  llmGenerate?: LLMGenerateFn,
+  db?: SqliteStore,
+  options?: {
+    /**
+     * DELETE /:id 调用 deleteAgent 之前的外部资源清理钩子
+     *
+     * 用于断开该 Agent 独占的渠道（WS 连接 + channel_state 凭据）、
+     * 停止 HeartbeatRunner 定时器等 AgentManager 本身不感知的资源。
+     * 抛错会使整个删除请求 500，调用方自己决定是否吞错继续。
+     */
+    onBeforeDelete?: (agentId: string) => Promise<void> | void;
+  },
+) {
   const app = new Hono();
 
   /** GET / — 列出所有 Agent */
@@ -109,11 +123,17 @@ export function createAgentRoutes(agentManager: AgentManager, llmGenerate?: LLMG
   });
 
   /** DELETE /:id — 删除 Agent */
-  app.delete('/:id', (c) => {
+  app.delete('/:id', async (c) => {
     const id = c.req.param('id');
     const existing = agentManager.getAgent(id);
     if (!existing) {
       return c.json({ error: 'Agent 不存在' }, 404);
+    }
+
+    // 先清理外部资源（渠道 WS / heartbeat 定时器 / 独占凭据），再删 DB 行。
+    // onBeforeDelete 抛错会中断请求返回 500，由调用方决定是否吞错继续。
+    if (options?.onBeforeDelete) {
+      await options.onBeforeDelete(id);
     }
 
     agentManager.deleteAgent(id);

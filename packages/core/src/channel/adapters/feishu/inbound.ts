@@ -17,6 +17,12 @@ import {
   buildFeishuGroupPeerId,
   type FeishuGroupSessionScope,
 } from './session-key.js';
+import {
+  GroupHistoryBuffer,
+  buildHistoryKey,
+  formatGroupHistoryContext,
+  type GroupHistoryConfig,
+} from './group-history.js';
 
 /** im.message.receive_v1 事件载荷（与 SDK 类型同构，取必要字段） */
 export interface FeishuReceiveEvent {
@@ -63,6 +69,10 @@ export interface InboundContext {
   getMediaDownloader?: () => MediaDownloader | null;
   /** 群会话隔离策略（默认 'group'） */
   getGroupSessionScope?: () => FeishuGroupSessionScope;
+  /** 群聊旁听缓冲实例（多机器人协作） */
+  getGroupHistory?: () => GroupHistoryBuffer | null;
+  /** 群聊旁听缓冲配置，null 或 disabled 时跳过 */
+  getGroupHistoryConfig?: () => GroupHistoryConfig | null;
 }
 
 /**
@@ -97,9 +107,14 @@ export async function handleReceiveMessage(
 
   const message = data.message;
   const senderOpenId = data.sender.sender_id?.open_id ?? '';
+  const senderName = data.sender.sender_id?.user_id;
+  const isGroup = message.chat_type === 'group';
+
+  // 预解析正文供 buffer / downloader 复用
+  const parsed = parseFeishuContent(message.message_type, message.content);
 
   // 群聊过滤：必须 @机器人 或 @所有人
-  if (message.chat_type === 'group') {
+  if (isGroup) {
     const mentions = message.mentions ?? [];
     const botOpenId = ctx.getBotOpenId();
     const mentioned = mentions.some((m) => {
@@ -112,7 +127,16 @@ export async function handleReceiveMessage(
         m.id.union_id === botOpenId
       );
     });
-    if (!mentioned) return;
+    if (!mentioned) {
+      // 未 @ 的群消息进入旁听缓冲（Phase A），不触发 agent
+      recordToGroupHistory(ctx, message, {
+        sender: senderOpenId,
+        senderName: resolveSenderName(message.mentions, senderOpenId) ?? senderName,
+        body: parsed.text,
+        fromBot: false,
+      });
+      return;
+    }
   }
 
   const normalized = normalizeFeishuMessage(
@@ -142,7 +166,6 @@ export async function handleReceiveMessage(
   }
 
   // 媒体下载（如果有 key + downloader）
-  const parsed = parseFeishuContent(message.message_type, message.content);
   if (parsed.mediaKey) {
     const downloader = ctx.getMediaDownloader?.() ?? null;
     if (downloader) {
@@ -163,5 +186,87 @@ export async function handleReceiveMessage(
     }
   }
 
+  // 群聊被 @ 时，前缀注入旁听缓冲作为前情提要（Phase A）
+  if (isGroup) {
+    const historyEntries = peekGroupHistory(ctx, message);
+    if (historyEntries.length > 0) {
+      normalized.content = formatGroupHistoryContext({
+        entries: historyEntries,
+        currentMessage: normalized.content,
+      });
+    }
+    // 当前被 @ 的消息本身也写入 buffer，便于后续其他 Agent 被 @ 时看到
+    recordToGroupHistory(ctx, message, {
+      sender: senderOpenId,
+      senderName: resolveSenderName(message.mentions, senderOpenId) ?? senderName,
+      body: parsed.text,
+      fromBot: false,
+    });
+  }
+
   await handler(normalized);
+}
+
+/** 把一条消息记入旁听缓冲（enabled=false / buffer 缺失时安静跳过） */
+function recordToGroupHistory(
+  ctx: InboundContext,
+  message: FeishuReceiveEvent['message'],
+  entry: {
+    sender: string;
+    senderName: string | undefined;
+    body: string;
+    fromBot: boolean;
+  },
+): void {
+  const buffer = ctx.getGroupHistory?.() ?? null;
+  const config = ctx.getGroupHistoryConfig?.() ?? null;
+  if (!buffer || !config || !config.enabled) return;
+  const historyKey = buildHistoryKey({
+    chatId: message.chat_id,
+    ...(message.thread_id ? { threadId: message.thread_id } : {}),
+  });
+  if (!historyKey) return;
+  buffer.record(
+    historyKey,
+    {
+      sender: entry.sender,
+      ...(entry.senderName ? { senderName: entry.senderName } : {}),
+      body: entry.body,
+      timestamp: Date.now(),
+      messageId: message.message_id,
+      fromBot: entry.fromBot,
+    },
+    config,
+  );
+}
+
+/** 读取旁听缓冲（enabled=false / 无配置 / 无条目时返回空数组） */
+function peekGroupHistory(
+  ctx: InboundContext,
+  message: FeishuReceiveEvent['message'],
+): ReturnType<GroupHistoryBuffer['peek']> {
+  const buffer = ctx.getGroupHistory?.() ?? null;
+  const config = ctx.getGroupHistoryConfig?.() ?? null;
+  if (!buffer || !config || !config.enabled) return [];
+  const historyKey = buildHistoryKey({
+    chatId: message.chat_id,
+    ...(message.thread_id ? { threadId: message.thread_id } : {}),
+  });
+  if (!historyKey) return [];
+  return buffer.peek(historyKey, config);
+}
+
+/** 从 mentions 里找到发送者的展示名（飞书 mention 有 name 字段，sender 自己没有） */
+function resolveSenderName(
+  mentions: FeishuReceiveEvent['message']['mentions'],
+  senderOpenId: string,
+): string | undefined {
+  if (!mentions || !senderOpenId) return undefined;
+  const hit = mentions.find(
+    (m) =>
+      m.id.open_id === senderOpenId ||
+      m.id.user_id === senderOpenId ||
+      m.id.union_id === senderOpenId,
+  );
+  return hit?.name;
 }

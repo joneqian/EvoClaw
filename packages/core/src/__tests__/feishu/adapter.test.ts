@@ -640,3 +640,268 @@ describe('handleReceiveMessage', () => {
     expect(handlerSpy).toHaveBeenCalledOnce();
   });
 });
+
+// ─── 群旁听缓冲：adapter 端到端 ────────────────────────────────────────
+
+describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
+  let mock: ReturnType<typeof createMockSdk>;
+  let adapter: FeishuAdapter;
+
+  beforeEach(() => {
+    mock = createMockSdk();
+    adapter = new FeishuAdapter({ sdk: mock.sdk });
+  });
+
+  it('群里 A 发言不@ → @Bot → Bot 收到的 content 带前情提要', async () => {
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await adapter.connect({
+      type: 'feishu',
+      name: '飞书-Bot-X',
+      credentials: { appId: 'cli_x', appSecret: 's' },
+    });
+
+    // 真人 Alice 在群里发言（未 @Bot）
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_a1',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"大家看下需求 X"}',
+        mentions: [],
+      },
+    });
+    // 不触发 handler
+    expect(handler).not.toHaveBeenCalled();
+
+    // 真人 @Bot
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_a2',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"帮我评估下"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+
+    expect(handler).toHaveBeenCalledOnce();
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).toContain('[群聊前情提要（最近 1 条，不含本条）]');
+    expect(msg.content).toContain('大家看下需求 X');
+    expect(msg.content).toContain('[当前 @ 你的消息]');
+    expect(msg.content).toContain('帮我评估下');
+  });
+
+  it('Agent 通过 sendMessage 发送的回复会回写 buffer，下次被 @ 时其他流程能看到', async () => {
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await adapter.connect({
+      type: 'feishu',
+      name: 'Agent-A',
+      credentials: { appId: 'cli_a', appSecret: 's' },
+    });
+
+    // Step 1: Bot A 被 @，回一句话
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_1',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"Alice @Bot：评估下"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+    expect(handler).toHaveBeenCalledOnce();
+
+    // Bot 通过 sendMessage 回复
+    await adapter.sendMessage('oc_g', '评估结果：可做', 'group');
+
+    // Step 2: 再一条真人消息不 @（进 buffer）
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_2',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"确认"}',
+        mentions: [],
+      },
+    });
+
+    // Step 3: 再次 @Bot，观察 handler 收到的 content 是否含上条 Bot 回复
+    handler.mockClear();
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_3',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"帮我整理"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).toContain('评估结果：可做');
+    expect(msg.content).toContain('（机器人）');
+    expect(msg.content).toContain('确认'); // 中间一条真人消息
+  });
+
+  it('私聊 sendMessage 不写入群 buffer', async () => {
+    await adapter.connect({
+      type: 'feishu',
+      name: 'Bot',
+      credentials: { appId: 'cli', appSecret: 's' },
+    });
+    await adapter.sendMessage('ou_alice', 'hi', 'private');
+    // 直接发群消息验证 buffer 空
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_g',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"群里问"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).toBe('群里问'); // 无前缀，buffer 空
+  });
+
+  it('groupHistoryEnabled=false 时 adapter 回退为旧行为（未 @ 丢弃 + 无前缀 + 不回写）', async () => {
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await adapter.connect({
+      type: 'feishu',
+      name: 'Bot',
+      credentials: {
+        appId: 'cli',
+        appSecret: 's',
+        groupHistoryEnabled: 'false',
+      },
+    });
+
+    // 未 @ 消息丢弃
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_x',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"丢"}',
+        mentions: [],
+      },
+    });
+    expect(handler).not.toHaveBeenCalled();
+
+    // 已 @ 消息无前缀
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_y',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"你好"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).toBe('你好');
+    expect(msg.content).not.toContain('[群聊前情提要');
+  });
+
+  it('groupHistoryIncludeBotMessages=false 时 sendMessage 不回写 buffer', async () => {
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await adapter.connect({
+      type: 'feishu',
+      name: 'Bot',
+      credentials: {
+        appId: 'cli',
+        appSecret: 's',
+        groupHistoryIncludeBotMessages: 'false',
+      },
+    });
+
+    // Bot 通过 sendMessage 发送
+    await adapter.sendMessage('oc_g', 'Bot 回复', 'group');
+
+    // 接着 @Bot，观察 handler 收到的 content 不含 Bot 回复
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_later',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"接下来"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+    const msg = handler.mock.calls[0]![0];
+    expect(msg.content).not.toContain('Bot 回复');
+  });
+
+  it('disconnect 清空群 buffer', async () => {
+    const handler = vi.fn();
+    adapter.onMessage(handler);
+    await adapter.connect({
+      type: 'feishu',
+      name: 'Bot',
+      credentials: { appId: 'cli', appSecret: 's' },
+    });
+
+    // 灌入一条旁听
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_a',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"旁听"}',
+        mentions: [],
+      },
+    });
+
+    await adapter.disconnect();
+    // 重连后再 @Bot，应看不到旧旁听
+    mock = createMockSdk();
+    const adapter2 = new FeishuAdapter({ sdk: mock.sdk });
+    const handler2 = vi.fn();
+    adapter2.onMessage(handler2);
+    await adapter2.connect({
+      type: 'feishu',
+      name: 'Bot',
+      credentials: { appId: 'cli', appSecret: 's' },
+    });
+    await mock.lastDispatcher!.invoke('im.message.receive_v1', {
+      sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },
+      message: {
+        message_id: 'om_new',
+        chat_id: 'oc_g',
+        chat_type: 'group',
+        message_type: 'text',
+        content: '{"text":"新一轮"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      },
+    });
+    const msg = handler2.mock.calls[0]![0];
+    expect(msg.content).toBe('新一轮');
+  });
+});

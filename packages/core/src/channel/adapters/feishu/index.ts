@@ -25,6 +25,12 @@ import {
 import { parseFeishuCredentials, type FeishuCredentials } from './config.js';
 import { registerInboundHandlers, type MediaDownloader } from './inbound.js';
 import { sendMediaMessage, sendSmartMessage } from './outbound.js';
+import {
+  GroupHistoryBuffer,
+  buildHistoryKey,
+  type GroupHistoryEntry,
+} from './group-history.js';
+import { parseFeishuGroupPeerId } from './session-key.js';
 import { downloadMessageResource } from './media.js';
 import {
   ApprovalRegistry,
@@ -99,6 +105,8 @@ export class FeishuAdapter implements ChannelAdapter {
   private readonly approvalRegistry = new ApprovalRegistry();
   /** 非消息事件回调（reactions / 入群 / 离群 / p2p_entered） */
   private eventCallbacks: FeishuEventCallbacks = {};
+  /** 群聊旁听缓冲（多机器人协作） */
+  private readonly groupHistory = new GroupHistoryBuffer();
 
   constructor(private readonly options: FeishuAdapterOptions = {}) {}
 
@@ -120,6 +128,8 @@ export class FeishuAdapter implements ChannelAdapter {
         getHandler: () => this.handler,
         getMediaDownloader: () => this.mediaDownloader,
         getGroupSessionScope: () => this.credentials?.groupSessionScope ?? 'group',
+        getGroupHistory: () => this.groupHistory,
+        getGroupHistoryConfig: () => this.credentials?.groupHistory ?? null,
       });
 
       registerCardActionHandlers(bundle.dispatcher, {
@@ -175,6 +185,8 @@ export class FeishuAdapter implements ChannelAdapter {
     this.mediaDownloader = null;
     // 取消所有待审批，释放等待的 Promise
     this.approvalRegistry.cancelAll();
+    // 清空群聊旁听缓冲（断开视为会话边界重置）
+    this.groupHistory.clear();
     this.status = { ...this.status, status: 'disconnected', error: undefined };
   }
 
@@ -204,6 +216,7 @@ export class FeishuAdapter implements ChannelAdapter {
       () => sendSmartMessage(client, peerId, content, chatType),
       { label: 'sendMessage' },
     );
+    this.recordBotReplyToGroupHistory(peerId, content, chatType);
   }
 
   /**
@@ -232,12 +245,14 @@ export class FeishuAdapter implements ChannelAdapter {
       () => sendMediaMessage(client, peerId, filePath, chatType),
       { label: 'sendMedia' },
     );
+    this.recordBotReplyToGroupHistory(peerId, '[机器人发送了媒体消息]', chatType);
     if (text && text.trim()) {
       // 媒体后紧跟一条文本说明（飞书无 caption 字段）
       await withFeishuRetry(
         () => sendSmartMessage(client, peerId, text, chatType),
         { label: 'sendMediaCaption' },
       );
+      this.recordBotReplyToGroupHistory(peerId, text, chatType);
     }
   }
 
@@ -330,6 +345,43 @@ export class FeishuAdapter implements ChannelAdapter {
       throw new Error('飞书 Channel 未连接');
     }
     return this.bundle.client;
+  }
+
+  /**
+   * 发送成功后把本 Agent 的回复写入群聊旁听缓冲
+   *
+   * 条件：
+   * - chatType === 'group'
+   * - groupHistory.enabled && includeBotMessages
+   * - botOpenId 已知（否则 sender 字段无意义）
+   *
+   * 不抛错：记录失败不应阻塞后续流程。
+   */
+  private recordBotReplyToGroupHistory(
+    peerId: string,
+    content: string,
+    chatType?: 'private' | 'group',
+  ): void {
+    if (chatType !== 'group') return;
+    const config = this.credentials?.groupHistory;
+    if (!config || !config.enabled || !config.includeBotMessages) return;
+    const parsed = parseFeishuGroupPeerId(peerId);
+    const chatId = parsed?.chatId ?? peerId;
+    const historyKey = buildHistoryKey({
+      chatId,
+      ...(parsed?.threadId ? { threadId: parsed.threadId } : {}),
+    });
+    if (!historyKey) return;
+    const botOpenId = this.botOpenId ?? 'bot';
+    const entry: GroupHistoryEntry = {
+      sender: botOpenId,
+      senderName: this.status.name,
+      body: content,
+      timestamp: Date.now(),
+      messageId: `outbound:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
+      fromBot: true,
+    };
+    this.groupHistory.record(historyKey, entry, config);
   }
 
   /** 清理已有 WS 连接（幂等） */

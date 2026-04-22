@@ -241,9 +241,67 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
   const [verificationToken, setVerificationToken] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
+  // 挂载时拉取已存配置预填（重连 / 编辑配置场景）
+  const [hasSavedSecret, setHasSavedSecret] = useState(false);
+  const [loadingPrefill, setLoadingPrefill] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await get<{
+          credentials: Record<string, string> | null;
+          hasSecret: boolean;
+          name?: string;
+        }>('/channel/credentials/feishu');
+        if (cancelled) return;
+        const creds = resp.credentials;
+        if (creds) {
+          if (typeof creds['appId'] === 'string') setAppId(creds['appId']);
+          if (
+            typeof creds['groupSessionScope'] === 'string' &&
+            GROUP_SCOPE_OPTIONS.some((o) => o.value === creds['groupSessionScope'])
+          ) {
+            setGroupScope(creds['groupSessionScope'] as GroupScope);
+          }
+          if (typeof creds['groupHistoryEnabled'] === 'string') {
+            setHistoryEnabled(creds['groupHistoryEnabled'] !== 'false');
+          }
+          if (typeof creds['groupHistoryLimit'] === 'string') {
+            const n = Number(creds['groupHistoryLimit']);
+            if (Number.isFinite(n) && n > 0) setHistoryLimit(n);
+          }
+          if (typeof creds['groupHistoryTtlMinutes'] === 'string') {
+            const n = Number(creds['groupHistoryTtlMinutes']);
+            if (Number.isFinite(n) && n > 0) setHistoryTtl(n);
+          }
+          if (typeof creds['broadcastEnabled'] === 'string') {
+            setBroadcastEnabled(creds['broadcastEnabled'] === 'true');
+          }
+          const mode = creds['broadcastTriggerMode'];
+          if (mode === 'mention-first' || mode === 'any-mention' || mode === 'always') {
+            setBroadcastTriggerMode(mode);
+          }
+          if (typeof creds['broadcastPeerAgents'] === 'string') {
+            setBroadcastPeerAgentsJson(creds['broadcastPeerAgents']);
+          }
+        }
+        setHasSavedSecret(resp.hasSecret === true);
+      } catch {
+        // 拉取失败不阻塞，用户正常填写即可
+      } finally {
+        if (!cancelled) setLoadingPrefill(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleConnect = useCallback(async () => {
-    if (!appId.trim() || !appSecret.trim()) return;
+    // appSecret 留空时允许沿用已保存值
+    if (!appId.trim()) return;
+    if (!appSecret.trim() && !hasSavedSecret) return;
     // 广播启用时校验 JSON 合法性（避免无效配置悄悄丢失）
     if (broadcastEnabled && broadcastPeerAgentsJson.trim()) {
       try {
@@ -264,6 +322,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     try {
       const credentials: Record<string, string> = {
         appId: appId.trim(),
+        // 留空时后端沿用已保存的 appSecret（见 /channel/connect 路由）
         appSecret: appSecret.trim(),
         groupSessionScope: groupScope,
         groupHistoryEnabled: historyEnabled ? 'true' : 'false',
@@ -304,6 +363,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     verificationToken,
     agentId,
     onConnect,
+    hasSavedSecret,
   ]);
 
   return (
@@ -319,9 +379,12 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
         type="password"
         value={appSecret}
         onChange={(e) => setAppSecret(e.target.value)}
-        placeholder="App Secret"
+        placeholder={hasSavedSecret ? 'App Secret（已保存，留空沿用）' : 'App Secret'}
         className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
       />
+      {loadingPrefill && (
+        <p className="text-[11px] text-slate-400">正在读取已保存的配置...</p>
+      )}
 
       {/* 群会话隔离策略 */}
       <label className="block text-xs text-slate-600">
@@ -476,7 +539,9 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
       {error && <p className="text-xs text-red-500">{error}</p>}
       <button
         onClick={handleConnect}
-        disabled={connecting || !appId.trim() || !appSecret.trim()}
+        disabled={
+          connecting || !appId.trim() || (!appSecret.trim() && !hasSavedSecret)
+        }
         className="px-4 py-1.5 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-active disabled:opacity-50 transition-colors"
       >
         {connecting ? '连接中...' : '连接'}
@@ -657,13 +722,27 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {isBoundToMe ? (
-                    <button
-                      onClick={() => handleUnbind(p.type)}
-                      className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
-                        rounded-lg hover:bg-red-50 transition-colors"
-                    >
-                      解绑
-                    </button>
+                    <>
+                      {/* 飞书支持不断开直接编辑配置；其他渠道暂时按旧逻辑 */}
+                      {p.type === 'feishu' && (
+                        <button
+                          onClick={() =>
+                            setConnectingChannel(isShowingForm ? null : p.type)
+                          }
+                          className="px-3 py-1.5 text-xs font-medium text-brand border border-brand/30
+                            rounded-lg hover:bg-brand/5 transition-colors"
+                        >
+                          {isShowingForm ? '取消' : '编辑配置'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleUnbind(p.type)}
+                        className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
+                          rounded-lg hover:bg-red-50 transition-colors"
+                      >
+                        解绑
+                      </button>
+                    </>
                   ) : isConnected && isBoundToOther ? (
                     <span className="text-xs text-slate-400">已占用</span>
                   ) : isConnected ? (

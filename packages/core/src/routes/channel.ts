@@ -26,6 +26,30 @@ export function createChannelRoutes(
   app.post('/connect', async (c) => {
     const body = await c.req.json<ChannelConfig & { agentId?: string }>();
     try {
+      // 允许"编辑配置但不改 appSecret"场景：appSecret 留空时从已存 credentials
+      // 取旧值补上，避免用户每次改群会话策略 / 广播配置都要重填 secret。
+      if (channelStateRepo) {
+        const existing = channelStateRepo.getState(body.type as any, 'credentials');
+        if (existing) {
+          let prev: Record<string, string>;
+          try {
+            prev = JSON.parse(existing) as Record<string, string>;
+          } catch {
+            prev = {};
+          }
+          // 仅对"空字符串 / 缺字段"的敏感字段做沿用，保留用户显式新值
+          const SECRET_KEYS = ['appSecret', 'encryptKey', 'verificationToken', 'corpSecret'];
+          const merged = { ...body.credentials };
+          for (const key of SECRET_KEYS) {
+            const provided = merged[key];
+            if ((provided === undefined || provided === '') && prev[key]) {
+              merged[key] = prev[key];
+            }
+          }
+          body.credentials = merged;
+        }
+      }
+
       await channelManager.connect(body);
 
       // 持久化凭证到 channel_state（启动时自动恢复连接用）
@@ -60,15 +84,21 @@ export function createChannelRoutes(
     }
   });
 
-  /** POST /disconnect — 断开 Channel 并移除关联绑定 */
+  /**
+   * POST /disconnect — 断开 Channel 并移除关联绑定
+   *
+   * 默认只断 WS / 长轮询，**保留**持久化凭据（方便下次快速重连和二次编辑）。
+   * 传 `purge: true` 才彻底清除 channel_state 里的凭据。
+   */
   app.post('/disconnect', async (c) => {
-    const body = await c.req.json<{ type: ChannelType }>();
+    const body = await c.req.json<{ type: ChannelType; purge?: boolean }>();
     await channelManager.disconnect(body.type);
 
-    // 清除持久化的凭证
-    if (channelStateRepo) {
+    // 只有显式 purge 时才清除持久化凭据
+    if (channelStateRepo && body.purge === true) {
       channelStateRepo.deleteState(body.type as any, 'credentials');
       channelStateRepo.deleteState(body.type as any, 'name');
+      log.info(`Channel ${body.type} 凭据已清除 (purge)`);
     }
 
     // 移除该 Channel 类型的绑定
@@ -105,6 +135,50 @@ export function createChannelRoutes(
   app.get('/bindings', (c) => {
     const bindings = bindingRouter ? bindingRouter.listBindings() : [];
     return c.json({ bindings });
+  });
+
+  /**
+   * GET /credentials/:type — 获取已保存的 Channel 凭据（脱敏）
+   *
+   * 用途：前端重连 / 编辑配置时预填表单。
+   *
+   * 脱敏策略：
+   * - 敏感字段（appSecret / encryptKey / verificationToken / corpSecret 等）不返回
+   * - 非敏感字段（appId / domain / groupSessionScope / groupHistory* / broadcast*）原样返回
+   * - 返回 `hasSecret: true/false` 让前端知道是否有已存 secret，可渲染"已保存"占位符
+   */
+  app.get('/credentials/:type', (c) => {
+    const type = c.req.param('type') as ChannelType;
+    if (!channelStateRepo) {
+      return c.json({ credentials: null, hasSecret: false });
+    }
+    const raw = channelStateRepo.getState(type as any, 'credentials');
+    if (!raw) {
+      return c.json({ credentials: null, hasSecret: false });
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return c.json({ credentials: null, hasSecret: false });
+    }
+    const SENSITIVE_KEYS = new Set([
+      'appSecret',
+      'encryptKey',
+      'verificationToken',
+      'corpSecret',
+      'secret',
+      'token',
+      'password',
+    ]);
+    const hasSecret =
+      typeof parsed['appSecret'] === 'string' && (parsed['appSecret'] as string).length > 0;
+    const safe: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (!SENSITIVE_KEYS.has(k)) safe[k] = v;
+    }
+    const name = channelStateRepo.getState(type as any, 'name') ?? undefined;
+    return c.json({ credentials: safe, hasSecret, name });
   });
 
   // 注：飞书 Channel 使用 WebSocket 长连接，无 Webhook 路由（桌面 sidecar 无公网 IP）

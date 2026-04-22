@@ -226,6 +226,10 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
   const [appSecret, setAppSecret] = useState('');
   const [domain, setDomain] = useState<'feishu' | 'lark'>('feishu');
   const [groupScope, setGroupScope] = useState<GroupScope>('group');
+  // 群旁听缓冲（多机器人协作），默认开启
+  const [historyEnabled, setHistoryEnabled] = useState(true);
+  const [historyLimit, setHistoryLimit] = useState(20);
+  const [historyTtl, setHistoryTtl] = useState(30);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [encryptKey, setEncryptKey] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
@@ -242,6 +246,9 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
         appSecret: appSecret.trim(),
         domain,
         groupSessionScope: groupScope,
+        groupHistoryEnabled: historyEnabled ? 'true' : 'false',
+        groupHistoryLimit: String(historyLimit),
+        groupHistoryTtlMinutes: String(historyTtl),
       };
       if (encryptKey.trim()) credentials['encryptKey'] = encryptKey.trim();
       if (verificationToken.trim()) credentials['verificationToken'] = verificationToken.trim();
@@ -258,7 +265,19 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     } finally {
       setConnecting(false);
     }
-  }, [appId, appSecret, domain, groupScope, encryptKey, verificationToken, agentId, onConnect]);
+  }, [
+    appId,
+    appSecret,
+    domain,
+    groupScope,
+    historyEnabled,
+    historyLimit,
+    historyTtl,
+    encryptKey,
+    verificationToken,
+    agentId,
+    onConnect,
+  ]);
 
   return (
     <div className="space-y-2 p-3 bg-slate-50 rounded-xl">
@@ -316,6 +335,57 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
           ))}
         </select>
       </label>
+
+      {/* 多机器人协作：群旁听缓冲 */}
+      <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1.5">
+        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={historyEnabled}
+            onChange={(e) => setHistoryEnabled(e.target.checked)}
+            className="accent-brand"
+          />
+          <span className="font-medium">开启群聊前情提要（多机器人协作）</span>
+        </label>
+        <p className="text-[11px] text-slate-500 leading-relaxed pl-6">
+          未 @ 机器人的群消息会进入旁听缓冲，下次被 @ 时自动作为前情提要注入，
+          让多个机器人在群里能看到彼此的上下文。默认开启。
+        </p>
+        {historyEnabled && (
+          <div className="grid grid-cols-2 gap-2 pl-6">
+            <label className="text-[11px] text-slate-600">
+              <span className="block mb-0.5">保留条数（1-100）</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={historyLimit}
+                onChange={(e) =>
+                  setHistoryLimit(
+                    Math.max(1, Math.min(100, Number(e.target.value) || 20)),
+                  )
+                }
+                className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-brand"
+              />
+            </label>
+            <label className="text-[11px] text-slate-600">
+              <span className="block mb-0.5">过期时间（分钟）</span>
+              <input
+                type="number"
+                min={1}
+                max={1440}
+                value={historyTtl}
+                onChange={(e) =>
+                  setHistoryTtl(
+                    Math.max(1, Math.min(1440, Number(e.target.value) || 30)),
+                  )
+                }
+                className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-brand"
+              />
+            </label>
+          </div>
+        )}
+      </div>
 
       {/* 高级选项 */}
       <button

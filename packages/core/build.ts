@@ -63,7 +63,12 @@ await build({
   target: 'esnext',
   format: 'esm',
   outfile: 'dist/server.mjs',
-  external: ['better-sqlite3', 'bun:sqlite'],
+  // `ws` 必须 external：esbuild bundle 后的 ws 在 Bun 下 WSS 握手会失败
+  // （Bun 对 ws 包有 native WebSocket 优化，bundle 后走普通 JS 路径 + http/tls
+  // 组合与 Node 行为有差异，表现为 `ws connect failed`）。external 后运行时
+  // 直接 resolve node_modules/ws，Bun 识别模块名命中 native 优化，握手成功。
+  // 实测：Bun 1.3 + @larksuiteoapi/node-sdk 长连接场景必须。
+  external: ['better-sqlite3', 'bun:sqlite', 'ws'],
   sourcemap: true,
   banner: { js: bunBanner },
   define: featureFlags,
@@ -115,5 +120,28 @@ fs.writeFileSync(
   JSON.stringify({ name: pkg.name, type: 'module', version: pkg.version }),
 );
 console.log('Generated dist/package.json for PI framework compatibility');
+
+// 复制 external 运行时依赖 (ws) 到 dist/node_modules/
+//
+// 背景：build.ts 把 `ws` 标为 external（esbuild bundle 后的 ws 在 Bun 下
+// 会使 @larksuiteoapi/node-sdk 长连接握手失败）。dev 模式下运行时可以从
+// packages/core/node_modules/ws 解析；release 模式 Tauri 只打包 dist 目录，
+// 需要把 ws 拷贝到 dist/node_modules/ws。
+//
+// ws 是轻量零依赖包（package.json 里 dependencies 为空，optionalDependencies
+// bufferutil/utf-8-validate 只影响性能不影响功能），无需递归处理依赖树。
+const copyExternalDep = (pkgName: string) => {
+  const src = path.join('node_modules', pkgName);
+  const dest = path.join('dist', 'node_modules', pkgName);
+  if (!fs.existsSync(src)) {
+    console.warn(`⚠ external 依赖 ${pkgName} 缺失 (dev 可能用 .pnpm 符号链接，release 必须存在)`);
+    return;
+  }
+  // 清掉旧目录，避免残留
+  if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
+  copyDirRecursive(src, dest);
+  console.log(`Copied external dep: ${pkgName}`);
+};
+copyExternalDep('ws');
 
 console.log('Build complete: dist/server.mjs');

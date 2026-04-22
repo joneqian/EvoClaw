@@ -120,7 +120,7 @@ describe('FeishuCredentialsSchema', () => {
       appSecret: 'secret_xxx',
     });
     expect(parsed.appId).toBe('cli_123');
-    expect(parsed.domain).toBe('feishu'); // 默认值
+    expect(parsed.groupSessionScope).toBe('group'); // 默认值
   });
 
   it('缺少 appId 应拒绝', () => {
@@ -133,10 +133,9 @@ describe('FeishuCredentialsSchema', () => {
     const creds = parseFeishuCredentials({
       appId: 'cli_123',
       appSecret: 'secret',
-      domain: 'lark',
       encryptKey: 'abc',
     });
-    expect(creds.domain).toBe('lark');
+    expect(creds.appId).toBe('cli_123');
     expect(creds.encryptKey).toBe('abc');
   });
 });
@@ -257,15 +256,6 @@ describe('FeishuAdapter', () => {
   it('disconnect 应幂等（未连接时不抛错）', async () => {
     await expect(adapter.disconnect()).resolves.toBeUndefined();
     await expect(adapter.disconnect()).resolves.toBeUndefined();
-  });
-
-  it('domain=lark 应通过校验并构造 WS', async () => {
-    await adapter.connect({
-      type: 'feishu',
-      name: 'Lark',
-      credentials: { appId: 'a', appSecret: 'b', domain: 'lark' },
-    });
-    expect(adapter.getStatus().status).toBe('connected');
   });
 
   it('WSClient start 失败应进入 error 状态', async () => {

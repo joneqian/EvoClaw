@@ -31,20 +31,17 @@ const defaultSdk: FeishuSdk = {
   LoggerLevel: Lark.LoggerLevel,
 };
 
-/** 域名枚举转换 */
-function toDomain(sdk: FeishuSdk, domain: 'feishu' | 'lark'): Lark.Domain {
-  return domain === 'lark' ? sdk.Domain.Lark : sdk.Domain.Feishu;
-}
-
 /**
  * 根据凭据创建完整的 SDK 套件（Client + WSClient + Dispatcher）
+ *
+ * Domain 硬编码为 Feishu（中国）。产品当前不对接海外 Lark。
  * 注意：此函数不启动 WS 连接，由调用方调用 wsClient.start()
  */
 export function createFeishuSdkBundle(
   credentials: FeishuCredentials,
   sdk: FeishuSdk = defaultSdk,
 ): FeishuSdkBundle {
-  const domain = toDomain(sdk, credentials.domain);
+  const domain = sdk.Domain.Feishu;
 
   const client = new sdk.Client({
     appId: credentials.appId,

@@ -10,9 +10,9 @@ interface ChannelStatus {
   connectedAt?: string;
 }
 
-/** Channel 绑定信息 */
+/** Channel 绑定信息（对齐后端 routing/binding-router.ts 返回字段） */
 interface ChannelBinding {
-  channelType: string;
+  channel: string;
   agentId: string;
   agentName?: string;
 }
@@ -69,7 +69,7 @@ export default function ChannelPage() {
   }, [fetchData]);
 
   const getChannelStatus = (type: string) => channels.find(ch => ch.type === type);
-  const getBinding = (type: string) => bindings.find(b => b.channelType === type);
+  const getBinding = (type: string) => bindings.find(b => b.channel === type);
 
   const getAgentDisplayName = (binding: ChannelBinding | undefined): string | null => {
     if (!binding) return null;

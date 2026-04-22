@@ -5,7 +5,8 @@
  * - appId / appSecret: 开放平台应用凭据
  * - encryptKey: 事件订阅加密密钥（可选，长连接通常不需要）
  * - verificationToken: 请求验证 token（可选）
- * - domain: 'feishu'（中国）| 'lark'（海外）
+ *
+ * 注意：只对接飞书（中国）。海外 Lark 当前产品范围不涉及，避免配置负担。
  */
 
 import { z } from 'zod';
@@ -17,17 +18,12 @@ import {
   type BroadcastTriggerMode,
 } from './broadcast.js';
 
-/** Domain 枚举值 */
-export const FEISHU_DOMAINS = ['feishu', 'lark'] as const;
-export type FeishuDomain = (typeof FEISHU_DOMAINS)[number];
-
 /** 飞书凭据 Schema（仅 credentials 子结构） */
 export const FeishuCredentialsSchema = z.object({
   appId: z.string().min(1, '缺少 appId'),
   appSecret: z.string().min(1, '缺少 appSecret'),
   encryptKey: z.string().optional(),
   verificationToken: z.string().optional(),
-  domain: z.enum(FEISHU_DOMAINS).default('feishu'),
   /**
    * 群聊会话隔离策略
    * - group (默认)           整群共享一个会话
@@ -151,7 +147,6 @@ export function parseFeishuCredentials(raw: Record<string, string>): FeishuCrede
     appSecret: raw['appSecret'] ?? '',
     encryptKey: raw['encryptKey'] || undefined,
     verificationToken: raw['verificationToken'] || undefined,
-    domain: raw['domain'] ?? 'feishu',
     groupSessionScope: raw['groupSessionScope'] ?? 'group',
     groupHistory: {
       enabled: parseBool(

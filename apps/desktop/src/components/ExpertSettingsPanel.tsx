@@ -224,7 +224,6 @@ const GROUP_SCOPE_OPTIONS: Array<{ value: GroupScope; label: string }> = [
 function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
-  const [domain, setDomain] = useState<'feishu' | 'lark'>('feishu');
   const [groupScope, setGroupScope] = useState<GroupScope>('group');
   // 群旁听缓冲（多机器人协作），默认开启
   const [historyEnabled, setHistoryEnabled] = useState(true);
@@ -266,7 +265,6 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
       const credentials: Record<string, string> = {
         appId: appId.trim(),
         appSecret: appSecret.trim(),
-        domain,
         groupSessionScope: groupScope,
         groupHistoryEnabled: historyEnabled ? 'true' : 'false',
         groupHistoryLimit: String(historyLimit),
@@ -282,7 +280,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
 
       await post('/channel/connect', {
         type: 'feishu',
-        name: domain === 'lark' ? 'Lark' : '飞书',
+        name: '飞书',
         credentials,
         agentId,
       });
@@ -295,7 +293,6 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
   }, [
     appId,
     appSecret,
-    domain,
     groupScope,
     historyEnabled,
     historyLimit,
@@ -325,32 +322,6 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
         placeholder="App Secret"
         className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
       />
-
-      {/* 域名选择 */}
-      <div className="flex items-center gap-3 text-xs text-slate-600">
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="radio"
-            name="feishu-domain"
-            value="feishu"
-            checked={domain === 'feishu'}
-            onChange={() => setDomain('feishu')}
-            className="accent-brand"
-          />
-          飞书（中国）
-        </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="radio"
-            name="feishu-domain"
-            value="lark"
-            checked={domain === 'lark'}
-            onChange={() => setDomain('lark')}
-            className="accent-brand"
-          />
-          Lark（海外）
-        </label>
-      </div>
 
       {/* 群会话隔离策略 */}
       <label className="block text-xs text-slate-600">

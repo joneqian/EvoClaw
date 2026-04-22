@@ -230,6 +230,13 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
   const [historyEnabled, setHistoryEnabled] = useState(true);
   const [historyLimit, setHistoryLimit] = useState(20);
   const [historyTtl, setHistoryTtl] = useState(30);
+  // 广播模式（一条消息 fanout 到多机器人），默认关闭
+  const [broadcastEnabled, setBroadcastEnabled] = useState(false);
+  const [broadcastTriggerMode, setBroadcastTriggerMode] = useState<
+    'mention-first' | 'any-mention' | 'always'
+  >('any-mention');
+  const [broadcastPeerAgentsJson, setBroadcastPeerAgentsJson] = useState('');
+  const [broadcastJsonError, setBroadcastJsonError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [encryptKey, setEncryptKey] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
@@ -238,6 +245,21 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
 
   const handleConnect = useCallback(async () => {
     if (!appId.trim() || !appSecret.trim()) return;
+    // 广播启用时校验 JSON 合法性（避免无效配置悄悄丢失）
+    if (broadcastEnabled && broadcastPeerAgentsJson.trim()) {
+      try {
+        const parsed = JSON.parse(broadcastPeerAgentsJson);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('需为对象：{"chatId": ["agent-a"]}');
+        }
+        setBroadcastJsonError('');
+      } catch (err) {
+        setBroadcastJsonError(
+          err instanceof Error ? err.message : '广播 JSON 格式错误',
+        );
+        return;
+      }
+    }
     setConnecting(true);
     setError('');
     try {
@@ -249,7 +271,12 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
         groupHistoryEnabled: historyEnabled ? 'true' : 'false',
         groupHistoryLimit: String(historyLimit),
         groupHistoryTtlMinutes: String(historyTtl),
+        broadcastEnabled: broadcastEnabled ? 'true' : 'false',
+        broadcastTriggerMode,
       };
+      if (broadcastEnabled && broadcastPeerAgentsJson.trim()) {
+        credentials['broadcastPeerAgents'] = broadcastPeerAgentsJson.trim();
+      }
       if (encryptKey.trim()) credentials['encryptKey'] = encryptKey.trim();
       if (verificationToken.trim()) credentials['verificationToken'] = verificationToken.trim();
 
@@ -273,6 +300,9 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     historyEnabled,
     historyLimit,
     historyTtl,
+    broadcastEnabled,
+    broadcastTriggerMode,
+    broadcastPeerAgentsJson,
     encryptKey,
     verificationToken,
     agentId,
@@ -382,6 +412,63 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
                 }
                 className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-brand"
               />
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* 多机器人圆桌：广播模式 */}
+      <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1.5">
+        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={broadcastEnabled}
+            onChange={(e) => setBroadcastEnabled(e.target.checked)}
+            className="accent-brand"
+          />
+          <span className="font-medium">开启广播模式（一条消息触发多机器人）</span>
+        </label>
+        <p className="text-[11px] text-slate-500 leading-relaxed pl-6">
+          为指定群配置 <code>chatId → [agentId, ...]</code>，一条消息在该群里
+          会同时派发到所有配置的 Agent（各自独立 session、独立回复）。默认关闭。
+        </p>
+        {broadcastEnabled && (
+          <div className="pl-6 space-y-1.5">
+            <label className="block text-[11px] text-slate-600">
+              <span className="block mb-0.5">激活策略</span>
+              <select
+                value={broadcastTriggerMode}
+                onChange={(e) =>
+                  setBroadcastTriggerMode(
+                    e.target.value as 'mention-first' | 'any-mention' | 'always',
+                  )
+                }
+                className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-brand"
+              >
+                <option value="any-mention">任一机器人被 @ 时激活全体（默认）</option>
+                <option value="mention-first">只激活被 @ 到的机器人</option>
+                <option value="always">任何消息都激活全体</option>
+              </select>
+            </label>
+            <label className="block text-[11px] text-slate-600">
+              <span className="block mb-0.5">
+                群/机器人映射（JSON，可留空）
+              </span>
+              <textarea
+                value={broadcastPeerAgentsJson}
+                onChange={(e) => {
+                  setBroadcastPeerAgentsJson(e.target.value);
+                  setBroadcastJsonError('');
+                }}
+                placeholder={'{\n  "oc_xxxxx": ["agent-strategy", "agent-finance"]\n}'}
+                rows={4}
+                className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-mono focus:outline-none focus:ring-1 focus:ring-brand"
+              />
+              {broadcastJsonError && (
+                <span className="block mt-0.5 text-red-500">
+                  {broadcastJsonError}
+                </span>
+              )}
             </label>
           </div>
         )}

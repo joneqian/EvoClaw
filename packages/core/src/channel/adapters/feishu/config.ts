@@ -11,6 +11,11 @@
 import { z } from 'zod';
 import { FEISHU_GROUP_SESSION_SCOPES } from './session-key.js';
 import { DEFAULT_GROUP_HISTORY_CONFIG } from './group-history.js';
+import {
+  BROADCAST_TRIGGER_MODES,
+  DEFAULT_BROADCAST_CONFIG,
+  type BroadcastTriggerMode,
+} from './broadcast.js';
 
 /** Domain 枚举值 */
 export const FEISHU_DOMAINS = ['feishu', 'lark'] as const;
@@ -58,6 +63,23 @@ export const FeishuCredentialsSchema = z.object({
         .default(DEFAULT_GROUP_HISTORY_CONFIG.includeBotMessages),
     })
     .default({ ...DEFAULT_GROUP_HISTORY_CONFIG }),
+  /**
+   * 广播模式（多机器人圆桌）
+   * - enabled           总开关，默认 false
+   * - peerAgents        peerId（通常是 chatId）→ agentId 列表
+   * - triggerMode       激活策略：mention-first / any-mention / always
+   */
+  broadcast: z
+    .object({
+      enabled: z.boolean().default(DEFAULT_BROADCAST_CONFIG.enabled),
+      peerAgents: z
+        .record(z.string(), z.array(z.string()))
+        .default({}),
+      triggerMode: z
+        .enum(BROADCAST_TRIGGER_MODES)
+        .default(DEFAULT_BROADCAST_CONFIG.triggerMode),
+    })
+    .default({ ...DEFAULT_BROADCAST_CONFIG }),
 });
 
 export type FeishuCredentials = z.infer<typeof FeishuCredentialsSchema>;
@@ -76,6 +98,41 @@ function parseInt10(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw === null || raw === '') return fallback;
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * 把 JSON 字符串解析为 Record<peerId, agentId[]>；非法 / 空返回 {}
+ *
+ * 仅容忍顶层为 object、每个 value 为数组 + string 元素的结构；任何其他形状都
+ * 降级为空对象（不抛），避免单个格式错误让整个 channel 连不上。
+ */
+/** 解析 triggerMode 字符串，非法 / 空回 fallback */
+function parseTriggerMode(raw: string | undefined): BroadcastTriggerMode {
+  if (!raw) return DEFAULT_BROADCAST_CONFIG.triggerMode;
+  if ((BROADCAST_TRIGGER_MODES as readonly string[]).includes(raw)) {
+    return raw as BroadcastTriggerMode;
+  }
+  return DEFAULT_BROADCAST_CONFIG.triggerMode;
+}
+
+function parseBroadcastPeerAgents(
+  raw: string | undefined,
+): Record<string, string[]> {
+  if (!raw || raw.trim() === '') return {};
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (!Array.isArray(v)) continue;
+    const agents = v.filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    if (agents.length > 0) out[k] = agents;
+  }
+  return out;
 }
 
 /**
@@ -113,6 +170,14 @@ export function parseFeishuCredentials(raw: Record<string, string>): FeishuCrede
         raw['groupHistoryIncludeBotMessages'],
         DEFAULT_GROUP_HISTORY_CONFIG.includeBotMessages,
       ),
+    },
+    broadcast: {
+      enabled: parseBool(
+        raw['broadcastEnabled'],
+        DEFAULT_BROADCAST_CONFIG.enabled,
+      ),
+      peerAgents: parseBroadcastPeerAgents(raw['broadcastPeerAgents']),
+      triggerMode: parseTriggerMode(raw['broadcastTriggerMode']),
     },
   });
   if (!result.success) {

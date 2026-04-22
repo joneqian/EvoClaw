@@ -16,4 +16,14 @@ export interface ChannelMessage {
   mediaPath?: string;
   /** 媒体 MIME 类型 */
   mediaType?: string;
+  /**
+   * 广播 fanout 目标 agent 列表
+   *
+   * 若设置（非空数组），路由层会跳过 BindingRouter，按列表向每个 agentId 派发
+   * 一次 handleChannelMessage 调用（各自独立 session）。
+   *
+   * 用于"一群多机器人同时响应一条消息"的场景（如 AI 圆桌 / 会议室），由 channel
+   * adapter 根据 broadcast 配置在 inbound 时决定。未设置时走正常 binding 路径。
+   */
+  broadcastTargets?: string[];
 }

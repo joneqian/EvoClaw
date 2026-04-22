@@ -107,6 +107,14 @@ export class FeishuAdapter implements ChannelAdapter {
   private eventCallbacks: FeishuEventCallbacks = {};
   /** 群聊旁听缓冲（多机器人协作） */
   private readonly groupHistory = new GroupHistoryBuffer();
+  /**
+   * 广播场景下把 feishu bot open_id 映射到 agentId（可选）
+   *
+   * 常见单 adapter 模型下用户不必配置（`mention-first` 会因映射为空而退化为
+   * "仅列表中 agent 被 @ 视为生效"，实际命中由 `any-mention` / `always` 模式
+   * 补齐）。跨 adapter 场景预留扩展点，由外层注入。
+   */
+  private botIdToAgentId: Record<string, string> = {};
 
   constructor(private readonly options: FeishuAdapterOptions = {}) {}
 
@@ -130,6 +138,8 @@ export class FeishuAdapter implements ChannelAdapter {
         getGroupSessionScope: () => this.credentials?.groupSessionScope ?? 'group',
         getGroupHistory: () => this.groupHistory,
         getGroupHistoryConfig: () => this.credentials?.groupHistory ?? null,
+        getBroadcastConfig: () => this.credentials?.broadcast ?? null,
+        getBotIdToAgentId: () => this.botIdToAgentId,
       });
 
       registerCardActionHandlers(bundle.dispatcher, {
@@ -329,6 +339,16 @@ export class FeishuAdapter implements ChannelAdapter {
   /** 覆盖 bot open_id（测试场景用；生产环境通过 connect() 自动拉取） */
   setBotOpenId(openId: string | null): void {
     this.botOpenId = openId;
+  }
+
+  /**
+   * 设置 bot open_id → agentId 映射（广播 `mention-first` 模式用）
+   *
+   * 单 Feishu app + 多 agent 场景下无需调用（@ 到共享 bot 时由 `any-mention`
+   * / `always` 触发 fanout）。跨 app 时由 ChannelManager / 启动层注入。
+   */
+  setBotIdToAgentId(map: Record<string, string>): void {
+    this.botIdToAgentId = { ...map };
   }
 
   /**

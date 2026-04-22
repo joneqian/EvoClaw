@@ -294,6 +294,9 @@ export async function handleReceiveMessage(
   // 媒体下载（如果有 key + downloader）
   if (parsed.mediaKey) {
     const downloader = ctx.getMediaDownloader?.() ?? null;
+    log.info(
+      `媒体消息进入下载流程 messageId=${message.message_id} msg_type=${message.message_type} mediaKey=${parsed.mediaKey.slice(0, 20)}... downloader=${downloader ? '就绪' : '缺失'}`,
+    );
     if (downloader) {
       try {
         const downloaded = await downloader({
@@ -305,9 +308,17 @@ export async function handleReceiveMessage(
         if (downloaded) {
           normalized.mediaPath = downloaded.path;
           if (downloaded.mimeType) normalized.mediaType = downloaded.mimeType;
+          log.info(
+            `媒体下载成功 messageId=${message.message_id} path=${downloaded.path} mime=${downloaded.mimeType ?? '-'}`,
+          );
+        } else {
+          log.warn(`媒体下载返回 null messageId=${message.message_id}`);
         }
-      } catch {
-        // 下载失败不阻塞消息流，normalized.content 里已有占位文本（如 "[图片]"）
+      } catch (err) {
+        // 下载失败不阻塞消息流，但日志要打出来（否则 mediaPath 静默丢失无法排查）
+        log.warn(
+          `媒体下载失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   }

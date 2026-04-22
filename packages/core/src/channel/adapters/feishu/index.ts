@@ -76,36 +76,33 @@ export interface FeishuAdapterOptions {
 /**
  * 按 messageId 取被引用消息快照 —— inbound LRU miss 时的兜底回查
  *
- * 调用失败（网络错 / 权限不足 / 消息已撤回 / 机器人不在会话中）时**抛出原始错误**，
- * 让 inbound 的 describeFetchError 拿到飞书 code/msg/HTTP 状态做诊断日志。
- * 只有飞书返回 code=0 但 items 为空时才返回 null（"API 调通但确实没数据"）。
+ * 走 `client.request` 低层 API（与 bot/v3/info 自动发现同路径）而非 SDK 的
+ * `im.v1.message.get` 强类型包装。实测 Bun 运行时下 SDK 包装层的 axios 调用
+ * 在部分路径参数场景触发 `ECONNRESET`，但同一 client 的 `request` 调用正常。
+ *
+ * 调用失败时抛出原始错误（含飞书 code/msg、网络层 ECONNRESET 等），
+ * inbound 的 describeFetchError 会展开诊断字段。
  */
 async function fetchFeishuMessageSnapshot(
   client: Lark.Client,
   messageId: string,
 ): Promise<import('./message-cache.js').FeishuMessageCacheEntry | null> {
-  // SDK 未泄露 get 的强类型，用结构化类型断言
-  const res = await (client as unknown as {
-    im: {
-      v1: {
-        message: {
-          get: (p: { path: { message_id: string } }) => Promise<{
-            code?: number;
-            msg?: string;
-            data?: {
-              items?: Array<{
-                message_id?: string;
-                msg_type?: string;
-                create_time?: string;
-                sender?: { id?: string; id_type?: string };
-                body?: { content?: string };
-              }>;
-            };
-          }>;
-        };
-      };
+  const res = await client.request<{
+    code?: number;
+    msg?: string;
+    data?: {
+      items?: Array<{
+        message_id?: string;
+        msg_type?: string;
+        create_time?: string;
+        sender?: { id?: string; id_type?: string };
+        body?: { content?: string };
+      }>;
     };
-  }).im.v1.message.get({ path: { message_id: messageId } });
+  }>({
+    url: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+    method: 'GET',
+  });
 
   // 飞书业务错误：code !== 0 时抛出，让上层看到具体 code/msg
   if (res.code !== 0) {

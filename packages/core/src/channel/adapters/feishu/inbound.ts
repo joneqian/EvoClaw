@@ -10,6 +10,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
+import type { QuotedMessage } from '@evoclaw/shared';
 import type { MessageHandler } from '../../channel-adapter.js';
 import { normalizeFeishuMessage } from '../../message-normalizer.js';
 import { parseFeishuContent } from './parse-content.js';
@@ -28,6 +29,10 @@ import {
   resolveBroadcastTargets,
   type BroadcastConfig,
 } from './broadcast.js';
+import type {
+  FeishuMessageCache,
+  FeishuMessageCacheEntry,
+} from './message-cache.js';
 
 const log = createLogger('feishu-inbound');
 
@@ -116,6 +121,15 @@ export type MediaDownloader = (params: {
   fileName?: string;
 }) => Promise<{ path: string; mimeType: string | null } | null>;
 
+/**
+ * 按 messageId 回查被引用消息的签名（LRU miss 后的兜底）
+ *
+ * 返回 null 表示查询失败，inbound 会降级为 `[引用消息]` 占位，不阻塞主流程。
+ */
+export type FeishuMessageFetcher = (
+  messageId: string,
+) => Promise<FeishuMessageCacheEntry | null>;
+
 /** 入站处理所需的上下文（用函数而非快照，支持运行时变化） */
 export interface InboundContext {
   getAccountId: () => string;
@@ -132,6 +146,14 @@ export interface InboundContext {
   getBroadcastConfig?: () => BroadcastConfig | null;
   /** 该群内已知机器人 open_id → agentId 映射（mention-first / any-mention 判定用） */
   getBotIdToAgentId?: () => Record<string, string>;
+  /**
+   * 入站消息缓存（供引用消息 O(1) 命中），每条入站消息都会写入供后续回查
+   *
+   * 未提供时退化为"不缓存 + 必走 fetcher（也不提供时降级为占位）"
+   */
+  getMessageCache?: () => FeishuMessageCache | null;
+  /** LRU miss 时的 API 回查，缺省或失败时降级为 `[引用消息]` 占位 */
+  getMessageFetcher?: () => FeishuMessageFetcher | null;
 }
 
 /**
@@ -218,6 +240,25 @@ export async function handleReceiveMessage(
     },
     ctx.getAccountId(),
   );
+
+  // 把当前消息写入缓存，供后续"引用该消息"时回查
+  const cache = ctx.getMessageCache?.() ?? null;
+  if (cache) {
+    cache.put({
+      messageId: message.message_id,
+      senderId: senderOpenId,
+      ...(resolveSenderName(message.mentions, senderOpenId) ?? senderName
+        ? { senderName: resolveSenderName(message.mentions, senderOpenId) ?? senderName }
+        : {}),
+      content: parsed.text,
+      timestamp: normalized.timestamp,
+    });
+  }
+
+  // 解析引用消息（parent_id 存在时）：LRU 优先 → API 兜底 → 占位降级
+  if (message.parent_id) {
+    normalized.quoted = await resolveQuotedMessage(ctx, message.parent_id);
+  }
 
   // 群聊：按 session scope 重写 peerId
   if (normalized.chatType === 'group') {
@@ -360,6 +401,56 @@ function peekGroupHistory(
   });
   if (!historyKey) return [];
   return buffer.peek(historyKey, config);
+}
+
+/**
+ * 按 parentId 解析被引用消息 —— LRU 命中优先，miss 走 fetcher，失败降级占位
+ *
+ * 永远返回一个 QuotedMessage（不返回 null/undefined）：哪怕完全查不到，也保留
+ * messageId 这条线索，Agent 至少知道"有一条引用"。
+ */
+async function resolveQuotedMessage(
+  ctx: InboundContext,
+  parentId: string,
+): Promise<QuotedMessage> {
+  const cache = ctx.getMessageCache?.() ?? null;
+  const hit = cache?.get(parentId) ?? null;
+  if (hit) {
+    return entryToQuoted(hit);
+  }
+
+  const fetcher = ctx.getMessageFetcher?.() ?? null;
+  if (fetcher) {
+    try {
+      const fetched = await fetcher(parentId);
+      if (fetched) {
+        // 回填缓存，避免连续引用同一条消息反复调 API
+        cache?.put(fetched);
+        return entryToQuoted(fetched);
+      }
+    } catch (err) {
+      log.warn(
+        `引用消息回查失败 parentId=${parentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  return {
+    messageId: parentId,
+    senderId: '',
+    content: '[引用消息]',
+  };
+}
+
+function entryToQuoted(entry: FeishuMessageCacheEntry): QuotedMessage {
+  const quoted: QuotedMessage = {
+    messageId: entry.messageId,
+    senderId: entry.senderId,
+    content: entry.content,
+    timestamp: entry.timestamp,
+  };
+  if (entry.senderName) quoted.senderName = entry.senderName;
+  return quoted;
 }
 
 /** 从 mentions 里找到发送者的展示名（飞书 mention 有 name 字段，sender 自己没有） */

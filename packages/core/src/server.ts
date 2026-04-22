@@ -673,6 +673,7 @@ async function dispatchBroadcastMessage(
           chatType: msg.chatType,
           mediaPath: msg.mediaPath,
           mediaType: msg.mediaType,
+          quoted: msg.quoted,
         },
         channelMsgDeps,
       );
@@ -936,6 +937,7 @@ async function main() {
           chatType: msg.chatType,
           mediaPath: msg.mediaPath,
           mediaType: msg.mediaType,
+          quoted: msg.quoted,
         },
         channelMsgDeps,
       );

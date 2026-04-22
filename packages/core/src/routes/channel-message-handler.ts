@@ -502,6 +502,12 @@ export async function handleChannelMessage(
     messages,
     permissionInterceptFn,
     auditLogFn,
+    // store + sessionKey：embedded-runner-attempt 需要这两个字段才会构造
+    // IncrementalPersister 把 assistant 消息写入 conversation_log。
+    // 缺失时 agent 能正常跑完 + fullResponse 累加给渠道发出，但 DB 里
+    // 永远只有 user 消息，桌面前端打开该会话看不到回复。
+    store,
+    sessionKey,
   };
 
   // 7. 存储用户消息

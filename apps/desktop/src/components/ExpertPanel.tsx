@@ -29,6 +29,31 @@ interface ExpertPanelProps {
   onDeleteAgent: (agentId: string, e: React.MouseEvent) => void;
 }
 
+/**
+ * 从 sessionKey 提取渠道类型
+ * 格式：`agent:<agentId>:<channel>:<chatType>:<peerId>`
+ */
+function parseChannelFromSessionKey(sessionKey: string): string {
+  const parts = sessionKey.split(':');
+  return parts[2] ?? 'local';
+}
+
+interface ChannelBadgeMeta {
+  label: string;
+  /** 使用 tailwind 类名 */
+  className: string;
+}
+
+/** 渠道标签元数据（对齐 PLATFORMS 顺序，新增渠道时记得加） */
+const CHANNEL_BADGES: Record<string, ChannelBadgeMeta> = {
+  local: { label: '桌面', className: 'bg-slate-100 text-slate-500' },
+  feishu: { label: '飞书', className: 'bg-blue-50 text-blue-600' },
+  wecom: { label: '企微', className: 'bg-sky-50 text-sky-600' },
+  weixin: { label: '微信', className: 'bg-green-50 text-green-600' },
+  dingtalk: { label: '钉钉', className: 'bg-indigo-50 text-indigo-600' },
+  qq: { label: 'QQ', className: 'bg-orange-50 text-orange-600' },
+};
+
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
   const date = new Date(dateStr).getTime();
@@ -169,7 +194,10 @@ export default function ExpertPanel({
           <p className="px-2.5 py-3 text-xs text-slate-400">暂无对话</p>
         ) : (
           <div className="space-y-0.5">
-            {recents.map((conv) => (
+            {recents.map((conv) => {
+              const channel = parseChannelFromSessionKey(conv.sessionKey);
+              const badge = CHANNEL_BADGES[channel] ?? { label: channel, className: 'bg-slate-100 text-slate-500' };
+              return (
               <div
                 key={conv.sessionKey}
                 className="flex items-center rounded-lg hover:bg-slate-100 transition-all duration-150 group"
@@ -177,7 +205,7 @@ export default function ExpertPanel({
                 <button
                   onClick={() => onRecentClick(conv)}
                   className="flex-1 min-w-0 text-left px-2.5 py-2"
-                  title={`${conv.agentName} — ${conv.title}`}
+                  title={`${conv.agentName} — ${badge.label} — ${conv.title}`}
                 >
                   <div className="truncate leading-snug flex items-center gap-1.5">
                     <AgentAvatar name={conv.agentName} size="xs" className="shrink-0" />
@@ -185,8 +213,13 @@ export default function ExpertPanel({
                       {conv.title}
                     </span>
                   </div>
-                  <div className="text-xs text-slate-400 mt-0.5 pl-[26px] truncate">
-                    {formatRelativeTime(conv.lastAt)}
+                  <div className="text-xs text-slate-400 mt-0.5 pl-[26px] flex items-center gap-1.5">
+                    <span
+                      className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium leading-none ${badge.className}`}
+                    >
+                      {badge.label}
+                    </span>
+                    <span className="truncate">{formatRelativeTime(conv.lastAt)}</span>
                   </div>
                 </button>
                 <button
@@ -201,7 +234,8 @@ export default function ExpertPanel({
                   </svg>
                 </button>
               </div>
-            ))}
+              );
+            })}
             {recentsLoading && (
               <div className="py-2 flex justify-center">
                 <span className="w-4 h-4 border-2 border-slate-300 border-t-brand rounded-full animate-spin" />

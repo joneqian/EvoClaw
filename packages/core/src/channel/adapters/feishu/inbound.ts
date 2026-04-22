@@ -158,6 +158,13 @@ export interface InboundContext {
 
 /**
  * 把 EventDispatcher 的 im.message.receive_v1 回调接入到 handler
+ *
+ * Fire-and-forget：dispatcher 回调不 await handleReceiveMessage。SDK 一进来就能
+ * ACK 事件给飞书服务端，避免服务端在 10s 未 ACK 后重推（相同 messageId，会被
+ * 我们的 dedupe 过滤成"忽略重复推送"，用户表现为消息丢失）。
+ *
+ * handleReceiveMessage 内部的所有 await（parent_id 回查、媒体下载、Agent 管线）
+ * 都在这条 fire-and-forget 链里执行，跑多久都不阻塞 SDK。
  */
 export function registerInboundHandlers(
   dispatcher: Lark.EventDispatcher,
@@ -165,7 +172,11 @@ export function registerInboundHandlers(
 ): Lark.EventDispatcher {
   dispatcher.register({
     'im.message.receive_v1': async (data: FeishuReceiveEvent) => {
-      await handleReceiveMessage(data, ctx);
+      handleReceiveMessage(data, ctx).catch((err) => {
+        log.error(
+          `入站处理失败 messageId=${data.message?.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
     },
   });
   return dispatcher;
@@ -256,6 +267,9 @@ export async function handleReceiveMessage(
   }
 
   // 解析引用消息（parent_id 存在时）：LRU 优先 → API 兜底 → 占位降级
+  //
+  // fetcher 内置 2s 超时，不阻塞 SDK ACK（registerInboundHandlers 已把本函数
+  // 整体放到 fire-and-forget，即使超时 Agent 也顶多晚 2 秒看到引用信息）。
   if (message.parent_id) {
     normalized.quoted = await resolveQuotedMessage(ctx, message.parent_id);
   }
@@ -317,14 +331,12 @@ export async function handleReceiveMessage(
     }
   }
 
-  // Fire-and-forget：handler 会触发 Agent 处理管线（可能耗时 10+ 秒）。
-  // 如果 await 等到完成才 return，SDK 也会等到那时才 ACK 事件给飞书服务端，
-  // 服务端会判定客户端失效并重推事件（相同 trace_id，不同 message_id），
-  // 导致用户发一条消息收到多次回复。这里立即返回让 SDK 秒 ACK。
+  // handler 会触发 Agent 处理管线（可能耗时 10+ 秒）。SDK ACK 已由
+  // registerInboundHandlers 层的 fire-and-forget 保障，这里直接 await 即可。
   //
   // Promise.resolve() 包装：handler 可能是非 async 的 mock（测试场景返回
   // undefined），直接 `.catch` 会 NPE；先 resolve 统一包成 Promise。
-  Promise.resolve(handler(normalized)).catch((err) => {
+  await Promise.resolve(handler(normalized)).catch((err) => {
     log.error(
       `agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -403,11 +415,17 @@ function peekGroupHistory(
   return buffer.peek(historyKey, config);
 }
 
+/** fetcher 超时 —— 飞书服务端 10s 后重推事件，留余量给 handler 调度 */
+const QUOTE_FETCH_TIMEOUT_MS = 2000;
+
 /**
  * 按 parentId 解析被引用消息 —— LRU 命中优先，miss 走 fetcher，失败降级占位
  *
  * 永远返回一个 QuotedMessage（不返回 null/undefined）：哪怕完全查不到，也保留
  * messageId 这条线索，Agent 至少知道"有一条引用"。
+ *
+ * fetcher 设 2 秒超时：网络抖动时与其让 Agent 陪跑 10+ 秒（还会顶撞 SDK ACK），
+ * 不如直接降级占位，至少回复及时。
  */
 async function resolveQuotedMessage(
   ctx: InboundContext,
@@ -422,7 +440,7 @@ async function resolveQuotedMessage(
   const fetcher = ctx.getMessageFetcher?.() ?? null;
   if (fetcher) {
     try {
-      const fetched = await fetcher(parentId);
+      const fetched = await withTimeout(fetcher(parentId), QUOTE_FETCH_TIMEOUT_MS);
       if (fetched) {
         // 回填缓存，避免连续引用同一条消息反复调 API
         cache?.put(fetched);
@@ -440,6 +458,25 @@ async function resolveQuotedMessage(
     senderId: '',
     content: '[引用消息]',
   };
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`timeout after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }
 
 function entryToQuoted(entry: FeishuMessageCacheEntry): QuotedMessage {

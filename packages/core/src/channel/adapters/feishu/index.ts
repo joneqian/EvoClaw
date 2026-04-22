@@ -118,7 +118,8 @@ async function fetchFeishuMessageSnapshot(
   }
 
   // 诊断：dump 飞书实际返回结构（仅前 500 字），帮助定位 body 字段缺失等问题
-  log.debug(
+  // 用 INFO 级，便于用户无需调整日志级别就能捞到（定位后可降级为 debug）
+  log.info(
     `message.get 原始 item messageId=${messageId}: ${JSON.stringify(item).slice(0, 500)}`,
   );
 

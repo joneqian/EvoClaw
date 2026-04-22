@@ -233,6 +233,7 @@ export const ROUTE_MANIFEST: readonly RouteMeta[] = [
   r('GET',  '/channel/status',               'channel', '查询所有渠道状态'),
   r('GET',  '/channel/status/:type',         'channel', '查询单个渠道状态'),
   r('GET',  '/channel/bindings',             'channel', '列出渠道绑定'),
+  r('GET',  '/channel/credentials/:type',    'channel', '获取脱敏凭据（前端预填）'),
   r('POST', '/channel/webhook/feishu',       'channel', '飞书 webhook'),
   r('POST', '/channel/webhook/wecom',        'channel', '企微 webhook'),
   r('GET',  '/channel/weixin/qrcode',        'channel', '获取微信登录二维码'),

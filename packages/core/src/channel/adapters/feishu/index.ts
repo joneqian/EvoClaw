@@ -112,12 +112,27 @@ async function fetchFeishuMessageSnapshot(
     throw err;
   }
   const item = res.data?.items?.[0];
-  if (!item) return null;
+  if (!item) {
+    log.warn(`message.get 成功但 items 为空 messageId=${messageId}`);
+    return null;
+  }
+
+  // 诊断：dump 飞书实际返回结构（仅前 500 字），帮助定位 body 字段缺失等问题
+  log.debug(
+    `message.get 原始 item messageId=${messageId}: ${JSON.stringify(item).slice(0, 500)}`,
+  );
 
   const msgType = item.msg_type ?? 'text';
   const rawContent = item.body?.content ?? '';
   const parsed = parseFeishuContent(msgType, rawContent);
   const ts = item.create_time ? Number(item.create_time) : Date.now();
+
+  // 如果正文解析失败但 API 本身成功，打警告，便于用户一眼看出是哪一层的问题
+  if (!parsed.text) {
+    log.warn(
+      `message.get 正文解析为空 messageId=${messageId} msg_type=${msgType} body.content=${rawContent.slice(0, 200)}`,
+    );
+  }
 
   return {
     messageId: item.message_id ?? messageId,

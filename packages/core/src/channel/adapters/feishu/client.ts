@@ -6,12 +6,27 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuCredentials } from './config.js';
+import type { FeishuSdkLogger } from './ws-logger.js';
 
 /** SDK 客户端集合 */
 export interface FeishuSdkBundle {
   client: Lark.Client;
   wsClient: Lark.WSClient;
   dispatcher: Lark.EventDispatcher;
+}
+
+/** createFeishuSdkBundle 可选入参 */
+export interface FeishuSdkBundleOptions {
+  sdk?: FeishuSdk;
+  /**
+   * 自定义 WSClient logger（SDK 兼容接口）
+   *
+   * 传入后，WSClient 内部所有 `[ws] ...` 日志会走这个 logger 而非 console，
+   * adapter 可据此观察运行期 WS 状态（连接/断开/重连）。
+   */
+  wsLogger?: FeishuSdkLogger;
+  /** WSClient 日志级别（默认 info，确保能收到连接 / 重连类 info 日志） */
+  wsLoggerLevel?: Lark.LoggerLevel;
 }
 
 /** SDK 注入点（测试时覆盖） */
@@ -39,8 +54,9 @@ const defaultSdk: FeishuSdk = {
  */
 export function createFeishuSdkBundle(
   credentials: FeishuCredentials,
-  sdk: FeishuSdk = defaultSdk,
+  options: FeishuSdkBundleOptions = {},
 ): FeishuSdkBundle {
+  const sdk = options.sdk ?? defaultSdk;
   const domain = sdk.Domain.Feishu;
 
   const client = new sdk.Client({
@@ -50,12 +66,18 @@ export function createFeishuSdkBundle(
     loggerLevel: sdk.LoggerLevel.warn,
   });
 
-  const wsClient = new sdk.WSClient({
+  type WsClientParams = ConstructorParameters<typeof Lark.WSClient>[0];
+  const wsClientParams = {
     appId: credentials.appId,
     appSecret: credentials.appSecret,
     domain,
-    loggerLevel: sdk.LoggerLevel.warn,
-  });
+    // WSClient 默认 info，保证 observer 能收到 'ws client ready' / 'reconnect' 等关键 info 日志
+    loggerLevel: options.wsLoggerLevel ?? sdk.LoggerLevel.info,
+    // SDK WSClient 构造函数接受 `logger` 参数（见 node-sdk lib/index.js class WSClient），
+    // 但 TS 类型定义未导出；用类型断言传入。SDK logger 接口为 `{error/warn/info/debug/trace}`
+    ...(options.wsLogger ? { logger: options.wsLogger } : {}),
+  } as unknown as WsClientParams;
+  const wsClient = new sdk.WSClient(wsClientParams);
 
   const dispatcher = new sdk.EventDispatcher({
     encryptKey: credentials.encryptKey,

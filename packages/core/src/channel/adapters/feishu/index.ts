@@ -55,8 +55,10 @@ import {
   listCommentReplies as apiListCommentReplies,
   type FeishuFileType as DocFileType,
 } from './doc-api.js';
+import { createFeishuSdkLogger, type FeishuWsStatusEvent } from './ws-logger.js';
 
 const log = createLogger('feishu-adapter');
+const wsLog = createLogger('feishu-ws');
 
 /** FeishuAdapter 可选注入（测试用） */
 export interface FeishuAdapterOptions {
@@ -127,7 +129,10 @@ export class FeishuAdapter implements ChannelAdapter {
       const credentials = parseFeishuCredentials(config.credentials);
       this.credentials = credentials;
 
-      const bundle = createFeishuSdkBundle(credentials, this.options.sdk);
+      const bundle = createFeishuSdkBundle(credentials, {
+        ...(this.options.sdk ? { sdk: this.options.sdk } : {}),
+        wsLogger: createFeishuSdkLogger(wsLog, (ev) => this.onWsStatus(ev)),
+      });
       this.bundle = bundle;
 
       registerInboundHandlers(bundle.dispatcher, {
@@ -365,6 +370,60 @@ export class FeishuAdapter implements ChannelAdapter {
       throw new Error('飞书 Channel 未连接');
     }
     return this.bundle.client;
+  }
+
+  /**
+   * 响应 SDK WSClient 的真实状态变化（见 ws-logger.ts）
+   *
+   * disconnect 后 bundle 已清空；此时仍可能收到旧 WSClient 残留日志（SDK 内部
+   * reconnect 定时器），用 bundle 为空作为信号忽略，避免把 status 打回 error。
+   */
+  private onWsStatus(ev: FeishuWsStatusEvent): void {
+    if (!this.bundle) return; // disconnect 之后的残留回调丢弃
+
+    switch (ev.kind) {
+      case 'connect_success':
+      case 'reconnect_success':
+      case 'client_ready':
+        if (this.status.status !== 'connected') {
+          this.status = {
+            ...this.status,
+            status: 'connected',
+            connectedAt: this.status.connectedAt ?? new Date().toISOString(),
+            error: undefined,
+          };
+          log.info(`飞书 WS 已恢复连接 (${ev.kind})`);
+        }
+        break;
+      case 'reconnecting':
+        // 保守起见不立刻降级为 error —— reconnect 可能很快成功。仅在 client_closed 降级。
+        if (this.status.status === 'connected') {
+          this.status = { ...this.status, status: 'connecting', error: undefined };
+          log.warn('飞书 WS 正在重连');
+        }
+        break;
+      case 'client_closed':
+        // 断连：标记为 error 让前端能看到，描述保持简短给非开发者
+        this.status = {
+          ...this.status,
+          status: 'error',
+          error: '飞书长连接已断开，正在尝试重连',
+        };
+        log.warn('飞书 WS 已断开 (client_closed)');
+        break;
+      case 'connect_failed':
+        this.status = {
+          ...this.status,
+          status: 'error',
+          error: `飞书长连接失败：${ev.reason}`,
+        };
+        log.error(`飞书 WS 连接失败: ${ev.reason}`);
+        break;
+      case 'ws_error':
+        // 运行期 error 事件通常紧跟 close，不单独改 status（等 close 事件统一处理）
+        log.warn(`飞书 WS 运行期错误: ${ev.reason}`);
+        break;
+    }
   }
 
   /**

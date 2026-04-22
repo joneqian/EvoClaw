@@ -1061,6 +1061,7 @@ function MessageBubble({ message }: { message: Message }) {
   if (isUser) {
     const { quoted, rest } = parseQuotedPrefix(message.content);
     const displayAuthor = quoted?.senderName?.trim() || quoted?.senderId || '';
+    const imageAttachments = (message.attachments ?? []).filter((a) => a.type === 'image');
     return (
       <div className="flex justify-end py-3">
         <div className="max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed bg-slate-100 text-slate-900 rounded-br-sm">
@@ -1074,7 +1075,30 @@ function MessageBubble({ message }: { message: Message }) {
               </div>
             </div>
           )}
-          <div className="whitespace-pre-wrap break-words">{rest}</div>
+          {imageAttachments.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {imageAttachments.map((att, i) => {
+                const src = att.base64
+                  ? `data:${att.mimeType};base64,${att.base64}`
+                  : att.path
+                    ? `file://${att.path}`
+                    : '';
+                if (!src) return null;
+                return (
+                  <img
+                    key={i}
+                    src={src}
+                    alt="用户发送的图片"
+                    className="max-h-40 max-w-[200px] rounded border border-slate-200 object-cover"
+                    onClick={() => window.open(src, '_blank')}
+                  />
+                );
+              })}
+            </div>
+          )}
+          {rest.trim() && (
+            <div className="whitespace-pre-wrap break-words">{rest}</div>
+          )}
         </div>
       </div>
     );

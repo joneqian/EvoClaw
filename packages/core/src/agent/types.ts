@@ -74,6 +74,21 @@ export interface AgentRunConfig {
    * Heartbeat/Cron/BOOT 等自主会话应显式传 false，避免无人值守浪费 token。
    */
   graceCallEnabled?: boolean;
+  /**
+   * 当前轮 user 消息的原生附件（IM 渠道下载到本地的图片 / 音视频等）
+   *
+   * 由 channel handler 在入站时填充；runner 会把 image 类附件作为
+   * `ImageBlock` 追加到 user message 的 content，直接喂给多模态模型，
+   * 免去 Agent 再调 `image` 工具绕一次 API 的开销。
+   */
+  inputAttachments?: Array<{
+    /** 目前只处理 image，其他类型保留扩展 */
+    type: 'image';
+    /** 本地文件绝对路径 */
+    path: string;
+    /** MIME 类型；缺失时从扩展名推断 */
+    mimeType?: string;
+  }>;
 }
 
 // ─── 单次执行结果 ───
@@ -84,6 +99,13 @@ export interface MessageSnapshot {
   content: string;
   /** 标记为压缩摘要消息 */
   isSummary?: boolean;
+  /**
+   * 历史消息附带的多模态附件（如 user 消息引用过的图片）
+   *
+   * attempt 的 snapshotToKernelMessage 会把这些附件还原为 ImageBlock，
+   * 确保第二轮及以后的对话里模型仍能看到前几轮的图片。
+   */
+  attachments?: import('@evoclaw/shared').ChatMessageAttachment[];
 }
 
 /** 工具调用记录（用于消息快照传递） */

@@ -14,6 +14,7 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ThinkLevel } from '@evoclaw/shared';
@@ -35,6 +36,50 @@ import { createLogger } from '../infrastructure/logger.js';
 const log = createLogger('embedded-runner-attempt');
 
 type EventCallback = (event: RuntimeEvent) => void | Promise<void>;
+
+/** 扩展名 → MIME 映射（仅覆盖主流位图） */
+const IMAGE_EXT_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+};
+
+/** 图片上限 10MB —— 超出不读，避免 base64 膨胀打爆上下文 */
+const MAX_INPUT_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * 把本地图片文件读成 ImageBlock；失败（文件不存在 / 过大 / IO 错）时返回 null，
+ * 调用方吞掉该附件继续跑（用户至少还能看到文本部分，不中断对话）
+ */
+function readImageBlock(
+  filePath: string,
+  mimeHint: string | undefined,
+): import('./kernel/types.js').ContentBlock | null {
+  try {
+    if (!fs.existsSync(filePath)) {
+      log.warn(`图片附件不存在: ${filePath}`);
+      return null;
+    }
+    const stat = fs.statSync(filePath);
+    if (stat.size > MAX_INPUT_IMAGE_BYTES) {
+      log.warn(`图片附件过大（${(stat.size / 1024 / 1024).toFixed(1)}MB > 10MB），跳过: ${filePath}`);
+      return null;
+    }
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeType = mimeHint ?? IMAGE_EXT_MIME[ext] ?? 'image/png';
+    return {
+      type: 'image',
+      source: { type: 'base64', media_type: mimeType, data: buffer.toString('base64') },
+    };
+  } catch (err) {
+    log.warn(`读取图片附件失败 path=${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
 
 /** 总超时 (与 Lane Queue 默认超时对齐) */
 const ATTEMPT_TIMEOUT_MS = 600_000; // 10 分钟
@@ -77,10 +122,21 @@ function normalizeProtocol(protocol: string | undefined): ApiProtocol {
 
 /** MessageSnapshot → KernelMessage */
 function snapshotToKernelMessage(snapshot: MessageSnapshot): KernelMessage {
+  const content: import('./kernel/types.js').ContentBlock[] = [
+    { type: 'text', text: snapshot.content },
+  ];
+  // 还原历史消息里的图片附件（让后续轮次的 LLM 仍能看到之前引用过的图）
+  for (const att of snapshot.attachments ?? []) {
+    if (att.type !== 'image' || !att.base64) continue;
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: att.mimeType, data: att.base64 },
+    });
+  }
   return {
     id: crypto.randomUUID(),
     role: snapshot.role as 'user' | 'assistant',
-    content: [{ type: 'text', text: snapshot.content }],
+    content,
     ...(snapshot.isSummary ? { isCompactSummary: true } : undefined),
   };
 }
@@ -91,7 +147,19 @@ function kernelMessageToSnapshot(msg: KernelMessage): MessageSnapshot {
     .filter(b => b.type === 'text')
     .map(b => (b as { text: string }).text)
     .join('');
-  return { role: msg.role, content: text };
+  const images = msg.content
+    .filter(b => b.type === 'image')
+    .map(b => {
+      const img = b as { source: { media_type: string; data: string } };
+      return {
+        type: 'image' as const,
+        mimeType: img.source.media_type,
+        base64: img.source.data,
+      };
+    });
+  const snap: MessageSnapshot = { role: msg.role, content: text };
+  if (images.length > 0) snap.attachments = images;
+  return snap;
 }
 
 /**
@@ -247,7 +315,12 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
 
   // ─── 消息历史 ───
   const effectiveMessages: MessageSnapshot[] = messagesOverride
-    ?? (config.messages ?? []).map(m => ({ role: m.role, content: m.content, isSummary: m.isSummary }));
+    ?? (config.messages ?? []).map(m => ({
+      role: m.role,
+      content: m.content,
+      ...(m.isSummary ? { isSummary: m.isSummary } : {}),
+      ...(m.attachments ? { attachments: m.attachments } : {}),
+    }));
 
   // 转为 KernelMessage + 追加当前用户消息
   const kernelMessages: KernelMessage[] = effectiveMessages.map(snapshotToKernelMessage);
@@ -262,10 +335,20 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
       (firstText as { text: string }).text = contextReminder + '\n' + firstText.text;
     }
   }
+  const userContent: import('./kernel/types.js').ContentBlock[] = [
+    { type: 'text', text: message },
+  ];
+  // 把 IM 渠道下载到本地的图片附件作为 ImageBlock 追加，直接走多模态
+  // 协议（Anthropic image / OpenAI image_url），免去 Agent 调 image 工具绕路。
+  for (const att of config.inputAttachments ?? []) {
+    if (att.type !== 'image') continue;
+    const block = readImageBlock(att.path, att.mimeType);
+    if (block) userContent.push(block);
+  }
   kernelMessages.push({
     id: crypto.randomUUID(),
     role: 'user',
-    content: [{ type: 'text', text: message }],
+    content: userContent,
   });
 
   // ─── Smart Timeout ───

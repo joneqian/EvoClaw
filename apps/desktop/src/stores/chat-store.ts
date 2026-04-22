@@ -54,6 +54,14 @@ export interface RecallMeta {
   categories: string[];
 }
 
+/** 多模态附件（对应 shared/types/message.ts 的 ChatMessageAttachment） */
+export interface MessageAttachment {
+  type: 'image';
+  mimeType: string;
+  path?: string;
+  base64?: string;
+}
+
 /** 聊天消息 */
 export interface Message {
   id: string;
@@ -65,6 +73,8 @@ export interface Message {
   toolCalls?: ToolCall[];
   /** 召回元数据 — Sprint 15.12 Phase E */
   recallMeta?: RecallMeta;
+  /** 多模态附件 — IM 渠道图片 / 音视频等 */
+  attachments?: MessageAttachment[];
   createdAt: string;
 }
 
@@ -179,7 +189,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
   enterConversation: async (agentId, sessionKey) => {
     set({ currentAgentId: agentId, currentSessionKey: sessionKey, messages: [], loadingMessages: true, turnProgress: null });
     try {
-      const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; createdAt: string }[] }>(
+      const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; attachments?: MessageAttachment[]; createdAt: string }[] }>(
         `/chat/${agentId}/messages?sessionKey=${encodeURIComponent(sessionKey)}&limit=50`,
       );
       const messages: Message[] = res.messages.map((m) => ({
@@ -187,6 +197,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         role: m.role as Message['role'],
         content: m.content,
         toolCalls: m.toolCalls,
+        ...(m.attachments ? { attachments: m.attachments } : {}),
         createdAt: m.createdAt,
       }));
       set({ messages, loadingMessages: false });
@@ -201,7 +212,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
     if (!currentAgentId || !currentSessionKey || isStreaming) return;
     _reloading = true;
     try {
-      const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; createdAt: string }[] }>(
+      const res = await get<{ messages: { id: string; role: string; content: string; toolCalls?: ToolCall[]; attachments?: MessageAttachment[]; createdAt: string }[] }>(
         `/chat/${currentAgentId}/messages?sessionKey=${encodeURIComponent(currentSessionKey)}&limit=50`,
       );
       const messages: Message[] = res.messages.map((m) => ({
@@ -209,6 +220,7 @@ export const useChatStore = create<ChatState>((set, getState) => ({
         role: m.role as Message['role'],
         content: m.content,
         toolCalls: m.toolCalls,
+        ...(m.attachments ? { attachments: m.attachments } : {}),
         createdAt: m.createdAt,
       }));
       // 只在消息数量变化时更新（避免无意义渲染）

@@ -73,7 +73,7 @@ describe('WeixinAdapter', () => {
 
     it('应从 stateRepo 恢复游标', async () => {
       // 预存游标
-      stateRepo.setState('weixin' as any, 'get_updates_buf', 'saved-cursor');
+      stateRepo.setState('weixin' as any, '', 'get_updates_buf', 'saved-cursor');
 
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -87,7 +87,7 @@ describe('WeixinAdapter', () => {
         credentials: { botToken: 'tk', ilinkBotId: 'bot', baseUrl: 'https://test.example.com' },
       });
 
-      expect(stateRepo.getState).toHaveBeenCalledWith('weixin', 'get_updates_buf');
+      expect(stateRepo.getState).toHaveBeenCalledWith('weixin', '', 'get_updates_buf');
     });
   });
 

@@ -785,18 +785,21 @@ async function main() {
     // Group C: Channel 子系统（含 WeixinAdapter 动态导入，与其他构造并行）
     (async () => {
       const channelManager = new ChannelManager();
+      // 桌面渠道：本地单账号，直接 eager 注册 + connect
       const desktopAdapter = new DesktopAdapter();
       channelManager.registerAdapter(desktopAdapter);
-      desktopAdapter.connect({ type: 'local', name: '桌面', credentials: {} });
+      desktopAdapter.connect({ type: 'local', accountId: '', name: '桌面', credentials: {} });
       const channelStateRepo = new ChannelStateRepo(db);
+
+      // 多账号渠道（飞书 / 企微）通过 factory 注册：按 connect(accountId) 懒创建
+      // 独立 adapter 实例，每个账号一条 WS，互不干扰。
       if (Feature.WEIXIN) {
         const { WeixinAdapter } = await import('./channel/adapters/weixin.js');
-        const weixinAdapter = new WeixinAdapter(channelStateRepo);
-        channelManager.registerAdapter(weixinAdapter);
+        channelManager.registerFactory('weixin', () => new WeixinAdapter(channelStateRepo));
       }
       if (Feature.FEISHU) {
         const { FeishuAdapter } = await import('./channel/adapters/feishu/index.js');
-        channelManager.registerAdapter(new FeishuAdapter());
+        channelManager.registerFactory('feishu', () => new FeishuAdapter());
       }
       const bindingRouter = new BindingRouter(db);
       profiler.checkpoint('channel_ready');
@@ -843,6 +846,7 @@ async function main() {
     memoryStore,
     ftsStore,
     knowledgeGraph,
+    bindingRouter,
   };
 
   // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理
@@ -1154,6 +1158,12 @@ async function main() {
   }
 
   // 3b. Channel 自动恢复（可能涉及网络 I/O，不阻塞服务启动）
+  //
+  // 多账号改造后：
+  // - 每个 channelType 可能有多个 accountId（多飞书应用 / 多企微主体）
+  // - 老数据（migration 030 之前写入的）account_id='', 需要启动时一次性迁移：
+  //   读 credentials → JSON.parse → 拿 appId → reassignAccountId('' → appId)
+  //   这是幂等操作，修复完下次 listAccounts 就没有 '' 了
   const recoverChannels = async () => {
     const channelTypes = [
       ...(Feature.WEIXIN ? ['weixin' as const] : []),
@@ -1161,29 +1171,58 @@ async function main() {
       ...(Feature.WECOM ? ['wecom' as const] : []),
     ];
     for (const chType of channelTypes) {
-      const savedCreds = channelStateRepo.getState(chType as any, 'credentials');
-      const savedName = channelStateRepo.getState(chType as any, 'name');
-      if (savedCreds) {
+      // Step 1: 一次性数据修复 — 把 account_id='' 的老行改写为真实 appId
+      const accountsRaw = channelStateRepo.listAccounts(chType as any);
+      for (const accId of accountsRaw) {
+        if (accId !== '') continue;
+        const rawCreds = channelStateRepo.getState(chType as any, '', 'credentials');
+        if (!rawCreds) continue;
+        let realAccountId = '';
+        try {
+          const parsed = JSON.parse(rawCreds) as { appId?: string; corpId?: string };
+          realAccountId = parsed.appId ?? parsed.corpId ?? '';
+        } catch {
+          /* 损坏的 credentials JSON — 留在 '' 槽里不动，下面恢复会失败删掉 */
+        }
+        if (realAccountId && realAccountId !== '') {
+          channelStateRepo.reassignAccountId(chType as any, '', realAccountId);
+          log.info(`渠道 ${chType} 老数据自动修复 account_id='' → '${realAccountId}'`);
+        }
+      }
+
+      // Step 2: 按 accountId 遍历恢复
+      const accounts = channelStateRepo.listAccounts(chType as any);
+      for (const accountId of accounts) {
+        const savedCreds = channelStateRepo.getState(chType as any, accountId, 'credentials');
+        const savedName = channelStateRepo.getState(chType as any, accountId, 'name');
+        if (!savedCreds) continue;
+
+        // 判断是否有 binding（按 accountId 精确匹配；老数据 account_id 为 NULL 时也放行）
         const hasBinding = db.get<{ cnt: number }>(
-          `SELECT COUNT(*) AS cnt FROM bindings WHERE channel = ? OR is_default = 1`,
+          `SELECT COUNT(*) AS cnt FROM bindings
+           WHERE channel = ? AND (account_id = ? OR account_id IS NULL OR is_default = 1)`,
           chType,
+          accountId,
         );
         if (!hasBinding || hasBinding.cnt === 0) {
-          log.info(`渠道 ${chType} 无 Agent 绑定，跳过轮询（凭证已保留，绑定后可手动连接）`);
+          log.info(`渠道 ${chType}[${accountId}] 无 Agent 绑定，跳过（凭据已保留）`);
           continue;
         }
         try {
           const credentials = JSON.parse(savedCreds);
           await channelManager.connect({
             type: chType as any,
+            accountId,
             name: savedName ?? chType,
             credentials,
           });
-          log.info(`渠道 ${chType} 已自动恢复连接`);
+          log.info(`渠道 ${chType}[${accountId}] 已自动恢复连接`);
         } catch (err) {
-          log.warn(`渠道 ${chType} 自动恢复失败: ${err instanceof Error ? err.message : String(err)}`);
-          channelStateRepo.deleteState(chType as any, 'credentials');
-          channelStateRepo.deleteState(chType as any, 'name');
+          log.warn(
+            `渠道 ${chType}[${accountId}] 自动恢复失败: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          channelStateRepo.deleteState(chType as any, accountId, 'credentials');
+          channelStateRepo.deleteState(chType as any, accountId, 'name');
         }
       }
     }
@@ -1206,6 +1245,13 @@ async function main() {
 
     (async () => {
       try {
+        // 多账号场景下同一 agent 绑定的是特定 accountId，heartbeat 消息也要走对应
+        // 账号的 adapter（不能跨账号投递）。反查 binding 拿 accountId。
+        const resolveAccountId = (channel: string): string => {
+          const bindings = bindingRouter.listBindings(agentId).filter((b) => b.channel === channel);
+          return bindings[0]?.accountId ?? '';
+        };
+
         if (target === 'last') {
           const lastSession = db.get<{ session_key: string }>(
             `SELECT session_key FROM conversation_log
@@ -1216,7 +1262,8 @@ async function main() {
           if (!lastSession) return;
           const parts = lastSession.session_key.split(':');
           if (parts.length >= 5) {
-            await channelManager.sendMessage(parts[2] as any, parts[4], response);
+            const channel = parts[2]!;
+            await channelManager.sendMessage(channel as any, resolveAccountId(channel), parts[4]!, response);
           }
         } else {
           const lastPeer = db.get<{ session_key: string }>(
@@ -1228,7 +1275,7 @@ async function main() {
           if (lastPeer) {
             const parts = lastPeer.session_key.split(':');
             if (parts.length >= 5) {
-              await channelManager.sendMessage(target as any, parts[4], response);
+              await channelManager.sendMessage(target as any, resolveAccountId(target), parts[4]!, response);
             }
           }
         }

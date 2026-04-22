@@ -108,7 +108,7 @@ export class WeixinAdapter implements ChannelAdapter {
     this.status = { ...this.status, status: 'connecting', name: config.name };
 
     // 加载上次的游标 (断点续传)
-    const savedBuf = this.stateRepo.getState('weixin', STATE_KEY_BUF);
+    const savedBuf = this.stateRepo.getState('weixin', '', STATE_KEY_BUF);
     if (savedBuf) {
       this.getUpdatesBuf = savedBuf;
       log.info(`恢复上次游标 (${savedBuf.length} bytes)`);
@@ -148,7 +148,7 @@ export class WeixinAdapter implements ChannelAdapter {
 
     // 持久化游标
     if (this.getUpdatesBuf) {
-      this.stateRepo.setState('weixin', STATE_KEY_BUF, this.getUpdatesBuf);
+      this.stateRepo.setState('weixin', '', STATE_KEY_BUF, this.getUpdatesBuf);
       log.info(`已保存游标 (${this.getUpdatesBuf.length} bytes)`);
     }
 
@@ -317,7 +317,7 @@ export class WeixinAdapter implements ChannelAdapter {
         if (resp.get_updates_buf) {
           this.getUpdatesBuf = resp.get_updates_buf;
           // 定期持久化游标
-          this.stateRepo.setState('weixin', STATE_KEY_BUF, this.getUpdatesBuf);
+          this.stateRepo.setState('weixin', '', STATE_KEY_BUF, this.getUpdatesBuf);
         }
 
         // 处理消息

@@ -3,12 +3,14 @@ import { createChannelTools, getChannelToolNames } from '../tools/channel-tools.
 import type { ChannelManager } from '../channel/channel-manager.js';
 import type { FeishuAdapter } from '../channel/adapters/feishu/index.js';
 
-/** 基础 mock：仅 sendMessage */
+/** 基础 mock：仅 sendMessage；默认 getAdapter 返回空 adapter（单账号兼容场景） */
 function createMockChannelManager(): ChannelManager {
   return {
     sendMessage: vi.fn(),
     sendMediaMessage: vi.fn(),
-    getAdapter: vi.fn(),
+    // resolveFeishuAccount 需要 getAdapter 返回非空才不抛错；多账号改造后
+    // 即便 send 类工具也要先定位 adapter
+    getAdapter: vi.fn().mockReturnValue({} as FeishuAdapter),
   } as unknown as ChannelManager;
 }
 
@@ -104,7 +106,8 @@ describe('createChannelTools', () => {
     const sendTool = tools.find((t) => t.name === 'feishu_send')!;
 
     await sendTool.execute({ peerId: 'ou_123', content: '你好', chatType: 'private' });
-    expect(cm.sendMessage).toHaveBeenCalledWith('feishu', 'ou_123', '你好', 'private');
+    // 新签名：(channel, accountId, peerId, content, chatType)
+    expect(cm.sendMessage).toHaveBeenCalledWith('feishu', '', 'ou_123', '你好', 'private');
   });
 
   it('feishu_send_image 调用 sendMediaMessage 并带 caption', async () => {
@@ -118,8 +121,10 @@ describe('createChannelTools', () => {
       caption: '给你看图',
       chatType: 'private',
     });
+    // 新签名：(channel, accountId, peerId, filePath, text, chatType)
     expect(cm.sendMediaMessage).toHaveBeenCalledWith(
       'feishu',
+      '',
       'ou_u',
       '/tmp/a.png',
       '给你看图',
@@ -154,6 +159,7 @@ describe('createChannelTools', () => {
     await tool.execute({ peerId: 'ou_u', filePath: '/tmp/a.pdf' });
     expect(cm.sendMediaMessage).toHaveBeenCalledWith(
       'feishu',
+      '',
       'ou_u',
       '/tmp/a.pdf',
       undefined,
@@ -289,7 +295,8 @@ describe('createChannelTools', () => {
         fileType: 'docx',
         text: 't',
       }),
-    ).rejects.toThrow(/未注册/);
+    // 多账号改造后错误信息变成 "Agent xxx 未绑定可用的飞书应用"
+    ).rejects.toThrow(/未绑定可用的飞书/);
   });
 
   it('wecom_send 缺少参数应返回错误提示', async () => {

@@ -39,9 +39,14 @@ export interface PipelineTiming {
 // 公共 API
 // ---------------------------------------------------------------------------
 
-/** 检查指定账号是否启用了 debug 模式 */
+/**
+ * 检查指定业务账号是否启用了 debug 模式
+ *
+ * 注意：这里的 accountId 是**业务层账号**（某个微信联系人 ID），
+ * 与 ChannelState 的 accountId（多微信应用维度，过渡期用 ''）是两个概念。
+ */
 export function isDebugEnabled(accountId: string, stateRepo: ChannelStateRepo): boolean {
-  const value = stateRepo.getState(CHANNEL, `${DEBUG_KEY_PREFIX}${accountId}`);
+  const value = stateRepo.getState(CHANNEL, '', `${DEBUG_KEY_PREFIX}${accountId}`);
   return value === 'true';
 }
 
@@ -49,7 +54,7 @@ export function isDebugEnabled(accountId: string, stateRepo: ChannelStateRepo): 
 export function toggleDebugMode(accountId: string, stateRepo: ChannelStateRepo): boolean {
   const current = isDebugEnabled(accountId, stateRepo);
   const next = !current;
-  stateRepo.setState(CHANNEL, `${DEBUG_KEY_PREFIX}${accountId}`, String(next));
+  stateRepo.setState(CHANNEL, '', `${DEBUG_KEY_PREFIX}${accountId}`, String(next));
   return next;
 }
 

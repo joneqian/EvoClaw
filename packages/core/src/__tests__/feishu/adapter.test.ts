@@ -14,6 +14,7 @@ import { FeishuAdapter } from '../../channel/adapters/feishu/index.js';
 import type { FeishuSdk } from '../../channel/adapters/feishu/client.js';
 import {
   handleReceiveMessage,
+  __clearInboundDedupe,
   type FeishuReceiveEvent,
   type InboundContext,
 } from '../../channel/adapters/feishu/inbound.js';
@@ -163,6 +164,7 @@ describe('FeishuAdapter', () => {
   let adapter: FeishuAdapter;
 
   beforeEach(() => {
+    __clearInboundDedupe(); // 防止跨测试 message_id 冲突
     mock = createMockSdk();
     adapter = new FeishuAdapter({ sdk: mock.sdk });
   });
@@ -380,6 +382,10 @@ describe('FeishuAdapter', () => {
 // ─── handleReceiveMessage 直接测试 ────────────────────────────────────
 
 describe('handleReceiveMessage', () => {
+  beforeEach(() => {
+    __clearInboundDedupe();
+  });
+
   function makeCtx(overrides: Partial<InboundContext> = {}): {
     ctx: InboundContext;
     handler: ReturnType<typeof vi.fn>;

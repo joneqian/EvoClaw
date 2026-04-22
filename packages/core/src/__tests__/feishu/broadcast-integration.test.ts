@@ -10,12 +10,18 @@
  * - SC12: enabled=false 完全跳过
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   handleReceiveMessage,
+  __clearInboundDedupe,
   type FeishuReceiveEvent,
   type InboundContext,
 } from '../../channel/adapters/feishu/inbound.js';
+
+// 全局去重重置（见 group-history-integration.test.ts 说明）
+beforeEach(() => {
+  __clearInboundDedupe();
+});
 import {
   DEFAULT_BROADCAST_CONFIG,
   type BroadcastConfig,

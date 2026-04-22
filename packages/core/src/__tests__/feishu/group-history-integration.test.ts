@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   handleReceiveMessage,
+  __clearInboundDedupe,
   type FeishuReceiveEvent,
   type InboundContext,
 } from '../../channel/adapters/feishu/inbound.js';
@@ -79,6 +80,12 @@ function buildEvent(opts: {
     },
   };
 }
+
+// 全局去重重置：inbound 模块级 SEEN_MESSAGE_IDS 会跨测试泄露
+// 若不清，不同 describe 里复用的 `om_x` 等 messageId 会被当成重复推送忽略
+beforeEach(() => {
+  __clearInboundDedupe();
+});
 
 describe('SC1: 群内真人未 @ 消息写入 buffer', () => {
   it('未 @ 机器人，消息进 buffer 但不触发 handler', async () => {
@@ -336,6 +343,33 @@ describe('messageId 重复去重', () => {
       );
     }
     expect(buffer.peek('oc_g', config)).toHaveLength(1);
+  });
+
+  it('飞书服务端重推 —— 相同 messageId 的已 @ 消息只触发 handler 一次', async () => {
+    const { ctx, handler } = buildCtx();
+    // 第 1 次推送
+    await handleReceiveMessage(
+      buildEvent({
+        chat_type: 'group',
+        chat_id: 'oc_g',
+        message_id: 'om_same',
+        content: '{"text":"你好"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      }),
+      ctx,
+    );
+    // 服务端重推（18 秒后那种场景）
+    await handleReceiveMessage(
+      buildEvent({
+        chat_type: 'group',
+        chat_id: 'oc_g',
+        message_id: 'om_same',
+        content: '{"text":"你好"}',
+        mentions: [{ key: '@_bot', id: { open_id: 'ou_bot' }, name: 'Bot' }],
+      }),
+      ctx,
+    );
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
 

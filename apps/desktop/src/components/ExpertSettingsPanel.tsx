@@ -35,9 +35,15 @@ interface ChannelStatus {
   error?: string;
 }
 
-/** Channel 绑定信息 */
+/**
+ * Channel 绑定信息
+ *
+ * 对齐后端 `/channel/bindings` 返回的字段（见 routing/binding-router.ts）。
+ * 历史上前端用过 `channelType`，但后端始终是 `channel`，导致 `getBinding`
+ * 永远找不到匹配 → `isBoundToMe` 永假 → 飞书"编辑配置"按钮不显示。
+ */
 interface ChannelBinding {
-  channelType: string;
+  channel: string;
   agentId: string;
   agentName?: string;
 }
@@ -644,7 +650,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
   const connectedCount = channels.filter((ch) => ch.status === 'connected').length;
 
   const getChannelStatus = (type: string) => channels.find((ch) => ch.type === type);
-  const getBinding = (type: string) => bindings.find((b) => b.channelType === type);
+  const getBinding = (type: string) => bindings.find((b) => b.channel === type);
 
   const handleDisconnect = useCallback(async (type: string) => {
     await post('/channel/disconnect', { type });

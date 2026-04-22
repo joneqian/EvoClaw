@@ -13,6 +13,7 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { MessageHandler } from '../../channel-adapter.js';
 import { normalizeFeishuMessage } from '../../message-normalizer.js';
 import { parseFeishuContent } from './parse-content.js';
+import { createLogger } from '../../../infrastructure/logger.js';
 import {
   buildFeishuGroupPeerId,
   type FeishuGroupSessionScope,
@@ -27,6 +28,56 @@ import {
   resolveBroadcastTargets,
   type BroadcastConfig,
 } from './broadcast.js';
+
+const log = createLogger('feishu-inbound');
+
+/**
+ * 入站事件去重 —— 防止飞书服务端重推导致 Agent 重复处理
+ *
+ * 背景：飞书 WS 对同一条用户消息可能投递多次（不同 message_id 但同 trace_id，
+ * 或完全相同 message_id）。服务端触发重推的典型条件：
+ * - SDK 的 `eventDispatcher.invoke` 返回过慢（> ~10s）→ 服务端认为客户端失效
+ * - 网络抖动导致 ACK 丢失
+ *
+ * 本次真机实测：Agent 处理 9+ 秒 → 服务端 18 秒后重推，导致用户发一句"你好"
+ * 收到两次回复。主修复是把 handler 改为 fire-and-forget 让 SDK 秒 ACK，这份
+ * LRU 是兜底。
+ *
+ * 简单 Map + 时间戳 + 软容量上限即可（不追求 O(1) LRU 淘汰精确度，避免引入
+ * 额外依赖；飞书 WS 单连接单进程，并发压力有限）。
+ */
+const SEEN_MESSAGE_IDS = new Map<string, number>();
+const SEEN_TTL_MS = 10 * 60_000; // 10 分钟窗口
+const SEEN_MAX_SIZE = 2000;
+
+function markSeen(messageId: string): boolean {
+  const now = Date.now();
+  // 懒淘汰：触发容量或 TTL 时扫一遍
+  if (SEEN_MESSAGE_IDS.size >= SEEN_MAX_SIZE) {
+    const cutoff = now - SEEN_TTL_MS;
+    for (const [id, ts] of SEEN_MESSAGE_IDS.entries()) {
+      if (ts < cutoff) SEEN_MESSAGE_IDS.delete(id);
+    }
+    // 仍然超过上限时清掉最老一半
+    if (SEEN_MESSAGE_IDS.size >= SEEN_MAX_SIZE) {
+      const entries = Array.from(SEEN_MESSAGE_IDS.entries()).sort((a, b) => a[1] - b[1]);
+      for (let i = 0; i < entries.length / 2; i++) {
+        SEEN_MESSAGE_IDS.delete(entries[i]![0]);
+      }
+    }
+  }
+  const prev = SEEN_MESSAGE_IDS.get(messageId);
+  if (prev !== undefined && now - prev < SEEN_TTL_MS) {
+    return true; // 已见过
+  }
+  SEEN_MESSAGE_IDS.set(messageId, now);
+  return false;
+}
+
+/** 测试用：清空去重状态 */
+export function __clearInboundDedupe(): void {
+  SEEN_MESSAGE_IDS.clear();
+}
 
 /** im.message.receive_v1 事件载荷（与 SDK 类型同构，取必要字段） */
 export interface FeishuReceiveEvent {
@@ -114,6 +165,12 @@ export async function handleReceiveMessage(
   if (data.sender.sender_type === 'app') return;
 
   const message = data.message;
+
+  // 去重（见文件顶部 SEEN_MESSAGE_IDS 说明）：飞书服务端可能重推同一 messageId
+  if (markSeen(message.message_id)) {
+    log.warn(`忽略重复推送 messageId=${message.message_id}`);
+    return;
+  }
   const senderOpenId = data.sender.sender_id?.open_id ?? '';
   const senderName = data.sender.sender_id?.user_id;
   const isGroup = message.chat_type === 'group';
@@ -219,7 +276,18 @@ export async function handleReceiveMessage(
     }
   }
 
-  await handler(normalized);
+  // Fire-and-forget：handler 会触发 Agent 处理管线（可能耗时 10+ 秒）。
+  // 如果 await 等到完成才 return，SDK 也会等到那时才 ACK 事件给飞书服务端，
+  // 服务端会判定客户端失效并重推事件（相同 trace_id，不同 message_id），
+  // 导致用户发一条消息收到多次回复。这里立即返回让 SDK 秒 ACK。
+  //
+  // Promise.resolve() 包装：handler 可能是非 async 的 mock（测试场景返回
+  // undefined），直接 `.catch` 会 NPE；先 resolve 统一包成 Promise。
+  Promise.resolve(handler(normalized)).catch((err) => {
+    log.error(
+      `agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 }
 
 /**

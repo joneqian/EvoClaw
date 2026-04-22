@@ -312,6 +312,47 @@ describe('serializeMessageForOpenAI', () => {
     expect(result[0]!.role).toBe('tool');
     expect(result[1]!.role).toBe('tool');
   });
+
+  it('user image-only message → OpenAI image_url data URL', () => {
+    const msg: KernelMessage = {
+      id: '1', role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' } },
+      ],
+    };
+    const result = serializeMessageForOpenAI(msg);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.role).toBe('user');
+    expect(result[0]!.content).toEqual([
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } },
+    ]);
+  });
+
+  it('user text + image 混合 → content 数组（image_url + text）', () => {
+    const msg: KernelMessage = {
+      id: '1', role: 'user',
+      content: [
+        { type: 'text', text: '描述这张图' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'PNG_B64' } },
+      ],
+    };
+    const result = serializeMessageForOpenAI(msg);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.role).toBe('user');
+    expect(result[0]!.content).toEqual([
+      { type: 'text', text: '描述这张图' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,PNG_B64' } },
+    ]);
+  });
+
+  it('纯文本 user 消息仍退化为 content: string（老协议兼容）', () => {
+    const msg: KernelMessage = {
+      id: '1', role: 'user',
+      content: [{ type: 'text', text: '纯文本' }],
+    };
+    const result = serializeMessageForOpenAI(msg);
+    expect(result).toEqual([{ role: 'user', content: '纯文本' }]);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -6,7 +6,7 @@
  */
 
 import crypto from 'node:crypto';
-import type { ChatMessage, QuotedMessage } from '@evoclaw/shared';
+import type { ChatMessage, ChatMessageAttachment, QuotedMessage } from '@evoclaw/shared';
 import { composeMessageWithQuote } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
@@ -102,6 +102,20 @@ const CHANNEL_TOOL_DENY: Record<string, string[]> = {
   voice: ['tts'],
 };
 
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+
+/**
+ * 判断 ChannelMessage 的媒体是否是图片
+ *
+ * mimeType 缺失或不是 `image/*` 时回退用文件扩展名判断，兼容飞书某些类型
+ * 下载下来只有 mime=application/octet-stream 的情况
+ */
+function isImageMimeType(mimeType: string, filePath: string): boolean {
+  if (mimeType.startsWith('image/')) return true;
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+  return IMAGE_EXTS.has(ext);
+}
+
 /** 从 conversation_log 加载最近消息历史（UI + LLM 历史共用，过滤纯工具消息） */
 function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string, limit: number = 20): ChatMessage[] {
   const rawRows = db.all<{
@@ -146,6 +160,8 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
         };
         const toolCalls = extractToolCallsForUI(kmsg);
         if (toolCalls) (msg as any).toolCalls = toolCalls;
+        const attachments = extractImageAttachments(kmsg);
+        if (attachments.length > 0) msg.attachments = attachments;
         result.push(msg);
         continue;
       } catch {
@@ -161,6 +177,29 @@ function loadMessageHistory(db: SqliteStore, agentId: string, sessionKey: string
       content: reconstructDisplayContent(row.content, row.kernel_message_json),
       createdAt: row.created_at,
     });
+  }
+  return result;
+}
+
+/**
+ * 从 KernelMessage 里抽出图片类 ContentBlock，转成 ChatMessageAttachment
+ *
+ * 用途：
+ * - 跨轮对话加载历史时，把之前存过的 ImageBlock 恢复为 attachments，让后续
+ *   attempt 重新填入 user message 给多模态模型继续可见
+ * - 前端 MessageBubble 据此渲染缩略图
+ */
+function extractImageAttachments(kmsg: KernelMessage): ChatMessageAttachment[] {
+  const result: ChatMessageAttachment[] = [];
+  for (const block of kmsg.content) {
+    if (block.type === 'image') {
+      const img = block as { source: { media_type: string; data: string } };
+      result.push({
+        type: 'image',
+        mimeType: img.source.media_type,
+        base64: img.source.data,
+      });
+    }
   }
   return result;
 }
@@ -208,16 +247,80 @@ function formatToolSummary(name: string, args: unknown): string {
   }
 }
 
-/** 存储消息到 conversation_log */
+/**
+ * 构造带图片附件的 user KernelMessage JSON（供 saveMessage 持久化）
+ *
+ * 纯文本消息返回 null（保持老行为不写 kernel_message_json 列）；
+ * 有图片时读文件 → base64 → ImageBlock，拼进 content 数组。
+ *
+ * 所有 IO 失败（文件不存在 / 过大 / IO 错）一律降级为 null，调用方退回纯文本
+ * 存储，不影响主流程。
+ */
+function buildUserKernelMessageJson(params: {
+  content: string;
+  mediaPath?: string;
+  mediaType?: string;
+}): string | null {
+  if (!params.mediaPath) return null;
+  if (!isImageMimeType(params.mediaType ?? '', params.mediaPath)) return null;
+
+  try {
+    const fs = require('node:fs') as typeof import('node:fs');
+    if (!fs.existsSync(params.mediaPath)) return null;
+    const stat = fs.statSync(params.mediaPath);
+    // 与 runner 侧 MAX_INPUT_IMAGE_BYTES 保持一致，防止 DB 写入超大 base64
+    if (stat.size > 10 * 1024 * 1024) return null;
+    const buffer = fs.readFileSync(params.mediaPath);
+    const mimeType = params.mediaType?.startsWith('image/')
+      ? params.mediaType
+      : inferImageMime(params.mediaPath);
+    const content = [
+      { type: 'text', text: params.content },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: mimeType,
+          data: buffer.toString('base64'),
+        },
+      },
+    ];
+    return JSON.stringify({ id: crypto.randomUUID(), role: 'user', content });
+  } catch {
+    return null;
+  }
+}
+
+function inferImageMime(filePath: string): string {
+  const ext = filePath.slice(filePath.lastIndexOf('.')).toLowerCase();
+  switch (ext) {
+    case '.jpg':
+    case '.jpeg': return 'image/jpeg';
+    case '.gif': return 'image/gif';
+    case '.webp': return 'image/webp';
+    case '.bmp': return 'image/bmp';
+    default: return 'image/png';
+  }
+}
+
+/**
+ * 存储消息到 conversation_log
+ *
+ * 可选 `kernelMessageJson`：带 ImageBlock 等结构化内容的消息（如多模态输入）
+ * 把完整 KernelMessage 序列化写入 kernel_message_json 列，让下一轮
+ * loadMessageHistory 能从中还原 attachments，模型仍能看到前几轮的图片。
+ */
 function saveMessage(
   db: SqliteStore, agentId: string, sessionKey: string,
   role: string, content: string, toolCalls?: ToolCallRecord[],
+  kernelMessageJson?: string | null,
 ): void {
   const toolCallsJson = toolCalls && toolCalls.length > 0 ? JSON.stringify(toolCalls) : null;
   db.run(
-    `INSERT INTO conversation_log (id, agent_id, session_key, role, content, tool_calls_json, compaction_status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'raw', ?)`,
+    `INSERT INTO conversation_log (id, agent_id, session_key, role, content, tool_calls_json, compaction_status, created_at, kernel_message_json)
+     VALUES (?, ?, ?, ?, ?, ?, 'raw', ?, ?)`,
     crypto.randomUUID(), agentId, sessionKey, role, content, toolCallsJson, new Date().toISOString(),
+    kernelMessageJson ?? null,
   );
 }
 
@@ -512,6 +615,20 @@ export async function handleChannelMessage(
     messages,
     permissionInterceptFn,
     auditLogFn,
+    // 多模态附件：IM 渠道（飞书/微信）下载到本地的图片通过 inputAttachments
+    // 原生注入 user message，embedded-runner 会转成 ImageBlock 喂给模型，
+    // 省去 Agent 再调 image 工具的弯路
+    ...(ctx.mediaPath && isImageMimeType(ctx.mediaType ?? '', ctx.mediaPath)
+      ? {
+          inputAttachments: [
+            {
+              type: 'image' as const,
+              path: ctx.mediaPath,
+              ...(ctx.mediaType ? { mimeType: ctx.mediaType } : {}),
+            },
+          ],
+        }
+      : {}),
     // store + sessionKey：embedded-runner-attempt 需要这两个字段才会构造
     // IncrementalPersister 把 assistant 消息写入 conversation_log。
     // 缺失时 agent 能正常跑完 + fullResponse 累加给渠道发出，但 DB 里
@@ -521,7 +638,16 @@ export async function handleChannelMessage(
   };
 
   // 7. 存储用户消息
-  saveMessage(store, agentId, sessionKey, 'user', message);
+  //
+  // 多模态情况：有 inputAttachments（图片）时，把图片读成 base64 一起写 kernel_message_json，
+  // 让下一轮 loadMessageHistory 能还原 ImageBlock，模型仍能看到历史图片。
+  // 纯文本消息保持老行为（只写 content 列，kernel_message_json 留空）。
+  const userKernelMessageJson = buildUserKernelMessageJson({
+    content: message,
+    mediaPath: ctx.mediaPath,
+    mediaType: ctx.mediaType,
+  });
+  saveMessage(store, agentId, sessionKey, 'user', message, undefined, userKernelMessageJson);
 
   // 8. 运行 Agent（收集 text_delta + 工具调用事件）
   let fullResponse = '';

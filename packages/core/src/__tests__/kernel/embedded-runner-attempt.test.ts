@@ -353,3 +353,78 @@ describe('lastKnownMessages (catch 块消息修复)', () => {
     expect(result.messagesSnapshot![1]!.content).toContain('thinking');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 多模态 inputAttachments
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('inputAttachments 图片注入', () => {
+  // 最小合法 PNG（1x1 透明像素，足够让 fs 读取 + 判断扩展名走通）
+  const TINY_PNG = Buffer.from(
+    '89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D49444154789C626001000000050001' +
+      '0D0A2DB40000000049454E44AE426082',
+    'hex',
+  );
+
+  it('inputAttachments 中的图片被转为 ImageBlock 并追加到 user content', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+
+    const tmpPath = path.join(os.tmpdir(), `evoclaw-test-${Date.now()}.png`);
+    fs.writeFileSync(tmpPath, TINY_PNG);
+
+    try {
+      await runSingleAttempt(
+        makeParams({
+          message: '这图片里有啥',
+          config: makeConfig({
+            inputAttachments: [{ type: 'image', path: tmpPath, mimeType: 'image/png' }],
+          }),
+        }),
+      );
+
+      expect(mockQueryLoop).toHaveBeenCalledOnce();
+      const queryConfig = mockQueryLoop.mock.calls[0]![0] as { messages: Array<{ role: string; content: Array<{ type: string; source?: { media_type: string; data: string } }> }> };
+      const lastMsg = queryConfig.messages[queryConfig.messages.length - 1]!;
+      expect(lastMsg.role).toBe('user');
+      const textBlock = lastMsg.content.find((b) => b.type === 'text');
+      const imgBlock = lastMsg.content.find((b) => b.type === 'image');
+      expect(textBlock).toBeDefined();
+      expect(imgBlock).toBeDefined();
+      expect(imgBlock!.source!.media_type).toBe('image/png');
+      // base64 应非空（读到了真实文件）
+      expect(imgBlock!.source!.data.length).toBeGreaterThan(0);
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
+  });
+
+  it('inputAttachments 中文件不存在 → 跳过但不中断', async () => {
+    await runSingleAttempt(
+      makeParams({
+        config: makeConfig({
+          inputAttachments: [{ type: 'image', path: '/tmp/does-not-exist-xxxxx.png' }],
+        }),
+      }),
+    );
+
+    expect(mockQueryLoop).toHaveBeenCalledOnce();
+    const queryConfig = mockQueryLoop.mock.calls[0]![0] as { messages: Array<{ role: string; content: Array<{ type: string }> }> };
+    const lastMsg = queryConfig.messages[queryConfig.messages.length - 1]!;
+    // 仅有 text，没有 image（读取失败安静跳过）
+    expect(lastMsg.content.some((b) => b.type === 'image')).toBe(false);
+    expect(lastMsg.content.some((b) => b.type === 'text')).toBe(true);
+  });
+
+  it('无 inputAttachments 时行为与以前一致（仅 text）', async () => {
+    await runSingleAttempt(makeParams());
+
+    expect(mockQueryLoop).toHaveBeenCalledOnce();
+    const queryConfig = mockQueryLoop.mock.calls[0]![0] as { messages: Array<{ role: string; content: Array<{ type: string }> }> };
+    const lastMsg = queryConfig.messages[queryConfig.messages.length - 1]!;
+    expect(lastMsg.role).toBe('user');
+    expect(lastMsg.content).toHaveLength(1);
+    expect(lastMsg.content[0]!.type).toBe('text');
+  });
+});

@@ -408,13 +408,27 @@ function serializeMessageForOpenAI(
       }
       results.push(assistantMsg);
     } else {
-      // user message: text content
-      const text = nonToolResults
-        .filter(b => b.type === 'text')
-        .map(b => (b as { text: string }).text)
-        .join('');
-      if (text) {
-        results.push({ role: 'user', content: text });
+      // user message: 支持 text + image 混合 content（OpenAI 兼容 vision 协议）
+      const parts: Array<Record<string, unknown>> = [];
+      for (const block of nonToolResults) {
+        if (block.type === 'text') {
+          parts.push({ type: 'text', text: (block as { text: string }).text });
+        } else if (block.type === 'image') {
+          const img = block as { source: { type: string; media_type: string; data: string } };
+          // OpenAI 兼容 vision: {type: 'image_url', image_url: {url: 'data:mime;base64,...'}}
+          parts.push({
+            type: 'image_url',
+            image_url: { url: `data:${img.source.media_type};base64,${img.source.data}` },
+          });
+        }
+      }
+      if (parts.length === 0) {
+        // 空 user 消息跳过（保留原有行为）
+      } else if (parts.length === 1 && parts[0]?.type === 'text') {
+        // 纯文本时退化为 content: string（OpenAI 老协议兼容性更好）
+        results.push({ role: 'user', content: parts[0].text });
+      } else {
+        results.push({ role: 'user', content: parts });
       }
     }
   }

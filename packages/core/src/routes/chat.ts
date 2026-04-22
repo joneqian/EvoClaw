@@ -20,6 +20,7 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ChatMessage } from '@evoclaw/shared';
+import { parseQuotedPrefix } from '@evoclaw/shared';
 import { ContextEngine } from '../context/context-engine.js';
 import type { TurnContext } from '../context/plugin.interface.js';
 import { contextAssemblerPlugin } from '../context/plugins/context-assembler.js';
@@ -343,6 +344,20 @@ export function createChatRoutes(
 ) {
   const app = new Hono();
 
+  /**
+   * 生成会话标题 —— 剥离 <quoted_message> 前缀后取前 30 字
+   *
+   * 用户引用消息时 DB 存的 user content 头部是一段 XML 标签，直接 slice 会
+   * 把 `<quoted_message id="...` 当成标题，读不出语义。
+   */
+  const makeTitle = (content: string | undefined): string => {
+    if (!content) return '新对话';
+    const { rest } = parseQuotedPrefix(content);
+    const text = rest.trim();
+    if (!text) return '新对话';
+    return text.slice(0, 30) + (text.length > 30 ? '...' : '');
+  };
+
   /** GET /recents — 最近会话列表（跨 Agent） */
   app.get('/recents', (c) => {
     const limit = Number(c.req.query('limit') ?? '20');
@@ -390,9 +405,7 @@ export function createChatRoutes(
          ORDER BY created_at ASC LIMIT 1`,
         r.session_key,
       );
-      const title = firstUserMsg
-        ? firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '')
-        : '新对话';
+      const title = makeTitle(firstUserMsg?.content);
       return {
         sessionKey: r.session_key,
         agentId: r.agent_id,
@@ -443,9 +456,7 @@ export function createChatRoutes(
          ORDER BY created_at ASC LIMIT 1`,
         r.session_key,
       );
-      const title = firstUserMsg
-        ? firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '')
-        : '新对话';
+      const title = makeTitle(firstUserMsg?.content);
       return {
         sessionKey: r.session_key,
         agentId,

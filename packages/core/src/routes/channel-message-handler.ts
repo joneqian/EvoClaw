@@ -95,6 +95,8 @@ export interface ChannelMessageDeps {
   memoryStore?: MemoryStore;
   ftsStore?: FtsStore;
   knowledgeGraph?: KnowledgeGraphStore;
+  /** 用于多账号渠道工具按 agentId 反查正确的 accountId + adapter */
+  bindingRouter?: import('../routing/binding-router.js').BindingRouter;
 }
 
 /** 通道特定的工具禁止规则 */
@@ -538,8 +540,10 @@ export async function handleChannelMessage(
   enhancedTools.push(createExecBackgroundTool());
   enhancedTools.push(createProcessTool());
 
-  // 注入渠道专属工具 — peerId 自动绑定当前对话用户，Agent 无需填写
-  const channelTools = createChannelTools(channelManager, channel as ChannelType);
+  // 注入渠道专属工具 — peerId / sessionKey / agentId 自动绑定，Agent 无需填写
+  // agentId 供多账号工具按 binding 反查正确 accountId（比如同一飞书工具给不同
+  // Agent 调用时路由到各自绑定的应用）
+  const channelTools = createChannelTools(channelManager, channel as ChannelType, deps.bindingRouter);
   for (const ct of channelTools) {
     if (ct.name === 'desktop_notify') continue; // 渠道模式不需要桌面通知
     enhancedTools.push({
@@ -547,8 +551,8 @@ export async function handleChannelMessage(
       description: ct.description,
       // JSON Schema 结构化类型与下游 Record 宽类型等价，需 unknown 中转 cast
       parameters: ct.parameters as unknown as Record<string, unknown>,
-      // 自动注入 peerId + sessionKey，防止 agent 伪造跨会话 key
-      execute: async (args) => ct.execute({ ...args, peerId, sessionKey }),
+      // 自动注入 peerId + sessionKey + agentId（防 agent 伪造跨会话 / 跨账号）
+      execute: async (args) => ct.execute({ ...args, peerId, sessionKey, agentId }),
     });
   }
 

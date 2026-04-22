@@ -9,6 +9,7 @@ import type { ChannelManager } from '../channel/channel-manager.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { FeishuAdapter } from '../channel/adapters/feishu/index.js';
 import { isImageFile } from '../channel/adapters/feishu/media.js';
+import type { BindingRouter } from '../routing/binding-router.js';
 
 /** JSON Schema 子集（只用到的字段） */
 export interface ToolParameters {
@@ -26,19 +27,48 @@ export interface ChannelTool {
   execute: (params: Record<string, unknown>) => Promise<string>;
 }
 
-function requireFeishuAdapter(channelManager: ChannelManager): FeishuAdapter {
-  const adapter = channelManager.getAdapter('feishu') as FeishuAdapter | undefined;
-  if (!adapter) throw new Error('飞书 Channel 未注册');
-  return adapter;
+/**
+ * 根据 agentId 反查 binding 表定位对应的飞书 accountId + adapter
+ *
+ * 绑定语义：Agent ↔ 飞书应用 **1:1**（产品约束），所以 agentId + channel='feishu'
+ * 最多匹配一条 binding。若未绑定或找不到 adapter，抛带明确 accountId 的错误，
+ * 便于 Agent / 前端根因排查。
+ *
+ * bindingRouter 可为 undefined（老调用栈兼容过渡期）；缺失时回退到 "拿该 channel
+ * 下第一个 adapter"，相当于老单账号语义。
+ */
+function resolveFeishuAccount(
+  channelManager: ChannelManager,
+  bindingRouter: BindingRouter | undefined,
+  agentId: string | undefined,
+): { adapter: FeishuAdapter; accountId: string } {
+  let accountId = '';
+  if (bindingRouter && agentId) {
+    const bindings = bindingRouter.listBindings(agentId).filter((b) => b.channel === 'feishu');
+    if (bindings.length > 0) {
+      accountId = bindings[0]!.accountId ?? '';
+    }
+  }
+  const adapter = channelManager.getAdapter('feishu', accountId) as FeishuAdapter | undefined;
+  if (!adapter) {
+    throw new Error(
+      `Agent ${agentId ?? '(未知)'} 未绑定可用的飞书应用 (accountId=${accountId || '(default)'})`,
+    );
+  }
+  return { adapter, accountId };
 }
 
 /**
  * 创建 Channel 专属工具
  * 按当前通道动态注入（仅注入当前 Channel 的工具）
+ *
+ * `bindingRouter` 用于飞书工具按 agentId 反查 accountId 定位正确的 adapter
+ * （多账号场景）。不传时退化为单账号语义（每个 channel type 只有一个 adapter）。
  */
 export function createChannelTools(
   channelManager: ChannelManager,
   currentChannel: ChannelType,
+  bindingRouter?: BindingRouter,
 ): ChannelTool[] {
   const tools: ChannelTool[] = [];
 
@@ -77,9 +107,11 @@ export function createChannelTools(
       execute: async (params) => {
         const peerId = params['peerId'] as string;
         const content = params['content'] as string;
+        const agentId = params['agentId'] as string | undefined;
         const chatType = (params['chatType'] as 'private' | 'group') ?? 'private';
         if (!peerId || !content) return '错误：缺少 peerId 或 content';
-        await channelManager.sendMessage('feishu', peerId, content, chatType);
+        const { accountId } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        await channelManager.sendMessage('feishu', accountId, peerId, content, chatType);
         return `已发送到飞书 ${peerId}`;
       },
     });
@@ -98,8 +130,10 @@ export function createChannelTools(
       execute: async (params) => {
         const peerId = params['peerId'] as string;
         const card = params['card'] as string;
+        const agentId = params['agentId'] as string | undefined;
         if (!peerId || !card) return '错误：缺少 peerId 或 card';
-        await channelManager.sendMessage('feishu', peerId, card);
+        const { accountId } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        await channelManager.sendMessage('feishu', accountId, peerId, card);
         return `已发送飞书卡片到 ${peerId}`;
       },
     });
@@ -120,13 +154,15 @@ export function createChannelTools(
         const peerId = params['peerId'] as string;
         const filePath = params['filePath'] as string;
         const caption = params['caption'] as string | undefined;
+        const agentId = params['agentId'] as string | undefined;
         const chatType = (params['chatType'] as 'private' | 'group') ?? 'private';
         if (!peerId || !filePath) return '错误：缺少 peerId 或 filePath';
         // FAIL-FAST：非图片扩展名不允许走此工具，避免静默降级为 file 路径
         if (!isImageFile(filePath)) {
           return `错误：filePath 不是图片扩展名（${filePath}），请改用 feishu_send_file`;
         }
-        await channelManager.sendMediaMessage('feishu', peerId, filePath, caption, chatType);
+        const { accountId } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        await channelManager.sendMediaMessage('feishu', accountId, peerId, filePath, caption, chatType);
         return `已发送图片到飞书 ${peerId}: ${filePath}`;
       },
     });
@@ -147,10 +183,12 @@ export function createChannelTools(
         const peerId = params['peerId'] as string;
         const filePath = params['filePath'] as string;
         const caption = params['caption'] as string | undefined;
+        const agentId = params['agentId'] as string | undefined;
         const chatType = (params['chatType'] as 'private' | 'group') ?? 'private';
         if (!peerId || !filePath) return '错误：缺少 peerId 或 filePath';
+        const { accountId } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
         // 复用同一 sendMediaMessage 管道：内部按扩展名分 image/file 路径
-        await channelManager.sendMediaMessage('feishu', peerId, filePath, caption, chatType);
+        await channelManager.sendMediaMessage('feishu', accountId, peerId, filePath, caption, chatType);
         return `已发送文件到飞书 ${peerId}: ${filePath}`;
       },
     });
@@ -181,7 +219,8 @@ export function createChannelTools(
         if (!peerId || !sessionKey || !title || !body) {
           return '错误：缺少 peerId / sessionKey / title / body';
         }
-        const adapter = requireFeishuAdapter(channelManager);
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
         const options: {
           title: string;
           body: string;
@@ -224,7 +263,8 @@ export function createChannelTools(
         if (!fileToken || !commentId || !fileType || !text) {
           return '错误：缺少 fileToken / commentId / fileType / text';
         }
-        const adapter = requireFeishuAdapter(channelManager);
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
         const replyId = await adapter.replyToComment({ fileToken, commentId, fileType, text });
         return JSON.stringify({ reply_id: replyId });
       },
@@ -254,7 +294,8 @@ export function createChannelTools(
         if (!fileToken || !fileType || !text) {
           return '错误：缺少 fileToken / fileType / text';
         }
-        const adapter = requireFeishuAdapter(channelManager);
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
         const commentId = await adapter.addWholeCommentReply({ fileToken, fileType, text });
         return JSON.stringify({ comment_id: commentId });
       },
@@ -286,7 +327,8 @@ export function createChannelTools(
         if (!fileToken || !commentId || !fileType) {
           return '错误：缺少 fileToken / commentId / fileType';
         }
-        const adapter = requireFeishuAdapter(channelManager);
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
         const listParams: {
           fileToken: string;
           commentId: string;

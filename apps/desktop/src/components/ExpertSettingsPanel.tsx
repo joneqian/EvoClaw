@@ -30,6 +30,8 @@ interface ExpertSettingsPanelProps {
 /** Channel 连接状态 */
 interface ChannelStatus {
   type: string;
+  /** 多账号改造：同 channel 可能有多个账号，UI 按 (type, accountId) 索引 */
+  accountId?: string;
   name: string;
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
   error?: string;
@@ -44,6 +46,8 @@ interface ChannelStatus {
  */
 interface ChannelBinding {
   channel: string;
+  /** 多账号改造：标识该绑定关联的具体应用 ID（飞书=appId / 企微=corpId） */
+  accountId?: string | null;
   agentId: string;
   agentName?: string;
 }
@@ -649,20 +653,41 @@ function ChannelsTab({ agentId }: { agentId: string }) {
 
   const connectedCount = channels.filter((ch) => ch.status === 'connected').length;
 
-  const getChannelStatus = (type: string) => channels.find((ch) => ch.type === type);
-  const getBinding = (type: string) => bindings.find((b) => b.channel === type);
+  /**
+   * 取**当前 Agent 自己的** binding（多账号场景下，不同 Agent 可能各绑各的应用）
+   *
+   * 老代码用 `bindings.find(b => b.channel === type)` 取全局第一条，多账号下会
+   * 误把其他 Agent 的绑定认成"本专家绑定"。现在按 (channel, agentId) 精确匹配。
+   */
+  const getChannelStatus = (type: string) => {
+    const myBinding = bindings.find((b) => b.channel === type && b.agentId === agentId);
+    if (myBinding) {
+      const withAcc = channels.find(
+        (ch) => ch.type === type && (ch.accountId ?? '') === (myBinding.accountId ?? ''),
+      );
+      if (withAcc) return withAcc;
+    }
+    return channels.find((ch) => ch.type === type);
+  };
+  const getBinding = (type: string) =>
+    bindings.find((b) => b.channel === type && b.agentId === agentId);
 
   const handleDisconnect = useCallback(async (type: string) => {
-    await post('/channel/disconnect', { type });
+    // 只断开该 Agent 自己绑定的那个账号，不影响其他 Agent 同 type 的账号
+    const myBinding = bindings.find((b) => b.channel === type && b.agentId === agentId);
+    const accountId = myBinding?.accountId ?? '';
+    await post('/channel/disconnect', { type, accountId });
     setConnectingChannel(null);
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, bindings, agentId]);
 
   const handleUnbind = useCallback(async (type: string) => {
-    await post('/channel/disconnect', { type });
+    const myBinding = bindings.find((b) => b.channel === type && b.agentId === agentId);
+    const accountId = myBinding?.accountId ?? '';
+    await post('/channel/disconnect', { type, accountId });
     setConnectingChannel(null);
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, bindings, agentId]);
 
   const handleConnectSuccess = useCallback(() => {
     setConnectingChannel(null);
@@ -690,9 +715,12 @@ function ChannelsTab({ agentId }: { agentId: string }) {
         {PLATFORMS.map((p) => {
           const status = getChannelStatus(p.type);
           const binding = getBinding(p.type);
-          const isConnected = status?.status === 'connected';
           const isBoundToMe = binding?.agentId === agentId;
-          const isBoundToOther = isConnected && binding != null && binding.agentId !== agentId;
+          // 多账号下 "是否连接" 必须按**当前 Agent 自己的**账号判断，不能用全局
+          // 第一个 feishu adapter 的状态，否则 Agent B 会误操作 Agent A 的应用。
+          const isConnected = isBoundToMe && status?.status === 'connected';
+          // 多账号并存后，其他 Agent 用的只是另一个飞书应用，不阻塞本专家连自己的账号
+          const isBoundToOther = false;
           const isShowingForm = connectingChannel === p.type;
 
           return (
@@ -718,7 +746,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                     )}
                     {isBoundToOther && (
                       <span className="px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 rounded-full">
-                        已绑定到 {binding.agentName ?? '其他专家'}
+                        已绑定到 {binding?.agentName ?? '其他专家'}
                       </span>
                     )}
                   </div>

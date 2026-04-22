@@ -73,7 +73,7 @@ describe('debug command', () => {
     const result = await debugCommand.execute('', makeCtx({ stateRepo: stateRepo as any }));
     expect(result.handled).toBe(true);
     expect(result.response).toBe('Debug 模式已开启');
-    expect(stateRepo.setState).toHaveBeenCalledWith('weixin', 'debug:acc-1', 'true');
+    expect(stateRepo.setState).toHaveBeenCalledWith('weixin', '', 'debug:acc-1', 'true');
   });
 
   it('关闭 debug 模式（从开启状态）', async () => {
@@ -84,7 +84,7 @@ describe('debug command', () => {
     const result = await debugCommand.execute('', makeCtx({ stateRepo: stateRepo as any }));
     expect(result.handled).toBe(true);
     expect(result.response).toBe('Debug 模式已关闭');
-    expect(stateRepo.setState).toHaveBeenCalledWith('weixin', 'debug:acc-1', 'false');
+    expect(stateRepo.setState).toHaveBeenCalledWith('weixin', '', 'debug:acc-1', 'false');
   });
 
   it('切换 debug 模式（从关闭到开启）', async () => {
@@ -117,7 +117,7 @@ describe('debug command', () => {
       stateRepo: stateRepo as any,
     });
     await debugCommand.execute('', ctx);
-    expect(stateRepo.getState).toHaveBeenCalledWith('weixin', 'debug:custom-account');
+    expect(stateRepo.getState).toHaveBeenCalledWith('weixin', '', 'debug:custom-account');
   });
 });
 

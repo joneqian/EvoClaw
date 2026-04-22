@@ -18,13 +18,34 @@ function createMemRepo(): ChannelStateRepo & {
   _store: Map<string, string>;
 } {
   const store = new Map<string, string>();
+  const k = (channel: string, accountId: string, key: string) =>
+    `${channel}:${accountId}:${key}`;
   const repo = {
-    getState: (channel: string, key: string) => store.get(`${channel}:${key}`) ?? null,
-    setState: (channel: string, key: string, value: string) => {
-      store.set(`${channel}:${key}`, value);
+    getState: (channel: string, accountId: string, key: string) =>
+      store.get(k(channel, accountId, key)) ?? null,
+    setState: (channel: string, accountId: string, key: string, value: string) => {
+      store.set(k(channel, accountId, key), value);
     },
-    deleteState: (channel: string, key: string) => {
-      store.delete(`${channel}:${key}`);
+    deleteState: (channel: string, accountId: string, key: string) => {
+      store.delete(k(channel, accountId, key));
+    },
+    listAccounts: (channel: string) => {
+      const set = new Set<string>();
+      for (const sk of store.keys()) {
+        if (sk.startsWith(`${channel}:`)) set.add(sk.split(':')[1] ?? '');
+      }
+      return Array.from(set);
+    },
+    reassignAccountId: (channel: string, from: string, to: string) => {
+      if (from === to) return;
+      for (const sk of Array.from(store.keys())) {
+        const prefix = `${channel}:${from}:`;
+        if (sk.startsWith(prefix)) {
+          const newKey = `${channel}:${to}:${sk.slice(prefix.length)}`;
+          store.set(newKey, store.get(sk)!);
+          store.delete(sk);
+        }
+      }
     },
     _store: store,
   };
@@ -59,8 +80,8 @@ describe('POST /channel/disconnect', () => {
     repo = createMemRepo();
     manager = createFakeManager();
     binding = createFakeBindingRouter();
-    repo.setState('feishu', 'credentials', JSON.stringify({ appId: 'cli_x', appSecret: 'sec_x' }));
-    repo.setState('feishu', 'name', '飞书');
+    repo.setState('feishu', '', 'credentials', JSON.stringify({ appId: 'cli_x', appSecret: 'sec_x' }));
+    repo.setState('feishu', '', 'name', '飞书');
   });
 
   it('默认不清除 credentials', async () => {
@@ -71,8 +92,8 @@ describe('POST /channel/disconnect', () => {
       headers: { 'content-type': 'application/json' },
     });
     expect(res.status).toBe(200);
-    expect(repo.getState('feishu', 'credentials')).toBeTruthy();
-    expect(repo.getState('feishu', 'name')).toBe('飞书');
+    expect(repo.getState('feishu', '', 'credentials')).toBeTruthy();
+    expect(repo.getState('feishu', '', 'name')).toBe('飞书');
   });
 
   it('purge=true 清除 credentials', async () => {
@@ -83,8 +104,8 @@ describe('POST /channel/disconnect', () => {
       headers: { 'content-type': 'application/json' },
     });
     expect(res.status).toBe(200);
-    expect(repo.getState('feishu', 'credentials')).toBeNull();
-    expect(repo.getState('feishu', 'name')).toBeNull();
+    expect(repo.getState('feishu', '', 'credentials')).toBeNull();
+    expect(repo.getState('feishu', '', 'name')).toBeNull();
   });
 });
 
@@ -109,6 +130,7 @@ describe('GET /channel/credentials/:type', () => {
   it('有 credentials 时脱敏返回 + hasSecret=true', async () => {
     repo.setState(
       'feishu',
+      '',
       'credentials',
       JSON.stringify({
         appId: 'cli_x',
@@ -119,7 +141,7 @@ describe('GET /channel/credentials/:type', () => {
         groupHistoryEnabled: 'true',
       }),
     );
-    repo.setState('feishu', 'name', '飞书');
+    repo.setState('feishu', '', 'name', '飞书');
 
     const app = createChannelRoutes(manager, undefined, repo);
     const res = await app.request('/credentials/feishu');
@@ -137,7 +159,7 @@ describe('GET /channel/credentials/:type', () => {
   });
 
   it('credentials 非法 JSON 时返回 null', async () => {
-    repo.setState('feishu', 'credentials', 'not valid json');
+    repo.setState('feishu', '', 'credentials', 'not valid json');
     const app = createChannelRoutes(manager, undefined, repo);
     const res = await app.request('/credentials/feishu');
     const body = await res.json();
@@ -148,6 +170,7 @@ describe('GET /channel/credentials/:type', () => {
   it('appSecret 为空字符串时 hasSecret=false', async () => {
     repo.setState(
       'feishu',
+      '',
       'credentials',
       JSON.stringify({ appId: 'cli_x', appSecret: '' }),
     );
@@ -178,6 +201,7 @@ describe('POST /channel/connect appSecret 留空沿用旧值', () => {
   it('appSecret 空 + DB 有旧值 → connect 收到的 credentials 被补上旧 secret', async () => {
     repo.setState(
       'feishu',
+      '',
       'credentials',
       JSON.stringify({ appId: 'cli_old', appSecret: 'sec_old', encryptKey: 'enc_old' }),
     );
@@ -208,6 +232,7 @@ describe('POST /channel/connect appSecret 留空沿用旧值', () => {
   it('appSecret 有显式新值时不被覆盖', async () => {
     repo.setState(
       'feishu',
+      '',
       'credentials',
       JSON.stringify({ appSecret: 'sec_old' }),
     );
@@ -245,7 +270,7 @@ describe('POST /channel/connect appSecret 留空沿用旧值', () => {
   });
 
   it('旧凭据 JSON 非法时跳过沿用（不抛错）', async () => {
-    repo.setState('feishu', 'credentials', 'not json');
+    repo.setState('feishu', '', 'credentials', 'not json');
 
     const app = createChannelRoutes(manager, undefined, repo);
     const res = await app.request('/connect', {
@@ -273,7 +298,8 @@ describe('POST /channel/connect appSecret 留空沿用旧值', () => {
       }),
       headers: { 'content-type': 'application/json' },
     });
-    const stored = repo.getState('feishu', 'credentials');
+    // 新代码按 credentials.appId 派生 accountId='cli_x' 存储（多账号语义）
+    const stored = repo.getState('feishu', 'cli_x', 'credentials');
     expect(stored).toContain('cli_x');
     expect(stored).toContain('sec_x');
   });

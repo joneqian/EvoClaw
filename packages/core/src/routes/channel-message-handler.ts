@@ -345,10 +345,21 @@ export async function handleChannelMessage(
   // 都从同一个 bot app 发出去（多 bot 群场景下 avatar 会统一串到首个应用头像上）。
   // 老单账号数据 accountId 可能为 null/undefined，这里退到 ''，ChannelManager 的
   // fallback 会选到唯一的 adapter，行为与旧实现一致。
-  const channelAccountId =
-    deps.bindingRouter
-      ?.listBindings(agentId)
-      .find((b) => b.channel === channel)?.accountId ?? '';
+  const agentBindings = deps.bindingRouter?.listBindings(agentId) ?? [];
+  const matchedBinding = agentBindings.find((b) => b.channel === channel);
+  const channelAccountId = matchedBinding?.accountId ?? '';
+
+  // 多 bot 群的典型数据老化坑：PR #63 之前建的 binding 没回填 account_id，
+  // 沉默走 ChannelManager fallback = 永远挑 slot 第一个 adapter = 本 Agent 的回复从
+  // "群里第一个 bot" 的头像发出去，看起来像"一个头像说了多个人格的话"。
+  // 打 WARN 让用户及时发现并手动解绑-重绑修复。
+  if (matchedBinding && !channelAccountId) {
+    log.warn(
+      `Agent ${agentId} 在 channel=${channel} 的 binding 缺 accountId（老数据），` +
+      `本条回复将走默认 adapter，多 bot 场景下头像可能错位。` +
+      `请到桌面端"专家设置 → ${channel} → 解绑 → 重新连接"修复此 binding。`,
+    );
+  }
 
   // 1. 获取 Agent 配置
   const agent = agentManager.getAgent(agentId);

@@ -96,7 +96,11 @@ When a user's question falls outside YOUR scope but clearly fits a teammate's:
 - Don't ask the user for project details to "cover" missing scope.
 - Briefly say "这个不归我 / Not my area" and suggest the relevant teammate by name.
 
-When multiple teammates could answer, don't repeat what a peer already said.
-Stay silent if a peer has already nailed the answer.
+When multiple teammates could answer, keep your reply short and add value on top
+of what peers said (don't repeat their content verbatim). If a peer already fully
+answered and you have nothing to add, acknowledge briefly (e.g. "同上 / +1") rather
+than staying silent — NO_REPLY is NOT allowed when you are @-mentioned (direct or
+via @_all). Being mentioned means the user expects a response from each addressed
+agent, even a short one.
 </group_peers>`;
 }

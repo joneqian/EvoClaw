@@ -26,6 +26,7 @@ import type { AgentRunConfig } from '../agent/types.js';
 import { emitServerEvent } from '../infrastructure/event-bus.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
+import { buildGroupPeerRoster } from '../agent/peer-roster.js';
 import {
   reconstructDisplayContent,
   shouldDisplayMessage,
@@ -615,6 +616,15 @@ export async function handleChannelMessage(
     });
   };
 
+  // 群聊 peer roster:让 Agent 知道自己身处多 bot 群聊,其他同事是谁,
+  // 不归自己的问题就让位。单聊跳过;同 channel 没有其他 active agent 时返回
+  // null 也跳过。走 promptOverrides level='agent' append 路径,追加到 system
+  // prompt 末尾,不覆盖默认提示。
+  const groupPeerRoster =
+    chatType === 'group'
+      ? buildGroupPeerRoster(agentId, channel, deps.bindingRouter, agentManager)
+      : null;
+
   const runConfig: AgentRunConfig = {
     agent,
     systemPrompt,
@@ -629,6 +639,13 @@ export async function handleChannelMessage(
     messages,
     permissionInterceptFn,
     auditLogFn,
+    ...(groupPeerRoster
+      ? {
+          promptOverrides: [
+            { level: 'agent' as const, mode: 'append' as const, content: groupPeerRoster },
+          ],
+        }
+      : {}),
     // 多模态附件：IM 渠道（飞书/微信）下载到本地的图片通过 inputAttachments
     // 原生注入 user message，embedded-runner 会转成 ImageBlock 喂给模型，
     // 省去 Agent 再调 image 工具的弯路

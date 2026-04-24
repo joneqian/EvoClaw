@@ -95,6 +95,22 @@ export function __clearInboundDedupe(): void {
   SEEN_MESSAGE_IDS.clear();
 }
 
+/**
+ * 检测纯文本中是否存在 `@_all` 裸 token
+ *
+ * 飞书真实行为：群聊 `@所有人` 时 `mentions` 为空数组，标记仅以 `@_all`
+ * 字面 token 出现在文本里（text 消息为 `{"text":"@_all 大家好"}`）。
+ * 测试 fixture 长期写的是 `mentions: [{key:'@_all'}]`，和真机不一致 —— 这
+ * 是本函数兜底的动机。
+ *
+ * 边界要求：`@_all` 必须与前后留空白或串首/尾相接，避免误匹配
+ * `user@_all.com` / `@_allcaps` 之类的假阳。
+ */
+export function containsAtAllToken(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return /(^|\s)@_all(\s|$)/.test(text);
+}
+
 /** im.message.receive_v1 事件载荷（与 SDK 类型同构，取必要字段） */
 export interface FeishuReceiveEvent {
   sender: {
@@ -235,16 +251,21 @@ export async function handleReceiveMessage(
   if (isGroup) {
     const mentions = message.mentions ?? [];
     const botOpenId = ctx.getBotOpenId();
-    const mentioned = mentions.some((m) => {
-      if (m.key === '@_all') return true;
-      if (botOpenId === null) return false;
-      // 鲁棒性：同时匹配 open_id / user_id / union_id 的任一（飞书通常只填 open_id）
-      return (
-        m.id.open_id === botOpenId ||
-        m.id.user_id === botOpenId ||
-        m.id.union_id === botOpenId
-      );
-    });
+    // @_all 真机 payload 的 mentions 为空，标记藏在 parsed.text 里；测试 fixture
+    // 把 key 写在 mentions 是历史残留，两路都覆盖以防后续 Feishu 改回去。
+    const atAllInText = containsAtAllToken(parsed.text);
+    const mentioned =
+      atAllInText ||
+      mentions.some((m) => {
+        if (m.key === '@_all') return true;
+        if (botOpenId === null) return false;
+        // 鲁棒性：同时匹配 open_id / user_id / union_id 的任一（飞书通常只填 open_id）
+        return (
+          m.id.open_id === botOpenId ||
+          m.id.user_id === botOpenId ||
+          m.id.union_id === botOpenId
+        );
+      });
     if (!mentioned) {
       // 未 @ 的群消息进入旁听缓冲（Phase A），不触发 agent
       recordToGroupHistory(ctx, message, {
@@ -361,7 +382,7 @@ export async function handleReceiveMessage(
 
     // Phase B: 群聊广播 fanout —— 命中时把目标 agent 列表挂到 normalized.broadcastTargets
     // 由 server.ts 路由层循环派发，绕过 BindingRouter
-    const broadcastTargets = resolveBroadcastFanout(ctx, message);
+    const broadcastTargets = resolveBroadcastFanout(ctx, message, parsed.text);
     if (broadcastTargets && broadcastTargets.length > 0) {
       normalized.broadcastTargets = broadcastTargets;
     }
@@ -388,11 +409,14 @@ export async function handleReceiveMessage(
 function resolveBroadcastFanout(
   ctx: InboundContext,
   message: FeishuReceiveEvent['message'],
+  parsedText: string,
 ): string[] | null {
   const config = ctx.getBroadcastConfig?.() ?? null;
   if (!config || !config.enabled) return null;
   const mentions = message.mentions ?? [];
-  const mentionedAll = mentions.some((m) => m.key === '@_all');
+  // 同步修 @_all：真机 mentions 为空 + 裸 token 在文本里，见 containsAtAllToken 注释
+  const mentionedAll =
+    containsAtAllToken(parsedText) || mentions.some((m) => m.key === '@_all');
   return resolveBroadcastTargets({
     config,
     peerId: message.chat_id,

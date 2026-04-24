@@ -483,6 +483,34 @@ describe('handleReceiveMessage', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  // 真机实测：飞书 @所有人 的 payload 里 mentions 是空数组，@_all 裸 token
+  // 直接出现在 text 里（如 `{"text":"@_all 大家好"}`），需要兜底识别
+  it('群聊 @所有人（mentions 空，@_all 在 text）应通过', async () => {
+    const { ctx, handler } = makeCtx({ getBotOpenId: () => 'ou_bot' });
+    await handleReceiveMessage(
+      buildEvent({
+        chat_type: 'group',
+        mentions: [],
+        content: '{"text":"@_all 大家好"}',
+      }),
+      ctx,
+    );
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it('群聊 text 里伪 @_all 字符（邮件式）不应误触发', async () => {
+    const { ctx, handler } = makeCtx({ getBotOpenId: () => 'ou_bot' });
+    await handleReceiveMessage(
+      buildEvent({
+        chat_type: 'group',
+        mentions: [],
+        content: '{"text":"please email me at foo@_allcaps.example"}',
+      }),
+      ctx,
+    );
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('群聊 @其他人 应被过滤', async () => {
     const { ctx, handler } = makeCtx({ getBotOpenId: () => 'ou_bot' });
     await handleReceiveMessage(

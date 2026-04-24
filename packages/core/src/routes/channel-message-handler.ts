@@ -339,6 +339,16 @@ export async function handleChannelMessage(
   const message = composeMessageWithQuote(ctx.message, ctx.quoted);
   const { store, agentManager, channelManager, configManager, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, laneQueue, memoryStore, ftsStore, knowledgeGraph } = deps;
 
+  // 多账号：解析本 Agent 在该 channel 下绑定的 accountId，后续 sendMessage 显式传入，
+  // 避免 ChannelManager 在无 accountId 时回退到"第一个 adapter"导致所有 Agent 的回复
+  // 都从同一个 bot app 发出去（多 bot 群场景下 avatar 会统一串到首个应用头像上）。
+  // 老单账号数据 accountId 可能为 null/undefined，这里退到 ''，ChannelManager 的
+  // fallback 会选到唯一的 adapter，行为与旧实现一致。
+  const channelAccountId =
+    deps.bindingRouter
+      ?.listBindings(agentId)
+      .find((b) => b.channel === channel)?.accountId ?? '';
+
   // 1. 获取 Agent 配置
   const agent = agentManager.getAgent(agentId);
   if (!agent) {
@@ -672,7 +682,7 @@ export async function handleChannelMessage(
         if (!thinkingHintSent) {
           thinkingHintSent = true;
           const toolHint = formatToolHintForChannel(toolName);
-          channelManager.sendMessage(channel as any, peerId, toolHint, chatType === 'group' ? 'group' : 'private')
+          channelManager.sendMessage(channel as any, channelAccountId, peerId, toolHint, chatType === 'group' ? 'group' : 'private')
             .catch((err) => { log.warn(`工具提示发送失败: ${err instanceof Error ? err.message : String(err)}`); });
         }
       }
@@ -721,14 +731,15 @@ export async function handleChannelMessage(
   // 10. 通过 Channel 发送回复（跳过 NO_REPLY 和空响应）
   if (cleanResponse && cleanResponse !== NO_REPLY_TOKEN) {
     try {
-      log.info(`开始发送渠道回复: channel=${channel} peer=${peerId} chars=${cleanResponse.length}`);
+      log.info(`开始发送渠道回复: channel=${channel} accountId=${channelAccountId || '(default)'} peer=${peerId} chars=${cleanResponse.length}`);
       await channelManager.sendMessage(
         channel as any,
+        channelAccountId,
         peerId,
         cleanResponse,
         chatType === 'group' ? 'group' : 'private',
       );
-      log.info(`渠道回复发送成功: channel=${channel} peer=${peerId}`);
+      log.info(`渠道回复发送成功: channel=${channel} accountId=${channelAccountId || '(default)'} peer=${peerId}`);
     } catch (sendErr) {
       log.error(`渠道回复发送失败 (channel=${channel} peer=${peerId}):`, sendErr);
     }

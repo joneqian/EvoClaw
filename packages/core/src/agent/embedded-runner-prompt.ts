@@ -283,6 +283,9 @@ When the user asks to find a file:
       text: `<silent_reply>
 If you determine the current message needs no reply (e.g., it's just an acknowledgment, emoji, or system notification),
 reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show anything to the user.
+
+Exception: If the current message @-mentions you or contains @_all, do NOT use ${NO_REPLY_TOKEN}.
+You were explicitly addressed and must reply even if briefly (a short acknowledgment is fine).
 </silent_reply>`,
       cacheControl: { type: 'ephemeral', scope: 'global' },
       label: 'silent_reply',

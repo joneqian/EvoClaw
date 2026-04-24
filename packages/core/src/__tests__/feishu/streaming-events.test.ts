@@ -178,6 +178,7 @@ describe('registerOtherEventHandlers', () => {
     callbacks = {};
     registerOtherEventHandlers(dispatcher, {
       getCallbacks: () => callbacks,
+      getAccountId: () => 'cli_test',
     });
   });
 

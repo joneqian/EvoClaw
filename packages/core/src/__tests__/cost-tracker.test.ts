@@ -44,7 +44,7 @@ describe('Model Pricing', () => {
   });
 
   it('国产模型定价', () => {
-    const pricing = getModelPricing('deepseek-chat');
+    const pricing = getModelPricing('deepseek-v4-flash');
     expect(pricing).not.toBeNull();
     expect(pricing!.input).toBeGreaterThan(0);
   });

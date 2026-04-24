@@ -30,9 +30,9 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
     // Anthropic 不提供 embedding API
   },
   {
-    id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1',
-    api: 'openai-completions', placeholder: 'sk-...',
-    defaultModel: { id: 'deepseek-chat', name: 'DeepSeek Chat' },
+    id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/anthropic',
+    api: 'anthropic', placeholder: 'sk-...',
+    defaultModel: { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
     // DeepSeek 不提供 embedding API
   },
   {

@@ -21,13 +21,13 @@ describe('E2E: Provider 配置', () => {
       headers: jsonHeaders(),
       body: JSON.stringify({
         models: {
-          default: 'deepseek/deepseek-chat',
+          default: 'deepseek/deepseek-v4-flash',
           providers: {
             deepseek: {
-              baseUrl: 'https://api.deepseek.com/v1',
+              baseUrl: 'https://api.deepseek.com/anthropic',
               apiKey: 'sk-test',
-              api: 'openai-completions',
-              models: [{ id: 'deepseek-chat', name: 'DeepSeek Chat' }],
+              api: 'anthropic-messages',
+              models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' }],
             },
           },
         },

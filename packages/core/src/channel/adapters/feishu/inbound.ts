@@ -37,16 +37,21 @@ import type {
 const log = createLogger('feishu-inbound');
 
 /**
- * 入站事件去重 —— 防止飞书服务端重推导致 Agent 重复处理
+ * 入站事件去重 —— 防止飞书服务端重推导致 **同一** Agent 重复处理
  *
- * 背景：飞书 WS 对同一条用户消息可能投递多次（不同 message_id 但同 trace_id，
- * 或完全相同 message_id）。服务端触发重推的典型条件：
+ * 背景：飞书 WS 对同一条用户消息可能投递多次（不同 WS message_id 但同 app 层
+ * message.message_id）。服务端触发重推的典型条件：
  * - SDK 的 `eventDispatcher.invoke` 返回过慢（> ~10s）→ 服务端认为客户端失效
  * - 网络抖动导致 ACK 丢失
  *
- * 本次真机实测：Agent 处理 9+ 秒 → 服务端 18 秒后重推，导致用户发一句"你好"
- * 收到两次回复。主修复是把 handler 改为 fire-and-forget 让 SDK 秒 ACK，这份
- * LRU 是兜底。
+ * **重要**：key 必须包含 accountId（= appId），否则群里多 bot 协作时，飞书会把
+ * 同一条群消息 fanout 给 N 个 app 的 WS（每个 app 各一份，message_id 相同），
+ * 全局 key 会让除第一个到达的 adapter 外其他全部被误判成"重推"并 drop，
+ * 导致 2..N 号 agent 的旁听缓冲永远空、@ 对方时看不到上下文。
+ *
+ * 本次真机实测（fire-and-forget 之前）：Agent 处理 9+ 秒 → 服务端 18 秒后重推，
+ * 导致用户发一句"你好"收到两次回复。主修复是把 handler 改为 fire-and-forget 让
+ * SDK 秒 ACK，这份 LRU 是兜底。
  *
  * 简单 Map + 时间戳 + 软容量上限即可（不追求 O(1) LRU 淘汰精确度，避免引入
  * 额外依赖；飞书 WS 单连接单进程，并发压力有限）。
@@ -55,7 +60,12 @@ const SEEN_MESSAGE_IDS = new Map<string, number>();
 const SEEN_TTL_MS = 10 * 60_000; // 10 分钟窗口
 const SEEN_MAX_SIZE = 2000;
 
-function markSeen(messageId: string): boolean {
+/** 复合 key：accountId + U+001F(Unit Separator) + messageId，跨 appId 互不干扰 */
+function dedupeKey(accountId: string, messageId: string): string {
+  return `${accountId}${messageId}`;
+}
+
+function markSeen(accountId: string, messageId: string): boolean {
   const now = Date.now();
   // 懒淘汰：触发容量或 TTL 时扫一遍
   if (SEEN_MESSAGE_IDS.size >= SEEN_MAX_SIZE) {
@@ -71,11 +81,12 @@ function markSeen(messageId: string): boolean {
       }
     }
   }
-  const prev = SEEN_MESSAGE_IDS.get(messageId);
+  const key = dedupeKey(accountId, messageId);
+  const prev = SEEN_MESSAGE_IDS.get(key);
   if (prev !== undefined && now - prev < SEEN_TTL_MS) {
     return true; // 已见过
   }
-  SEEN_MESSAGE_IDS.set(messageId, now);
+  SEEN_MESSAGE_IDS.set(key, now);
   return false;
 }
 
@@ -175,12 +186,13 @@ export function registerInboundHandlers(
       // 诊断日志（临时）：确认事件有派发进来 + 记录 msg_type / 是否带 parent_id
       // 配合 WS 层的 `[feishu-ws] receive message, data: undefined` 一起看，
       // 如果有 WS 日志但没这行，说明 SDK dispatcher 没派发到本回调
+      // 带 appId 前缀，方便群里多 bot 时区分是哪个 adapter 的日志
       log.info(
-        `事件派发 messageId=${data.message?.message_id} msg_type=${data.message?.message_type} parent_id=${data.message?.parent_id ?? '-'} chat_type=${data.message?.chat_type}`,
+        `[${ctx.getAccountId()}] 事件派发 messageId=${data.message?.message_id} msg_type=${data.message?.message_type} parent_id=${data.message?.parent_id ?? '-'} chat_type=${data.message?.chat_type}`,
       );
       handleReceiveMessage(data, ctx).catch((err) => {
         log.error(
-          `入站处理失败 messageId=${data.message?.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+          `[${ctx.getAccountId()}] 入站处理失败 messageId=${data.message?.message_id}: ${err instanceof Error ? err.message : String(err)}`,
         );
       });
     },
@@ -203,11 +215,13 @@ export async function handleReceiveMessage(
   // 忽略机器人自己的消息
   if (data.sender.sender_type === 'app') return;
 
+  const accountId = ctx.getAccountId();
   const message = data.message;
 
-  // 去重（见文件顶部 SEEN_MESSAGE_IDS 说明）：飞书服务端可能重推同一 messageId
-  if (markSeen(message.message_id)) {
-    log.warn(`忽略重复推送 messageId=${message.message_id}`);
+  // 去重（见文件顶部 SEEN_MESSAGE_IDS 说明）：飞书服务端可能向**同一 app** 重推
+  // 相同 messageId。多 app fanout 因 key 带 accountId 互不干扰。
+  if (markSeen(accountId, message.message_id)) {
+    log.warn(`[${accountId}] 忽略重复推送 messageId=${message.message_id}`);
     return;
   }
   const senderOpenId = data.sender.sender_id?.open_id ?? '';
@@ -239,6 +253,11 @@ export async function handleReceiveMessage(
         body: parsed.text,
         fromBot: false,
       });
+      // 排障点：真机测试文档 T4.1 期望在此能看到"drop"类日志。DEBUG 级足够，
+      // 默认 log level 过滤掉，避免扰乱正常运行。
+      log.debug(
+        `[${accountId}] 群消息未@本机器人，已入旁听缓冲 chat=${message.chat_id} msg=${message.message_id}`,
+      );
       return;
     }
   }
@@ -295,7 +314,7 @@ export async function handleReceiveMessage(
   if (parsed.mediaKey) {
     const downloader = ctx.getMediaDownloader?.() ?? null;
     log.info(
-      `媒体消息进入下载流程 messageId=${message.message_id} msg_type=${message.message_type} mediaKey=${parsed.mediaKey.slice(0, 20)}... downloader=${downloader ? '就绪' : '缺失'}`,
+      `[${accountId}] 媒体消息进入下载流程 messageId=${message.message_id} msg_type=${message.message_type} mediaKey=${parsed.mediaKey.slice(0, 20)}... downloader=${downloader ? '就绪' : '缺失'}`,
     );
     if (downloader) {
       try {
@@ -309,15 +328,15 @@ export async function handleReceiveMessage(
           normalized.mediaPath = downloaded.path;
           if (downloaded.mimeType) normalized.mediaType = downloaded.mimeType;
           log.info(
-            `媒体下载成功 messageId=${message.message_id} path=${downloaded.path} mime=${downloaded.mimeType ?? '-'}`,
+            `[${accountId}] 媒体下载成功 messageId=${message.message_id} path=${downloaded.path} mime=${downloaded.mimeType ?? '-'}`,
           );
         } else {
-          log.warn(`媒体下载返回 null messageId=${message.message_id}`);
+          log.warn(`[${accountId}] 媒体下载返回 null messageId=${message.message_id}`);
         }
       } catch (err) {
         // 下载失败不阻塞消息流，但日志要打出来（否则 mediaPath 静默丢失无法排查）
         log.warn(
-          `媒体下载失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+          `[${accountId}] 媒体下载失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
@@ -355,7 +374,7 @@ export async function handleReceiveMessage(
   // undefined），直接 `.catch` 会 NPE；先 resolve 统一包成 Promise。
   await Promise.resolve(handler(normalized)).catch((err) => {
     log.error(
-      `agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+      `[${accountId}] agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
 }
@@ -454,6 +473,7 @@ async function resolveQuotedMessage(
 
   const fetcher = ctx.getMessageFetcher?.() ?? null;
   if (fetcher) {
+    const accountId = ctx.getAccountId();
     try {
       const fetched = await fetcher(parentId);
       if (fetched) {
@@ -461,10 +481,10 @@ async function resolveQuotedMessage(
         cache?.put(fetched);
         return entryToQuoted(fetched);
       }
-      log.warn(`引用消息回查返回 null parentId=${parentId}（权限不足 / 消息不存在 / 机器人不在会话中）`);
+      log.warn(`[${accountId}] 引用消息回查返回 null parentId=${parentId}（权限不足 / 消息不存在 / 机器人不在会话中）`);
     } catch (err) {
       log.warn(
-        `引用消息回查失败 parentId=${parentId}: ${describeFetchError(err)}`,
+        `[${accountId}] 引用消息回查失败 parentId=${parentId}: ${describeFetchError(err)}`,
       );
     }
   }

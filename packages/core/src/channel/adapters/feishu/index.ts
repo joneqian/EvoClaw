@@ -227,6 +227,7 @@ export class FeishuAdapter implements ChannelAdapter {
 
       registerOtherEventHandlers(bundle.dispatcher, {
         getCallbacks: () => this.eventCallbacks,
+        getAccountId: () => this.credentials?.appId ?? '',
       });
 
       await bundle.wsClient.start({ eventDispatcher: bundle.dispatcher });

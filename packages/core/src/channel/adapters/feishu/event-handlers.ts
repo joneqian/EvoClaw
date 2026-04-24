@@ -77,6 +77,8 @@ export interface FeishuEventCallbacks {
 /** 注册事件处理器上下文 */
 export interface EventHandlerContext {
   getCallbacks: () => FeishuEventCallbacks;
+  /** appId，日志前缀用（多 bot 场景下区分来源 adapter） */
+  getAccountId: () => string;
 }
 
 /**
@@ -86,41 +88,42 @@ export function registerOtherEventHandlers(
   dispatcher: Lark.EventDispatcher,
   ctx: EventHandlerContext,
 ): Lark.EventDispatcher {
+  const acc = () => ctx.getAccountId();
   dispatcher.register({
     // 反应事件
     'im.message.reaction.created_v1': async (data: FeishuReactionEvent) => {
       log.info(
-        `reaction added emoji=${data.reaction_type?.emoji_type} msg=${data.message_id}`,
+        `[${acc()}] reaction added emoji=${data.reaction_type?.emoji_type} msg=${data.message_id}`,
       );
-      await safeInvoke(ctx.getCallbacks().onReactionCreated, data);
+      await safeInvoke(ctx.getCallbacks().onReactionCreated, data, acc());
     },
     'im.message.reaction.deleted_v1': async (data: FeishuReactionEvent) => {
       log.info(
-        `reaction removed emoji=${data.reaction_type?.emoji_type} msg=${data.message_id}`,
+        `[${acc()}] reaction removed emoji=${data.reaction_type?.emoji_type} msg=${data.message_id}`,
       );
-      await safeInvoke(ctx.getCallbacks().onReactionDeleted, data);
+      await safeInvoke(ctx.getCallbacks().onReactionDeleted, data, acc());
     },
     // 机器人入群
     'im.chat.member.bot.added_v1': async (data: FeishuChatMemberBotEvent) => {
-      log.info(`bot added to chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
-      await safeInvoke(ctx.getCallbacks().onBotAddedToChat, data);
+      log.info(`[${acc()}] bot added to chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
+      await safeInvoke(ctx.getCallbacks().onBotAddedToChat, data, acc());
     },
     // 机器人被踢
     'im.chat.member.bot.deleted_v1': async (data: FeishuChatMemberBotEvent) => {
-      log.info(`bot removed from chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
-      await safeInvoke(ctx.getCallbacks().onBotRemovedFromChat, data);
+      log.info(`[${acc()}] bot removed from chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
+      await safeInvoke(ctx.getCallbacks().onBotRemovedFromChat, data, acc());
     },
     // 用户首次进入单聊
     'im.chat.access_event.bot_p2p_chat_entered_v1': async (data: FeishuP2pEnteredEvent) => {
-      log.info(`p2p chat entered chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
-      await safeInvoke(ctx.getCallbacks().onP2pChatEntered, data);
+      log.info(`[${acc()}] p2p chat entered chat=${data.chat_id} by ${data.operator_id?.open_id ?? '?'}`);
+      await safeInvoke(ctx.getCallbacks().onP2pChatEntered, data, acc());
     },
     // 文档新评论（SDK 未强类型，key 透传）
     'drive.notice.comment_add_v1': async (data: FeishuDriveCommentEvent) => {
       log.info(
-        `drive comment added file=${data.file_token} from=${data.from_open_id ?? '?'} whole=${data.is_whole}`,
+        `[${acc()}] drive comment added file=${data.file_token} from=${data.from_open_id ?? '?'} whole=${data.is_whole}`,
       );
-      await safeInvoke(ctx.getCallbacks().onDriveCommentAdd, data);
+      await safeInvoke(ctx.getCallbacks().onDriveCommentAdd, data, acc());
     },
   } as unknown as Parameters<typeof dispatcher.register>[0]);
   return dispatcher;
@@ -130,11 +133,12 @@ export function registerOtherEventHandlers(
 async function safeInvoke<T>(
   fn: ((event: T) => void | Promise<void>) | undefined,
   event: T,
+  accountId: string,
 ): Promise<void> {
   if (!fn) return;
   try {
     await fn(event);
   } catch (err) {
-    log.warn(`事件回调异常: ${err instanceof Error ? err.message : err}`);
+    log.warn(`[${accountId}] 事件回调异常: ${err instanceof Error ? err.message : err}`);
   }
 }

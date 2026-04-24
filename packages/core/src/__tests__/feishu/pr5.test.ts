@@ -39,6 +39,7 @@ describe('drive.notice.comment_add_v1 事件路由', () => {
     callbacks = {};
     registerOtherEventHandlers(dispatcher, {
       getCallbacks: () => callbacks,
+      getAccountId: () => 'cli_test',
     });
   });
 

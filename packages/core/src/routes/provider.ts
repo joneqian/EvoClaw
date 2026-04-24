@@ -340,15 +340,37 @@ export function createProviderRoutes(
       const ext = getProviderExtension(id);
       const testModel = ext?.models[0]?.id ?? provider?.models[0]?.id ?? 'gpt-4o-mini';
 
-      // 轻量级连接测试: 用 fetch 直接调用 /models 端点验证 API Key
       const { buildAuthHeaders } = await import('../provider/model-fetcher.js');
       const headers = buildAuthHeaders(apiKey, id, baseUrl);
-      const modelsUrl = `${baseUrl}/models`;
 
-      const testResp = await fetch(modelsUrl, {
-        headers,
-        signal: AbortSignal.timeout(10_000),
-      });
+      // Anthropic 协议端点（含兼容端点如 DeepSeek /anthropic）通常不暴露 /models，
+      // 用 POST /v1/messages + max_tokens:1 做最小探测；其他协议仍走 /models。
+      const isAnthropic =
+        id === 'anthropic' ||
+        baseUrl.includes('anthropic.com') ||
+        /\/anthropic(\/|$)/.test(baseUrl);
+
+      let testResp: Response;
+      if (isAnthropic) {
+        const anthropicBase = /\/v1\/?$/.test(baseUrl)
+          ? baseUrl.replace(/\/+$/, '')
+          : `${baseUrl.replace(/\/+$/, '')}/v1`;
+        testResp = await fetch(`${anthropicBase}/messages`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: testModel,
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+      } else {
+        testResp = await fetch(`${baseUrl}/models`, {
+          headers,
+          signal: AbortSignal.timeout(10_000),
+        });
+      }
 
       if (!testResp.ok) {
         const errText = await testResp.text().catch(() => '');

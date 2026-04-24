@@ -144,8 +144,8 @@ describe('ProviderRegistry', () => {
     const p = getProvider('deepseek');
     expect(p).toBeDefined();
     expect(p!.name).toBe('DeepSeek');
-    expect(p!.models.some(m => m.id === 'deepseek-chat')).toBe(true);
-    expect(p!.models.some(m => m.id === 'deepseek-reasoner')).toBe(true);
+    expect(p!.models.some(m => m.id === 'deepseek-v4-flash')).toBe(true);
+    expect(p!.models.some(m => m.id === 'deepseek-v4-pro')).toBe(true);
   });
 
   it('registerMiniMax 应正确注册', () => {

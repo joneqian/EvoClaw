@@ -211,8 +211,11 @@ export function buildAuthHeaders(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  // 兼容 Anthropic 原生端点（anthropic.com）以及 Anthropic 协议兼容端点（如 DeepSeek /anthropic）
   const isAnthropic =
-    providerId === 'anthropic' || baseUrl.includes('anthropic.com');
+    providerId === 'anthropic' ||
+    baseUrl.includes('anthropic.com') ||
+    /\/anthropic(\/|$)/.test(baseUrl);
   const isGlm = providerId === 'glm' || baseUrl.includes('bigmodel.cn');
 
   if (isAnthropic) {

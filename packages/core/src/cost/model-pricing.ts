@@ -63,9 +63,9 @@ const PRICING_TABLE: Record<string, ModelPricing> = {
   'glm-4':                 { input: 1.38, output: 1.38 },   // ¥10/¥10 per 1M
   'glm-4-flash':           { input: 0,    output: 0 },      // 免费
 
-  // DeepSeek
-  'deepseek-chat':         { input: 0.14, output: 0.28 },   // ¥1/¥2 per 1M
-  'deepseek-reasoner':     { input: 0.55, output: 2.21 },   // ¥4/¥16 per 1M
+  // DeepSeek V4
+  'deepseek-v4-flash':     { input: 0.138, output: 0.276, cacheRead: 0.028 },  // ¥1/¥2，缓存命中 ¥0.2 per 1M
+  'deepseek-v4-pro':       { input: 1.655, output: 3.310, cacheRead: 0.138 },  // ¥12/¥24，缓存命中 ¥1 per 1M
 
   // Doubao (豆包)
   'doubao-pro-256k':       { input: 0.69, output: 1.24 },   // ¥5/¥9 per 1M

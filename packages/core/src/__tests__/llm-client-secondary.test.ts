@@ -88,15 +88,15 @@ describe('resolveSecondaryModelId', () => {
     expect(result).toBe('qwen-turbo-latest');
   });
 
-  it('国产模型 deepseek 应 fallback 到 deepseek-chat', () => {
+  it('国产模型 deepseek 应 fallback 到 deepseek-v4-flash', () => {
     const cm = mockConfigManager({
       provider: 'deepseek',
-      modelId: 'deepseek-reasoner',
+      modelId: 'deepseek-v4-pro',
       models: [],
     });
 
-    const result = resolveSecondaryModelId(cm, 'deepseek', 'deepseek-reasoner');
-    expect(result).toBe('deepseek-chat');
+    const result = resolveSecondaryModelId(cm, 'deepseek', 'deepseek-v4-pro');
+    expect(result).toBe('deepseek-v4-flash');
   });
 
   it('未知 provider 应降级到主模型', () => {

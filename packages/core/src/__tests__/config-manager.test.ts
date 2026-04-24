@@ -185,8 +185,8 @@ describe('ConfigManager', () => {
     const [cm] = createManager();
     cm.updateConfig(FULL_CONFIG);
     cm.setProvider('deepseek', {
-      baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-ds', api: 'openai-completions',
-      models: [{ id: 'deepseek-chat', name: 'DeepSeek V3' }],
+      baseUrl: 'https://api.deepseek.com/anthropic', apiKey: 'sk-ds', api: 'anthropic-messages',
+      models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' }],
     });
     expect(cm.getProvider('deepseek')?.apiKey).toBe('sk-ds');
     expect(cm.getProvider('minimax')?.apiKey).toBe('sk-test-minimax');

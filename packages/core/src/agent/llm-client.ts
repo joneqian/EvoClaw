@@ -85,7 +85,7 @@ const SECONDARY_MODEL_FALLBACK: Record<string, string> = {
   qwen: 'qwen-turbo-latest',                // 通义千问 Turbo (~¥0.3/M input)
   doubao: 'doubao-seed-2-0-mini-260215',     // 豆包 Seed 2.0 Mini (~¥0.2/M input)
   glm: 'glm-4-flash-250414',                // 智谱 GLM-4 Flash (免费额度)
-  deepseek: 'deepseek-chat',                 // DeepSeek V3 ($0.28/M input，自动缓存)
+  deepseek: 'deepseek-v4-flash',             // DeepSeek V4 Flash (¥1/M input，缓存命中 ¥0.2/M)
   minimax: 'MiniMax-M2.5',                   // MiniMax M2.5 ($0.12/M input)
   moonshot: 'kimi-k2-turbo-preview',         // 月之暗面 Kimi K2 Turbo ($0.39/M input)
   zhipu: 'glm-4-flash-250414',              // 同 glm

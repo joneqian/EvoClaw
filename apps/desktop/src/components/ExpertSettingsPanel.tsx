@@ -231,7 +231,20 @@ const GROUP_SCOPE_OPTIONS: Array<{ value: GroupScope; label: string }> = [
   { value: 'group_topic_sender', label: '群内按「话题 × 成员」分离' },
 ];
 
-function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnect: () => void }) {
+function InlineFeishuConnect({
+  agentId,
+  isBound,
+  accountId,
+  onConnect,
+}: {
+  agentId: string;
+  /** 当前 Agent 是否已绑定飞书（决定是否预填） */
+  isBound: boolean;
+  /** 多账号场景下该 Agent 自己 binding 的 accountId（= appId）；
+      老单账号数据可能为 null/undefined，此时走 legacy 路径取首条。 */
+  accountId?: string;
+  onConnect: () => void;
+}) {
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
   const [groupScope, setGroupScope] = useState<GroupScope>('group');
@@ -256,6 +269,15 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
   const [loadingPrefill, setLoadingPrefill] = useState(true);
 
   useEffect(() => {
+    // 未绑定：跳过预填，保持空表单，避免拉到其他 Agent 的凭据
+    if (!isBound) {
+      setLoadingPrefill(false);
+      return;
+    }
+    // 已绑定：优先按 accountId 精确拉；老数据无 accountId 时走 legacy 路径（首条）
+    const url = accountId
+      ? `/channel/credentials/feishu/${encodeURIComponent(accountId)}`
+      : '/channel/credentials/feishu';
     let cancelled = false;
     (async () => {
       try {
@@ -263,7 +285,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
           credentials: Record<string, string> | null;
           hasSecret: boolean;
           name?: string;
-        }>('/channel/credentials/feishu');
+        }>(url);
         if (cancelled) return;
         const creds = resp.credentials;
         if (creds) {
@@ -306,7 +328,7 @@ function InlineFeishuConnect({ agentId, onConnect }: { agentId: string; onConnec
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isBound, accountId]);
 
   const handleConnect = useCallback(async () => {
     // appSecret 留空时允许沿用已保存值
@@ -806,7 +828,12 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                     <InlineWeixinConnect agentId={agentId} onConnect={handleConnectSuccess} />
                   )}
                   {p.type === 'feishu' && (
-                    <InlineFeishuConnect agentId={agentId} onConnect={handleConnectSuccess} />
+                    <InlineFeishuConnect
+                      agentId={agentId}
+                      isBound={isBoundToMe}
+                      accountId={binding?.accountId ?? undefined}
+                      onConnect={handleConnectSuccess}
+                    />
                   )}
                   {p.type === 'wecom' && (
                     <InlineWecomConnect agentId={agentId} onConnect={handleConnectSuccess} />
@@ -1426,8 +1453,9 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
             ))}
           </div>
 
-          {/* Tab 内容 */}
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* Tab 内容 — key={agentId} 确保切换 Agent 时子组件重新挂载，
+              清掉上一个 Agent 残留的本地 state（如渠道展开表单、输入框内容）。*/}
+          <div key={agentId} className="flex-1 overflow-y-auto px-5 py-4">
             {activeTab === 'channels' && <ChannelsTab agentId={agentId} />}
             {activeTab === 'skills' && <SkillsTab agentId={agentId} />}
             {activeTab === 'automation' && <AutomationTab agentId={agentId} />}

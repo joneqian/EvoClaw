@@ -21,21 +21,10 @@
 import type { ToolDefinition } from '../../../bridge/tool-injector.js';
 import { createLogger } from '../../../infrastructure/logger.js';
 import { enqueueSystemEvent } from '../../../infrastructure/system-events.js';
+import { parseSessionKey } from '../../../routing/session-key.js';
 import type { TaskPlanService } from './service.js';
 import { deriveAssigneeSessionKey } from './service.js';
-
 import { buildGroupSessionKey } from '../group-key-utils.js';
-
-/** 内联 session-key 解析，避免 agent → routing 层级违反 */
-function parseSessionKey(key: string): { agentId: string; channel: string; chatType: string; peerId: string } {
-  const parts = key.split(':');
-  return {
-    agentId: parts[1] ?? '',
-    channel: parts[2] ?? 'default',
-    chatType: parts[3] ?? 'direct',
-    peerId: parts[4] ?? '',
-  };
-}
 import type {
   CreatePlanTaskInput,
   CreateTaskPlanArgs,

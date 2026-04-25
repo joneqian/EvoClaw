@@ -20,7 +20,10 @@ const LAYER_RULES: Record<string, string[]> = {
   routing: ['infrastructure', 'security'],
   channel: ['infrastructure', 'security'],
   scheduler: ['agent', 'infrastructure', 'security'],
-  agent: ['memory', 'provider', 'bridge', 'infrastructure', 'security'],
+  // routing 提供纯函数 session-key 工具（generateSessionKey / parseSessionKey），
+  // 是跨层使用的公共 utility，agent 层（含 team-mode）需要在不引入循环依赖前提下复用。
+  // routing 自身只依赖 infrastructure/security，不会反向拉回 agent。
+  agent: ['memory', 'provider', 'bridge', 'infrastructure', 'security', 'routing'],
   context: ['agent', 'memory', 'provider', 'bridge', 'routing', 'evolution', 'skill', 'security', 'infrastructure'],
   evolution: ['infrastructure', 'security'],
   security: [],

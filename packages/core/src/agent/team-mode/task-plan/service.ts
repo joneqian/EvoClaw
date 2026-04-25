@@ -19,20 +19,8 @@ import crypto from 'node:crypto';
 import type { SqliteStore } from '../../../infrastructure/db/sqlite-store.js';
 import { createLogger } from '../../../infrastructure/logger.js';
 import { enqueueSystemEvent } from '../../../infrastructure/system-events.js';
+import { generateSessionKey } from '../../../routing/session-key.js';
 import type { AgentManager } from '../../agent-manager.js';
-
-/**
- * 内联 session-key 工具，避免 agent → routing 层级违反
- * (与 routing/session-key.ts 等价，但 agent 层不允许依赖 routing runtime)
- */
-function generateSessionKey(
-  agentId: string,
-  channel: string = 'default',
-  chatType: string = 'direct',
-  peerId: string = '',
-): string {
-  return `agent:${agentId}:${channel}:${chatType}:${peerId}`;
-}
 import type { LoopGuard } from '../loop-guard.js';
 import type {
   CreatePlanTaskInput,

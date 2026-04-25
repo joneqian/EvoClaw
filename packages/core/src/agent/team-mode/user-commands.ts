@@ -18,19 +18,10 @@
 
 import { createLogger } from '../../infrastructure/logger.js';
 import { enqueueSystemEvent } from '../../infrastructure/system-events.js';
+import { generateSessionKey } from '../../routing/session-key.js';
 import type { TaskPlanService } from './task-plan/service.js';
 import { parseGroupSessionKey } from './task-plan/service.js';
 import type { GroupSessionKey } from '../../channel/team-mode/team-channel.js';
-
-/** 内联 generateSessionKey，避免 agent → routing 层级违反 */
-function generateSessionKey(
-  agentId: string,
-  channel: string,
-  chatType: string,
-  peerId: string,
-): string {
-  return `agent:${agentId}:${channel}:${chatType}:${peerId}`;
-}
 
 const logger = createLogger('team-mode/user-commands');
 

@@ -21,23 +21,12 @@ import { createLogger } from '../../infrastructure/logger.js';
 import type { ChannelManager } from '../../channel/channel-manager.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { BindingRouter } from '../../routing/binding-router.js';
+import { parseSessionKey } from '../../routing/session-key.js';
 import type { GroupSessionKey, PeerBotInfo } from '../../channel/team-mode/team-channel.js';
 import type { LoopGuard } from './loop-guard.js';
 import type { PeerRosterService } from './peer-roster-service.js';
 import type { TeamChannelRegistry } from './team-channel-registry.js';
-
 import { buildGroupSessionKey } from './group-key-utils.js';
-
-/** 内联 session-key 解析，避免 agent → routing 层级违反 */
-function parseSessionKey(key: string): { agentId: string; channel: string; chatType: string; peerId: string } {
-  const parts = key.split(':');
-  return {
-    agentId: parts[1] ?? '',
-    channel: parts[2] ?? 'default',
-    chatType: parts[3] ?? 'direct',
-    peerId: parts[4] ?? '',
-  };
-}
 
 const logger = createLogger('team-mode/mention-peer-tool');
 

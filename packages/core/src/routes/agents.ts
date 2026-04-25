@@ -77,7 +77,7 @@ export function createAgentRoutes(
       return c.json({ error: 'Agent 不存在' }, 404);
     }
 
-    type AgentPatchBody = { name?: string; emoji?: string; modelId?: string; provider?: string; permissionMode?: 'default' | 'strict' | 'permissive'; mcpServers?: string[] };
+    type AgentPatchBody = { name?: string; emoji?: string; modelId?: string; provider?: string; permissionMode?: 'default' | 'strict' | 'permissive'; mcpServers?: string[]; isTeamCoordinator?: boolean };
     const body: AgentPatchBody = await c.req.json<AgentPatchBody>().catch(() => ({}));
     agentManager.updateAgent(id, body);
 

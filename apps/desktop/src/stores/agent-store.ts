@@ -12,6 +12,13 @@ export interface Agent {
   modelId?: string;
   /** 绑定的 Provider ID */
   provider?: string;
+  /**
+   * 团队协调者标志（M13 多 Agent 协作 — 配置驱动）
+   *
+   * UI 上由"作为本群组协调中心" toggle 控制；服务端按 isTeamCoordinator 自动拼装
+   * 协调者相关 prompt 段。
+   */
+  isTeamCoordinator?: boolean;
 }
 
 /** Builder 阶段 */
@@ -59,7 +66,7 @@ interface AgentState {
   /** 通过服务端删除 Agent */
   deleteAgent: (id: string) => Promise<void>;
   /** 更新 Agent 基本信息 */
-  updateAgent: (id: string, updates: { name?: string; emoji?: string }) => Promise<void>;
+  updateAgent: (id: string, updates: { name?: string; emoji?: string; isTeamCoordinator?: boolean }) => Promise<void>;
   /** 获取工作区文件（含内容 + 修改时间） */
   fetchWorkspaceFiles: (id: string) => Promise<{ files: Record<string, string>; mtimes: Record<string, string> }>;
   /** 更新工作区文件 */
@@ -102,6 +109,8 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
         createdAt: a.createdAt || new Date().toISOString(),
         modelId: a.modelId,
         provider: a.provider,
+        // M13 修改组 3：服务端返回 isTeamCoordinator 时同步到本地 store
+        isTeamCoordinator: a.isTeamCoordinator === true,
       }));
       set({ agents, loading: false });
     } catch (err) {
@@ -127,11 +136,19 @@ export const useAgentStore = create<AgentState>((set, getState) => ({
     set((state) => ({ agents: state.agents.filter((a) => a.id !== id) }));
   },
 
-  updateAgent: async (id: string, updates: { name?: string; emoji?: string }) => {
+  updateAgent: async (id: string, updates: { name?: string; emoji?: string; isTeamCoordinator?: boolean }) => {
     const data = await patch<{ agent: Agent }>(`/agents/${id}`, updates);
     set((state) => ({
       agents: state.agents.map((a) =>
-        a.id === id ? { ...a, name: data.agent.name, emoji: data.agent.emoji ?? a.emoji } : a
+        a.id === id
+          ? {
+              ...a,
+              name: data.agent.name,
+              emoji: data.agent.emoji ?? a.emoji,
+              // M13 修改组 3：协调者标志同步落本地 store
+              isTeamCoordinator: data.agent.isTeamCoordinator === true,
+            }
+          : a,
       ),
     }));
   },

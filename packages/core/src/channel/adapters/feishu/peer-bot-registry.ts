@@ -145,36 +145,58 @@ export class FeishuPeerBotRegistry {
   listInChat(chatId: string, selfAgentId: string): PeerBotLookup[] {
     const allBindings = this.bindingRouter.listBindings().filter((b) => b.channel === 'feishu');
     const accountToAgent = new Map<string, string>();
+    /**
+     * (M13 @ 死锁修复) appId → bot 自身 open_id 兜底表。
+     * connect 时 adapter 拉 /open-apis/bot/v3/info → BindingRouter.setBotOpenId
+     * 写入 binding.bot_open_id；这里用作 registry 还没观察到 entry 的兜底。
+     */
+    const accountToBotOpenId = new Map<string, string>();
     for (const b of allBindings) {
-      if (b.accountId) accountToAgent.set(b.accountId, b.agentId);
+      if (b.accountId) {
+        accountToAgent.set(b.accountId, b.agentId);
+        if (b.botOpenId) accountToBotOpenId.set(b.accountId, b.botOpenId);
+      }
     }
 
     const inChat = this.byChatId.get(chatId);
     const result: PeerBotLookup[] = [];
     const seenAgentIds = new Set<string>();
 
-    // Step 1+2: 已观察到的 → 优先（含 openId 信息）
+    // Step 1+2: 已观察到的 → 优先（含 openId 信息），缺失时用 binding 兜底
     if (inChat) {
       for (const entry of inChat.values()) {
         const agentId = accountToAgent.get(entry.appId);
         if (!agentId) continue;
         if (agentId === selfAgentId) continue;
         seenAgentIds.add(agentId);
+        const fallbackOpenId = accountToBotOpenId.get(entry.appId);
+        const finalOpenId = entry.openId ?? fallbackOpenId;
+        if (!entry.openId && fallbackOpenId) {
+          logger.debug(
+            `listInChat 用 binding 兜底 chat=${chatId} app=${entry.appId} openId=${fallbackOpenId}`,
+          );
+        }
         result.push({
           agentId,
           appId: entry.appId,
-          openId: entry.openId,
+          openId: finalOpenId,
         });
       }
     }
 
     // Step 3 (S3 bootstrap): 还没观察到的本地 binding agent 也加进 candidate
-    // openId 暂未知，mentionId 退化为 appId（LLM 仍能调 mention_peer 工具，由
-    // mention-peer-tool 走 plain @ fallback；对方收到消息后 classify 副作用回填 openId）
+    // M13 修复：binding.bot_open_id 在 connect 时已回填，这里直接用作 mentionId，
+    // 一举消除冷启动死锁（对方从未发过言但仍能被真·@）。
     for (const [appId, agentId] of accountToAgent) {
       if (agentId === selfAgentId) continue;
       if (seenAgentIds.has(agentId)) continue;
-      result.push({ agentId, appId });
+      const openId = accountToBotOpenId.get(appId);
+      if (openId) {
+        logger.debug(
+          `listInChat 冷启动 binding 兜底 chat=${chatId} app=${appId} agent=${agentId} openId=${openId}`,
+        );
+      }
+      result.push({ agentId, appId, openId });
     }
 
     return result;

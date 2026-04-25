@@ -7,8 +7,10 @@
  * - 其他 channel 的 binding → 不列
  * - draft / archived peer → 不列
  * - bindingRouter undefined → 返回 null(graceful)
- * - emoji 缺失 → 用 🤖 兜底
  * - channel label 映射(feishu→飞书 / slack→Slack / unknown→原值)
+ *
+ * M13 修复：不再注入 emoji 字符（防 LLM 复读 "emoji+名字" 拼裸文本 @）。
+ * 断言只 check name + tag/label，emoji 仅在 task-board UI 渲染时使用。
  */
 
 import { describe, it, expect } from 'vitest';
@@ -29,6 +31,7 @@ function makeBinding(agentId: string, channel: string, accountId: string | null 
     priority: 0,
     isDefault: false,
     createdAt: new Date().toISOString(),
+    botOpenId: null,
   };
 }
 
@@ -89,9 +92,12 @@ describe('buildGroupPeerRoster', () => {
 
     const result = buildGroupPeerRoster('a1', 'feishu', router, mgr);
     expect(result).not.toBeNull();
-    expect(result).toContain('🎨 UX设计师');
-    expect(result).toContain('🐟 后端专家');
-    expect(result).not.toContain('🙂 Me'); // self 不列
+    expect(result).toContain('- UX设计师');
+    expect(result).toContain('- 后端专家');
+    expect(result).not.toContain('- Me'); // self 不列
+    // 不再注入 emoji 字符到 prompt（M13 修复）
+    expect(result).not.toContain('🎨');
+    expect(result).not.toContain('🐟');
     expect(result).toContain('飞书'); // channel label
   });
 
@@ -108,8 +114,9 @@ describe('buildGroupPeerRoster', () => {
     });
 
     const result = buildGroupPeerRoster('a1', 'feishu', router, mgr);
-    expect(result).toContain('🤝 飞书同事');
-    expect(result).not.toContain('💬 微信里的人');
+    expect(result).toContain('- 飞书同事');
+    expect(result).not.toContain('微信里的人');
+    expect(result).not.toContain('🤝');
   });
 
   it('draft / archived peer 不列入', () => {
@@ -127,9 +134,9 @@ describe('buildGroupPeerRoster', () => {
     });
 
     const result = buildGroupPeerRoster('a1', 'feishu', router, mgr);
-    expect(result).toContain('✅ Active');
-    expect(result).not.toContain('📝 Draft');
-    expect(result).not.toContain('📦 Archived');
+    expect(result).toContain('- Active');
+    expect(result).not.toContain('Draft');
+    expect(result).not.toContain('Archived');
   });
 
   it('所有 peer 都 draft → 返回 null', () => {
@@ -157,11 +164,11 @@ describe('buildGroupPeerRoster', () => {
     });
 
     const result = buildGroupPeerRoster('a1', 'feishu', router, mgr);
-    expect(result).toContain('🎨 Real');
+    expect(result).toContain('- Real');
     expect(result).not.toContain('a3');
   });
 
-  it('emoji 为空串 → 用 🤖 兜底', () => {
+  it('agent 没设 emoji 也不影响 roster 渲染（不再依赖 emoji 兜底）', () => {
     const router = mockRouter([
       makeBinding('a1', 'feishu'),
       makeBinding('a2', 'feishu'),
@@ -172,7 +179,8 @@ describe('buildGroupPeerRoster', () => {
     });
 
     const result = buildGroupPeerRoster('a1', 'feishu', router, mgr);
-    expect(result).toContain('🤖 NoEmojiBot');
+    expect(result).toContain('- NoEmojiBot');
+    expect(result).not.toContain('🤖');
   });
 
   it('重复 binding(同一 agent 多条 binding)→ 只列一次', () => {
@@ -232,7 +240,8 @@ describe('buildGroupPeerRoster', () => {
 
     const result = buildGroupPeerRoster('a1', 'mystery-channel', router, mgr);
     expect(result).toContain('mystery-channel');
-    expect(result).toContain('👤 Peer');
+    expect(result).toContain('- Peer');
+    expect(result).not.toContain('👤');
   });
 
   it('输出含完整引导文案(防御性检查关键指令没漏)', () => {

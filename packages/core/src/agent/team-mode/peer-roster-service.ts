@@ -153,6 +153,8 @@ export class PeerRosterService {
         name: peer.name,
         emoji: peer.emoji || '🤖',
         role: peer.role || 'general',
+        // M13 修改组 3：配置驱动的协调者标志，prompt-fragment 据此渲染 <team_coordinator>
+        isCoordinator: peer.isTeamCoordinator === true,
         // capabilityHint 留待未来从 SOUL.md / capability_graph 抽
       });
     }

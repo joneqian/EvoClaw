@@ -219,14 +219,21 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   );
 
   // 请求/响应日志
+  //
+  // 轮询性请求（前端定时拉取）日志降到 DEBUG 级别，避免日常使用时日志被挤爆：
+  //   - GET /health        — 桌面端 30s 心跳
+  //   - GET /tasks         — 前端任务列表轮询（约 5-6 秒一次）
+  //   - GET /chat/recents  — 会话历史轮询
+  // 其他请求（POST/PUT/PATCH/DELETE 或非轮询 GET）仍然走 INFO 级别。
   const httpLog = createLogger('http');
+  const POLLING_PATHS = new Set(['/health', '/tasks', '/chat/recents']);
   app.use('*', async (c, next) => {
     const start = Date.now();
     const { method, path } = c.req;
-    const isHealth = path === '/health';
+    const isPolling = method === 'GET' && POLLING_PATHS.has(path);
 
     // 请求参数
-    if (!isHealth) {
+    if (!isPolling) {
       const query = c.req.query();
       const queryStr = Object.keys(query).length
         ? ` query=${JSON.stringify(query)}`
@@ -260,7 +267,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     const status = c.res.status;
 
     // 响应：仅记录状态码和耗时，body 仅 debug 级别
-    if (!isHealth) {
+    if (!isPolling) {
       httpLog.info(`<-- ${method} ${path} ${status} ${ms}ms`);
       // 响应体仅 debug 级别记录（避免大响应撑爆日志）
       try {
@@ -734,6 +741,8 @@ async function dispatchBroadcastMessage(
           mediaPath: msg.mediaPath,
           mediaType: msg.mediaType,
           quoted: msg.quoted,
+          ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
+          ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
         },
         channelMsgDeps,
       );
@@ -885,6 +894,18 @@ async function main() {
             if (senderAppId === ownAccountId) return 'self';
             const peer = feishuPeerBotRegistry!.classifyPeer(chatId, senderAppId, senderOpenId);
             return peer ? 'peer' : 'stranger';
+          });
+          // M13 修复（C-1）：把 senderAppId → peer agentId 反查给 inbound，
+          // 让 ChannelMessage.fromPeerAgentId 能填上，channel-message-handler 兜底
+          // 前缀 @ 回提问者会用到
+          adapter.setPeerAgentResolver(({ chatId, senderAppId }) => {
+            if (!chatId || !senderAppId) return null;
+            // listInChat 已经把 binding 表 + registry 学到的 entry 都纳入
+            // （B1+B2 修复后冷启动也能反查）。第二参数 selfAgentId 这里传 senderAppId
+            // 占位（不会等于任何 agent，确保不被排除自己）
+            const list = feishuPeerBotRegistry!.listInChat(chatId, '');
+            const found = list.find((p) => p.appId === senderAppId);
+            return found?.agentId ?? null;
           });
           // 事件钩子：bot 入群 / 出群 / p2p 进入 → 更新 registry + 广播成员变更
           adapter.setEventCallbacks({
@@ -1040,6 +1061,118 @@ async function main() {
         return { cardId: existingCardId ?? '' };
       }
     });
+    // M13 修复：注入 TaskReadyNotifier — 任务就绪时主动通过渠道原生 @ 推送给 assignee
+    // （不再依赖 LLM 自觉 / system event 被动 drain）。同时被 create_task_plan 自动触发，
+    // 也被 update_task_status='done' 解锁下游时触发。
+    //
+    // 派活身份策略（M13 修复 — 问题 3）：notifier **始终**用 plan.createdBy 身份发送，
+    // 跟 boardSink 走同一条路径（"plan owner 是这个 plan 的统一协调声音"）。
+    // triggeredBy 仅做"上游推进者署名"用，不再决定发送 bot —— 否则 update_task_status='done'
+    // 解锁下游时，notifier 会从"完成上游的人"bot 发出，导致同一 plan 的看板/派活分裂。
+    const { mentionPeerNotificationTracker } = await import('./agent/team-mode/mention-peer-tool.js');
+    taskPlanService.setTaskReadyNotifier({
+      notifyTaskReady: async ({ plan, task, triggeredByAgentId }) => {
+        const adapter = teamChannelRegistry.resolve(plan.groupSessionKey);
+        if (!adapter) {
+          log.warn(
+            `[team-mode/notifier] 找不到 channel adapter group=${plan.groupSessionKey} task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 派活身份用 plan.createdBy（与 boardSink 一致）
+        const senderAgentId = plan.createdBy.agentId;
+
+        const colonIdx = plan.groupSessionKey.indexOf(':');
+        const chatTypeIdx = plan.groupSessionKey.indexOf(':', colonIdx + 1);
+        const channelPart = plan.groupSessionKey.slice(0, colonIdx);
+        const chatIdPart = plan.groupSessionKey.slice(chatTypeIdx + 1);
+        const senderBindings = bindingRouter.listBindings(senderAgentId)
+          .filter((b) => b.channel === channelPart);
+        const senderAccountId = senderBindings.find((b) => b.isDefault)?.accountId
+          ?? senderBindings[0]?.accountId
+          ?? '';
+        if (!senderAccountId) {
+          log.warn(
+            `[team-mode/notifier] plan owner=${senderAgentId} 在 channel=${channelPart} 无 binding，跳过 task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 反查 assignee 的 PeerBotInfo（用 plan owner 视角，与 boardSink 一致）
+        const groupSessionKey = plan.groupSessionKey;
+        const roster = await peerRosterService.buildRoster(senderAgentId, groupSessionKey);
+        const peer = roster.find((p) => p.agentId === task.assignee.agentId);
+        if (!peer) {
+          log.warn(
+            `[team-mode/notifier] assignee=${task.assignee.agentId} 不在 plan owner=${senderAgentId} 视角的 roster，跳过 task=${task.localId}`,
+          );
+          return;
+        }
+
+        // loop-guard 评估（用 plan owner → assignee 计数，pingpong 检测更准）
+        const decision = loopGuard.evaluate({
+          groupSessionKey,
+          fromAgentId: senderAgentId,
+          toAgentId: task.assignee.agentId,
+          taskId: task.id,
+          chainDepth: 0,
+        });
+        if (decision.result === 'block') {
+          log.warn(
+            `[team-mode/notifier] loop-guard 拦截 from=${senderAgentId} to=${task.assignee.agentId} ` +
+              `reason=${decision.reason} task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 渲染 @ 文案：把任务核心信息塞进去，让 assignee 看到 @ 就能直接干活
+        const messageLines: string[] = [];
+        messageLines.push(`📌 你被指派了任务 [${task.localId}] ${task.title}`);
+        if (task.description) messageLines.push(task.description);
+        messageLines.push(`目标：${plan.goal}`);
+        messageLines.push(`计划 ID：${plan.id} · 任务 ID：${task.id}`);
+        if (task.dependsOn.length > 0) {
+          messageLines.push(`前置已完成：${task.dependsOn.join(', ')}`);
+        }
+        messageLines.push(`完成后请调 update_task_status('${task.id}', 'done', outputSummary=...) 解锁下游。`);
+        // 上游推进者署名：当 triggeredBy ≠ plan owner（即 update_task_status='done' 解锁下游时），
+        // 在底部附一行让用户知道是谁让任务进入 ready 的
+        if (triggeredByAgentId !== senderAgentId) {
+          const triggerName = agentManager.getAgent(triggeredByAgentId)?.name ?? triggeredByAgentId;
+          messageLines.push(`（由 ${triggerName} 完成上游推进）`);
+        }
+        const message = messageLines.join('\n');
+
+        try {
+          const outbound = await adapter.buildMention(groupSessionKey, peer, message, {
+            taskId: task.id,
+            planId: plan.id,
+            chainDepth: 1,
+          });
+          await channelManager.sendMessage(
+            channelPart as import('@evoclaw/shared').ChannelType,
+            senderAccountId,
+            chatIdPart,
+            outbound.fallbackText,
+            'group',
+          );
+          // 修复 2B：登记本次主动 @，给后续 mention_peer 软去重看
+          mentionPeerNotificationTracker.mark(groupSessionKey, task.assignee.agentId, task.id);
+          log.info(
+            `[team-mode/notifier] 已主动 @ assignee plan=${plan.id} task=${task.localId} ` +
+              `from=${senderAgentId}(plan_owner) trigger=${triggeredByAgentId} ` +
+              `to=${task.assignee.agentId}(${peer.name}) mention_id=${peer.mentionId} ` +
+              `account=${senderAccountId} bytes=${outbound.fallbackText.length}`,
+          );
+        } catch (err) {
+          log.warn(
+            `[team-mode/notifier] @ 推送失败 plan=${plan.id} task=${task.localId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    });
+
     teamModeServices = {
       loopGuard,
       peerRosterService,
@@ -1180,6 +1313,8 @@ async function main() {
                 mediaPath: msg.mediaPath,
                 mediaType: msg.mediaType,
                 senderId: msg.senderId,
+                ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
+                ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
               },
               channelMsgDeps,
             );
@@ -1218,6 +1353,8 @@ async function main() {
           mediaType: msg.mediaType,
           quoted: msg.quoted,
           senderId: msg.senderId,
+          ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
+          ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
         },
         channelMsgDeps,
       );
@@ -1495,6 +1632,19 @@ async function main() {
             name: savedName ?? chType,
             credentials,
           });
+          // M13 团队 @ 修复：恢复连接成功后回填 bot_open_id
+          try {
+            const adapter = channelManager.getAdapter(chType as any, accountId);
+            const fn = adapter ? (adapter as { getBotOpenId?: () => string | null }).getBotOpenId : undefined;
+            const botOpenId = typeof fn === 'function' ? fn.call(adapter) ?? null : null;
+            if (botOpenId) {
+              bindingRouter.setBotOpenId(chType as any, accountId, botOpenId);
+            } else {
+              log.debug(`渠道 ${chType}[${accountId}] 恢复后未拿到 bot_open_id（adapter 未实现或 API 失败）`);
+            }
+          } catch (err) {
+            log.warn(`回填 bot_open_id 失败 ${chType}[${accountId}]: ${err instanceof Error ? err.message : String(err)}`);
+          }
           log.info(`渠道 ${chType}[${accountId}] 已自动恢复连接`);
         } catch (err) {
           log.warn(

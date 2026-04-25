@@ -55,6 +55,18 @@ export interface AgentConfig {
    * 不做 tool gating（去 PM 中心化）
    */
   role?: string;
+  /**
+   * 团队协调者标志（M13 多 Agent 协作 — 配置驱动）
+   *
+   * 用户在 Agent 设置界面勾选"作为本群协调中心"时为 true：
+   *   - 该 Agent 在它所属的多 Agent 群里被视为协调中心
+   *   - 自己的 system prompt 自动注入 <my_coordination_role> 段（让 LLM 知道自己是协调者）
+   *   - 同群其他 Agent 的 prompt 注入 <team_coordinator> 段（引导跨角色对接通过协调者）
+   *
+   * 不勾或群里无人勾 → 平行协作模式（不引入协调者概念，系统层保持中性）。
+   * 适用场景：PM、组长、客服派单员、辩论主持人等；不适用扁平协作团队。
+   */
+  isTeamCoordinator?: boolean;
   /** 创建时间 ISO string */
   createdAt: string;
   /** 更新时间 ISO string */

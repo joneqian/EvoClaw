@@ -31,6 +31,29 @@ function deriveAccountId(body: ChannelConfig): string {
   return '';
 }
 
+/**
+ * 读取 adapter 在 connect 时学到的 bot 自身 open_id（M13 团队 @ 死锁修复）
+ *
+ * 仅飞书 adapter 实现 getBotOpenId（拉 /open-apis/bot/v3/info）；其他 channel 返回 null。
+ * 通过 duck typing 不引入 channel-adapter 接口耦合。
+ */
+function readAdapterBotOpenId(
+  channelManager: ChannelManager,
+  type: ChannelType,
+  accountId: string,
+): string | null {
+  try {
+    const adapter = channelManager.getAdapter(type, accountId);
+    if (!adapter) return null;
+    const fn = (adapter as { getBotOpenId?: () => string | null }).getBotOpenId;
+    if (typeof fn !== 'function') return null;
+    return fn.call(adapter) ?? null;
+  } catch (err) {
+    log.debug(`readAdapterBotOpenId 异常 ${type}[${accountId}]: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
 /** 创建 Channel 路由 */
 export function createChannelRoutes(
   channelManager: ChannelManager,
@@ -90,6 +113,13 @@ export function createChannelRoutes(
         channelStateRepo.setState(body.type as any, accountId, 'name', body.name);
       }
 
+      // M13 修复：connect 成功后回填 bot_open_id 到 binding（有则更新，没就等下面创建时带上）
+      // 飞书 adapter 在 connect 时已拉 /open-apis/bot/v3/info；其他 channel 暂不实现。
+      const botOpenId = readAdapterBotOpenId(channelManager, body.type, accountId);
+      if (bindingRouter && botOpenId) {
+        bindingRouter.setBotOpenId(body.type, accountId, botOpenId);
+      }
+
       // 如果提供了 agentId，创建 Channel → Agent 绑定（Agent ↔ accountId 1:1）
       if (body.agentId && bindingRouter) {
         // 移除该 agent 在此 channel 已有的绑定（不动其他 agent 的绑定）
@@ -99,7 +129,7 @@ export function createChannelRoutes(
         for (const b of existing) {
           bindingRouter.removeBinding(b.id);
         }
-        // 创建新绑定，带 accountId
+        // 创建新绑定，带 accountId + bot_open_id（若已知）
         bindingRouter.addBinding({
           agentId: body.agentId,
           channel: body.type,
@@ -107,8 +137,12 @@ export function createChannelRoutes(
           peerId: null,
           priority: 0,
           isDefault: false,
+          botOpenId: botOpenId ?? null,
         });
-        log.info(`Channel ${body.type}[${accountId}] 已绑定 Agent ${body.agentId}`);
+        log.info(
+          `Channel ${body.type}[${accountId}] 已绑定 Agent ${body.agentId} ` +
+            `botOpenId=${botOpenId ?? '(unknown)'}`,
+        );
       }
 
       return c.json({ success: true, accountId });

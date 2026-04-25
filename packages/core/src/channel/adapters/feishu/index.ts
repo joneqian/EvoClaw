@@ -191,6 +191,15 @@ export class FeishuAdapter implements ChannelAdapter {
     | InboundContext['classifyAppSender']
     | undefined = undefined;
   /**
+   * 反查同事 bot 对应的 EvoClaw Agent ID（M13 多 Agent 协作 — 兜底 @ 回提问者）
+   *
+   * 由外层 server.ts 注入（用 FeishuPeerBotRegistry.listInChat 反查），
+   * 让 inbound 把 peer agentId 透传到 ChannelMessage.fromPeerAgentId。
+   */
+  private resolvePeerAgentId:
+    | InboundContext['resolvePeerAgentId']
+    | undefined = undefined;
+  /**
    * 广播场景下把 feishu bot open_id 映射到 agentId（可选）
    *
    * 常见单 adapter 模型下用户不必配置（`mention-first` 会因映射为空而退化为
@@ -230,6 +239,7 @@ export class FeishuAdapter implements ChannelAdapter {
         getMessageFetcher: () => this.messageFetcher,
         // M13 team-mode：未注入时为 undefined → inbound 走旧丢 app 行为
         classifyAppSender: this.classifyAppSender,
+        resolvePeerAgentId: this.resolvePeerAgentId,
       });
 
       registerCardActionHandlers(bundle.dispatcher, {
@@ -439,6 +449,18 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   /**
+   * 读取本 adapter 在 connect 时拉到的 bot 自身 open_id
+   *
+   * 用于：M13 多 Agent 团队协作 — server.ts connect 成功后通过 BindingRouter.setBotOpenId
+   * 把它回填到 binding 行，listInChat 兜底冷启动时的 mention_id。
+   *
+   * 返回 null：connect 还未完成 / `/open-apis/bot/v3/info` 失败。
+   */
+  getBotOpenId(): string | null {
+    return this.botOpenId;
+  }
+
+  /**
    * 设置 bot open_id → agentId 映射（广播 `mention-first` 模式用）
    *
    * 单 Feishu app + 多 agent 场景下无需调用（@ 到共享 bot 时由 `any-mention`
@@ -463,6 +485,10 @@ export class FeishuAdapter implements ChannelAdapter {
    * 调用方（server.ts）传入 `(params) => peerBotRegistry.classifyPeer(...) ? 'peer' : 'self/stranger'`
    * 的具体逻辑。未注入时 inbound 走旧行为（丢所有 sender_type=app）。
    */
+  setPeerAgentResolver(resolver: InboundContext['resolvePeerAgentId']): void {
+    this.resolvePeerAgentId = resolver;
+  }
+
   setTeamModeClassifier(classifier: InboundContext['classifyAppSender']): void {
     this.classifyAppSender = classifier;
   }

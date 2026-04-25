@@ -194,7 +194,21 @@ function formatPlanCreatedResult(snapshot: import('./types.js').TaskPlanSnapshot
     const deps = t.dependsOn.length > 0 ? ` 依赖[${t.dependsOn.join(',')}]` : '';
     lines.push(`  - ${t.localId} (${t.status}) "${t.title}" → ${t.assignee.name}${deps}`);
   }
-  lines.push('已对所有无依赖任务发送 task_ready 系统事件，下游 Agent 会自动开始。');
+
+  // 列出已被系统主动 @ 的 assignee（即"无依赖立即 ready 的任务"）
+  // 让 LLM 明确知道哪些任务的 @ 已经发出去了，避免重复 @
+  const readyAssignees = snapshot.tasks
+    .filter((t) => t.dependsOn.length === 0)
+    .map((t) => `  - ${t.localId} → ${t.assignee.name}`);
+
+  lines.push('');
+  if (readyAssignees.length > 0) {
+    lines.push('🔔 系统已自动 @ 以下 assignee（飞书原生 @ + 推送通知已送达）：');
+    lines.push(...readyAssignees);
+    lines.push('⚠️ 请勿再调 mention_peer @ 这些 assignee（避免双 @）。回复正文怎么组织由你判断。');
+  } else {
+    lines.push('（本批次无可立即 ready 的任务，依赖完成后系统会自动 @ 下游 assignee）');
+  }
   return lines.join('\n');
 }
 

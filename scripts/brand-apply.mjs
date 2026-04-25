@@ -17,7 +17,7 @@
  *   node scripts/brand-apply.mjs          # 默认 evoclaw
  */
 
-import { readFileSync, writeFileSync, copyFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyRelease } from './lib/brand-apply-helpers.mjs';
@@ -37,6 +37,35 @@ if (!existsSync(brandJsonPath)) {
 
 const config = JSON.parse(readFileSync(brandJsonPath, 'utf-8'));
 console.log(`🏷️  应用品牌: ${config.name} (${brand})`);
+
+// ─── 0. 品牌切换检测：与上次相比变了就 invalidate turbo cache + 旧 dist ───
+//
+// 历史 bug：brand-apply 改 brand.ts，但 turbo build 走 cache hit 不重 build，
+// 结果 dist/server.mjs 内联的 BRAND_DATA_DIR 还是旧品牌的——sidecar 读错数据库。
+// 这里维护一个 .brand-applied 标记文件，对比上次 vs 这次 brand：
+//   - 同品牌：保持 turbo cache hit（快）
+//   - 切品牌：清 packages/*/dist + .turbo + packages/*/.turbo，强制重 build
+const brandStampPath = join(ROOT, '.brand-applied');
+const prevBrand = existsSync(brandStampPath)
+  ? readFileSync(brandStampPath, 'utf-8').trim()
+  : null;
+if (prevBrand && prevBrand !== brand) {
+  console.log(`  🔄 品牌切换检测: ${prevBrand} → ${brand}，清理构建缓存以避免品牌串味`);
+  const cachePaths = [
+    join(ROOT, '.turbo'),
+    join(ROOT, 'packages', 'shared', '.turbo'),
+    join(ROOT, 'packages', 'shared', 'dist'),
+    join(ROOT, 'packages', 'core', '.turbo'),
+    join(ROOT, 'packages', 'core', 'dist'),
+  ];
+  for (const p of cachePaths) {
+    if (existsSync(p)) {
+      rmSync(p, { recursive: true, force: true });
+      console.log(`     ✗ ${p}`);
+    }
+  }
+}
+writeFileSync(brandStampPath, brand, 'utf-8');
 
 // ─── 1. 生成 packages/shared/src/brand.ts ───
 

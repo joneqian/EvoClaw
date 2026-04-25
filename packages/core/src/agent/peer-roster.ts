@@ -69,20 +69,19 @@ export function buildGroupPeerRoster(
   }
   if (peerAgentIds.size === 0) return null;
 
-  const peers: Array<{ emoji: string; name: string }> = [];
+  const peers: Array<{ name: string }> = [];
   for (const peerId of peerAgentIds) {
     const peer = agentManager.getAgent(peerId);
     if (!peer) continue;
     if (peer.status !== 'active') continue; // 草稿/归档不列入,避免内部 agent 暴露给用户
-    peers.push({
-      emoji: peer.emoji || '🤖',
-      name: peer.name,
-    });
+    // M13 修复：不再注入 emoji 字符 — 防 LLM 复读 "emoji+名字" 拼成裸文本 @（如 "@📈 产品经理"），
+    // 应改用 mention_peer 工具走真·原生 @
+    peers.push({ name: peer.name });
   }
   if (peers.length === 0) return null;
 
   const platformLabel = channelLabel(channel);
-  const roster = peers.map((p) => `- ${p.emoji} ${p.name}`).join('\n');
+  const roster = peers.map((p) => `- ${p.name}`).join('\n');
 
   // 这段文案会作为 promptOverrides 'append' 追加到 system prompt 末尾,
   // 包一层 <group_peers> 标签帮助模型识别这是结构化上下文而非用户消息。

@@ -27,6 +27,8 @@ export default function AgentEditPage() {
   const [loading, setLoading] = useState(true);
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('');
+  // M13 修改组 3：协调者标志（配置驱动）
+  const [editIsCoordinator, setEditIsCoordinator] = useState(false);
   const [files, setFiles] = useState<Record<string, string>>({});
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null); // null | 'basic' | filename
@@ -50,11 +52,12 @@ export default function AgentEditPage() {
     })();
   }, [id, fetchAgents, fetchWorkspaceFiles]);
 
-  // agent 加载后同步 name/emoji
+  // agent 加载后同步 name/emoji/coordinator
   useEffect(() => {
     if (agent) {
       setEditName(agent.name);
       setEditEmoji(agent.emoji);
+      setEditIsCoordinator(agent.isTeamCoordinator === true);
     }
   }, [agent]);
 
@@ -69,13 +72,17 @@ export default function AgentEditPage() {
     if (!id) return;
     setSaving('basic');
     try {
-      await updateAgent(id, { name: editName, emoji: editEmoji });
+      await updateAgent(id, {
+        name: editName,
+        emoji: editEmoji,
+        isTeamCoordinator: editIsCoordinator,
+      });
       showSaved('基本信息已保存');
     } catch (err) {
       console.error('保存失败:', err);
     }
     setSaving(null);
-  }, [id, editName, editEmoji, updateAgent, showSaved]);
+  }, [id, editName, editEmoji, editIsCoordinator, updateAgent, showSaved]);
 
   /** 保存单个文件 */
   const handleSaveFile = useCallback(async (filename: string) => {
@@ -167,6 +174,27 @@ export default function AgentEditPage() {
                 bg-white text-slate-900
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
             />
+          </div>
+
+          {/* M13 修改组 3：协调者 toggle — 配置驱动，让用户在 UI 上表达"团队协调中心"角色 */}
+          <div className="pt-3 border-t border-slate-100">
+            <label className="flex items-start gap-2.5 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={editIsCoordinator}
+                onChange={(e) => setEditIsCoordinator(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand
+                  focus:ring-2 focus:ring-brand/40 cursor-pointer"
+              />
+              <div className="flex-1">
+                <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900">
+                  作为本群组协调中心
+                </span>
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  开启后，群里其他 Agent 会被引导通过 @ 本 Agent 协调跨角色任务。适合 PM、组长、客服派单员、辩论主持人等中心节点角色；扁平协作团队请保持关闭。
+                </p>
+              </div>
+            </label>
           </div>
 
           <button

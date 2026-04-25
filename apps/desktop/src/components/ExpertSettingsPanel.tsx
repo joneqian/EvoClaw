@@ -1066,6 +1066,8 @@ function SettingsTab({ agentId }: { agentId: string }) {
 
   const [editName, setEditName] = useState(agent?.name ?? '');
   const [editEmoji, setEditEmoji] = useState(agent?.emoji ?? '');
+  // M13 修改组 3：协调者标志（配置驱动 — 团队协作 prompt 自动拼装）
+  const [editIsCoordinator, setEditIsCoordinator] = useState(agent?.isTeamCoordinator === true);
   const [saving, setSaving] = useState(false);
   const [savedHint, setSavedHint] = useState<string | null>(null);
   const [files, setFiles] = useState<Record<string, string>>({});
@@ -1081,6 +1083,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
     if (agent) {
       setEditName(agent.name);
       setEditEmoji(agent.emoji);
+      setEditIsCoordinator(agent.isTeamCoordinator === true);
     }
   }, [agent]);
 
@@ -1098,16 +1101,59 @@ function SettingsTab({ agentId }: { agentId: string }) {
     setTimeout(() => setSavedHint(null), 2000);
   }, []);
 
-  const handleSaveBasic = useCallback(async () => {
-    setSaving(true);
-    try {
-      await updateAgent(agentId, { name: editName, emoji: editEmoji });
-      showSaved('已保存');
-    } catch (err) {
-      console.error('保存失败:', err);
+  /**
+   * 即时保存指定字段（M13 修改组 3 — UX 优化：去掉"保存修改"按钮）
+   *
+   * 触发时机：
+   *   - name / emoji 输入框 onBlur（失焦时与原值不同才保存）
+   *   - 协调者 checkbox onChange（勾选立即保存）
+   * 失败回滚：把本地 state 还原回服务端原值，避免 UI/DB 不一致
+   */
+  const persistField = useCallback(
+    async (patch: { name?: string; emoji?: string; isTeamCoordinator?: boolean }, label: string) => {
+      setSaving(true);
+      try {
+        await updateAgent(agentId, patch);
+        showSaved(label);
+      } catch (err) {
+        console.error('保存失败:', err);
+        // 失败时把 local state 拉回 agent 真实值
+        if (agent) {
+          if (patch.name !== undefined) setEditName(agent.name);
+          if (patch.emoji !== undefined) setEditEmoji(agent.emoji);
+          if (patch.isTeamCoordinator !== undefined) setEditIsCoordinator(agent.isTeamCoordinator === true);
+        }
+      }
+      setSaving(false);
+    },
+    [agentId, agent, updateAgent, showSaved],
+  );
+
+  const handleNameBlur = useCallback(() => {
+    if (!agent || editName === agent.name) return;
+    if (editName.trim() === '') {
+      // 空名字不保存，回退
+      setEditName(agent.name);
+      return;
     }
-    setSaving(false);
-  }, [agentId, editName, editEmoji, updateAgent, showSaved]);
+    void persistField({ name: editName }, '名称已保存');
+  }, [agent, editName, persistField]);
+
+  const handleEmojiBlur = useCallback(() => {
+    if (!agent || editEmoji === agent.emoji) return;
+    void persistField({ emoji: editEmoji }, 'Emoji 已保存');
+  }, [agent, editEmoji, persistField]);
+
+  const handleCoordinatorChange = useCallback(
+    (checked: boolean) => {
+      setEditIsCoordinator(checked);
+      void persistField(
+        { isTeamCoordinator: checked },
+        checked ? '已设为本群协调中心' : '已取消协调中心',
+      );
+    },
+    [persistField],
+  );
 
   const openFileModal = useCallback((filename: string) => {
     setModalFile(filename);
@@ -1128,8 +1174,6 @@ function SettingsTab({ agentId }: { agentId: string }) {
     setModalSaving(false);
   }, [agentId, modalFile, modalContent, updateWorkspaceFile, showSaved]);
 
-  const hasChanges = agent && (editName !== agent.name || editEmoji !== agent.emoji);
-
   return (
     <div className="space-y-6">
       {/* 基本信息 */}
@@ -1147,8 +1191,11 @@ function SettingsTab({ agentId }: { agentId: string }) {
             <input
               value={editEmoji}
               onChange={(e) => setEditEmoji(e.target.value)}
+              onBlur={handleEmojiBlur}
+              disabled={saving}
               className="w-full px-2 py-2 text-xl text-center border border-slate-200 rounded-lg
-                bg-white focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                bg-white focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                disabled:opacity-50"
               maxLength={4}
             />
           </div>
@@ -1157,23 +1204,37 @@ function SettingsTab({ agentId }: { agentId: string }) {
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleNameBlur}
+              disabled={saving}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
                 bg-white text-slate-900
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                disabled:opacity-50"
             />
           </div>
         </div>
 
-        {hasChanges && (
-          <button
-            onClick={handleSaveBasic}
-            disabled={saving}
-            className="w-full px-4 py-2 text-sm font-medium text-white bg-brand
-              rounded-lg hover:bg-brand-hover transition-colors disabled:opacity-50"
-          >
-            {saving ? '保存中...' : '保存修改'}
-          </button>
-        )}
+        {/* M13 修改组 3：协调者 toggle — 即时保存（勾选立刻生效，无需保存按钮） */}
+        <div className="pt-3 border-t border-slate-100">
+          <label className="flex items-start gap-2.5 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={editIsCoordinator}
+              onChange={(e) => handleCoordinatorChange(e.target.checked)}
+              disabled={saving}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand
+                focus:ring-2 focus:ring-brand/40 cursor-pointer disabled:opacity-50"
+            />
+            <div className="flex-1">
+              <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900">
+                作为本群组协调中心
+              </span>
+              <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                开启后，群里其他 Agent 会被引导通过 @ 本 Agent 协调跨角色任务。适合 PM、组长、客服派单员、辩论主持人等中心节点角色；扁平协作团队请保持关闭。
+              </p>
+            </div>
+          </label>
+        </div>
       </div>
 
       {/* 工作区文件 */}

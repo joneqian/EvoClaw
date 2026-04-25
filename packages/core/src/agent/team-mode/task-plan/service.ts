@@ -68,10 +68,31 @@ export function deriveAssigneeSessionKey(
   return generateSessionKey(assigneeAgentId, parsed.channelType, 'group', parsed.chatId);
 }
 
+/**
+ * 任务就绪通知器（M13 多 Agent @ 死锁修复）
+ *
+ * 责任：在 dispatchReadyTasks 把 task_ready system event 入队后，**主动**通过渠道
+ * 原生 @ 把任务推送给 assignee。原先 enqueueSystemEvent 只是被动队列（要等 assignee
+ * 自然收到下一条入站消息才会被 drain），冷启动场景下永远不会被触发，导致协作死锁。
+ *
+ * 实现：server.ts 装配（teamChannelRegistry + channelManager + bindingRouter）。
+ * 失败 / 找不到 adapter 时静默吞错，不阻塞 plan 创建主流程。
+ */
+export interface TaskReadyNotifier {
+  notifyTaskReady(args: {
+    plan: TaskPlanSnapshot;
+    task: TaskNodeSnapshot;
+    /** 谁触发的派活 — 用于日志 + 责任链文案 */
+    triggeredByAgentId: string;
+  }): Promise<void>;
+}
+
 export interface TaskPlanServiceDeps {
   store: SqliteStore;
   agentManager: AgentManager;
   loopGuard?: LoopGuard;
+  /** 任务就绪 → 主动 @ assignee（M13 修复，可选；不注入时退化为旧 system event 模式） */
+  taskReadyNotifier?: TaskReadyNotifier;
 }
 
 /** 创建 plan 时的辅助上下文（无法塞进 args） */
@@ -103,11 +124,18 @@ export class TaskPlanService {
   private agentManager: AgentManager;
   private loopGuard?: LoopGuard;
   private boardSink: BoardSink | null = null;
+  private taskReadyNotifier: TaskReadyNotifier | null = null;
 
   constructor(deps: TaskPlanServiceDeps) {
     this.store = deps.store;
     this.agentManager = deps.agentManager;
     this.loopGuard = deps.loopGuard;
+    this.taskReadyNotifier = deps.taskReadyNotifier ?? null;
+  }
+
+  /** 注入任务就绪通知器（server.ts 装配，迟到注入兼容旧路径） */
+  setTaskReadyNotifier(notifier: TaskReadyNotifier): void {
+    this.taskReadyNotifier = notifier;
   }
 
   /** 注入看板回调（server.ts 装配时调）。未注入时看板不发，service 静默 */
@@ -509,6 +537,23 @@ export class TaskPlanService {
         `task_ready event dispatched plan=${plan.id} task=${task.localId} ` +
           `assignee=${task.assignee.agentId} sessionKey=${assigneeKey}`,
       );
+
+      // M13 修复：主动通过渠道原生 @ 推送给 assignee，不依赖被动 drain。
+      // fire-and-forget — 通知失败不阻塞 plan 主流程，错误已在 notifier 内记日志。
+      if (this.taskReadyNotifier) {
+        const notifier = this.taskReadyNotifier;
+        notifier
+          .notifyTaskReady({ plan, task, triggeredByAgentId: triggeredBy })
+          .catch((err) => {
+            logger.warn(
+              `taskReadyNotifier 未捕获异常 plan=${plan.id} task=${task.localId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+      } else {
+        logger.debug(
+          `taskReadyNotifier 未注入，task_ready 仅入队 system event plan=${plan.id} task=${task.localId}`,
+        );
+      }
       dispatched++;
     }
 
@@ -634,6 +679,7 @@ plan goal: ${plan.goal}
       logger.warn(`task ${row.id} depends_on JSON 解析失败: ${row.depends_on}`);
     }
     return {
+      id: row.id,
       localId: row.local_id,
       title: row.title,
       description: row.description ?? undefined,

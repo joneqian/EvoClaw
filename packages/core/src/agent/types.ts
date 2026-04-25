@@ -89,6 +89,16 @@ export interface AgentRunConfig {
     /** MIME 类型；缺失时从扩展名推断 */
     mimeType?: string;
   }>;
+  /**
+   * 本轮入站消息是否来自 peer Agent（M13 多 Agent 协作）
+   *
+   * channel-message-handler 在 ctx.fromPeerOpenId 非空时设为 true。
+   * embedded-runner-prompt 据此条件化 NO_REPLY 规则——peer @ 允许 NO_REPLY，
+   * 解决 reply-to 协议兜底导致的"被反复触发回'嗯好的'"噪音。
+   *
+   * 默认 false（即 user @）—— 保持向后兼容，user 入站走"@ 必回"严格规则。
+   */
+  inboundFromPeer?: boolean;
 }
 
 // ─── 单次执行结果 ───

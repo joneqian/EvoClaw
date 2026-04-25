@@ -61,6 +61,13 @@ export interface PeerBotInfo extends PeerBotIdentity {
   role: string;
   /** 能力一行摘要（可选，从 SOUL.md / capability_graph 抽） */
   capabilityHint?: string;
+  /**
+   * 是否为本群协调中心（M13 修改组 3 — 配置驱动）
+   *
+   * 来自 AgentConfig.isTeamCoordinator。prompt-fragment 据此渲染 <team_coordinator> 段，
+   * 引导其他 Agent 跨角色对接通过协调者。
+   */
+  isCoordinator?: boolean;
 }
 
 /**
@@ -127,6 +134,8 @@ export interface TeamMessageMetadata {
  * 任务节点快照（看板渲染用，channel-agnostic）
  */
 export interface TaskNodeSnapshot {
+  /** DB 主键 UUID — assignee 调 update_task_status 用这个 id（不是 localId） */
+  id: string;
   localId: string;
   title: string;
   description?: string;

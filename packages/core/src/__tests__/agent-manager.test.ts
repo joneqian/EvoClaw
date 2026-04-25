@@ -13,6 +13,8 @@ const MIGRATION_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'
 const MIGRATION_CONVLOG_SQL = fs.readFileSync(path.join(migrationsDir, '004_conversation_log.sql'), 'utf-8');
 const MIGRATION_021_SQL = fs.readFileSync(path.join(migrationsDir, '021_conversation_log_hierarchy.sql'), 'utf-8');
 const MIGRATION_WORKSPACE_STATE_SQL = fs.readFileSync(path.join(migrationsDir, '014_workspace_state.sql'), 'utf-8');
+// M13 修改组 3：协调者表列
+const MIGRATION_033_SQL = fs.readFileSync(path.join(migrationsDir, '033_agents_team_coordinator.sql'), 'utf-8');
 
 describe('AgentManager', () => {
   let store: SqliteStore;
@@ -31,6 +33,7 @@ describe('AgentManager', () => {
     store.exec(MIGRATION_CONVLOG_SQL);
     store.exec(MIGRATION_021_SQL);
     store.exec(MIGRATION_WORKSPACE_STATE_SQL);
+    store.exec(MIGRATION_033_SQL);
     // 011: agents 表新增 last_chat_at 字段
     try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }
     manager = new AgentManager(store, agentsDir);
@@ -147,6 +150,42 @@ describe('AgentManager', () => {
 
     const updated = manager.getAgent(agent.id);
     expect(updated!.modelId).toBe('gpt-4o');
+  });
+
+  // ─── M13 修改组 3：协调者配置 ─────────────────────────
+  it('新建 Agent 默认 isTeamCoordinator=false', async () => {
+    const agent = await manager.createAgent({ name: '协调者默认测试' });
+    const fetched = manager.getAgent(agent.id);
+    expect(fetched!.isTeamCoordinator).toBe(false);
+  });
+
+  it('updateAgent 设 isTeamCoordinator=true 后能读回', async () => {
+    const agent = await manager.createAgent({ name: '协调者切换测试' });
+    manager.updateAgent(agent.id, { isTeamCoordinator: true });
+
+    const updated = manager.getAgent(agent.id);
+    expect(updated!.isTeamCoordinator).toBe(true);
+  });
+
+  it('updateAgent 关闭 isTeamCoordinator 也生效', async () => {
+    const agent = await manager.createAgent({ name: '协调者关闭测试' });
+    manager.updateAgent(agent.id, { isTeamCoordinator: true });
+    manager.updateAgent(agent.id, { isTeamCoordinator: false });
+
+    const updated = manager.getAgent(agent.id);
+    expect(updated!.isTeamCoordinator).toBe(false);
+  });
+
+  it('listAgents 返回的 Agent 包含 isTeamCoordinator 字段', async () => {
+    const a1 = await manager.createAgent({ name: '协调者 A' });
+    await manager.createAgent({ name: '普通 B' });
+    manager.updateAgent(a1.id, { isTeamCoordinator: true });
+
+    const list = manager.listAgents();
+    const aFromList = list.find((x) => x.id === a1.id);
+    expect(aFromList?.isTeamCoordinator).toBe(true);
+    const bFromList = list.find((x) => x.name === '普通 B');
+    expect(bFromList?.isTeamCoordinator).toBe(false);
   });
 
   it('updateAgent 不存在的 Agent 应该抛出错误', () => {

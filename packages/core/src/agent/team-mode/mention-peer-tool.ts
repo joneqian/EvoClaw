@@ -30,6 +30,56 @@ import { buildGroupSessionKey } from './group-key-utils.js';
 
 const logger = createLogger('team-mode/mention-peer-tool');
 
+/**
+ * 重复 @ 软去重 tracker（M13 修复 — 问题 1 双 @）
+ *
+ * 场景：notifier 在 create_task_plan / update_task_status='done' 解锁下游时主动 @ assignee；
+ *      LLM 在主回复里又调 mention_peer @ 同一 assignee，飞书侧推送两次。
+ *
+ * 策略：notifier 发完后调 `mark(group, peer, taskId)` 登记；mention_peer 工具 execute
+ *      入口检查 5 秒内是否已经被 notifier @ 过同一 (group, peer, task)，命中则**软返回**
+ *      （依然返回 ✅ 让 LLM 不报错，但不真的再发飞书消息），不阻断 LLM turn。
+ *
+ * 三元组保证 LLM 后续真的需要再 @（比如就这个任务问澄清，过了 5s 窗口）能区分场景。
+ */
+const NOTIFICATION_TTL_MS = 5_000;
+const recentNotifications = new Map<string, number>();
+
+function makeNotificationKey(groupSessionKey: string, peerAgentId: string, taskId: string | undefined): string {
+  return `${groupSessionKey}|${peerAgentId}|${taskId ?? 'none'}`;
+}
+
+function gcRecentNotifications(): void {
+  const cutoff = Date.now() - NOTIFICATION_TTL_MS;
+  for (const [k, ts] of recentNotifications) {
+    if (ts < cutoff) recentNotifications.delete(k);
+  }
+}
+
+export const mentionPeerNotificationTracker = {
+  /** 登记一次主动 @（notifier 发完后调用） */
+  mark(groupSessionKey: string, peerAgentId: string, taskId: string): void {
+    gcRecentNotifications();
+    const key = makeNotificationKey(groupSessionKey, peerAgentId, taskId);
+    recentNotifications.set(key, Date.now());
+    logger.debug(`tracker mark key=${key} now=${Date.now()}`);
+  },
+
+  /** 检查 5 秒内是否已 @ 过同一 (group, peer, task) */
+  isRecent(groupSessionKey: string, peerAgentId: string, taskId: string | undefined): boolean {
+    if (!taskId) return false; // 无 task_id 不参与去重（LLM 可能在做无关 @）
+    gcRecentNotifications();
+    const key = makeNotificationKey(groupSessionKey, peerAgentId, taskId);
+    const ts = recentNotifications.get(key);
+    return ts !== undefined && Date.now() - ts < NOTIFICATION_TTL_MS;
+  },
+
+  /** 测试用：清空 */
+  __resetForTest(): void {
+    recentNotifications.clear();
+  },
+};
+
 export interface MentionPeerToolDeps {
   rosterService: PeerRosterService;
   registry: TeamChannelRegistry;
@@ -139,6 +189,16 @@ export function createMentionPeerTool(deps: MentionPeerToolDeps): ToolDefinition
           `mention_peer 目标不在 roster from=${callerAgentId} target=${peerAgentId} group=${groupSessionKey}`,
         );
         return `错误：${peerAgentId} 不在当前群 roster 里。可用的同事：${roster.map((p) => p.agentId).join(', ') || '（无）'}`;
+      }
+
+      // M13 修复（2B）：notifier 5s 内已 @ 同一 (group, peer, task) → 软去重
+      // 不真的发飞书消息，避免双 @；返回成功语义不破坏 LLM 的 turn。
+      if (mentionPeerNotificationTracker.isRecent(groupSessionKey, peerAgentId, taskId)) {
+        logger.info(
+          `mention_peer 重复 @ 软去重 group=${groupSessionKey} peer=${peerAgentId} task=${taskId} ` +
+            `caller=${callerAgentId}（系统已主动 @，跳过重复发送）`,
+        );
+        return `✅ 已 @ ${peer.name}（${peerAgentId}）：系统已自动通知该 assignee，跳过重复发送（5s 内同一任务的 @ 去重）`;
       }
 
       // loop-guard 评估

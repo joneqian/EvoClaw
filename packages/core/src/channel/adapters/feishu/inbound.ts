@@ -198,6 +198,17 @@ export interface InboundContext {
     senderOpenId: string;
     ownAccountId: string;
   }) => 'self' | 'peer' | 'stranger';
+  /**
+   * 反查同事 bot 对应的 EvoClaw Agent ID
+   *
+   * 当 classifyAppSender 判定 'peer' 时，inbound 用本回调拿到 senderAppId → peerAgentId，
+   * 透传到 ChannelMessage.fromPeerAgentId（M13 多 Agent 协作 — 兜底 @ 回提问者）。
+   * 未提供时仍能正常工作，只是兜底逻辑拿不到 peer agent id（仅靠 open_id 也够 @ 回）。
+   */
+  resolvePeerAgentId?: (params: {
+    chatId: string;
+    senderAppId: string;
+  }) => string | null;
 }
 
 /**
@@ -249,6 +260,11 @@ export async function handleReceiveMessage(
 
   // Team mode 入站分类（M13 PR4）：同事 bot 消息允许通过，自己/陌生 bot 仍丢
   // 旧行为兜底：classifyAppSender 未提供时一刀切丢 sender_type=app
+  //
+  // M13 修复（C-1）：当 verdict='peer' 时记下 peerAgentId + peerOpenId，
+  // 后面注入到 ChannelMessage.fromPeerAgentId / fromPeerOpenId，
+  // channel-message-handler 兜底"@ 回提问者"会用到
+  let peerInboundInfo: { agentId: string | null; openId: string } | null = null;
   if (data.sender.sender_type === 'app') {
     const classify = ctx.classifyAppSender;
     if (!classify) {
@@ -279,8 +295,18 @@ export async function handleReceiveMessage(
       return;
     }
     // verdict === 'peer'：放行 → 走正常入站流程，下文 isGroup 检查仍生效
+    const peerAgentId = ctx.resolvePeerAgentId?.({
+      chatId: chatIdForClassify,
+      senderAppId,
+    }) ?? null;
+    peerInboundInfo = {
+      agentId: peerAgentId,
+      openId: senderOpenIdForClassify,
+    };
     log.info(
-      `[${accountId}] 接收到同事 bot peer 消息 sender_app=${senderAppId} chat=${chatIdForClassify} messageId=${data.message?.message_id}`,
+      `[${accountId}] 接收到同事 bot peer 消息 sender_app=${senderAppId} ` +
+        `peer_agent=${peerAgentId ?? 'unknown'} peer_open_id=${senderOpenIdForClassify || 'unknown'} ` +
+        `chat=${chatIdForClassify} messageId=${data.message?.message_id}`,
     );
   }
 
@@ -437,6 +463,15 @@ export async function handleReceiveMessage(
     const broadcastTargets = resolveBroadcastFanout(ctx, message, parsed.text);
     if (broadcastTargets && broadcastTargets.length > 0) {
       normalized.broadcastTargets = broadcastTargets;
+    }
+  }
+
+  // C-1：peer 入站时把 sender peer 信息透传到 ChannelMessage，让 channel-message-handler
+  // 在主回复发送前能兜底前缀 `<at user_id="ou_..."/>` 回 @ 提问者
+  if (peerInboundInfo && peerInboundInfo.openId) {
+    normalized.fromPeerOpenId = peerInboundInfo.openId;
+    if (peerInboundInfo.agentId) {
+      normalized.fromPeerAgentId = peerInboundInfo.agentId;
     }
   }
 

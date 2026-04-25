@@ -201,6 +201,33 @@ describe('FeishuTeamChannel · listPeerBots', () => {
     expect(peers.find((p) => p.mentionId === 'cli_outsider')).toBeUndefined();
   });
 
+  // M13 修复回归（B1+B2）：binding.bot_open_id 兜底冷启动 mention_id
+  it('binding.bot_open_id 兜底：从未发声的 peer 也能得到真 open_id 作 mentionId', async () => {
+    // 模拟 connect 后回填 bot_open_id
+    setup.bindingRouter.setBotOpenId('feishu', 'cli_peer1', 'ou_peer1_via_binding');
+    setup.bindingRouter.setBotOpenId('feishu', 'cli_peer2', 'ou_peer2_via_binding');
+
+    // 关键：registry 完全没观察到任何 bot（冷启动）
+    const peers = await setup.adapter.listPeerBots('feishu:chat:oc_x', 'a-self');
+    const peer1 = peers.find((p) => p.agentId === 'a-peer1');
+    const peer2 = peers.find((p) => p.agentId === 'a-peer2');
+    expect(peer1?.mentionId).toBe('ou_peer1_via_binding');
+    expect(peer2?.mentionId).toBe('ou_peer2_via_binding');
+  });
+
+  it('binding 已有 bot_open_id + registry 也观察到 → 优先用 registry 学到的（更新鲜）', async () => {
+    setup.bindingRouter.setBotOpenId('feishu', 'cli_peer1', 'ou_peer1_via_binding');
+    setup.registry.registerBotInChat('oc_x', 'cli_peer1', 'ou_peer1_via_event');
+    setup.bindingRouter.setBotOpenId('feishu', 'cli_peer2', 'ou_peer2_via_binding');
+    // peer2 没在群里观察到 → 走 binding 兜底
+
+    const peers = await setup.adapter.listPeerBots('feishu:chat:oc_x', 'a-self');
+    const peer1 = peers.find((p) => p.agentId === 'a-peer1');
+    const peer2 = peers.find((p) => p.agentId === 'a-peer2');
+    expect(peer1?.mentionId).toBe('ou_peer1_via_event');
+    expect(peer2?.mentionId).toBe('ou_peer2_via_binding');
+  });
+
   it('groupSessionKey 格式错误 → 空', async () => {
     const peers = await setup.adapter.listPeerBots('garbage', 'a-self');
     expect(peers).toEqual([]);
@@ -290,6 +317,7 @@ describe('FeishuTeamChannel · buildMention / renderTaskBoard', () => {
       status: 'active',
       tasks: [
         {
+          id: 'task-uuid-1',
           localId: 't1',
           title: '设计稿',
           assignee: { agentId: 'a-peer2', name: '小林', emoji: '🎨' },

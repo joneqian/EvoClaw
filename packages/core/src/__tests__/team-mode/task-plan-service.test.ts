@@ -14,7 +14,7 @@
  *   - pausePlan / cancelPlan
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from '../../infrastructure/db/migration-runner.js';
 import { AgentManager } from '../../agent/agent-manager.js';
@@ -379,6 +379,83 @@ describe('TaskPlanService', () => {
     expect(all.length).toBe(2);
   });
 
+  // ─── M13 修复回归：taskReadyNotifier 主动唤醒 assignee ─────────────────
+  // 防止 task_ready event 永远沉默躺在 system event 队列里。
+  it('taskReadyNotifier 在 createPlan 后被主动调用（带 DB taskId）', async () => {
+    type Captured = { planId: string; taskLocalId: string; taskDbId: string; assigneeId: string; triggeredBy: string };
+    const captured: Captured[] = [];
+    svc.setTaskReadyNotifier({
+      notifyTaskReady: async ({ plan, task, triggeredByAgentId }) => {
+        captured.push({
+          planId: plan.id,
+          taskLocalId: task.localId,
+          taskDbId: task.id,
+          assigneeId: task.assignee.agentId,
+          triggeredBy: triggeredByAgentId,
+        });
+      },
+    });
+
+    const snap = await svc.createPlan(
+      {
+        goal: '健康 H5 商城首页',
+        tasks: [
+          { localId: 't1', title: 'PRD', assigneeAgentId: B },
+          { localId: 't2', title: '设计', assigneeAgentId: C, dependsOn: ['t1'] },
+        ],
+      },
+      { groupSessionKey: groupKey, createdByAgentId: A, initiatorUserId: 'user-1' },
+    );
+
+    // 等微任务跑完 — 通知是 fire-and-forget
+    await new Promise((r) => setTimeout(r, 0));
+
+    // 只 t1 是 ready；t2 依赖 t1，未 ready
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.planId).toBe(snap.id);
+    expect(captured[0]?.taskLocalId).toBe('t1');
+    expect(captured[0]?.assigneeId).toBe(B);
+    expect(captured[0]?.triggeredBy).toBe(A);
+    // M13 修复：task.id 必须是 DB 主键 UUID（让 LLM 直接调 update_task_status 用）
+    expect(captured[0]?.taskDbId).toMatch(/^[0-9a-f]{8}-/i);
+
+    // t1 done → t2 ready 也要触发 notifier
+    captured.length = 0;
+    const t1DbId = store.get<{ id: string }>(
+      'SELECT id FROM tasks WHERE plan_id = ? AND local_id = ?',
+      snap.id,
+      't1',
+    )?.id as string;
+    svc.updateTaskStatus({ taskId: t1DbId, status: 'done', outputSummary: 'PRD v1' }, B);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.taskLocalId).toBe('t2');
+    expect(captured[0]?.assigneeId).toBe(C);
+    expect(captured[0]?.triggeredBy).toBe(B); // updater 触发，不是 plan creator
+  });
+
+  it('taskReadyNotifier 抛错不影响 plan 创建', async () => {
+    svc.setTaskReadyNotifier({
+      notifyTaskReady: async () => {
+        throw new Error('模拟通知失败');
+      },
+    });
+
+    // 不应抛出 — fire-and-forget 的 .catch 兜住了错误
+    const snap = await svc.createPlan(
+      {
+        goal: 'g',
+        tasks: [{ localId: 't1', title: 'x', assigneeAgentId: B }],
+      },
+      { groupSessionKey: groupKey, createdByAgentId: A },
+    );
+    expect(snap.tasks).toHaveLength(1);
+    // system event 仍然 enqueue 了（兜底路径还在）
+    const eventsB = peekSystemEvents(`agent:${B}:feishu:group:oc_test`);
+    expect(eventsB.some((e) => e.includes('task_ready'))).toBe(true);
+  });
+
   it('同群可并发多个 active plan', async () => {
     const s1 = await svc.createPlan(
       { goal: 'a', tasks: [{ localId: 't1', title: 'x', assigneeAgentId: B }] },
@@ -394,5 +471,4 @@ describe('TaskPlanService', () => {
   });
 });
 
-// 补 import
-import { afterEach } from 'vitest';
+// (afterEach 已在文件顶部 import)

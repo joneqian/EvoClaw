@@ -225,6 +225,9 @@ export class AgentManager {
       permissionMode: config.permissionMode,
       mcpServers: config.mcpServers,
       bindings: config.bindings,
+      // M13 team mode: role 列由 migration 031 添加，默认 'general'
+      // 老库未升级时 row.role 为 undefined，回退 'general' 不破坏单 Agent 流
+      role: row.role ?? 'general',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

@@ -45,6 +45,16 @@ export interface AgentConfig {
   mcpServers?: string[];
   /** 绑定关系 */
   bindings?: Binding[];
+  /**
+   * 角色（M13 多 Agent 团队协作 - 信息性字段）
+   *
+   * 内置：'pm' | 'backend' | 'product' | 'design' | 'general'，也支持自定义文本
+   * 仅作两种用途：
+   *   1. 注入 Agent 自我介绍 prompt（"你的角色是 ..."）
+   *   2. 填充 peer roster role 字段供同事识别
+   * 不做 tool gating（去 PM 中心化）
+   */
+  role?: string;
   /** 创建时间 ISO string */
   createdAt: string;
   /** 更新时间 ISO string */

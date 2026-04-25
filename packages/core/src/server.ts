@@ -840,20 +840,75 @@ async function main() {
         const { WeixinAdapter } = await import('./channel/adapters/weixin.js');
         channelManager.registerFactory('weixin', () => new WeixinAdapter(channelStateRepo));
       }
+
+      const bindingRouter = new BindingRouter(db);
+
+      // M13 team-mode: 跨渠道 adapter registry + 飞书实现
+      // 飞书 chat.members.get 不返回机器人成员，所以用被动缓存模式：从入站消息和
+      // bot.added/deleted 事件累积 (chatId, appId, openId)
+      let feishuTeamChannel: import('./channel/adapters/feishu/team-channel.js').FeishuTeamChannel | null = null;
+      let feishuPeerBotRegistry: import('./channel/adapters/feishu/peer-bot-registry.js').FeishuPeerBotRegistry | null = null;
       if (Feature.FEISHU) {
         const { FeishuAdapter } = await import('./channel/adapters/feishu/index.js');
-        channelManager.registerFactory('feishu', () => new FeishuAdapter());
+        const { FeishuPeerBotRegistry } = await import('./channel/adapters/feishu/peer-bot-registry.js');
+        const { FeishuTeamChannel } = await import('./channel/adapters/feishu/team-channel.js');
+        const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
+
+        feishuPeerBotRegistry = new FeishuPeerBotRegistry({ bindingRouter });
+        feishuTeamChannel = new FeishuTeamChannel({ peerBotRegistry: feishuPeerBotRegistry });
+        teamChannelRegistry.register('feishu', feishuTeamChannel);
+
+        // factory：每个 accountId 创建一个 FeishuAdapter 实例，挂上同一组 team-mode
+        // 钩子（共享 peerBotRegistry / teamChannel 单例）
+        channelManager.registerFactory('feishu', () => {
+          const adapter = new FeishuAdapter();
+          // 入站分类器：peer-bot-registry.classifyPeer 副作用更新缓存
+          adapter.setTeamModeClassifier(({ chatId, senderAppId, senderOpenId, ownAccountId }) => {
+            if (!chatId || !senderAppId) return 'stranger';
+            if (senderAppId === ownAccountId) return 'self';
+            const peer = feishuPeerBotRegistry!.classifyPeer(chatId, senderAppId, senderOpenId);
+            return peer ? 'peer' : 'stranger';
+          });
+          // 事件钩子：bot 入群 / 出群 / p2p 进入 → 更新 registry + 广播成员变更
+          adapter.setEventCallbacks({
+            onBotAddedToChat: async (event) => {
+              const accountId = adapter.getStatus().accountId ?? '';
+              if (!event.chat_id || !accountId) return;
+              feishuPeerBotRegistry!.registerBotInChat(event.chat_id, accountId);
+              feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'added');
+            },
+            onBotRemovedFromChat: async (event) => {
+              const accountId = adapter.getStatus().accountId ?? '';
+              if (!event.chat_id || !accountId) return;
+              feishuPeerBotRegistry!.unregisterBotInChat(event.chat_id, accountId);
+              feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'deleted');
+            },
+            onP2pChatEntered: async (event) => {
+              const accountId = adapter.getStatus().accountId ?? '';
+              if (!event.chat_id || !accountId) return;
+              feishuPeerBotRegistry!.registerBotInChat(event.chat_id, accountId);
+              feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'p2p_entered');
+            },
+          });
+          return adapter;
+        });
       }
-      const bindingRouter = new BindingRouter(db);
+
       profiler.checkpoint('channel_ready');
-      return { channelManager, channelStateRepo, bindingRouter };
+      return {
+        channelManager,
+        channelStateRepo,
+        bindingRouter,
+        feishuTeamChannel,
+        feishuPeerBotRegistry,
+      };
     })(),
   ]);
 
   // 解构并行结果
   const { vectorStore, memoryStore, ftsStore, knowledgeGraph, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
   const { agentManager, laneQueue, cronRunner } = agentSys;
-  const { channelManager, channelStateRepo, bindingRouter } = channelSys;
+  const { channelManager, channelStateRepo, bindingRouter, feishuTeamChannel, feishuPeerBotRegistry } = channelSys;
 
   profiler.checkpoint('systems_ready');
 
@@ -874,6 +929,65 @@ async function main() {
 
   const dispatchCommand = createCommandDispatcher(commandRegistry);
 
+  // M13 team-mode 服务装配（每个进程单例，多渠道共享）
+  // - LoopGuard：5 层熔断
+  // - PeerRosterService：跨渠道 roster 解析
+  // - TaskPlanService：DAG + 依赖解锁
+  // - ArtifactService：中间产物
+  // - UserCommandHandler：/pause /cancel /revise 触发词
+  // - EscalationService：5 min cron 责任链超时
+  let teamModeServices: {
+    loopGuard: import('./agent/team-mode/loop-guard.js').LoopGuard;
+    peerRosterService: import('./agent/team-mode/peer-roster-service.js').PeerRosterService;
+    taskPlanService: import('./agent/team-mode/task-plan/service.js').TaskPlanService;
+    artifactService: import('./agent/team-mode/artifacts/service.js').ArtifactService;
+    userCommandHandler: import('./agent/team-mode/user-commands.js').UserCommandHandler;
+    escalationService: import('./agent/team-mode/escalation-service.js').EscalationService;
+  } | null = null;
+  try {
+    const [
+      { LoopGuard },
+      { PeerRosterService },
+      { TaskPlanService },
+      { ArtifactService },
+      { UserCommandHandler },
+      { EscalationService },
+    ] = await Promise.all([
+      import('./agent/team-mode/loop-guard.js'),
+      import('./agent/team-mode/peer-roster-service.js'),
+      import('./agent/team-mode/task-plan/service.js'),
+      import('./agent/team-mode/artifacts/service.js'),
+      import('./agent/team-mode/user-commands.js'),
+      import('./agent/team-mode/escalation-service.js'),
+    ]);
+    const loopGuard = new LoopGuard();
+    const peerRosterService = new PeerRosterService({ agentManager });
+    const taskPlanService = new TaskPlanService({ store: db, agentManager, loopGuard });
+    const artifactService = new ArtifactService({ store: db });
+    const userCommandHandler = new UserCommandHandler({ taskPlanService });
+    const escalationService = new EscalationService({
+      store: db,
+      taskPlanService,
+      agentManager,
+      channelManager,
+      bindingRouter,
+    });
+    escalationService.start();
+    teamModeServices = {
+      loopGuard,
+      peerRosterService,
+      taskPlanService,
+      artifactService,
+      userCommandHandler,
+      escalationService,
+    };
+    log.info(
+      `[team-mode] 服务已启动 feishuTeamChannel=${feishuTeamChannel ? 'on' : 'off'} feishuPeerBotRegistry=${feishuPeerBotRegistry ? 'on' : 'off'}`,
+    );
+  } catch (err) {
+    log.error(`[team-mode] 服务启动失败 (功能将降级为单 Agent 行为): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 渠道消息处理依赖
   const channelMsgDeps: ChannelMessageDeps = {
     store: db,
@@ -890,6 +1004,15 @@ async function main() {
     ftsStore,
     knowledgeGraph,
     bindingRouter,
+    ...(teamModeServices
+      ? {
+          taskPlanService: teamModeServices.taskPlanService,
+          artifactService: teamModeServices.artifactService,
+          peerRosterService: teamModeServices.peerRosterService,
+          loopGuard: teamModeServices.loopGuard,
+          userCommandHandler: teamModeServices.userCommandHandler,
+        }
+      : {}),
   };
 
   // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理

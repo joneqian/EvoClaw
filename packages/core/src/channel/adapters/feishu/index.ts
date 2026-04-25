@@ -27,6 +27,7 @@ import {
   registerInboundHandlers,
   type MediaDownloader,
   type FeishuMessageFetcher,
+  type InboundContext,
 } from './inbound.js';
 import { createFeishuMessageCache } from './message-cache.js';
 import { parseFeishuContent } from './parse-content.js';
@@ -181,6 +182,15 @@ export class FeishuAdapter implements ChannelAdapter {
   /** 群聊旁听缓冲（多机器人协作） */
   private readonly groupHistory = new GroupHistoryBuffer();
   /**
+   * Team mode 入站分类器（M13 PR4 注入）
+   *
+   * 由外层（server.ts）按"FeishuPeerBotRegistry.classifyPeer + 自身 accountId 比对"
+   * 装配；未注入时退化为旧行为（一刀切丢 sender_type=app）。
+   */
+  private classifyAppSender:
+    | InboundContext['classifyAppSender']
+    | undefined = undefined;
+  /**
    * 广播场景下把 feishu bot open_id 映射到 agentId（可选）
    *
    * 常见单 adapter 模型下用户不必配置（`mention-first` 会因映射为空而退化为
@@ -218,6 +228,8 @@ export class FeishuAdapter implements ChannelAdapter {
         getBotIdToAgentId: () => this.botIdToAgentId,
         getMessageCache: () => this.messageCache,
         getMessageFetcher: () => this.messageFetcher,
+        // M13 team-mode：未注入时为 undefined → inbound 走旧丢 app 行为
+        classifyAppSender: this.classifyAppSender,
       });
 
       registerCardActionHandlers(bundle.dispatcher, {
@@ -443,6 +455,16 @@ export class FeishuAdapter implements ChannelAdapter {
    */
   setEventCallbacks(callbacks: FeishuEventCallbacks): void {
     this.eventCallbacks = callbacks;
+  }
+
+  /**
+   * 注入 team-mode 入站分类器（M13 PR4）
+   *
+   * 调用方（server.ts）传入 `(params) => peerBotRegistry.classifyPeer(...) ? 'peer' : 'self/stranger'`
+   * 的具体逻辑。未注入时 inbound 走旧行为（丢所有 sender_type=app）。
+   */
+  setTeamModeClassifier(classifier: InboundContext['classifyAppSender']): void {
+    this.classifyAppSender = classifier;
   }
 
   private requireClient(): Lark.Client {

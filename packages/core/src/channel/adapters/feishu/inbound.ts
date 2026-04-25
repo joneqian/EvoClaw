@@ -118,6 +118,8 @@ export interface FeishuReceiveEvent {
       open_id?: string;
       user_id?: string;
       union_id?: string;
+      /** sender_type=app 时填，bot 的 app_id（cli_xxx），用于识别本机 / 同事 / 陌生 */
+      app_id?: string;
     };
     sender_type: string;
     tenant_key?: string;
@@ -181,6 +183,21 @@ export interface InboundContext {
   getMessageCache?: () => FeishuMessageCache | null;
   /** LRU miss 时的 API 回查，缺省或失败时降级为 `[引用消息]` 占位 */
   getMessageFetcher?: () => FeishuMessageFetcher | null;
+  /**
+   * Team mode: 同事 bot 消息分类器（M13 PR4 接入）
+   *
+   * 未提供时退化为旧行为（一刀切丢弃 sender_type=app）。提供时按 self/peer/stranger
+   * 分类：self/stranger 丢，peer 透传到正常处理（让被 @ 的本机 bot 收到同事 @）。
+   *
+   * 副作用：peer 识别会顺手把 (chatId, senderAppId, senderOpenId) 写入 peer-bot-registry，
+   * 让 listPeerBots 能看到。
+   */
+  classifyAppSender?: (params: {
+    chatId: string;
+    senderAppId: string;
+    senderOpenId: string;
+    ownAccountId: string;
+  }) => 'self' | 'peer' | 'stranger';
 }
 
 /**
@@ -228,10 +245,45 @@ export async function handleReceiveMessage(
   const handler = ctx.getHandler();
   if (!handler) return;
 
-  // 忽略机器人自己的消息
-  if (data.sender.sender_type === 'app') return;
-
   const accountId = ctx.getAccountId();
+
+  // Team mode 入站分类（M13 PR4）：同事 bot 消息允许通过，自己/陌生 bot 仍丢
+  // 旧行为兜底：classifyAppSender 未提供时一刀切丢 sender_type=app
+  if (data.sender.sender_type === 'app') {
+    const classify = ctx.classifyAppSender;
+    if (!classify) {
+      log.debug(`[${accountId}] team-mode 未启用，丢弃 sender_type=app 消息`);
+      return;
+    }
+    const senderAppId = data.sender.sender_id?.app_id ?? '';
+    const senderOpenIdForClassify = data.sender.sender_id?.open_id ?? '';
+    const chatIdForClassify = data.message?.chat_id ?? '';
+    if (!senderAppId || !chatIdForClassify) {
+      log.debug(`[${accountId}] sender_type=app 但缺 app_id/chat_id，丢弃`);
+      return;
+    }
+    const verdict = classify({
+      chatId: chatIdForClassify,
+      senderAppId,
+      senderOpenId: senderOpenIdForClassify,
+      ownAccountId: accountId,
+    });
+    if (verdict === 'self') {
+      log.debug(`[${accountId}] 自身回声丢弃 messageId=${data.message?.message_id}`);
+      return;
+    }
+    if (verdict === 'stranger') {
+      log.debug(
+        `[${accountId}] 陌生 bot 丢弃 sender=${senderAppId} messageId=${data.message?.message_id}`,
+      );
+      return;
+    }
+    // verdict === 'peer'：放行 → 走正常入站流程，下文 isGroup 检查仍生效
+    log.info(
+      `[${accountId}] 接收到同事 bot peer 消息 sender_app=${senderAppId} chat=${chatIdForClassify} messageId=${data.message?.message_id}`,
+    );
+  }
+
   const message = data.message;
 
   // 去重（见文件顶部 SEEN_MESSAGE_IDS 说明）：飞书服务端可能向**同一 app** 重推

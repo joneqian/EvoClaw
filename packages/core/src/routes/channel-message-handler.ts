@@ -98,6 +98,12 @@ export interface ChannelMessageDeps {
   knowledgeGraph?: KnowledgeGraphStore;
   /** 用于多账号渠道工具按 agentId 反查正确的 accountId + adapter */
   bindingRouter?: import('../routing/binding-router.js').BindingRouter;
+  // M13 team-mode 依赖（可选；缺省则 team mode 工具不注入，旧单 Agent 行为保留）
+  taskPlanService?: import('../agent/team-mode/task-plan/service.js').TaskPlanService;
+  artifactService?: import('../agent/team-mode/artifacts/service.js').ArtifactService;
+  peerRosterService?: import('../agent/team-mode/peer-roster-service.js').PeerRosterService;
+  loopGuard?: import('../agent/team-mode/loop-guard.js').LoopGuard;
+  userCommandHandler?: import('../agent/team-mode/user-commands.js').UserCommandHandler;
 }
 
 /** 通道特定的工具禁止规则 */
@@ -371,6 +377,24 @@ export async function handleChannelMessage(
   // 更新最近对话时间
   agentManager.touchLastChat(agentId);
 
+  // M13 team-mode：群聊里识别用户触发词 /pause /cancel /revise，命中则短路（不进 LLM）
+  if (chatType === 'group' && deps.userCommandHandler) {
+    try {
+      const groupSessionKey = `${channel}:chat:${peerId}` as const;
+      const cmdResult = await deps.userCommandHandler.handle(message, groupSessionKey, undefined);
+      if (cmdResult && cmdResult.shortCircuit) {
+        log.info(
+          `[team-mode] 用户命令短路 agent=${agentId} group=${peerId} affected_plans=${cmdResult.affectedPlans}`,
+        );
+        return cmdResult.replyText;
+      }
+    } catch (err) {
+      log.warn(
+        `[team-mode] 用户命令处理失败 agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // 2. 解析模型 + API 配置
   let modelId = '';
   let provider = '';
@@ -578,6 +602,46 @@ export async function handleChannelMessage(
     });
   }
 
+  // M13 team-mode 工具：仅当群聊且服务齐全时注入
+  // - mention_peer (跨渠道 @ 同事，集成 loop-guard)
+  // - create_task_plan / update_task_status / list_tasks / request_clarification
+  // - attach_artifact / list_task_artifacts / fetch_artifact
+  if (chatType === 'group' && deps.taskPlanService && deps.peerRosterService && deps.loopGuard && deps.bindingRouter && deps.artifactService) {
+    try {
+      const [{ createTaskPlanTools }, { createMentionPeerTool }, { createArtifactTools }, { teamChannelRegistry }] = await Promise.all([
+        import('../agent/team-mode/task-plan/tools.js'),
+        import('../agent/team-mode/mention-peer-tool.js'),
+        import('../agent/team-mode/artifacts/tools.js'),
+        import('../agent/team-mode/team-channel-registry.js'),
+      ]);
+      const teamTools: ToolDefinition[] = [
+        ...createTaskPlanTools(deps.taskPlanService),
+        createMentionPeerTool({
+          rosterService: deps.peerRosterService,
+          registry: teamChannelRegistry,
+          loopGuard: deps.loopGuard,
+          channelManager,
+          bindingRouter: deps.bindingRouter,
+        }),
+        ...createArtifactTools(deps.artifactService),
+      ];
+      // 自动注入 sessionKey + agentId（防 agent 伪造）
+      for (const tt of teamTools) {
+        enhancedTools.push({
+          name: tt.name,
+          description: tt.description,
+          parameters: tt.parameters,
+          execute: async (args, ctx2) => tt.execute({ ...args, agentId, sessionKey }, ctx2),
+        });
+      }
+      log.debug(`[team-mode] 注入 ${teamTools.length} 个工具 agent=${agentId} group=${peerId}`);
+    } catch (err) {
+      log.warn(
+        `[team-mode] 工具注入失败 agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // 通道特定工具禁止
   const channelType = parseSessionKey(sessionKey)?.channel;
   const channelDeny = channelType ? (CHANNEL_TOOL_DENY[channelType] ?? []) : [];
@@ -636,6 +700,36 @@ export async function handleChannelMessage(
       ? buildGroupPeerRoster(agentId, channel, deps.bindingRouter, agentManager)
       : null;
 
+  // M13 team-mode：当群聊 + team-mode 服务齐全 + roster 非空时，叠一段 <team_mode>
+  // XML（含同事 mention_id / 我的待办 / 行为规则）。前面 buildGroupPeerRoster 仍保留
+  // 作为旧版 fallback，两段都会 append 到 system prompt 末尾。
+  let teamModeFragment: string | null = null;
+  if (chatType === 'group' && deps.peerRosterService && deps.taskPlanService) {
+    try {
+      const groupSessionKey = `${channel}:chat:${peerId}` as const;
+      const peerRoster = await deps.peerRosterService.buildRoster(agentId, groupSessionKey);
+      if (peerRoster.length > 0) {
+        const myOpenTasks = deps.taskPlanService.listOpenTasksForAssignee(agentId, groupSessionKey);
+        const { renderTeamModePrompt } = await import('../agent/team-mode/prompt-fragment.js');
+        teamModeFragment = renderTeamModePrompt({
+          channelType: channel,
+          groupSessionKey,
+          roster: peerRoster,
+          myOpenTasks: myOpenTasks.map((t) => ({
+            localId: t.localId,
+            title: t.title,
+            status: t.status,
+            dependsOn: t.dependsOn,
+          })),
+        });
+      }
+    } catch (err) {
+      log.warn(
+        `team-mode prompt 注入失败 agent=${agentId} group=${peerId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   const runConfig: AgentRunConfig = {
     agent,
     systemPrompt,
@@ -650,13 +744,16 @@ export async function handleChannelMessage(
     messages,
     permissionInterceptFn,
     auditLogFn,
-    ...(groupPeerRoster
-      ? {
-          promptOverrides: [
-            { level: 'agent' as const, mode: 'append' as const, content: groupPeerRoster },
-          ],
-        }
-      : {}),
+    ...(() => {
+      const overrides: Array<{ level: 'agent'; mode: 'append'; content: string }> = [];
+      if (groupPeerRoster) {
+        overrides.push({ level: 'agent', mode: 'append', content: groupPeerRoster });
+      }
+      if (teamModeFragment) {
+        overrides.push({ level: 'agent', mode: 'append', content: teamModeFragment });
+      }
+      return overrides.length > 0 ? { promptOverrides: overrides } : {};
+    })(),
     // 多模态附件：IM 渠道（飞书/微信）下载到本地的图片通过 inputAttachments
     // 原生注入 user message，embedded-runner 会转成 ImageBlock 喂给模型，
     // 省去 Agent 再调 image 工具的弯路

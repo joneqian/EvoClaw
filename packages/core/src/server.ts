@@ -982,12 +982,18 @@ async function main() {
     const taskPlanService = new TaskPlanService({ store: db, agentManager, loopGuard });
     const artifactService = new ArtifactService({ store: db });
     const userCommandHandler = new UserCommandHandler({ taskPlanService });
+    // N5 修复：把 FeishuPeerBotRegistry GC 接到 escalation tick（每 5 min 清一次过期 entry）
+    const gcHooks: Array<() => void> = [];
+    if (feishuPeerBotRegistry) {
+      gcHooks.push(() => feishuPeerBotRegistry!.gc());
+    }
     const escalationService = new EscalationService({
       store: db,
       taskPlanService,
       agentManager,
       channelManager,
       bindingRouter,
+      gcHooks,
     });
     escalationService.start();
 

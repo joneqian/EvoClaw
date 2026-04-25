@@ -69,8 +69,13 @@ interface RateRecord {
 interface PingPongRecord {
   /** 最近 PING_PONG_WINDOW_MS 内 from→to 互 @ 时间戳 */
   timestamps: number[];
-  /** 最近一次涉及的 task_id 集合，用于"无 status 变化"语义判断 */
-  taskIds: Set<string>;
+  /**
+   * 最近一次涉及的 task_id → 最近时间戳，用于"无 status 变化"语义判断
+   *
+   * N4 修复：从 Set<string> 改为 Map<string, number>，pruneTimestamps 时同步
+   * 删除超出 PING_PONG_WINDOW_MS 的旧 task 条目，避免内存无限增长
+   */
+  taskIds: Map<string, number>;
   /** 冻结直到时间戳 */
   frozenUntil: number;
 }
@@ -201,9 +206,11 @@ export class LoopGuard {
 
     pong.timestamps.push(now);
     pruneTimestamps(pong.timestamps, now - PING_PONG_WINDOW_MS);
+    // N4 修复：taskIds 改 Map<taskId, latestTs>，同步剔除窗口外的旧 task 条目
     if (ctx.taskId) {
-      pong.taskIds.add(ctx.taskId);
+      pong.taskIds.set(ctx.taskId, now);
     }
+    pruneTaskIds(pong.taskIds, now - PING_PONG_WINDOW_MS);
 
     if (pong.timestamps.length >= PING_PONG_THRESHOLD) {
       // task 多样化判定：只有 1 个 task 反复互 @ 才算乒乓
@@ -289,7 +296,7 @@ export class LoopGuard {
   private getOrCreatePingPong(key: string): PingPongRecord {
     let rec = this.pingPongs.get(key);
     if (!rec) {
-      rec = { timestamps: [], taskIds: new Set(), frozenUntil: 0 };
+      rec = { timestamps: [], taskIds: new Map<string, number>(), frozenUntil: 0 };
       this.pingPongs.set(key, rec);
     }
     return rec;
@@ -307,4 +314,15 @@ function pruneTimestamps(arr: number[], cutoff: number): void {
   let i = 0;
   while (i < arr.length && arr[i] < cutoff) i++;
   if (i > 0) arr.splice(0, i);
+}
+
+/**
+ * N4 修复：删掉 taskIds Map 中早于 cutoff 的 entry（in-place）
+ *
+ * 防止长期运行下 taskIds Map 单向增长（每来一个新 taskId 都加，从不清）
+ */
+function pruneTaskIds(map: Map<string, number>, cutoff: number): void {
+  for (const [taskId, ts] of map) {
+    if (ts < cutoff) map.delete(taskId);
+  }
 }

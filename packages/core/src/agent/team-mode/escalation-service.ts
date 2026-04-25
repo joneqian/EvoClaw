@@ -48,6 +48,11 @@ export interface EscalationServiceDeps {
   bindingRouter: BindingRouter;
   /** 间隔（默认 5 min，测试可缩短） */
   tickIntervalMs?: number;
+  /**
+   * N5 修复：每 tick 顺手跑的 GC 钩子（可选）
+   * 用于清理 FeishuPeerBotRegistry 等长生命周期 Map 的过期 entry
+   */
+  gcHooks?: Array<() => void>;
 }
 
 export class EscalationService {
@@ -55,6 +60,13 @@ export class EscalationService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private tickIntervalMs: number;
   private running = false;
+  /**
+   * N2 修复：60min @用户事件去重
+   * key=task.id, value=上次 @用户的时间戳（ms）
+   * 同一 task 30min 内不重复 @；进程重启 map 清空，最坏情况重启时刚好双触发一次，可接受
+   */
+  private lastUserNotifiedAt = new Map<string, number>();
+  private static readonly USER_NOTIFY_COOLDOWN_MS = 30 * 60_000;
 
   constructor(deps: EscalationServiceDeps) {
     this.deps = deps;
@@ -95,19 +107,29 @@ export class EscalationService {
     const startMs = Date.now();
     try {
       const tasks = this.fetchActiveTasksWithPlan();
+      let escalations = 0;
       if (tasks.length === 0) {
         logger.debug('escalation tick: 无活跃任务');
-        return;
+      } else {
+        logger.debug(`escalation tick: 检查 ${tasks.length} 个活跃任务`);
+        for (const { task, plan } of tasks) {
+          const escalated = await this.checkTask(task, plan);
+          if (escalated) escalations++;
+        }
+        logger.info(
+          `escalation tick 完成 active_tasks=${tasks.length} escalated=${escalations} duration_ms=${Date.now() - startMs}`,
+        );
       }
-      logger.debug(`escalation tick: 检查 ${tasks.length} 个活跃任务`);
-      let escalations = 0;
-      for (const { task, plan } of tasks) {
-        const escalated = await this.checkTask(task, plan);
-        if (escalated) escalations++;
+      // N5 修复：每 tick 顺手跑 GC 钩子（peer-bot-registry 过期清理等）
+      if (this.deps.gcHooks) {
+        for (const hook of this.deps.gcHooks) {
+          try {
+            hook();
+          } catch (err) {
+            logger.warn(`gcHook 抛错: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
       }
-      logger.info(
-        `escalation tick 完成 active_tasks=${tasks.length} escalated=${escalations} duration_ms=${Date.now() - startMs}`,
-      );
     } finally {
       this.running = false;
     }
@@ -127,10 +149,17 @@ export class EscalationService {
     const idleMs = Date.now() - lastUpdate;
 
     if (idleMs >= HARD_THRESHOLD_MS) {
-      // 60 min：群里 @ 用户
-      if (task.stale_marker !== 'red_30min' || idleMs < HARD_THRESHOLD_MS + this.tickIntervalMs * 1.5) {
+      // 60 min：群里 @ 用户。N2 修复：用 lastUserNotifiedAt 节流 30min，避免每个 5min tick 重复 @
+      const lastNotified = this.lastUserNotifiedAt.get(task.id) ?? 0;
+      const sinceLast = Date.now() - lastNotified;
+      if (sinceLast >= EscalationService.USER_NOTIFY_COOLDOWN_MS) {
         await this.notifyUserInGroup(task, plan, idleMs);
+        this.lastUserNotifiedAt.set(task.id, Date.now());
         return true;
+      } else {
+        logger.debug(
+          `escalation 第三跳节流跳过 task=${task.id} 距离上次 @用户 ${Math.floor(sinceLast / 60_000)}min < ${EscalationService.USER_NOTIFY_COOLDOWN_MS / 60_000}min`,
+        );
       }
     } else if (idleMs >= RED_THRESHOLD_MS) {
       // 30 min：plan.created_by + 标红
@@ -256,7 +285,25 @@ plan goal: ${plan.goal}
       plan_created_at: string;
       plan_completed_at: string | null;
     }>(
-      `SELECT t.*,
+      // N1 修复：所有 task 列显式 alias 为 task_*，所有 plan 列 alias 为 plan_*。
+      // 避免 t.* + p.id 这类 join 中相同列名互相覆盖的隐性陷阱。
+      `SELECT t.id AS task_id_col,
+              t.plan_id AS task_plan_id,
+              t.local_id AS task_local_id,
+              t.assignee_agent_id AS task_assignee_agent_id,
+              t.created_by_agent_id AS task_created_by_agent_id,
+              t.title AS task_title,
+              t.description AS task_description,
+              t.status AS task_status,
+              t.depends_on AS task_depends_on,
+              t.output_summary AS task_output_summary,
+              t.last_note AS task_last_note,
+              t.stale_marker AS task_stale_marker,
+              t.created_at AS task_created_at,
+              t.started_at AS task_started_at,
+              t.completed_at AS task_completed_at,
+              t.updated_at AS task_updated_at,
+              p.id AS plan_id_col,
               p.status AS plan_status,
               p.group_session_key AS plan_group_session_key,
               p.channel_type AS plan_channel_type,
@@ -279,29 +326,30 @@ plan goal: ${plan.goal}
 }
 
 function extractTaskRow(r: Record<string, unknown>): TaskRow {
+  // N1 修复：从显式 task_* alias 读取（不再依赖 t.* 与 p.* 互不冲突）
   return {
-    id: r['id'] as string,
-    plan_id: r['plan_id'] as string,
-    local_id: r['local_id'] as string,
-    assignee_agent_id: r['assignee_agent_id'] as string,
-    created_by_agent_id: r['created_by_agent_id'] as string,
-    title: r['title'] as string,
-    description: r['description'] as string | null,
-    status: r['status'] as TaskRow['status'],
-    depends_on: r['depends_on'] as string,
-    output_summary: r['output_summary'] as string | null,
-    last_note: r['last_note'] as string | null,
-    stale_marker: r['stale_marker'] as TaskRow['stale_marker'],
-    created_at: r['created_at'] as string,
-    started_at: r['started_at'] as string | null,
-    completed_at: r['completed_at'] as string | null,
-    updated_at: r['updated_at'] as string,
+    id: r['task_id_col'] as string,
+    plan_id: r['task_plan_id'] as string,
+    local_id: r['task_local_id'] as string,
+    assignee_agent_id: r['task_assignee_agent_id'] as string,
+    created_by_agent_id: r['task_created_by_agent_id'] as string,
+    title: r['task_title'] as string,
+    description: r['task_description'] as string | null,
+    status: r['task_status'] as TaskRow['status'],
+    depends_on: r['task_depends_on'] as string,
+    output_summary: r['task_output_summary'] as string | null,
+    last_note: r['task_last_note'] as string | null,
+    stale_marker: r['task_stale_marker'] as TaskRow['stale_marker'],
+    created_at: r['task_created_at'] as string,
+    started_at: r['task_started_at'] as string | null,
+    completed_at: r['task_completed_at'] as string | null,
+    updated_at: r['task_updated_at'] as string,
   };
 }
 
 function extractPlanRow(r: Record<string, unknown>): TaskPlanRow {
   return {
-    id: r['plan_id'] as string,
+    id: r['plan_id_col'] as string,
     group_session_key: r['plan_group_session_key'] as string,
     channel_type: r['plan_channel_type'] as string,
     goal: r['plan_goal'] as string,

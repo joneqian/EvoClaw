@@ -76,8 +76,20 @@ export class PeerRosterService {
     // Step 1: 查缓存
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      logger.debug(`缓存命中 agentId=${agentId} key=${groupSessionKey} peers=${cached.roster.length}`);
-      return cached.roster;
+      // N3 修复：缓存命中时 re-filter 当前已变 inactive 的 agent
+      // （用户在 5min TTL 内停用 / 归档某个 peer，避免还出现在 roster 里）
+      const fresh = cached.roster.filter(
+        (p) => this.agentManager.getAgent(p.agentId)?.status === 'active',
+      );
+      if (fresh.length !== cached.roster.length) {
+        logger.debug(
+          `缓存命中但过滤掉 ${cached.roster.length - fresh.length} 个非 active 同事 ` +
+            `agentId=${agentId} key=${groupSessionKey}`,
+        );
+      } else {
+        logger.debug(`缓存命中 agentId=${agentId} key=${groupSessionKey} peers=${fresh.length}`);
+      }
+      return fresh;
     }
 
     // Step 2: 解析 adapter

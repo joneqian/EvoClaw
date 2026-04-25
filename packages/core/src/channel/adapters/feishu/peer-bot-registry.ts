@@ -103,6 +103,32 @@ export class FeishuPeerBotRegistry {
   }
 
   /**
+   * N5 修复：清理超过 maxAgeMs（默认 30 天）未活跃的 entry
+   *
+   * 触发：建议接到 escalation tick 每 5 min 调一次（成本低，扫描整个 map），
+   * 不依赖飞书 bot.deleted 事件可靠交付（事件丢失时仍能兜底回收）
+   *
+   * @returns 清理的 entry 数
+   */
+  gc(maxAgeMs = 30 * 24 * 60 * 60_000): number {
+    const cutoff = Date.now() - maxAgeMs;
+    let removed = 0;
+    for (const [chatId, inChat] of this.byChatId) {
+      for (const [appId, entry] of inChat) {
+        if (entry.lastSeenAt < cutoff) {
+          inChat.delete(appId);
+          removed++;
+        }
+      }
+      if (inChat.size === 0) this.byChatId.delete(chatId);
+    }
+    if (removed > 0) {
+      logger.info(`peer-bot-registry GC 清理 ${removed} 个超过 ${maxAgeMs / 86_400_000}d 未活跃 entry`);
+    }
+    return removed;
+  }
+
+  /**
    * 列出群里所有"已知 EvoClaw 同事"的 bot
    *
    * 解析步骤：

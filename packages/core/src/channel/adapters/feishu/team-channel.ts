@@ -128,18 +128,28 @@ export class FeishuTeamChannel implements TeamChannelAdapter {
     text: string,
     metadata?: TeamMessageMetadata,
   ): Promise<ChannelOutboundMessage> {
-    // PR3 简化：fallbackText 含 "@{name}" 字面量；mention_peer 工具直接用 fallbackText 调
-    // channelManager.sendMessage 发纯文本消息。
-    // PR4+ 把 payload 升级成飞书 post JSON（含真 <at user_id="ou_xxx">），
-    // mention-peer-tool 检测到 payload 非空时走 post 通道。
-    const fallbackText = `@${peer.name} ${text}`;
+    // PR5 修复（S2）：用 `<at user_id="ou_xxx"/>` 内联标记，
+    // 经 markdown-to-post.ts 渲染为真·post `at` 元素，飞书会触发推送通知 + 高亮
+    //
+    // 兼容性：
+    //   - mentionId 是 open_id 时（peer 已 active 过）→ 真 @ 生效
+    //   - mentionId 退化为 appId 时（peer 还未在群里发过言）→ at 元素的 user_id
+    //     是 cli_xxx，飞书不识别，但消息仍会发出（fallback：纯文本含 name）
+    const isValidOpenId = peer.mentionId.startsWith('ou_') || peer.mentionId.startsWith('on_');
+    const atSegment = isValidOpenId
+      ? `<at user_id="${peer.mentionId}"/>`
+      : `@${peer.name}`; // openId 未学到时退到 plain @
+    const content = `${atSegment} ${text}`;
+    // fallbackText 给 channelManager.sendMessage 用（纯字符串路径），
+    // markdown-to-post.looksLikeMarkdown 看到 `<at user_id=` 会走 post 渲染
     logger.debug(
-      `buildMention（fallback 模式）group=${groupSessionKey} peer=${peer.agentId} text_bytes=${text.length}`,
+      `buildMention group=${groupSessionKey} peer=${peer.agentId} mention_id=${peer.mentionId} ` +
+        `mode=${isValidOpenId ? 'native_at' : 'plain_at'} text_bytes=${text.length}`,
     );
     return {
       channelType: this.channelType,
-      fallbackText,
-      payload: null,
+      fallbackText: content,
+      payload: null, // 路由 hint：用 fallbackText 通过 sendSmartMessage 自动转 post
       metadata,
     };
   }

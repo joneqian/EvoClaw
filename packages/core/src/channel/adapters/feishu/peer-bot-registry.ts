@@ -106,33 +106,51 @@ export class FeishuPeerBotRegistry {
    * 列出群里所有"已知 EvoClaw 同事"的 bot
    *
    * 解析步骤：
-   *   1. 取 chatId 下所有已观察到的 appId
-   *   2. 反查 bindings 表 (channel='feishu', accountId=appId)
-   *   3. 找到对应的 EvoClaw agentId
-   *   4. 过滤掉 selfAgentId
-   *   5. 组装 PeerBotLookup[]
+   *   1. 取 chatId 下所有已观察到的 appId（精确）
+   *   2. **bootstrap 兜底（S3 修复）**：合并 bindings 表里所有 feishu agent 作为
+   *      候选。注：候选不一定真在群里，但 LLM 看到 roster 后调 mention_peer 时
+   *      若对方真不在群、消息会被对方 inbound classifyAppSender 当 stranger 丢，
+   *      不会误送。代价是首次拆 plan 时 prompt 略大，换到 LLM 能拆出正确的 assignee
+   *   3. 反查 bindings 表 (channel='feishu', accountId=appId)
+   *   4. 找到对应的 EvoClaw agentId
+   *   5. 过滤掉 selfAgentId
+   *   6. 组装 PeerBotLookup[]
    */
   listInChat(chatId: string, selfAgentId: string): PeerBotLookup[] {
-    const inChat = this.byChatId.get(chatId);
-    if (!inChat || inChat.size === 0) return [];
-
     const allBindings = this.bindingRouter.listBindings().filter((b) => b.channel === 'feishu');
     const accountToAgent = new Map<string, string>();
     for (const b of allBindings) {
       if (b.accountId) accountToAgent.set(b.accountId, b.agentId);
     }
 
+    const inChat = this.byChatId.get(chatId);
     const result: PeerBotLookup[] = [];
-    for (const entry of inChat.values()) {
-      const agentId = accountToAgent.get(entry.appId);
-      if (!agentId) continue; // 陌生 bot
-      if (agentId === selfAgentId) continue; // 自己
-      result.push({
-        agentId,
-        appId: entry.appId,
-        openId: entry.openId,
-      });
+    const seenAgentIds = new Set<string>();
+
+    // Step 1+2: 已观察到的 → 优先（含 openId 信息）
+    if (inChat) {
+      for (const entry of inChat.values()) {
+        const agentId = accountToAgent.get(entry.appId);
+        if (!agentId) continue;
+        if (agentId === selfAgentId) continue;
+        seenAgentIds.add(agentId);
+        result.push({
+          agentId,
+          appId: entry.appId,
+          openId: entry.openId,
+        });
+      }
     }
+
+    // Step 3 (S3 bootstrap): 还没观察到的本地 binding agent 也加进 candidate
+    // openId 暂未知，mentionId 退化为 appId（LLM 仍能调 mention_peer 工具，由
+    // mention-peer-tool 走 plain @ fallback；对方收到消息后 classify 副作用回填 openId）
+    for (const [appId, agentId] of accountToAgent) {
+      if (agentId === selfAgentId) continue;
+      if (seenAgentIds.has(agentId)) continue;
+      result.push({ agentId, appId });
+    }
+
     return result;
   }
 

@@ -118,7 +118,7 @@ export function createTaskPlanTool(svc: TaskPlanService): ToolDefinition {
               description: { type: 'string', description: '任务详情（可选）' },
               assigneeAgentId: {
                 type: 'string',
-                description: '指派给的 Agent ID（必须是 team_roster 里的 mention_id 或 agent_id）',
+                description: '指派给的 Agent ID — 必须是 <team_roster> 里 peer 标签的 agent_id（不是 mention_id，也不是 name）',
               },
               dependsOn: {
                 type: 'array',

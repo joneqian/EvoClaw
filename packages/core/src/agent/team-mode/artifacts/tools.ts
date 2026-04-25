@@ -85,8 +85,16 @@ export function createAttachArtifactTool(svc: ArtifactService): ToolDefinition {
       if (typeof title !== 'string' || !title.trim()) return '错误：title 必填';
       if (typeof summary !== 'string' || !summary.trim()) return '错误：summary 必填';
 
+      // S10 修复：长度上限 — 防 LLM 写超长字段撑爆 task_ready event prompt 渲染
+      const MAX_TITLE = 256;
+      const MAX_SUMMARY = 1024;
+      const MAX_URI = 4096;
+      if (title.length > MAX_TITLE) return `错误：title 超长 ${title.length}/${MAX_TITLE}`;
+      if (summary.length > MAX_SUMMARY) return `错误：summary 超长 ${summary.length}/${MAX_SUMMARY}`;
+
       const content = typeof args['content'] === 'string' ? (args['content'] as string) : undefined;
       const uri = typeof args['uri'] === 'string' ? (args['uri'] as string) : undefined;
+      if (uri && uri.length > MAX_URI) return `错误：uri 超长 ${uri.length}/${MAX_URI}`;
       const mimeType = typeof args['mime_type'] === 'string' ? (args['mime_type'] as string) : undefined;
       const sizeBytes = typeof args['size_bytes'] === 'number' ? (args['size_bytes'] as number) : undefined;
       const metadata = (args['metadata'] && typeof args['metadata'] === 'object')

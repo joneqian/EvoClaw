@@ -114,10 +114,15 @@ describe('FeishuTeamChannel · classifyInboundMessage', () => {
     expect(result.kind).toBe('peer');
     if (result.kind === 'peer') expect(result.senderAgentId).toBe('a-peer1');
 
-    // 副作用：registry 已学到 peer1 在 oc_x
+    // 副作用：registry 已学到 peer1 在 oc_x（含 openId）
+    // S3 bootstrap 修复后 listInChat 还会兜底加 a-peer2（bindings 候选），
+    // 但 a-peer1 一定在前（来自精确观察），且唯一带 openId 的是它
     const inChat = setup.registry.listInChat('oc_x', 'a-self');
-    expect(inChat.map((p) => p.agentId)).toEqual(['a-peer1']);
-    expect(inChat[0].openId).toBe('ou_peer1');
+    expect(inChat.map((p) => p.agentId).sort()).toEqual(['a-peer1', 'a-peer2']);
+    const peer1Entry = inChat.find((p) => p.agentId === 'a-peer1');
+    expect(peer1Entry?.openId).toBe('ou_peer1');
+    const peer2Entry = inChat.find((p) => p.agentId === 'a-peer2');
+    expect(peer2Entry?.openId).toBeUndefined(); // bootstrap 候选，未观察过
   });
 
   it('陌生 app（不在 bindings） → kind=stranger', async () => {
@@ -163,9 +168,14 @@ describe('FeishuTeamChannel · listPeerBots', () => {
     setup = await setupBindings();
   });
 
-  it('被动缓存空 → 空列表', async () => {
+  it('被动缓存空 → bootstrap 兜底用 bindings 候选（S3 修复）', async () => {
+    // S3 修复后：即使没观察到任何 bot，listPeerBots 也返回所有 bindings 里的 feishu agent
+    // （除自己），mentionId 退化为 appId（无 openId）
     const peers = await setup.adapter.listPeerBots('feishu:chat:oc_x', 'a-self');
-    expect(peers).toEqual([]);
+    expect(peers.map((p) => p.agentId).sort()).toEqual(['a-peer1', 'a-peer2']);
+    // openId 未学到 → mentionId 退化为 appId
+    const peer1 = peers.find((p) => p.agentId === 'a-peer1');
+    expect(peer1?.mentionId).toBe('cli_peer1');
   });
 
   it('两个 peer 入群 → 都返回，排除自己', async () => {
@@ -183,10 +193,12 @@ describe('FeishuTeamChannel · listPeerBots', () => {
     expect(peers[0].mentionId).toBe('cli_peer1');
   });
 
-  it('陌生 bot 出现在群 → 不进 list', async () => {
+  it('陌生 bot 出现在群 → 不进 list（仅返回 bindings 候选）', async () => {
+    // 陌生 bot 不会进 result（无对应 binding）；S3 bootstrap 候选仍正常返回
     setup.registry.registerBotInChat('oc_x', 'cli_outsider', 'ou_unk');
     const peers = await setup.adapter.listPeerBots('feishu:chat:oc_x', 'a-self');
-    expect(peers).toEqual([]);
+    expect(peers.map((p) => p.agentId).sort()).toEqual(['a-peer1', 'a-peer2']);
+    expect(peers.find((p) => p.mentionId === 'cli_outsider')).toBeUndefined();
   });
 
   it('groupSessionKey 格式错误 → 空', async () => {
@@ -234,7 +246,7 @@ describe('FeishuTeamChannel · buildMention / renderTaskBoard', () => {
     setup = await setupBindings();
   });
 
-  it('buildMention 返回 fallbackText 含 @{name}', async () => {
+  it('buildMention 真·@（mentionId 是 ou_xxx）→ <at user_id> 标记', async () => {
     const out = await setup.adapter.buildMention(
       'feishu:chat:oc_x',
       {
@@ -248,9 +260,25 @@ describe('FeishuTeamChannel · buildMention / renderTaskBoard', () => {
       { taskId: 't1' },
     );
     expect(out.channelType).toBe('feishu');
-    expect(out.fallbackText).toContain('@阿辉');
-    expect(out.fallbackText).toContain('请实现登录接口');
+    // S2 修复后：fallbackText 是 <at user_id="ou_xxx"/> 走 markdown-to-post 真·@
+    expect(out.fallbackText).toBe('<at user_id="ou_peer1"/> 请实现登录接口');
     expect(out.metadata?.taskId).toBe('t1');
+  });
+
+  it('buildMention 退化（mentionId 是 appId，openId 还没学到）→ plain @', async () => {
+    const out = await setup.adapter.buildMention(
+      'feishu:chat:oc_x',
+      {
+        agentId: 'a-peer1',
+        mentionId: 'cli_peer1', // 还是 appId，不是 ou_
+        name: '阿辉',
+        emoji: '✨',
+        role: 'backend',
+      },
+      'hello',
+    );
+    // 不是 ou_ 开头 → 退到纯文本
+    expect(out.fallbackText).toBe('@阿辉 hello');
   });
 
   it('renderTaskBoard 返回带 fallbackText + payload', () => {

@@ -26,6 +26,8 @@ import type { LoopGuard } from './loop-guard.js';
 import type { PeerRosterService } from './peer-roster-service.js';
 import type { TeamChannelRegistry } from './team-channel-registry.js';
 
+import { buildGroupSessionKey } from './group-key-utils.js';
+
 /** 内联 session-key 解析，避免 agent → routing 层级违反 */
 function parseSessionKey(key: string): { agentId: string; channel: string; chatType: string; peerId: string } {
   const parts = key.split(':');
@@ -77,7 +79,8 @@ function resolveAccountId(
 function sessionKeyToGroupKey(sessionKey: string): GroupSessionKey | null {
   const parsed = parseSessionKey(sessionKey);
   if (parsed.chatType !== 'group') return null;
-  return `${parsed.channel}:chat:${parsed.peerId}` as GroupSessionKey;
+  // B3 修复：剥掉 sender/topic 后缀
+  return buildGroupSessionKey(parsed.channel, parsed.peerId);
 }
 
 export function createMentionPeerTool(deps: MentionPeerToolDeps): ToolDefinition {
@@ -192,8 +195,10 @@ export function createMentionPeerTool(deps: MentionPeerToolDeps): ToolDefinition
       }
 
       // 委托 channelManager 真正投递
-      // PR2：先用 fallbackText（纯文本，含 @{name} 的字面量）；PR3 把 outbound.payload
-      // 接成飞书 post JSON 实现真·原生 @
+      // TODO(team-mode/M13-followup): PR4 推迟 — 升级到飞书 post JSON 实现真·原生 @
+      //   现状：fallbackText 纯文本 "@阿辉 ..."，飞书不会触发推送通知
+      //   修法：FeishuTeamChannel.buildMention 返回 {payload: postJson}，channelManager
+      //         扩展 sendMessage 支持 card/post payload；这里 if (payload) 走 post 通道
       const content = outbound.fallbackText || `@${peer.name} ${message}`;
       try {
         await deps.channelManager.sendMessage(

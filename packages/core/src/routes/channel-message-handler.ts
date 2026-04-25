@@ -27,6 +27,7 @@ import { emitServerEvent } from '../infrastructure/event-bus.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
 import { buildGroupPeerRoster } from '../agent/peer-roster.js';
+import { buildGroupSessionKey } from '../agent/team-mode/group-key-utils.js';
 import {
   reconstructDisplayContent,
   shouldDisplayMessage,
@@ -79,6 +80,13 @@ export interface ChannelMessageContext {
    * DB 里的 user 行也会带上这段前缀，history 自动携带引用上下文。
    */
   quoted?: QuotedMessage;
+  /**
+   * 真人用户标识（M13 PR5-B5 修复）
+   *
+   * Team mode 责任链第三跳要 @ 的就是这个 ID。team-mode 工具 create_task_plan
+   * 创建 plan 时通过 args 自动注入到 task_plans.initiator_user_id。
+   */
+  senderId?: string;
 }
 
 /** 处理器依赖 */
@@ -377,23 +385,9 @@ export async function handleChannelMessage(
   // 更新最近对话时间
   agentManager.touchLastChat(agentId);
 
-  // M13 team-mode：群聊里识别用户触发词 /pause /cancel /revise，命中则短路（不进 LLM）
-  if (chatType === 'group' && deps.userCommandHandler) {
-    try {
-      const groupSessionKey = `${channel}:chat:${peerId}` as const;
-      const cmdResult = await deps.userCommandHandler.handle(message, groupSessionKey, undefined);
-      if (cmdResult && cmdResult.shortCircuit) {
-        log.info(
-          `[team-mode] 用户命令短路 agent=${agentId} group=${peerId} affected_plans=${cmdResult.affectedPlans}`,
-        );
-        return cmdResult.replyText;
-      }
-    } catch (err) {
-      log.warn(
-        `[team-mode] 用户命令处理失败 agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
+  // M13 team-mode 用户命令（/pause /cancel /revise）的识别已上提到 server.ts onMessage
+  // 入口（B1 修复），那里统一做 dedup + 直接调 channelManager.sendMessage。本处不再重复处理。
+  // 留这条注释作为后人不要再回填的警示。
 
   // 2. 解析模型 + API 配置
   let modelId = '';
@@ -631,10 +625,13 @@ export async function handleChannelMessage(
           name: tt.name,
           description: tt.description,
           parameters: tt.parameters,
-          execute: async (args, ctx2) => tt.execute({ ...args, agentId, sessionKey }, ctx2),
+          // B5 修复：把真人用户 senderId 注入为 initiatorUserId，create_task_plan
+          // 用它落入 task_plans.initiator_user_id，escalation 第三跳才能真 @ 用户
+          execute: async (args, ctx2) =>
+            tt.execute({ ...args, agentId, sessionKey, initiatorUserId: ctx.senderId }, ctx2),
         });
       }
-      log.debug(`[team-mode] 注入 ${teamTools.length} 个工具 agent=${agentId} group=${peerId}`);
+      log.debug(`[team-mode] 注入 ${teamTools.length} 个工具 agent=${agentId} group=${peerId} initiator=${ctx.senderId ?? '(none)'}`);
     } catch (err) {
       log.warn(
         `[team-mode] 工具注入失败 agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -706,7 +703,9 @@ export async function handleChannelMessage(
   let teamModeFragment: string | null = null;
   if (chatType === 'group' && deps.peerRosterService && deps.taskPlanService) {
     try {
-      const groupSessionKey = `${channel}:chat:${peerId}` as const;
+      // B3 修复：必须用 buildGroupSessionKey 剥掉 peerId 上的 sender/topic 后缀，
+      // 否则 group_session_key 落库带后缀，多 sender 共享群里的 plan 互相不可见
+      const groupSessionKey = buildGroupSessionKey(channel, peerId);
       const peerRoster = await deps.peerRosterService.buildRoster(agentId, groupSessionKey);
       if (peerRoster.length > 0) {
         const myOpenTasks = deps.taskPlanService.listOpenTasksForAssignee(agentId, groupSessionKey);

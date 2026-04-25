@@ -82,6 +82,45 @@ export interface UserCommandResult {
   newPlanId?: string;
 }
 
+/**
+ * /revise 待处理上下文：groupSessionKey → { revisedFrom, expiresAt }
+ *
+ * B6 修复：/revise 会暂停旧 plan 并通知 plan 创建者重新拆。LLM 收到 system event 后调
+ * create_task_plan 时不会自觉填 revisedFrom，靠这个 ephemeral 上下文：
+ *   - /revise 写入 → 创建者下一次 create_task_plan 自动 link
+ *   - 10 分钟过期，避免长期残留
+ *   - 一次性消费（成功 link 后清除）
+ */
+const PENDING_REVISE_TTL_MS = 10 * 60_000;
+interface PendingRevise {
+  revisedFrom: string;
+  expiresAt: number;
+}
+const pendingReviseByGroup = new Map<string, PendingRevise>();
+
+/** 创建/查询 pending revise 上下文（package 内 + create_task_plan 工具读） */
+export function recordPendingRevise(groupSessionKey: string, revisedFromPlanId: string): void {
+  pendingReviseByGroup.set(groupSessionKey, {
+    revisedFrom: revisedFromPlanId,
+    expiresAt: Date.now() + PENDING_REVISE_TTL_MS,
+  });
+}
+
+export function consumePendingRevise(groupSessionKey: string): string | null {
+  const entry = pendingReviseByGroup.get(groupSessionKey);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    pendingReviseByGroup.delete(groupSessionKey);
+    return null;
+  }
+  pendingReviseByGroup.delete(groupSessionKey);
+  return entry.revisedFrom;
+}
+
+export function _resetPendingReviseForTest(): void {
+  pendingReviseByGroup.clear();
+}
+
 export class UserCommandHandler {
   constructor(private deps: UserCommandHandlerDeps) {}
 
@@ -157,6 +196,9 @@ export class UserCommandHandler {
 
     // 把它先标 paused（保留），生成新 plan 时由 plan.created_by Agent 重新拆
     this.deps.taskPlanService.pausePlan(basePlan.id);
+
+    // B6 修复：登记 pending revise 上下文，下次 create_task_plan 自动 link revised_from
+    recordPendingRevise(groupSessionKey, basePlan.id);
 
     // 投递 system event 给 plan 创建者，让其重新拆任务
     const parsed = parseGroupSessionKey(groupSessionKey);

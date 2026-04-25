@@ -94,17 +94,62 @@ export interface CreatePlanContext {
   createdByAgentId: string;
   /** 原始发起用户（用于责任链最后一跳） */
   initiatorUserId?: string;
+  /** /revise 链接的上一版 plan（B6 修复：可被外部直接传入） */
+  revisedFrom?: string;
 }
+
+/**
+ * 看板回调（M13 PR5-B4）
+ *
+ * - 首次发卡：existingCardId=null → 返回新 cardId，service 写回 task_plans.board_card_id
+ * - 状态变化：传入已有 cardId → adapter 决定原地更新或发新条
+ * 失败时 service 静默吞错（仅 log），不阻塞主流程
+ */
+export type BoardSink = (
+  plan: TaskPlanSnapshot,
+  existingCardId: string | null,
+) => Promise<{ cardId: string }>;
 
 export class TaskPlanService {
   private store: SqliteStore;
   private agentManager: AgentManager;
   private loopGuard?: LoopGuard;
+  private boardSink: BoardSink | null = null;
 
   constructor(deps: TaskPlanServiceDeps) {
     this.store = deps.store;
     this.agentManager = deps.agentManager;
     this.loopGuard = deps.loopGuard;
+  }
+
+  /** 注入看板回调（server.ts 装配时调）。未注入时看板不发，service 静默 */
+  setBoardSink(sink: BoardSink): void {
+    this.boardSink = sink;
+  }
+
+  /** 内部：刷新看板，错误吞掉只记日志 */
+  private async refreshBoard(planId: string): Promise<void> {
+    if (!this.boardSink) return;
+    const snap = this.getPlanSnapshot(planId);
+    if (!snap) return;
+    const existingCardId = this.store.get<{ board_card_id: string | null }>(
+      `SELECT board_card_id FROM task_plans WHERE id = ?`,
+      planId,
+    )?.board_card_id ?? null;
+    try {
+      const result = await this.boardSink(snap, existingCardId);
+      if (result.cardId && result.cardId !== existingCardId) {
+        this.store.run(
+          `UPDATE task_plans SET board_card_id = ? WHERE id = ?`,
+          result.cardId,
+          planId,
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `refreshBoard 失败 plan=${planId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // ─── Plan CRUD ────────────────────────────────────────────────
@@ -173,17 +218,20 @@ export class TaskPlanService {
     const now = new Date().toISOString();
 
     // 插入 plan
+    // B6 修复：revised_from 来自 ctx.revisedFrom（/revise 命令带过来），
+    // 之前硬编码 NULL → 修订链路丢失
     this.store.run(
       `INSERT INTO task_plans
        (id, group_session_key, channel_type, goal, created_by_agent_id, status,
         board_card_id, initiator_user_id, revised_from, created_at, completed_at)
-       VALUES (?, ?, ?, ?, ?, 'active', NULL, ?, NULL, ?, NULL)`,
+       VALUES (?, ?, ?, ?, ?, 'active', NULL, ?, ?, ?, NULL)`,
       planId,
       ctx.groupSessionKey,
       parsed.channelType,
       args.goal.trim(),
       ctx.createdByAgentId,
       ctx.initiatorUserId ?? null,
+      ctx.revisedFrom ?? null,
       now,
     );
 
@@ -219,6 +267,9 @@ export class TaskPlanService {
     if (!snapshot) throw new Error('plan 创建后查询失败（不应发生）');
     this.dispatchReadyTasks(snapshot, /* triggeredBy */ ctx.createdByAgentId);
 
+    // B4 修复：plan 创建后立即发看板卡片（fire-and-forget，失败不阻塞）
+    void this.refreshBoard(planId);
+
     return snapshot;
   }
 
@@ -234,6 +285,8 @@ export class TaskPlanService {
       planId,
     );
     logger.info(`plan 状态 ${planId} → ${status}${reason ? ` (${reason})` : ''}`);
+    // B4 修复：plan 状态变化刷新看板
+    void this.refreshBoard(planId);
   }
 
   /**
@@ -388,14 +441,21 @@ export class TaskPlanService {
       // 扫下游：检查整个 plan 是否完成
       const allDone = planSnapshot.tasks.every((t) => t.status === 'done' || t.status === 'cancelled');
       if (allDone) {
+        // setPlanStatus 内部会调 refreshBoard
         this.setPlanStatus(found.plan.id, 'completed', 'all tasks done');
         this.dispatchPlanCompletedEvent(planSnapshot, updaterAgentId);
       } else {
         // 继续解锁就绪的下游
         this.dispatchReadyTasks(planSnapshot, updaterAgentId);
+        // B4 修复：状态变化刷新看板
+        void this.refreshBoard(found.plan.id);
       }
     } else if (args.status === 'needs_help') {
       this.dispatchNeedsHelpEvent(planSnapshot, found.task, updaterAgentId, args.note);
+      void this.refreshBoard(found.plan.id);
+    } else {
+      // 其他状态变化（in_progress / blocked / blocked_on_clarification 等）也刷
+      void this.refreshBoard(found.plan.id);
     }
 
     return { ok: true, taskId: args.taskId };
@@ -568,7 +628,11 @@ plan goal: ${plan.goal}
         emoji: creatorAgent?.emoji ?? '🤖',
       },
       createdAt: dateToMs(row.created_at),
-      updatedAt: tasks.reduce((acc, t) => Math.max(acc, dateToMs(t.localId === '' ? row.created_at : row.created_at)), dateToMs(row.created_at)),
+      // S6 修复：取所有 task.updated_at 的最大值；plan 自身没 updated_at 列时退到 created_at
+      updatedAt: taskRows.reduce(
+        (acc, tr) => Math.max(acc, dateToMs(tr.updated_at)),
+        dateToMs(row.created_at),
+      ),
     };
   }
 

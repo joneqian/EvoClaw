@@ -24,6 +24,8 @@ import { enqueueSystemEvent } from '../../../infrastructure/system-events.js';
 import type { TaskPlanService } from './service.js';
 import { deriveAssigneeSessionKey } from './service.js';
 
+import { buildGroupSessionKey } from '../group-key-utils.js';
+
 /** 内联 session-key 解析，避免 agent → routing 层级违反 */
 function parseSessionKey(key: string): { agentId: string; channel: string; chatType: string; peerId: string } {
   const parts = key.split(':');
@@ -58,12 +60,15 @@ const VALID_TASK_STATUS: ReadonlyArray<TaskStatus> = [
 /**
  * 把 channel-message-handler 注入的 sessionKey 还原成 GroupSessionKey
  * 仅当 chatType === 'group' 时有意义
+ *
+ * B3 修复：通过 buildGroupSessionKey 剥掉飞书等渠道的 sender/topic 后缀，
+ * 否则 group_sender 等隔离模式下，团队 plan 会按 sender 分裂互不可见。
  */
 function sessionKeyToGroupKey(sessionKey: string | undefined): GroupSessionKey | null {
   if (!sessionKey) return null;
   const parsed = parseSessionKey(sessionKey);
   if (parsed.chatType !== 'group') return null;
-  return `${parsed.channel}:chat:${parsed.peerId}` as GroupSessionKey;
+  return buildGroupSessionKey(parsed.channel, parsed.peerId);
 }
 
 function getCallerContext(args: Record<string, unknown>): {
@@ -160,13 +165,23 @@ export function createTaskPlanTool(svc: TaskPlanService): ToolDefinition {
         ? (args['initiatorUserId'] as string)
         : undefined;
 
+      // B6 修复：消费 /revise 留下的 pending revise 上下文
+      const { consumePendingRevise } = await import('../user-commands.js');
+      const revisedFrom = consumePendingRevise(ctx.groupSessionKey) ?? undefined;
+
       try {
         const planArgs: CreateTaskPlanArgs = { goal, tasks: planTasks };
         const snapshot = await svc.createPlan(planArgs, {
           groupSessionKey: ctx.groupSessionKey,
           createdByAgentId: ctx.agentId,
           initiatorUserId,
+          revisedFrom,
         });
+        if (revisedFrom) {
+          logger.info(
+            `tool create_task_plan auto-linked revised_from=${revisedFrom} new_plan=${snapshot.id}`,
+          );
+        }
         logger.info(
           `tool create_task_plan ok plan_id=${snapshot.id} agent=${ctx.agentId} ` +
             `tasks=${snapshot.tasks.length}`,

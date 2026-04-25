@@ -46,6 +46,7 @@ import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { BindingRouter } from './routing/binding-router.js';
 import { generateSessionKey } from './routing/session-key.js';
+import { buildGroupSessionKey } from './agent/team-mode/group-key-utils.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
 import type { ChannelMessage, ChannelType } from '@evoclaw/shared';
@@ -107,6 +108,22 @@ process.on('uncaughtException', (err) => {
 
 /** MCP Manager — 异步初始化，通过 getter 延迟获取（模块作用域供 createApp 闭包访问） */
 let sharedMcpManager: import('./mcp/mcp-client.js').McpManager | undefined;
+
+/**
+ * Team-mode 用户命令去重窗口（M13 PR5-B1 修复）
+ *
+ * 多 bot 同群被 fanout 时，每条消息会让每个 bot 各自调一次 userCommandHandler.handle，
+ * /pause /cancel 会重复执行 + replyText 重发多次。这里用 5s 窗口去重，相同
+ * (groupKey, command-prefix) 只发一次回执。
+ */
+const recentTeamCmds = new Map<string, number>();
+const TEAM_CMD_DEDUP_WINDOW_MS = 5_000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of recentTeamCmds) {
+    if (now - ts > TEAM_CMD_DEDUP_WINDOW_MS) recentTeamCmds.delete(k);
+  }
+}, TEAM_CMD_DEDUP_WINDOW_MS).unref();
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -973,6 +990,50 @@ async function main() {
       bindingRouter,
     });
     escalationService.start();
+
+    // B4 修复：注入看板回调 — plan 创建/状态变化时通过 adapter 渲染卡片 + sendMessage
+    // PR3 的 updateTaskBoard 占位仍是"返回原 cardId 不真原地更新"，所以这里实际是
+    // 每次状态变化都发新一条卡片。PR4 后续接 cardkit-streaming 真做原地更新。
+    const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
+    taskPlanService.setBoardSink(async (plan, existingCardId) => {
+      const adapter = teamChannelRegistry.resolve(plan.groupSessionKey);
+      if (!adapter) {
+        log.debug(`boardSink 跳过：未注册 ${plan.groupSessionKey} 的 team-channel adapter`);
+        return { cardId: existingCardId ?? '' };
+      }
+      const outbound = adapter.renderTaskBoard(plan);
+      // 解析 channel 和 chatId 用于 sendMessage（plan.groupSessionKey 是
+      // "<channel>:chat:<chatId>" 格式）
+      const colonIdx = plan.groupSessionKey.indexOf(':');
+      const chatTypeIdx = plan.groupSessionKey.indexOf(':', colonIdx + 1);
+      const channelPart = plan.groupSessionKey.slice(0, colonIdx);
+      const chatIdPart = plan.groupSessionKey.slice(chatTypeIdx + 1);
+      // 用 plan.created_by 的 binding 拿到 accountId
+      const bindings = bindingRouter.listBindings(plan.createdBy.agentId)
+        .filter((b) => b.channel === channelPart);
+      const accountId = bindings.find((b) => b.isDefault)?.accountId ?? bindings[0]?.accountId ?? '';
+      try {
+        // 发卡片：fallbackText 兜底（多数渠道支持）；payload 走 channel-specific 路径
+        // 当前 channelManager.sendMessage 只接 string content。先发 fallbackText。
+        // TODO(team-mode/M13-followup): 升级 channelManager.sendMessage 支持 card payload
+        // 然后这里改成 outbound.payload，实现真·CardKit 卡片
+        await channelManager.sendMessage(
+          channelPart as import('@evoclaw/shared').ChannelType,
+          accountId,
+          chatIdPart,
+          outbound.fallbackText,
+          'group',
+        );
+        log.info(
+          `[team-mode/board] 看板已发送 plan=${plan.id} group=${chatIdPart} bytes=${outbound.fallbackText.length}`,
+        );
+        // 当前用 fallbackText 不返回真 cardId，传一个占位避免下次状态变化时被误重放
+        return { cardId: `fallback-${plan.id}-${plan.updatedAt}` };
+      } catch (err) {
+        log.warn(`[team-mode/board] 看板发送失败 plan=${plan.id}: ${err instanceof Error ? err.message : String(err)}`);
+        return { cardId: existingCardId ?? '' };
+      }
+    });
     teamModeServices = {
       loopGuard,
       peerRosterService,
@@ -1033,6 +1094,47 @@ async function main() {
       return;
     }
 
+    // --- M13 team-mode 用户命令拦截（B1 修复）---
+    // /pause /cancel /revise 必须在 isSlashCommand 之前识别，否则会被 dispatchCommand
+    // 当作未知 slash command 直接回"未知命令"。命中后**只在第一个被命中 agent 处理**
+    // （多 bot 同群避免重复执行：用 module-level lock + 5s 窗口去重）
+    if (msg.chatType === 'group' && teamModeServices) {
+      try {
+        const groupSessionKey = buildGroupSessionKey(msg.channel, msg.peerId);
+        const cmdResult = await teamModeServices.userCommandHandler.handle(
+          msg.content,
+          groupSessionKey,
+          msg.senderId,
+        );
+        if (cmdResult?.shortCircuit) {
+          // 多 bot fanout 去重：相同 (group, cmd-window) 只发一次回执
+          const dedupKey = `${groupSessionKey}|${msg.content.trim().slice(0, 32)}`;
+          if (!recentTeamCmds.has(dedupKey)) {
+            recentTeamCmds.set(dedupKey, Date.now());
+            try {
+              await channelManager.sendMessage(
+                msg.channel,
+                msg.accountId ?? '',
+                msg.peerId,
+                cmdResult.replyText,
+                msg.chatType,
+              );
+            } catch (sendErr) {
+              log.error(`team-mode 命令回复发送失败: ${sendErr}`);
+            }
+            log.info(
+              `[team-mode] 用户命令短路 group=${msg.peerId} affected_plans=${cmdResult.affectedPlans}`,
+            );
+          } else {
+            log.debug(`[team-mode] 用户命令已被其他 bot 处理，跳过 dedup_key=${dedupKey}`);
+          }
+          return;
+        }
+      } catch (cmdErr) {
+        log.warn(`[team-mode] 用户命令处理失败 group=${msg.peerId}: ${cmdErr instanceof Error ? cmdErr.message : String(cmdErr)}`);
+      }
+    }
+
     // --- 渠道命令拦截 ---
     if (isSlashCommand(msg.content)) {
       const cmdCtx = {
@@ -1071,6 +1173,7 @@ async function main() {
                 chatType: msg.chatType,
                 mediaPath: msg.mediaPath,
                 mediaType: msg.mediaType,
+                senderId: msg.senderId,
               },
               channelMsgDeps,
             );
@@ -1108,6 +1211,7 @@ async function main() {
           mediaPath: msg.mediaPath,
           mediaType: msg.mediaType,
           quoted: msg.quoted,
+          senderId: msg.senderId,
         },
         channelMsgDeps,
       );
@@ -1166,6 +1270,9 @@ async function main() {
     consolidator?.stop();
     memoryMonitor.stop();
     skillEvolverScheduler?.stop();
+    // B7 修复：team-mode escalation cron + peer-roster 缓存清理
+    teamModeServices?.escalationService.stop();
+    teamModeServices?.peerRosterService.dispose();
   }});
   registerShutdownHandler({ name: '渠道', priority: 20, handler: () => { channelManager.disconnectAll(); }});
   // MCP shutdown handler 在 mcpManager 初始化后注册（见 Phase 3a.5）

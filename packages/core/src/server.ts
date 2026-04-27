@@ -884,6 +884,15 @@ async function main() {
         feishuTeamChannel = new FeishuTeamChannel({
           peerBotRegistry: feishuPeerBotRegistry,
           bindingRouter,
+          // M13 cross-app 修复 — prober 用：通过 channelManager 反查指定 viewer 的 Lark client
+          getLarkClientByAccountId: (accountId: string) => {
+            const adapter = channelManager.getAdapter('feishu', accountId);
+            if (!adapter) return null;
+            // FeishuAdapter 暴露 getLarkClient()
+            const fn = (adapter as unknown as { getLarkClient?: () => unknown }).getLarkClient;
+            if (typeof fn !== 'function') return null;
+            return (fn.call(adapter) as import('@larksuiteoapi/node-sdk').Client | null) ?? null;
+          },
         });
         teamChannelRegistry.register('feishu', feishuTeamChannel);
 

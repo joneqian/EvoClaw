@@ -24,8 +24,10 @@ import type {
   TeamChannelAdapter,
   TeamMessageMetadata,
 } from '../../team-mode/team-channel.js';
+import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuPeerBotRegistry } from './peer-bot-registry.js';
 import type { BindingRouter } from '../../../routing/binding-router.js';
+import { ChatHistoryProberCache } from './chat-history-prober.js';
 import { renderTaskBoardCard, renderTaskBoardCardJson } from './task-board-card.js';
 
 const logger = createLogger('feishu/team-channel');
@@ -48,6 +50,14 @@ export interface FeishuTeamChannelDeps {
   peerBotRegistry: FeishuPeerBotRegistry;
   /** M13 cross-app 修复：用 agentId 反查 viewer 视角的 accountId（飞书 App ID） */
   bindingRouter: BindingRouter;
+  /**
+   * M13 cross-app 修复 — 主动拉历史消息 prober：
+   * 给定 viewer accountId 返回该 App 的 Lark client（用于调 messages.list API）。
+   * 未连接 / 未注册时返回 null，prober 静默跳过。
+   */
+  getLarkClientByAccountId?: (accountId: string) => Lark.Client | null;
+  /** prober 缓存 TTL（毫秒，默认 24h），测试可缩短 */
+  proberTtlMs?: number;
 }
 
 export class FeishuTeamChannel implements TeamChannelAdapter {
@@ -55,8 +65,11 @@ export class FeishuTeamChannel implements TeamChannelAdapter {
   private deps: FeishuTeamChannelDeps;
   private membershipHandlers = new Set<(key: GroupSessionKey) => void>();
 
+  private proberCache: ChatHistoryProberCache;
+
   constructor(deps: FeishuTeamChannelDeps) {
     this.deps = deps;
+    this.proberCache = new ChatHistoryProberCache(deps.proberTtlMs);
   }
 
   // ─── classifyInboundMessage ────────────────────────────────
@@ -131,6 +144,28 @@ export class FeishuTeamChannel implements TeamChannelAdapter {
       logger.warn(`listPeerBots 找不到 self agent 的 feishu binding agentId=${selfAgentId}`);
       return [];
     }
+
+    // M13 cross-app 修复 — 历史消息回溯（per (chatId, viewerAccountId) 24h TTL）：
+    // 拉群最近 50 条消息，从 sender_type='app' 的消息里提取其他 bot 在 viewer 视角下的 open_id，
+    // 写入 registry。这是 cold-start 主路径——一次 API 调用补齐"过去说过话的所有同事"。
+    const client = this.deps.getLarkClientByAccountId?.(viewerAccountId);
+    if (client) {
+      try {
+        await this.proberCache.probeOnce({
+          client,
+          chatId,
+          viewerAccountId,
+          bindingRouter: this.deps.bindingRouter,
+          registry: this.deps.peerBotRegistry,
+        });
+      } catch (err) {
+        // probeOnce 内部已 try/catch；这里再保险，确保 listPeerBots 主流程不被打断
+        logger.warn(
+          `prober 抛错（已忽略）chat=${chatId} viewer=${viewerAccountId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     const peers = this.deps.peerBotRegistry.listInChat(chatId, viewerAccountId, selfAgentId);
     return peers.map((p) => ({
       agentId: p.agentId,

@@ -493,6 +493,14 @@ export class FeishuAdapter implements ChannelAdapter {
     this.classifyAppSender = classifier;
   }
 
+  /**
+   * 暴露当前 Lark client 给 team-mode 主动 API（如 chat-history-prober）。
+   * 未连接时返回 null，调用方应静默跳过 probe。
+   */
+  getLarkClient(): Lark.Client | null {
+    return this.bundle?.client ?? null;
+  }
+
   private requireClient(): Lark.Client {
     if (!this.bundle || this.status.status !== 'connected') {
       throw new Error('飞书 Channel 未连接');

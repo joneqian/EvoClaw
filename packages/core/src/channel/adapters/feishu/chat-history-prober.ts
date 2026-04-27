@@ -131,19 +131,79 @@ export async function probeChatHistory(args: ProbeChatHistoryArgs): Promise<Prob
 
     const items = response.data?.items ?? [];
     scanned += items.length;
+    let debugSampleLogged = false;
     for (const msg of items) {
-      const sender = msg.sender;
+      const sender = msg.sender as
+        | { sender_type?: string; sender_id?: { open_id?: string; user_id?: string; union_id?: string; app_id?: string }; id?: string | { open_id?: string; app_id?: string; union_id?: string }; id_type?: string; tenant_key?: string }
+        | undefined;
       if (sender?.sender_type !== 'app') continue;
-      // SDK 兼容: 历史消息 API 返回 sender.id（与入站事件 sender.sender_id 字段名不同）
-      const idObj = sender.sender_id ?? sender.id;
-      const senderAppId = idObj?.app_id;
-      const senderOpenId = idObj?.open_id;
-      const senderUnionId = idObj?.union_id;
-      if (!senderAppId || !senderOpenId) continue;
 
-      const agentId = accountToAgent.get(senderAppId);
-      if (!agentId) continue;            // 陌生 bot，不属于我们 EvoClaw 团队
+      // 飞书消息 API（messages.list）返回的 sender 跟入站事件**字段名不同**：
+      //   入站事件: sender.sender_id.{open_id, app_id, union_id}（多字段对象）
+      //   messages.list: sender.{id, id_type, sender_type, tenant_key}（id 是字符串）
+      // 调用方 user_id_type 参数决定 id 的语义（默认 open_id）
+      let senderAppId: string | undefined;
+      let senderOpenId: string | undefined;
+      let senderUnionId: string | undefined;
+
+      if (typeof sender.id === 'string') {
+        // messages.list 形式：id 是字符串，根据 id_type 解析
+        const idStr = sender.id;
+        if (sender.id_type === 'app_id') senderAppId = idStr;
+        else if (sender.id_type === 'union_id') senderUnionId = idStr;
+        else if (sender.id_type === 'open_id') senderOpenId = idStr;
+        else senderOpenId = idStr;  // 默认假设 open_id
+      } else {
+        // 入站事件 / 旧格式：sender_id 或 id 是对象
+        const idObj = sender.sender_id ?? (sender.id as { open_id?: string; app_id?: string; union_id?: string } | undefined);
+        senderAppId = idObj?.app_id;
+        senderOpenId = idObj?.open_id;
+        senderUnionId = idObj?.union_id;
+      }
+
+      // 首条样本 dump 出来便于调试新结构（一次 probe 仅打一次）
+      if (!debugSampleLogged) {
+        debugSampleLogged = true;
+        log.info(
+          `prober sender 样本（首条 sender_type=app）chat=${args.chatId} viewer=${args.viewerAccountId}: ${JSON.stringify(sender)}`,
+        );
+      }
+
+      // 反查 agentId：优先 app_id（最可靠），其次 open_id（viewer 视角下的 self-view 比对）
+      let agentId: string | undefined;
+      if (senderAppId) {
+        agentId = accountToAgent.get(senderAppId);
+      }
+      if (!agentId && senderOpenId) {
+        // open_id 反查：messages.list 默认 id_type=open_id，且这个 open_id 是 **调用方视角**
+        // 下的 open_id。要找到对应的 EvoClaw agent，可以用 binding.bot_open_id 比对——但
+        // 那是 self-view，跟 viewer-view 在 cross-app 下不同！
+        // 实测发现：当 viewer 调 messages.list 看自己 App 发的消息时 open_id 就是 self-view，
+        // 一致；看其他 App 发的消息时 open_id 是 viewer 视角的，跟 self-view 不一致。
+        // 所以这里只对 viewer === sender 场景有效，cross-app 时此反查失败。
+        // TODO: 飞书 messages.list 是否支持 user_id_type=app_id？需要试。
+        for (const b of allBindings) {
+          if (b.botOpenId && b.botOpenId === senderOpenId) {
+            agentId = b.agentId;
+            senderAppId = b.accountId ?? undefined;
+            break;
+          }
+        }
+      }
+
+      if (!agentId || !senderAppId) {
+        // 调试：打一次哪条没识别出来（限频）
+        if (!debugSampleLogged) {
+          log.debug(
+            `prober 跳过未识别的 app sender: senderAppId=${senderAppId} senderOpenId=${senderOpenId}`,
+          );
+        }
+        continue;
+      }
       if (senderAppId === args.viewerAccountId) continue;  // 自己发的消息不学
+
+      // 缺 openId 时不写入（占位无意义——cross-app @ 仍然不可用）
+      if (!senderOpenId) continue;
 
       args.registry.registerBotInChat({
         chatId: args.chatId,

@@ -148,10 +148,15 @@ export class ChatPrebakeService {
  * 上线消息文案（与 buildPrebakeText 解耦便于改）
  *
  * 设计：
- *   - 简短一行（~15 字以内）—— 群里看着不突兀
+ *   - **必须 @_all**（M13 cross-app 修复关键）：飞书的 bot 隔离机制——不 @ 任何人
+ *     的 bot 消息**不会**触发其他 bot 的 ws 推送。只有 @_all 或精确 @ 才会推送
+ *     给其他 bot。精确 @ 又陷入鸡生蛋（需要 target 在 sender 视角下的 open_id），
+ *     所以 @_all 是唯一可行解
+ *   - 简短一行 —— 群里看着不突兀
  *   - 含 agentName —— 让看到的真人能认出"这是我刚加的 EvoClaw bot"
- *   - 不带任务 / 协作 / 派活字眼 —— 清晰是"系统就绪通知"，不是真协作消息
+ *
+ * 代价：群里所有真人收到一条 @_all 通知（每新群一次性，24h TTL 内不重复）。
  */
 export function buildPrebakeText(agentName: string, agentEmoji: string): string {
-  return `${agentEmoji} ${agentName} 已上线，准备协作`;
+  return `<at user_id="all"></at> ${agentEmoji} ${agentName} 已上线，准备协作`;
 }

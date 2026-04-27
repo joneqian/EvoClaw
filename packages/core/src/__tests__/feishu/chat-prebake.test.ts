@@ -171,8 +171,13 @@ describe('ChatPrebakeService', () => {
 });
 
 describe('buildPrebakeText', () => {
-  it('固定格式：emoji + space + name + 已上线，准备协作', () => {
-    expect(buildPrebakeText('项目经理', '🤖')).toBe('🤖 项目经理 已上线，准备协作');
-    expect(buildPrebakeText('产品经理', '📈')).toBe('📈 产品经理 已上线，准备协作');
+  it('必须以 @_all 开头（飞书 cross-app 修复关键）', () => {
+    const text = buildPrebakeText('项目经理', '🤖');
+    expect(text.startsWith('<at user_id="all"></at>')).toBe(true);
+  });
+
+  it('完整格式：@_all + emoji + name + 已上线', () => {
+    expect(buildPrebakeText('项目经理', '🤖')).toBe('<at user_id="all"></at> 🤖 项目经理 已上线，准备协作');
+    expect(buildPrebakeText('产品经理', '📈')).toBe('<at user_id="all"></at> 📈 产品经理 已上线，准备协作');
   });
 });

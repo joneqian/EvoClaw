@@ -200,6 +200,16 @@ export class FeishuAdapter implements ChannelAdapter {
     | InboundContext['resolvePeerAgentId']
     | undefined = undefined;
   /**
+   * 反查发送方 EvoClaw agentId（M13 cross-app 修复）
+   *
+   * 由 server.ts 注入：通过 bindingRouter 把 accountId 映射到 agentId。
+   * sendMessage 完成后用它把 (messageId, senderAgentId) 注册到全局表，
+   * 让其他 bot 收到 ws 事件时能反查"是谁发的"。
+   */
+  private senderAgentResolver:
+    | ((accountId: string) => string | null)
+    | undefined = undefined;
+  /**
    * 广播场景下把 feishu bot open_id 映射到 agentId（可选）
    *
    * 常见单 adapter 模型下用户不必配置（`mention-first` 会因映射为空而退化为
@@ -329,11 +339,21 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    await withFeishuRetry(
+    const result = await withFeishuRetry(
       () => sendSmartMessage(client, peerId, content, chatType),
       { label: 'sendMessage' },
     );
     this.recordBotReplyToGroupHistory(peerId, content, chatType);
+
+    // M13 cross-app 修复：把 (messageId, senderAccountId) 注册到全局表，让其他
+    // bot 收到这条消息的 ws 事件时能反查出"是谁发的" → 写 peer-bot-registry。
+    // 飞书 ws 事件里 sender_type='bot' 不带 app_id，唯一稳定信号是 message_id。
+    const accountId = this.credentials?.appId;
+    const senderAgentId = this.senderAgentResolver?.(accountId ?? '') ?? null;
+    if (result?.messageId && senderAgentId && accountId) {
+      const { recordSentMessage } = await import('./sent-message-registry.js');
+      recordSentMessage(result.messageId, senderAgentId, accountId);
+    }
   }
 
   /**
@@ -487,6 +507,11 @@ export class FeishuAdapter implements ChannelAdapter {
    */
   setPeerAgentResolver(resolver: InboundContext['resolvePeerAgentId']): void {
     this.resolvePeerAgentId = resolver;
+  }
+
+  /** M13 cross-app 修复：注入 accountId → agentId 反查 */
+  setSenderAgentResolver(resolver: (accountId: string) => string | null): void {
+    this.senderAgentResolver = resolver;
   }
 
   setTeamModeClassifier(classifier: InboundContext['classifyAppSender']): void {

@@ -17,6 +17,9 @@ import { parseFeishuGroupPeerId } from './session-key.js';
 interface FeishuSendResponse {
   code?: number;
   msg?: string;
+  data?: {
+    message_id?: string;
+  };
 }
 
 /** 自定义错误：保留飞书 code 便于上层判断是否降级 */
@@ -79,7 +82,7 @@ async function createMessage(
     msgType: string;
     content: string;
   },
-): Promise<void> {
+): Promise<{ messageId?: string }> {
   const res = (await client.im.v1.message.create({
     params: { receive_id_type: inferReceiveIdType(args.chatType) },
     data: {
@@ -89,16 +92,17 @@ async function createMessage(
     },
   })) as FeishuSendResponse;
   throwIfError(res, `发送 ${args.msgType}`);
+  return { messageId: res.data?.message_id };
 }
 
-/** 发送纯文本消息 */
+/** 发送纯文本消息（返回 messageId 给 cross-sidecar 注册表用） */
 export async function sendTextMessage(
   client: Lark.Client,
   peerId: string,
   content: string,
   chatType?: 'private' | 'group',
-): Promise<void> {
-  await createMessage(client, {
+): Promise<{ messageId?: string }> {
+  return await createMessage(client, {
     peerId,
     chatType,
     msgType: 'text',
@@ -115,8 +119,8 @@ export async function sendPostMessage(
   peerId: string,
   postContent: string,
   chatType?: 'private' | 'group',
-): Promise<void> {
-  await createMessage(client, {
+): Promise<{ messageId?: string }> {
+  return await createMessage(client, {
     peerId,
     chatType,
     msgType: 'post',
@@ -135,19 +139,17 @@ export async function sendSmartMessage(
   peerId: string,
   content: string,
   chatType?: 'private' | 'group',
-): Promise<void> {
+): Promise<{ messageId?: string }> {
   if (!looksLikeMarkdown(content)) {
-    await sendTextMessage(client, peerId, content, chatType);
-    return;
+    return await sendTextMessage(client, peerId, content, chatType);
   }
 
   const payload = buildPostPayload(content);
   try {
-    await sendPostMessage(client, peerId, serializePostContent(payload), chatType);
+    return await sendPostMessage(client, peerId, serializePostContent(payload), chatType);
   } catch (err) {
     if (err instanceof FeishuApiError && POST_FALLBACK_CODES.has(err.code)) {
-      await sendTextMessage(client, peerId, content, chatType);
-      return;
+      return await sendTextMessage(client, peerId, content, chatType);
     }
     throw err;
   }

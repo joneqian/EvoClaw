@@ -971,6 +971,13 @@ async function main() {
             const found = list.find((p) => p.appId === senderAppId);
             return found?.agentId ?? null;
           });
+          // M13 cross-app 修复：发送 messageId → agentId 注册表用，反查 accountId 对应的 agentId
+          adapter.setSenderAgentResolver((accountId: string) => {
+            if (!accountId) return null;
+            const binding = bindingRouter.listBindings()
+              .find(b => b.channel === 'feishu' && b.accountId === accountId);
+            return binding?.agentId ?? null;
+          });
           // 事件钩子：bot 入群 / 出群 / p2p 进入 → 更新 registry（占位）+ 广播成员变更
           // 入群事件回调里没有 union_id / openId（事件来源是飞书管理面板），
           // 写入占位 set，后续入站消息升级

@@ -267,18 +267,34 @@ export async function handleReceiveMessage(
   // 后面注入到 ChannelMessage.fromPeerAgentId / fromPeerOpenId，
   // channel-message-handler 兜底"@ 回提问者"会用到
   let peerInboundInfo: { agentId: string | null; openId: string } | null = null;
-  if (data.sender.sender_type === 'app') {
+  // M13 cross-app 修复：飞书实测 bot-to-bot 事件 sender_type='bot'（不是 'app'），
+  // 且 sender_id 不含 app_id（只有 open_id + union_id）。两种值都走 classify 路径。
+  if (data.sender.sender_type === 'app' || data.sender.sender_type === 'bot') {
     const classify = ctx.classifyAppSender;
     if (!classify) {
-      log.debug(`[${accountId}] team-mode 未启用，丢弃 sender_type=app 消息`);
+      log.debug(`[${accountId}] team-mode 未启用，丢弃 sender_type=${data.sender.sender_type} 消息`);
       return;
     }
-    const senderAppId = data.sender.sender_id?.app_id ?? '';
+    let senderAppId = data.sender.sender_id?.app_id ?? '';
     const senderOpenIdForClassify = data.sender.sender_id?.open_id ?? '';
     const senderUnionIdForClassify = data.sender.sender_id?.union_id;
     const chatIdForClassify = data.message?.chat_id ?? '';
+
+    // M13 cross-app 修复：sender_type='bot' 事件没 app_id，用 message_id 反查全局
+    // 发送注册表（sendMessage 完成后写入）。所有 5 个 bot 在同一进程共享内存。
+    if (!senderAppId && data.message?.message_id) {
+      const { lookupSentMessage } = await import('./sent-message-registry.js');
+      const sent = lookupSentMessage(data.message.message_id);
+      if (sent) {
+        senderAppId = sent.senderAccountId;
+        log.info(
+          `[${accountId}] 通过 message_id 反查到发送方 messageId=${data.message.message_id} sender_account=${sent.senderAccountId}`,
+        );
+      }
+    }
+
     if (!senderAppId || !chatIdForClassify) {
-      log.debug(`[${accountId}] sender_type=app 但缺 app_id/chat_id，丢弃`);
+      log.debug(`[${accountId}] sender_type=${data.sender.sender_type} 但缺 app_id/chat_id（message_id 也反查不到），丢弃 messageId=${data.message?.message_id}`);
       return;
     }
     const verdict = classify({

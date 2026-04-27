@@ -582,6 +582,29 @@ export interface QueryLoopConfig {
   // ─── Abort ───
   readonly abortSignal?: AbortSignal;
 
+  // ─── Idle Watchdog (可选: 活动重置型超时；每个 stream event / tool_end 调 touch()) ───
+  /**
+   * 主超时机制（M13 重构）
+   *
+   * 替代"总时长一刀切"的 wallclock 超时。每个 stream chunk / tool_use_end 都会调
+   * `touch()` 重置 idle 倒计时；连续 idleMs（默认 120s）无活动才触发 abort。
+   * 兼容 compaction：compaction_start/end 会 pause/resume。
+   */
+  readonly idleWatchdog?: import('./idle-watchdog.js').IdleWatchdog;
+
+  // ─── Inbound Message Queue (可选: 软警告 / 系统事件注入到下一轮) ───
+  /**
+   * 待注入到下一轮 LLM 调用的 user 消息文本数组（共享引用）。
+   *
+   * 调用方（attempt）通过 `idleWatchdog.onWarning` 等回调向数组 push 文本；
+   * query-loop 在每轮迭代开始时 drain（splice 取空）并把每条文本作为 user
+   * 消息追加到 state.messages 里。
+   *
+   * 用途（M13 重构）：runner idle/wallclock 撞警告阈值时让 LLM 在下一轮
+   * 看到"你即将超时，请收尾"的提示，自主调 update_task_status / mention_peer。
+   */
+  readonly pendingInboundMessages?: string[];
+
   // ─── Compaction (可选: 用于 autocompact 的轻量模型) ───
   readonly compaction?: {
     readonly protocol: ApiProtocol;

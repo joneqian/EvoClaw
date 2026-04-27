@@ -1311,7 +1311,7 @@ export function createChatRoutes(
           lane: 'main',
           abortController,
           task: () => runAgent(abortController.signal),
-          timeoutMs: 600_000,
+          // M13 重构：超时由 attempt 内 IdleWatchdog + Wallclock 唯一负责
         });
       } else {
         await runAgent();

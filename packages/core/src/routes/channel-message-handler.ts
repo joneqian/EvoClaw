@@ -28,6 +28,7 @@ import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
 import { buildGroupPeerRoster } from '../agent/peer-roster.js';
 import { buildGroupSessionKey } from '../agent/team-mode/group-key-utils.js';
+import { createTaskTimeoutFinalizer } from '../agent/team-mode/task-timeout-finalizer.js';
 import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
 import {
   reconstructDisplayContent,
@@ -770,6 +771,11 @@ export async function handleChannelMessage(
     auditLogFn,
     // M13 修复：peer @ 入站时让 NO_REPLY 段允许静默回复，避免 reply-to 兜底引发的反复回响
     inboundFromPeer: !!ctx.fromPeerOpenId,
+    // M13 重构：runner 超时（idle / wallclock）时自动把 in_progress 任务标 blocked，
+    // 避免 task 永远卡 in_progress 等 escalation 15 分钟
+    ...(deps.taskPlanService
+      ? { taskTimeoutFinalizer: createTaskTimeoutFinalizer({ taskPlanService: deps.taskPlanService }) }
+      : {}),
     ...(() => {
       const overrides: Array<{ level: 'agent'; mode: 'append'; content: string }> = [];
       if (groupPeerRoster) {
@@ -869,7 +875,7 @@ export async function handleChannelMessage(
       lane: 'main',
       abortController,
       task: () => runAgent(abortController.signal),
-      timeoutMs: 600_000,
+      // M13 重构：超时由 attempt 内 IdleWatchdog + Wallclock 唯一负责（不在这里再叠一层）
     });
   } else {
     await runAgent();

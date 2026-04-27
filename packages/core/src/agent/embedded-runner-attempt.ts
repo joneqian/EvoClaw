@@ -25,7 +25,8 @@ import { ToolSafetyGuard } from './tool-safety.js';
 import { shouldTriggerFlush, buildMemoryFlushPrompt, createFlushPermissionInterceptor } from './memory-flush.js';
 import { buildSystemPrompt } from './embedded-runner-prompt.js';
 import { classifyError, isAbortError } from './embedded-runner-errors.js';
-import { createSmartTimeout } from './embedded-runner-timeout.js';
+import { createSmartTimeout, RUNNER_WALLCLOCK_MS, RUNNER_WALLCLOCK_WARNING_RATIO } from './embedded-runner-timeout.js';
+import { IdleWatchdog } from './kernel/idle-watchdog.js';
 import { queryLoop } from './kernel/query-loop.js';
 import { buildKernelTools } from './kernel/tool-adapter.js';
 import { resetCompactorState } from './kernel/context-compactor.js';
@@ -81,8 +82,20 @@ function readImageBlock(
   }
 }
 
-/** 总超时 (与 Lane Queue 默认超时对齐) */
-const ATTEMPT_TIMEOUT_MS = 600_000; // 10 分钟
+/**
+ * Runner 总超时层（M13 重构）
+ *
+ * - **Wallclock 兜底**：30 分钟（RUNNER_WALLCLOCK_MS），防真死循环跑死 sidecar
+ *   - 警告阈值 75%（22.5 分钟）注入软警告 system_event 让 LLM 主动收尾
+ * - **Idle Watchdog 主超时**：120s 无任何 stream event / tool 推进 → abort
+ *   - 警告阈值 70%（84s）同样注入软警告
+ *   - 兼容 compaction：compaction_start/end 自动 pause/resume
+ *
+ * 替代原 ATTEMPT_TIMEOUT_MS=600s 一刀切——600s 把多步推进任务（codegen 30 文件、长 bash）
+ * 也一并砍了，是误伤。
+ */
+const RUNNER_IDLE_MS = 120_000;
+const RUNNER_IDLE_WARNING_RATIO = 0.7;
 
 /** 单次执行参数 */
 export interface AttemptParams {
@@ -351,13 +364,37 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     content: userContent,
   });
 
-  // ─── Smart Timeout ───
+  // ─── 双层超时（M13 重构）───
+  //
+  //   1. **Idle Watchdog**（主超时，120s）：每个 stream chunk / tool 推进重置
+  //      —— 抓"真死循环"（stream 卡住、模型一直思考不输出）
+  //   2. **Wallclock 兜底**（30 分钟）：单个 attempt 总时长上限
+  //      —— 防"持续输出但无意义"的死循环跑死 sidecar / 烧光预算
+  //
+  // 两者各司其职，不再像旧实现那样 600s 一刀切误伤 codegen 长任务。
   const timeoutController = new AbortController();
   let isCompacting = false;
+
+  // 软警告注入器 — 撞警告阈值时通过 inboundMessageQueue 把 system_event 喂给下一轮 LLM
+  const inboundMessageQueue: string[] = [];
+  const injectSoftWarning = (kind: 'idle' | 'wallclock', elapsedMs: number) => {
+    inboundMessageQueue.push(buildWarningSystemEvent(kind, elapsedMs));
+  };
+
+  const idleWatchdog = new IdleWatchdog({
+    idleMs: RUNNER_IDLE_MS,
+    warningRatio: RUNNER_IDLE_WARNING_RATIO,
+    onWarning: (elapsedMs) => injectSoftWarning('idle', elapsedMs),
+    onTimeout: () => timeoutController.abort('idle 超时'),
+  });
+  idleWatchdog.start();
+
   const smartTimeout = createSmartTimeout({
-    timeoutMs: ATTEMPT_TIMEOUT_MS,
+    timeoutMs: RUNNER_WALLCLOCK_MS,
+    warningRatio: RUNNER_WALLCLOCK_WARNING_RATIO,
     isCompacting: () => isCompacting,
-    onTimeout: () => timeoutController.abort('超时'),
+    onWarning: (elapsedMs) => injectSoftWarning('wallclock', elapsedMs),
+    onTimeout: () => timeoutController.abort('wallclock 超时'),
   });
 
   const mergedSignal = abortSignal
@@ -366,8 +403,14 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
 
   // 包装 onEvent 追踪 compaction 状态 + 收集结果
   const wrappedOnEvent = async (event: RuntimeEvent) => {
-    if (event.type === 'compaction_start') isCompacting = true;
-    if (event.type === 'compaction_end') isCompacting = false;
+    if (event.type === 'compaction_start') {
+      isCompacting = true;
+      idleWatchdog.pause();   // compaction 期间不算 idle
+    }
+    if (event.type === 'compaction_end') {
+      isCompacting = false;
+      idleWatchdog.resume();
+    }
     if (event.type === 'text_delta' && event.delta) fullResponse += event.delta;
     await onEvent(event);
   };
@@ -413,10 +456,12 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     systemPrompt,
     messages: kernelMessages,
     maxTurns: 50,
-    timeoutMs: ATTEMPT_TIMEOUT_MS,
+    timeoutMs: RUNNER_WALLCLOCK_MS,
     onEvent: wrappedOnEvent,
     toolSafety,
     abortSignal: mergedSignal,
+    idleWatchdog,
+    pendingInboundMessages: inboundMessageQueue,
     toolSummaryGenerator,
     // Compact Hooks — 从 AgentRunConfig 透传到 Kernel
     preCompactHook: config.preCompactHook,
@@ -528,12 +573,28 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     const messagesSnapshot = lastKnownMessages.map(kernelMessageToSnapshot);
 
     // 超时
-    if (smartTimeout.timedOut) {
-      log.warn(`attempt 超时 (${ATTEMPT_TIMEOUT_MS / 1000}s, compaction=${smartTimeout.timedOutDuringCompaction})`);
+    if (idleWatchdog.timedOut || smartTimeout.timedOut) {
+      const kind: 'idle' | 'wallclock' = idleWatchdog.timedOut ? 'idle' : 'wallclock';
+      const totalSec = kind === 'idle' ? RUNNER_IDLE_MS / 1000 : RUNNER_WALLCLOCK_MS / 1000;
+      log.warn(`attempt 超时 (kind=${kind}, ${totalSec}s, compaction=${smartTimeout.timedOutDuringCompaction})`);
+
+      // 任务收尾责任链 — 自动 update_task_status('blocked')，避免 task 永远卡 in_progress
+      // 收尾失败不影响主流程
+      if (config.taskTimeoutFinalizer && config.sessionKey) {
+        try {
+          const finalized = config.taskTimeoutFinalizer(config.sessionKey, kind);
+          if (finalized.length > 0) {
+            log.info(`runner 超时后自动标 blocked: ${finalized.map((t: { localId: string }) => t.localId).join(',')}`);
+          }
+        } catch (finalErr) {
+          log.warn('任务收尾失败:', finalErr);
+        }
+      }
+
       return {
         success: false,
         errorType: 'timeout',
-        error: `Agent 超时 (${ATTEMPT_TIMEOUT_MS / 1000}s)`,
+        error: `Agent ${kind === 'idle' ? 'idle' : 'wallclock'} 超时 (${totalSec}s)`,
         timedOut: true,
         timedOutDuringCompaction: smartTimeout.timedOutDuringCompaction,
         aborted: false,
@@ -590,7 +651,32 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     };
   } finally {
     smartTimeout.clear();
+    idleWatchdog.stop();
     // 确保异常退出时也 flush 未写入的消息
     persister?.dispose();
   }
+}
+
+/**
+ * 构建软警告 system_event（M13 重构）
+ *
+ * idle/wallclock 撞警告阈值时通过 inboundMessageQueue 喂给下一轮 LLM，
+ * 提示主动调 update_task_status / mention_peer 收尾，最大化任务完成度。
+ */
+function buildWarningSystemEvent(kind: 'idle' | 'wallclock', elapsedMs: number): string {
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  if (kind === 'idle') {
+    return `<system_event kind="runner_idle_warning">
+你已经 ${elapsedSec} 秒没有新的工具调用或文本输出。即将（再 ~36 秒）触发 idle 超时被中断。
+建议立即三选一：
+(1) 调 update_task_status('in_progress', note='当前进度: ...') 上报已完成的部分；
+(2) 调 update_task_status('blocked', note='原因: ...') 让责任链兜底；
+(3) 调 mention_peer 把剩余工作转交给同事。
+</system_event>`;
+  }
+  const elapsedMin = Math.floor(elapsedSec / 60);
+  return `<system_event kind="runner_wallclock_warning">
+你已经运行 ${elapsedMin} 分钟。还剩约 7 分钟会撞总时长上限被强制中断。
+任务量较大时建议分批：调 update_task_status('blocked', note='已完成 X，剩余 Y 待续') 让其他 Agent 接力，或自行换会话续写。
+</system_event>`;
 }

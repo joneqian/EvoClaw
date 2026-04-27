@@ -215,24 +215,66 @@ describe('N5: FeishuPeerBotRegistry.gc', () => {
     await new MigrationRunner(store).run();
     bindingRouter = new BindingRouter(store);
     registry = new FeishuPeerBotRegistry({ bindingRouter });
+    // 先建 agents 行，否则 bindings FK 会失败
+    const insertAgent = (id: string, name: string) =>
+      store.run(
+        `INSERT INTO agents (id, name, emoji, status, created_at, updated_at) VALUES (?, ?, '🤖', 'active', datetime('now'), datetime('now'))`,
+        id, name,
+      );
+    insertAgent('a-self', 'self');
+    insertAgent('a-old', 'old');
+    insertAgent('a-fresh', 'fresh');
+    insertAgent('a-a', 'a');
   });
 
   it('过期的 entry 被清掉（用 maxAgeMs=10 + 20ms 等待模拟过期）', async () => {
-    registry.registerBotInChat('oc_x', 'cli_old', 'ou_old');
-    registry.registerBotInChat('oc_x', 'cli_fresh', 'ou_fresh');
-    expect(registry.snapshot()['oc_x']).toHaveLength(2);
+    // 必须先在 bindings 里注册才会被 listInChat 列出
+    bindingRouter.addBinding({ agentId: 'a-self', channel: 'feishu', accountId: 'cli_self', peerId: null, priority: 0, isDefault: false });
+    bindingRouter.addBinding({ agentId: 'a-old', channel: 'feishu', accountId: 'cli_old', peerId: null, priority: 0, isDefault: false });
+    bindingRouter.addBinding({ agentId: 'a-fresh', channel: 'feishu', accountId: 'cli_fresh', peerId: null, priority: 0, isDefault: false });
+
+    registry.registerBotInChat({
+      chatId: 'oc_x',
+      viewerAppId: 'cli_self',
+      targetAppId: 'cli_old',
+      targetUnionId: 'un_old',
+      openId: 'ou_old',
+    });
+    registry.registerBotInChat({
+      chatId: 'oc_x',
+      viewerAppId: 'cli_self',
+      targetAppId: 'cli_fresh',
+      targetUnionId: 'un_fresh',
+      openId: 'ou_fresh',
+    });
+    // listInChat 返回 (peer1, peer2, plus bindings 兜底候选)，过滤 self 后应至少有 2 个
+    const before = registry.listInChat('oc_x', 'cli_self', 'a-self');
+    const beforeLearnedCount = before.filter((p) => p.openId).length;
+    expect(beforeLearnedCount).toBe(2);
 
     // 等 20ms 让两个 entry 都"超过" 10ms 阈值
     await new Promise((r) => setTimeout(r, 20));
     const removed = registry.gc(10);
     expect(removed).toBe(2);
-    expect(registry.snapshot()).toEqual({});
+    // gc 后 viewer 视角下不再有完整 entry（仍有 bindings 兜底候选，但 openId 都空）
+    const after = registry.listInChat('oc_x', 'cli_self', 'a-self');
+    expect(after.every((p) => !p.openId)).toBe(true);
   });
 
   it('default 30d 内的 entry 不被清', () => {
-    registry.registerBotInChat('oc_x', 'cli_a', 'ou_a');
+    bindingRouter.addBinding({ agentId: 'a-self', channel: 'feishu', accountId: 'cli_self', peerId: null, priority: 0, isDefault: false });
+    bindingRouter.addBinding({ agentId: 'a-a', channel: 'feishu', accountId: 'cli_a', peerId: null, priority: 0, isDefault: false });
+
+    registry.registerBotInChat({
+      chatId: 'oc_x',
+      viewerAppId: 'cli_self',
+      targetAppId: 'cli_a',
+      targetUnionId: 'un_a',
+      openId: 'ou_a',
+    });
     const removed = registry.gc(); // default 30d
     expect(removed).toBe(0);
-    expect(registry.snapshot()['oc_x']).toHaveLength(1);
+    const list = registry.listInChat('oc_x', 'cli_self', 'a-self');
+    expect(list.find((p) => p.agentId === 'a-a')?.openId).toBe('ou_a');
   });
 });

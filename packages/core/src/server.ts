@@ -881,38 +881,53 @@ async function main() {
         const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
 
         feishuPeerBotRegistry = new FeishuPeerBotRegistry({ bindingRouter });
-        feishuTeamChannel = new FeishuTeamChannel({ peerBotRegistry: feishuPeerBotRegistry });
+        feishuTeamChannel = new FeishuTeamChannel({
+          peerBotRegistry: feishuPeerBotRegistry,
+          bindingRouter,
+        });
         teamChannelRegistry.register('feishu', feishuTeamChannel);
 
         // factory：每个 accountId 创建一个 FeishuAdapter 实例，挂上同一组 team-mode
         // 钩子（共享 peerBotRegistry / teamChannel 单例）
         channelManager.registerFactory('feishu', () => {
           const adapter = new FeishuAdapter();
-          // 入站分类器：peer-bot-registry.classifyPeer 副作用更新缓存
-          adapter.setTeamModeClassifier(({ chatId, senderAppId, senderOpenId, ownAccountId }) => {
+          // 入站分类器：peer-bot-registry.classifyPeer 副作用更新缓存（按 viewer 视角）
+          adapter.setTeamModeClassifier(({ chatId, senderAppId, senderOpenId, senderUnionId, ownAccountId }) => {
             if (!chatId || !senderAppId) return 'stranger';
             if (senderAppId === ownAccountId) return 'self';
-            const peer = feishuPeerBotRegistry!.classifyPeer(chatId, senderAppId, senderOpenId);
+            const peer = feishuPeerBotRegistry!.classifyPeer({
+              viewerAccountId: ownAccountId,
+              chatId,
+              senderAppId,
+              senderOpenId,
+              senderUnionId,
+            });
             return peer ? 'peer' : 'stranger';
           });
           // M13 修复（C-1）：把 senderAppId → peer agentId 反查给 inbound，
-          // 让 ChannelMessage.fromPeerAgentId 能填上，channel-message-handler 兜底
-          // 前缀 @ 回提问者会用到
+          // 让 ChannelMessage.fromPeerAgentId 能填上
           adapter.setPeerAgentResolver(({ chatId, senderAppId }) => {
             if (!chatId || !senderAppId) return null;
-            // listInChat 已经把 binding 表 + registry 学到的 entry 都纳入
-            // （B1+B2 修复后冷启动也能反查）。第二参数 selfAgentId 这里传 senderAppId
-            // 占位（不会等于任何 agent，确保不被排除自己）
-            const list = feishuPeerBotRegistry!.listInChat(chatId, '');
+            // viewer 视角是当前 adapter 自己的 accountId
+            const viewer = adapter.getStatus().accountId ?? '';
+            if (!viewer) return null;
+            const list = feishuPeerBotRegistry!.listInChat(chatId, viewer, '');
             const found = list.find((p) => p.appId === senderAppId);
             return found?.agentId ?? null;
           });
-          // 事件钩子：bot 入群 / 出群 / p2p 进入 → 更新 registry + 广播成员变更
+          // 事件钩子：bot 入群 / 出群 / p2p 进入 → 更新 registry（占位）+ 广播成员变更
+          // 入群事件回调里没有 union_id / openId（事件来源是飞书管理面板），
+          // 写入占位 set，后续入站消息升级
           adapter.setEventCallbacks({
             onBotAddedToChat: async (event) => {
               const accountId = adapter.getStatus().accountId ?? '';
               if (!event.chat_id || !accountId) return;
-              feishuPeerBotRegistry!.registerBotInChat(event.chat_id, accountId);
+              // viewer = 自己（自己 bot 入群）；target = 自己
+              feishuPeerBotRegistry!.registerBotInChat({
+                chatId: event.chat_id,
+                viewerAppId: accountId,
+                targetAppId: accountId,
+              });
               feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'added');
             },
             onBotRemovedFromChat: async (event) => {
@@ -924,7 +939,11 @@ async function main() {
             onP2pChatEntered: async (event) => {
               const accountId = adapter.getStatus().accountId ?? '';
               if (!event.chat_id || !accountId) return;
-              feishuPeerBotRegistry!.registerBotInChat(event.chat_id, accountId);
+              feishuPeerBotRegistry!.registerBotInChat({
+                chatId: event.chat_id,
+                viewerAppId: accountId,
+                targetAppId: accountId,
+              });
               feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'p2p_entered');
             },
           });

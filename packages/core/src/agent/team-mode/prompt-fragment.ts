@@ -226,10 +226,19 @@ function renderRoster(roster: PeerBotInfo[]): string {
   }
   // M13 修复：不再注入 emoji 字符 — 防 LLM 复读 "emoji+名字" 拼成裸文本 @
   // （如 "@📈 产品经理"），应改用 mention_peer 工具走真·原生 @
+  //
+  // M13 cross-app 修复：mentionId 为空字符串说明本机视角下还没观察到该 peer 发言
+  // （飞书 open_id 是 app-scoped 的，跨 App 不能复用）。这种情况下不写 mention_id
+  // 属性，避免 LLM 直接抄一个空串到 `<at user_id=""/>` 报错；改写 cold_start="true"
+  // 提示 LLM 用 mention_peer 工具（工具内部会再降级纯文本 @<name>）
   const peers = roster
     .map((p) => {
       const capability = p.capabilityHint ? ` · ${p.capabilityHint}` : '';
-      return `  <peer agent_id="${escapeXmlAttr(p.agentId)}" mention_id="${escapeXmlAttr(p.mentionId)}" role="${escapeXmlAttr(p.role)}">
+      const hasMention = !!p.mentionId;
+      const mentionAttr = hasMention
+        ? ` mention_id="${escapeXmlAttr(p.mentionId)}"`
+        : ` cold_start="true"`;  // 视角缺，需走 mention_peer 工具降级
+      return `  <peer agent_id="${escapeXmlAttr(p.agentId)}"${mentionAttr} role="${escapeXmlAttr(p.role)}">
     ${escapeXmlText(p.name)}${escapeXmlText(capability)}
   </peer>`;
     })

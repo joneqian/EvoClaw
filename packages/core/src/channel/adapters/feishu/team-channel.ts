@@ -25,6 +25,7 @@ import type {
   TeamMessageMetadata,
 } from '../../team-mode/team-channel.js';
 import type { FeishuPeerBotRegistry } from './peer-bot-registry.js';
+import type { BindingRouter } from '../../../routing/binding-router.js';
 import { renderTaskBoardCard, renderTaskBoardCardJson } from './task-board-card.js';
 
 const logger = createLogger('feishu/team-channel');
@@ -45,6 +46,8 @@ export interface FeishuInboundLike {
 
 export interface FeishuTeamChannelDeps {
   peerBotRegistry: FeishuPeerBotRegistry;
+  /** M13 cross-app 修复：用 agentId 反查 viewer 视角的 accountId（飞书 App ID） */
+  bindingRouter: BindingRouter;
 }
 
 export class FeishuTeamChannel implements TeamChannelAdapter {
@@ -88,12 +91,19 @@ export class FeishuTeamChannel implements TeamChannelAdapter {
       return { kind: 'self', reason: 'echo' };
     }
 
-    // peer：查 registry
-    if (chatId) {
-      const peer = this.deps.peerBotRegistry.classifyPeer(chatId, senderAppId, senderOpenId);
+    // peer：查 registry（用 own.accountId 作为 viewer 视角）
+    if (chatId && own.accountId) {
+      const senderUnionId = sender.sender_id?.union_id;
+      const peer = this.deps.peerBotRegistry.classifyPeer({
+        viewerAccountId: own.accountId,
+        chatId,
+        senderAppId,
+        senderOpenId,
+        senderUnionId,
+      });
       if (peer) {
         logger.debug(
-          `classify peer chat=${chatId} app=${senderAppId} → agent=${peer.agentId}`,
+          `classify peer chat=${chatId} viewer=${own.accountId} app=${senderAppId} → agent=${peer.agentId}`,
         );
         return { kind: 'peer', senderAgentId: peer.agentId };
       }
@@ -112,11 +122,22 @@ export class FeishuTeamChannel implements TeamChannelAdapter {
       logger.warn(`listPeerBots groupSessionKey 格式错误 key=${groupSessionKey}`);
       return [];
     }
-    const peers = this.deps.peerBotRegistry.listInChat(chatId, selfAgentId);
+    // M13 cross-app 修复：viewer = self agent 的 feishu accountId
+    const viewerBindings = this.deps.bindingRouter
+      .listBindings(selfAgentId)
+      .filter((b) => b.channel === 'feishu');
+    const viewerAccountId = viewerBindings[0]?.accountId ?? '';
+    if (!viewerAccountId) {
+      logger.warn(`listPeerBots 找不到 self agent 的 feishu binding agentId=${selfAgentId}`);
+      return [];
+    }
+    const peers = this.deps.peerBotRegistry.listInChat(chatId, viewerAccountId, selfAgentId);
     return peers.map((p) => ({
       agentId: p.agentId,
-      // openId 是飞书 mention 用的；尚未学到时退化为 appId（mention 会失效，但不阻塞）
-      mentionId: p.openId ?? p.appId,
+      // openId 是飞书 `<at>` 用的；尚未学到 viewer 视角时为空字符串。
+      // 调用方（peer-roster / mention_peer）应检测空 mentionId 降级为纯文本 @<name>，
+      // 不能用 appId / 别 viewer 的 openId 兜底（必跨 app 报错）。
+      mentionId: p.openId ?? '',
     }));
   }
 

@@ -196,6 +196,8 @@ export interface InboundContext {
     chatId: string;
     senderAppId: string;
     senderOpenId: string;
+    /** 发送方在 viewer 视角下的 union_id（M13 cross-app 修复：用作机器人身份主键） */
+    senderUnionId?: string;
     ownAccountId: string;
   }) => 'self' | 'peer' | 'stranger';
   /**
@@ -273,6 +275,7 @@ export async function handleReceiveMessage(
     }
     const senderAppId = data.sender.sender_id?.app_id ?? '';
     const senderOpenIdForClassify = data.sender.sender_id?.open_id ?? '';
+    const senderUnionIdForClassify = data.sender.sender_id?.union_id;
     const chatIdForClassify = data.message?.chat_id ?? '';
     if (!senderAppId || !chatIdForClassify) {
       log.debug(`[${accountId}] sender_type=app 但缺 app_id/chat_id，丢弃`);
@@ -282,6 +285,7 @@ export async function handleReceiveMessage(
       chatId: chatIdForClassify,
       senderAppId,
       senderOpenId: senderOpenIdForClassify,
+      senderUnionId: senderUnionIdForClassify,
       ownAccountId: accountId,
     });
     if (verdict === 'self') {

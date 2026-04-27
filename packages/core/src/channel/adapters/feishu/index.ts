@@ -501,6 +501,42 @@ export class FeishuAdapter implements ChannelAdapter {
     return this.bundle?.client ?? null;
   }
 
+  /**
+   * 列出当前 bot 加入的所有群（用于启动 prebake 枚举）
+   *
+   * 返回 (chatId, chatName) 列表。仅包含 chat_type='group'（私聊不需要 prebake）。
+   * 失败时返回空数组——上层应静默跳过 prebake，不阻塞 connect。
+   */
+  async listChats(pageSize = 100): Promise<Array<{ chatId: string; name?: string }>> {
+    const client = this.bundle?.client;
+    if (!client) return [];
+    try {
+      const res = (await client.im.chat.list({
+        params: { page_size: Math.min(Math.max(1, pageSize), 100) },
+      })) as {
+        code?: number;
+        msg?: string;
+        data?: { items?: Array<{ chat_id?: string; name?: string; chat_mode?: string }> };
+      };
+      if (res.code !== 0) {
+        log.warn(`listChats 业务错 code=${res.code} msg=${res.msg}`);
+        return [];
+      }
+      const items = res.data?.items ?? [];
+      const out: Array<{ chatId: string; name?: string }> = [];
+      for (const c of items) {
+        // chat_mode 'group' 是群聊；'p2p' 是私聊（跳过）；'topic' 是话题（保留）
+        if (!c.chat_id) continue;
+        if (c.chat_mode === 'p2p') continue;
+        out.push({ chatId: c.chat_id, ...(c.name ? { name: c.name } : {}) });
+      }
+      return out;
+    } catch (err) {
+      log.warn(`listChats 抛错（已忽略）: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
+  }
+
   private requireClient(): Lark.Client {
     if (!this.bundle || this.status.status !== 'connected') {
       throw new Error('飞书 Channel 未连接');

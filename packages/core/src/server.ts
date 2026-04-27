@@ -752,6 +752,50 @@ async function dispatchBroadcastMessage(
   }
 }
 
+/**
+ * 触发飞书 bot 在指定群里 prebake 上线打招呼（M13 cross-app cold-start 修复）
+ *
+ * 场景：bot 入群时 / sidecar 启动后枚举已加群时调用。
+ * 失败兜底：所有错误吞掉打 warn，不阻塞主流程。
+ *
+ * 依赖：通过 bindingRouter 反查 accountId → agentId → AgentManager 拿 name/emoji。
+ */
+async function triggerFeishuPrebake(args: {
+  adapter: import('./channel/adapters/feishu/index.js').FeishuAdapter;
+  accountId: string;
+  chatId: string;
+  prebake: import('./channel/adapters/feishu/chat-prebake.js').ChatPrebakeService | null;
+  agentManager: AgentManager;
+  bindingRouter: BindingRouter;
+}): Promise<void> {
+  if (!args.prebake) return;
+  try {
+    const binding = args.bindingRouter
+      .listBindings()
+      .find((b) => b.channel === 'feishu' && b.accountId === args.accountId);
+    if (!binding) {
+      log.debug(`prebake 跳过（无 binding） account=${args.accountId} chat=${args.chatId}`);
+      return;
+    }
+    const agent = args.agentManager.getAgent(binding.agentId);
+    if (!agent) {
+      log.debug(`prebake 跳过（agent 不存在） agent=${binding.agentId} chat=${args.chatId}`);
+      return;
+    }
+    await args.prebake.maybePrebake({
+      chatId: args.chatId,
+      accountId: args.accountId,
+      agentName: agent.name,
+      agentEmoji: agent.emoji,
+      sendFn: async (text) => {
+        await args.adapter.sendMessage(args.chatId, text, 'group');
+      },
+    });
+  } catch (err) {
+    log.warn(`prebake 异常（已忽略） account=${args.accountId} chat=${args.chatId}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 /** 主入口 — 仅在直接执行时运行 */
 async function main() {
   const profiler = new StartupProfiler();
@@ -874,13 +918,16 @@ async function main() {
       // bot.added/deleted 事件累积 (chatId, appId, openId)
       let feishuTeamChannel: import('./channel/adapters/feishu/team-channel.js').FeishuTeamChannel | null = null;
       let feishuPeerBotRegistry: import('./channel/adapters/feishu/peer-bot-registry.js').FeishuPeerBotRegistry | null = null;
+      let feishuChatPrebake: import('./channel/adapters/feishu/chat-prebake.js').ChatPrebakeService | null = null;
       if (Feature.FEISHU) {
         const { FeishuAdapter } = await import('./channel/adapters/feishu/index.js');
         const { FeishuPeerBotRegistry } = await import('./channel/adapters/feishu/peer-bot-registry.js');
         const { FeishuTeamChannel } = await import('./channel/adapters/feishu/team-channel.js');
+        const { ChatPrebakeService } = await import('./channel/adapters/feishu/chat-prebake.js');
         const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
 
         feishuPeerBotRegistry = new FeishuPeerBotRegistry({ bindingRouter });
+        feishuChatPrebake = new ChatPrebakeService({ store: db });
         feishuTeamChannel = new FeishuTeamChannel({
           peerBotRegistry: feishuPeerBotRegistry,
           bindingRouter,
@@ -938,6 +985,17 @@ async function main() {
                 targetAppId: accountId,
               });
               feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'added');
+
+              // M13 cross-app cold-start 修复：bot 入群时 prebake 上线打招呼
+              // —— 让其他 bot 的 ws 收到 sender_type='app' 事件，各自学到本 bot 的 open_id
+              void triggerFeishuPrebake({
+                adapter,
+                accountId,
+                chatId: event.chat_id,
+                prebake: feishuChatPrebake,
+                agentManager,
+                bindingRouter,
+              });
             },
             onBotRemovedFromChat: async (event) => {
               const accountId = adapter.getStatus().accountId ?? '';
@@ -967,6 +1025,7 @@ async function main() {
         bindingRouter,
         feishuTeamChannel,
         feishuPeerBotRegistry,
+        feishuChatPrebake,
       };
     })(),
   ]);
@@ -974,7 +1033,7 @@ async function main() {
   // 解构并行结果
   const { vectorStore, memoryStore, ftsStore, knowledgeGraph, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
   const { agentManager, laneQueue, cronRunner } = agentSys;
-  const { channelManager, channelStateRepo, bindingRouter, feishuTeamChannel, feishuPeerBotRegistry } = channelSys;
+  const { channelManager, channelStateRepo, bindingRouter, feishuTeamChannel, feishuPeerBotRegistry, feishuChatPrebake } = channelSys;
 
   profiler.checkpoint('systems_ready');
 
@@ -1672,6 +1731,33 @@ async function main() {
             }
           } catch (err) {
             log.warn(`回填 bot_open_id 失败 ${chType}[${accountId}]: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          // M13 cross-app cold-start 修复：飞书 connect 完成后枚举已加群 → 各群 prebake
+          // 上线打招呼（24h 去重，重启不会刷屏）。失败兜底，不阻塞 connect。
+          if (chType === 'feishu' && feishuChatPrebake) {
+            const feishuAdapter = channelManager.getAdapter('feishu' as any, accountId);
+            if (feishuAdapter && typeof (feishuAdapter as any).listChats === 'function') {
+              void (async () => {
+                try {
+                  const chats = await (feishuAdapter as unknown as {
+                    listChats: () => Promise<Array<{ chatId: string }>>;
+                  }).listChats();
+                  log.info(`飞书 prebake 枚举 account=${accountId} chats=${chats.length}`);
+                  for (const c of chats) {
+                    void triggerFeishuPrebake({
+                      adapter: feishuAdapter as any,
+                      accountId,
+                      chatId: c.chatId,
+                      prebake: feishuChatPrebake,
+                      agentManager,
+                      bindingRouter,
+                    });
+                  }
+                } catch (err) {
+                  log.warn(`飞书 prebake 枚举失败 account=${accountId}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+              })();
+            }
           }
           log.info(`渠道 ${chType}[${accountId}] 已自动恢复连接`);
         } catch (err) {

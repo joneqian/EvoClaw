@@ -19,14 +19,10 @@ import { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from '../../infrastructure/db/migration-runner.js';
 import type * as Lark from '@larksuiteoapi/node-sdk';
 
-// Mock Lark Client
+// Mock Lark Client — prober 走 client.request 低层 API（SDK 高层在 Bun 下 socket close）
 function makeMockClient(messageListResponse: unknown): Lark.Client {
-  const list = vi.fn().mockResolvedValue(messageListResponse);
-  return {
-    im: {
-      message: { list },
-    },
-  } as unknown as Lark.Client;
+  const request = vi.fn().mockResolvedValue(messageListResponse);
+  return { request } as unknown as Lark.Client;
 }
 
 async function setupRegistry() {
@@ -205,7 +201,7 @@ describe('probeChatHistory', () => {
 
   it('API 抛网络错 → 静默吞掉返回零', async () => {
     const client = {
-      im: { message: { list: vi.fn().mockRejectedValue(new Error('ECONNRESET')) } },
+      request: vi.fn().mockRejectedValue(new Error("ECONNRESET")),
     } as unknown as Lark.Client;
 
     const result = await probeChatHistory({
@@ -278,7 +274,7 @@ describe('ChatHistoryProberCache', () => {
       code: 0,
       data: { items: [{ sender: { sender_type: 'app', sender_id: { open_id: 'ou_p1', app_id: 'cli_peer1', union_id: 'un_p1' } } }] },
     });
-    const client = { im: { message: { list } } } as unknown as Lark.Client;
+    const client = { request: list } as unknown as Lark.Client;
 
     const cache = new ChatHistoryProberCache(60_000);  // 60s TTL
     const args = {
@@ -304,7 +300,7 @@ describe('ChatHistoryProberCache', () => {
       code: 0,
       data: { items: [{ sender: { sender_type: 'app', sender_id: { open_id: 'ou_p1', app_id: 'cli_peer1', union_id: 'un_p1' } } }] },
     });
-    const client = { im: { message: { list } } } as unknown as Lark.Client;
+    const client = { request: list } as unknown as Lark.Client;
 
     const cache = new ChatHistoryProberCache();
 
@@ -328,7 +324,7 @@ describe('ChatHistoryProberCache', () => {
         resolveListCall = res;
       }),
     );
-    const client = { im: { message: { list } } } as unknown as Lark.Client;
+    const client = { request: list } as unknown as Lark.Client;
 
     const cache = new ChatHistoryProberCache();
     const args = {
@@ -355,7 +351,7 @@ describe('ChatHistoryProberCache', () => {
 
   it('reset() 清空缓存允许立即重 probe', async () => {
     const list = vi.fn().mockResolvedValue({ code: 0, data: { items: [] } });
-    const client = { im: { message: { list } } } as unknown as Lark.Client;
+    const client = { request: list } as unknown as Lark.Client;
 
     const cache = new ChatHistoryProberCache(60_000);
     const args = {

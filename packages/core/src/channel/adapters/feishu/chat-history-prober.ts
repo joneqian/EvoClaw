@@ -101,7 +101,12 @@ export async function probeChatHistory(args: ProbeChatHistoryArgs): Promise<Prob
   for (let page = 0; page < maxPages; page++) {
     let response: MessageListResponse;
     try {
-      response = (await args.client.im.message.list({
+      // 走 client.request 低层 API：SDK 高层 client.im.message.list 在 Bun runtime
+      // 下会触发 "socket closed unexpectedly" 错误（OpenClaw 同样踩过这坑，注释见
+      // feishu/index.ts defaultHydrateBotOpenId）。低层 API 正常。
+      response = (await args.client.request({
+        method: 'GET',
+        url: '/open-apis/im/v1/messages',
         params: {
           container_id_type: 'chat',
           container_id: args.chatId,

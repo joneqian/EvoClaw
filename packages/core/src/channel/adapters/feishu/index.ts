@@ -506,18 +506,24 @@ export class FeishuAdapter implements ChannelAdapter {
    *
    * 返回 (chatId, chatName) 列表。仅包含 chat_type='group'（私聊不需要 prebake）。
    * 失败时返回空数组——上层应静默跳过 prebake，不阻塞 connect。
+   *
+   * 注意：必须用 `client.request()` 低层 API。SDK 高层 `client.im.chat.list` 在
+   * Bun runtime 下会触发 "socket closed unexpectedly" 错误（OpenClaw 同样踩过，
+   * 见 defaultHydrateBotOpenId 处的注释）。
    */
   async listChats(pageSize = 100): Promise<Array<{ chatId: string; name?: string }>> {
     const client = this.bundle?.client;
     if (!client) return [];
     try {
-      const res = (await client.im.chat.list({
-        params: { page_size: Math.min(Math.max(1, pageSize), 100) },
-      })) as {
+      const res = await client.request<{
         code?: number;
         msg?: string;
         data?: { items?: Array<{ chat_id?: string; name?: string; chat_mode?: string }> };
-      };
+      }>({
+        method: 'GET',
+        url: '/open-apis/im/v1/chats',
+        params: { page_size: Math.min(Math.max(1, pageSize), 100) },
+      });
       if (res.code !== 0) {
         log.warn(`listChats 业务错 code=${res.code} msg=${res.msg}`);
         return [];

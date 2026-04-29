@@ -19,7 +19,8 @@ describe('lookupModelDefinition (exact)', () => {
   });
 
   it('未知模型返回 undefined（不做 forward-compat）', () => {
-    expect(lookupModelDefinition('anthropic', 'claude-opus-4-7')).toBeUndefined();
+    // claude-opus-4-7 已在 catalog 中，用一个明确未来版本测试精确匹配失败
+    expect(lookupModelDefinition('anthropic', 'claude-opus-9-9')).toBeUndefined();
   });
 
   it('未知 provider 返回 undefined', () => {
@@ -50,17 +51,28 @@ describe('resolveModelDefinition (forward-compat)', () => {
       expect(def?.id).toBe('claude-haiku-4-5');
     });
 
-    it('日期戳剥离 + 版本 fallback 串联：claude-opus-4-7-20260219 → claude-opus-4-6', () => {
+    it('日期戳剥离命中 catalog：claude-opus-4-7-20260219 → claude-opus-4-7（精确）', () => {
       const def = resolveModelDefinition('anthropic', 'claude-opus-4-7-20260219');
-      expect(def?.id).toBe('claude-opus-4-6');
+      expect(def?.id).toBe('claude-opus-4-7');
+    });
+
+    it('日期戳剥离 + 版本 fallback 串联：claude-opus-4-8-20260601 → claude-opus-4-7', () => {
+      const def = resolveModelDefinition('anthropic', 'claude-opus-4-8-20260601');
+      expect(def?.id).toBe('claude-opus-4-7');
     });
   });
 
   describe('Anthropic 跨版本', () => {
-    it('claude-opus-4-7 → claude-opus-4-6（最近的低版本同家族）', () => {
+    it('claude-opus-4-7 精确命中（已收录）', () => {
       const def = resolveModelDefinition('anthropic', 'claude-opus-4-7');
-      expect(def?.id).toBe('claude-opus-4-6');
+      expect(def?.id).toBe('claude-opus-4-7');
       expect(def?.reasoning).toBe(true);
+      expect(def?.isDefault).toBe(true);
+    });
+
+    it('claude-opus-4-8 → claude-opus-4-7（未来版本回退到当前最新）', () => {
+      const def = resolveModelDefinition('anthropic', 'claude-opus-4-8');
+      expect(def?.id).toBe('claude-opus-4-7');
     });
 
     it('claude-sonnet-4-7 → claude-sonnet-4-6（不串到 opus）', () => {
@@ -73,17 +85,23 @@ describe('resolveModelDefinition (forward-compat)', () => {
       expect(def?.id).toBe('claude-haiku-4-5');
     });
 
-    it('claude-opus-4-9 → claude-opus-4-6（数值最接近的低版本）', () => {
+    it('claude-opus-4-9 → claude-opus-4-7（数值最接近的低版本）', () => {
       const def = resolveModelDefinition('anthropic', 'claude-opus-4-9');
-      expect(def?.id).toBe('claude-opus-4-6');
+      expect(def?.id).toBe('claude-opus-4-7');
     });
   });
 
   describe('OpenAI 跨版本', () => {
-    it('gpt-5.5 → gpt-5.4（小版本 bump）', () => {
+    it('gpt-5.5 精确命中（已收录）', () => {
       const def = resolveModelDefinition('openai', 'gpt-5.5');
-      expect(def?.id).toBe('gpt-5.4');
+      expect(def?.id).toBe('gpt-5.5');
       expect(def?.reasoning).toBe(true);
+      expect(def?.isDefault).toBe(true);
+    });
+
+    it('gpt-5.6 → gpt-5.5（未来版本回退到当前最新）', () => {
+      const def = resolveModelDefinition('openai', 'gpt-5.6');
+      expect(def?.id).toBe('gpt-5.5');
     });
 
     it('gpt-4.2 → gpt-4.1（同 4 系列内回退）', () => {

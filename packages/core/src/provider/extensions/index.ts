@@ -6,6 +6,7 @@
  */
 
 import type { ProviderDefinition, ModelDefinition } from './types.js';
+import { findForwardCompatTemplate } from './forward-compat.js';
 import { QWEN_PROVIDER } from './qwen.js';
 import { GLM_PROVIDER } from './glm.js';
 import { DOUBAO_PROVIDER } from './doubao.js';
@@ -47,9 +48,23 @@ export function getExtensionProviderIds(): string[] {
   return [...PROVIDER_EXTENSIONS.keys()];
 }
 
-/** 查找指定 provider 的指定模型定义 */
+/** 精确匹配指定 provider 的模型定义（不做 forward-compat） */
 export function lookupModelDefinition(providerId: string, modelId: string): ModelDefinition | undefined {
   return PROVIDER_EXTENSIONS.get(providerId)?.models.find(m => m.id === modelId);
+}
+
+/**
+ * 解析模型定义：精确匹配优先，失败时回退到同 provider 内最接近的模板（forward-compat）。
+ *
+ * 用于运行时获取 contextWindow / reasoning / maxTokens 等能力位——
+ * 当用户配置了清单未收录的新模型 ID 时，回退到同家族最近模板比 undefined 安全。
+ */
+export function resolveModelDefinition(providerId: string, modelId: string): ModelDefinition | undefined {
+  const provider = PROVIDER_EXTENSIONS.get(providerId);
+  if (!provider) return undefined;
+  const exact = provider.models.find(m => m.id === modelId);
+  if (exact) return exact;
+  return findForwardCompatTemplate(provider, modelId);
 }
 
 /** 检查 provider 是否有预设 */

@@ -20,7 +20,7 @@ import path from 'node:path';
 import type { ThinkLevel } from '@evoclaw/shared';
 import type { AgentRunConfig, AttemptResult, ProviderConfig, ToolCallRecord, MessageSnapshot, RuntimeEvent } from './types.js';
 import type { ThinkingConfig } from './kernel/types.js';
-import { lookupModelDefinition } from '../provider/extensions/index.js';
+import { resolveModelDefinition } from '../provider/extensions/index.js';
 import { ToolSafetyGuard } from './tool-safety.js';
 import { shouldTriggerFlush, buildMemoryFlushPrompt, createFlushPermissionInterceptor } from './memory-flush.js';
 import { buildSystemPrompt } from './embedded-runner-prompt.js';
@@ -192,7 +192,7 @@ function resolveThinkingConfig(
 
   // 检测是否支持 adaptive（仅 Anthropic 4.6+ 模型支持 adaptive thinking）
   // 4.5 及以下仅支持 enabled（固定预算）模式
-  const modelDef = lookupModelDefinition(provider, modelId);
+  const modelDef = resolveModelDefinition(provider, modelId);
   const isAdaptiveCapable = provider === 'anthropic' && (
     modelId.includes('opus-4-6') ||
     modelId.includes('sonnet-4-6')

@@ -158,9 +158,9 @@ export async function runEmbeddedLoop(
   let thinkLevel: ThinkLevel = (() => {
     if (thinkingMode === 'off') return 'off';
     if (thinkingMode === 'on') return 'high';
-    // auto: 检查主模型是否支持 reasoning
-    const { lookupModelDefinition } = require('../provider/extensions/index.js');
-    const modelDef = lookupModelDefinition(config.provider, config.modelId);
+    // auto: 检查主模型是否支持 reasoning（forward-compat：未注册的新版本回退到同家族最近模板）
+    const { resolveModelDefinition } = require('../provider/extensions/index.js');
+    const modelDef = resolveModelDefinition(config.provider, config.modelId);
     return modelDef?.reasoning ? 'high' : 'off';
   })();
   // Ultrathink 关键词检测：用户消息中包含 "ultrathink" 时强制深度思考

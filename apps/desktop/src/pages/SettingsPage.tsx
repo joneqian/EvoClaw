@@ -39,17 +39,17 @@ function EnforcedBadge() {
 
 function GeneralTab() {
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
-  const [thinking, setThinking] = useState<'auto' | 'on' | 'off'>('auto');
   const [enforced, setEnforced] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // 加载当前配置
+  // 注：thinkingMode 不再暴露给普通用户（默认值由 catalog 的 defaultThinkLevel 决定）；
+  // 企业管理员仍可通过 managed.json 的 thinking 字段全局强制 'auto'/'on'/'off'。
   useEffect(() => {
     (async () => {
       try {
-        const data = await get<{ config: { language?: 'zh' | 'en'; thinking?: 'auto' | 'on' | 'off' }; enforced?: string[] }>('/config');
+        const data = await get<{ config: { language?: 'zh' | 'en' }; enforced?: string[] }>('/config');
         if (data.config?.language) setLanguage(data.config.language);
-        if (data.config?.thinking) setThinking(data.config.thinking);
         if (data.enforced) setEnforced(data.enforced);
       } catch { /* sidecar 可能未就绪 */ }
     })();
@@ -93,23 +93,6 @@ function GeneralTab() {
           />
         </div>
 
-        {/* 思考模式 */}
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div>
-            <div className="text-sm font-medium text-slate-700">思考模式{isEnforced(enforced, 'thinking') && <EnforcedBadge />}</div>
-            <div className="text-xs text-slate-400 mt-0.5">Extended Thinking 让模型在回答前进行深度推理</div>
-          </div>
-          <Select
-            value={thinking}
-            onChange={(val) => { setThinking(val as 'auto' | 'on' | 'off'); saveConfig({ thinking: val }); }}
-            options={[
-              { value: 'auto', label: '自动', hint: '模型支持时开启' },
-              { value: 'on', label: '始终开启' },
-              { value: 'off', label: '关闭' },
-            ]}
-            className="w-[160px]"
-          />
-        </div>
       </div>
 
       {toast && (

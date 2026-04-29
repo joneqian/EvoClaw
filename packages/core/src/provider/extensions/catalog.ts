@@ -12,11 +12,11 @@
  * - 不在此处做 forward-compat 模板配置（由 forward-compat.ts 算法自动处理）
  *
  * 思考默认值策略（面向非技术企业用户，2026-04-29 调整）:
- * - adaptive 可用 → 'adaptive'（Claude 4.7/4.6：模型自适应，最优 UX）
- * - DeepSeek V4 → 'max'（官方对 Agent 场景建议，high/max 是其唯一有效区分）
- * - 国产旗舰 → 'high'（GLM/Kimi/Qwen/Doubao/MiniMax，用户选国产模型通常预期"用满"）
- * - 海外通用 → 'low'（GPT-5.x / Claude 4.5：轻量思考、低延迟）
- * - 纯推理模型（o-series）→ 'high'（用户选它就是要深推理）
+ * - 全员"用满"：模型支持思考就默认开到该模型的最高有效档位
+ * - adaptive 可用 → 'adaptive'（Claude 4.7/4.6：模型自适应分配预算，最优 UX）
+ * - DeepSeek V4 → 'max'（官方对 Agent 场景建议；high/max 是其唯一区分）
+ * - 其他多档思考模型 → 'high'（GPT-5.x / Claude 4.5 / GLM / Doubao / MiniMax / o-series）
+ * - 二元思考模型 → 'high'（Kimi K2.6 + thinking / Qwen 3.6+/3.5+/3-Max；on 即 high）
  * - 无思考模型 → undefined（auto 等价于 off）
  */
 
@@ -49,9 +49,9 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
       { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], thinkingLevels: THINK_CLAUDE_46, defaultThinkLevel: 'adaptive' },
       { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], thinkingLevels: THINK_CLAUDE_46, defaultThinkLevel: 'adaptive' },
       // 4.5 系列（仅 enabled thinking 固定预算；4 系列 2026-06-15 退役）
-      { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
     ],
   },
 
@@ -66,13 +66,13 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     api: 'openai-completions',
     models: [
       // GPT-5.5 系列（最新旗舰，2026-04-24 GA）
-      { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: 1000000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low', isDefault: true },
-      { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', contextWindow: 1000000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: 1000000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
+      { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', contextWindow: 1000000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // GPT-5.4 系列（前代旗舰）
-      { id: 'gpt-5.4', name: 'GPT-5.4', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', contextWindow: 400000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', contextWindow: 200000, maxTokens: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'gpt-5.4', name: 'GPT-5.4', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', contextWindow: 400000, maxTokens: 128000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', contextWindow: 200000, maxTokens: 64000, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // GPT-4.1 系列（无 thinking）
       { id: 'gpt-4.1', name: 'GPT-4.1', contextWindow: 1000000, maxTokens: 32768, input: ['text', 'image'] },
       { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', contextWindow: 1000000, maxTokens: 32768, input: ['text', 'image'] },

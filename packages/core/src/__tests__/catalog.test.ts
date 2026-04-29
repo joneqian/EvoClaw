@@ -61,24 +61,24 @@ describe('catalog: Anthropic', () => {
     expect(lookupModelDefinition('anthropic', 'claude-sonnet-4-6')?.defaultThinkLevel).toBe('adaptive');
   });
 
-  it('4.5 系列默认 low（B 层企业默认；不支持 adaptive 走 enabled+budget）', () => {
+  it('4.5 系列默认 high（不支持 adaptive，走 enabled+budget 模式）', () => {
     const opus45 = lookupModelDefinition('anthropic', 'claude-opus-4-5');
-    expect(opus45?.defaultThinkLevel).toBe('low');
+    expect(opus45?.defaultThinkLevel).toBe('high');
     expect(opus45?.thinkingLevels).not.toContain('adaptive');
-    expect(lookupModelDefinition('anthropic', 'claude-haiku-4-5')?.defaultThinkLevel).toBe('low');
+    expect(lookupModelDefinition('anthropic', 'claude-haiku-4-5')?.defaultThinkLevel).toBe('high');
   });
 });
 
 describe('catalog: OpenAI', () => {
-  it('gpt-5.5 是当前默认旗舰，企业默认 low（用户可一键 on 提升到 high）', () => {
+  it('gpt-5.5 是当前默认旗舰，默认 high', () => {
     const def = lookupModelDefinition('openai', 'gpt-5.5');
     expect(def?.isDefault).toBe(true);
-    expect(def?.defaultThinkLevel).toBe('low');
+    expect(def?.defaultThinkLevel).toBe('high');
     expect(def?.input).toContain('image');
   });
 
-  it('gpt-5.5-pro 已收录（企业默认 low）', () => {
-    expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.defaultThinkLevel).toBe('low');
+  it('gpt-5.5-pro 已收录（默认 high）', () => {
+    expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.defaultThinkLevel).toBe('high');
   });
 
   it('o3 / o4-mini 是纯推理模型，保持默认 high', () => {

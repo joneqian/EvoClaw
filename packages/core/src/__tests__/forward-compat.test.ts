@@ -95,7 +95,7 @@ describe('resolveModelDefinition (forward-compat)', () => {
     it('gpt-5.5 精确命中（已收录）', () => {
       const def = resolveModelDefinition('openai', 'gpt-5.5');
       expect(def?.id).toBe('gpt-5.5');
-      expect(def?.defaultThinkLevel).toBe('low');
+      expect(def?.defaultThinkLevel).toBe('high');
       expect(def?.isDefault).toBe(true);
     });
 

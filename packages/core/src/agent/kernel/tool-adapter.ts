@@ -241,7 +241,23 @@ export function adaptEvoclawTool(
           }
         }
 
-        // 6. 后处理: 无进展检测
+        // 6. 后处理: 无进展检测 + 连续错误熔断（fix #1）
+        // tool.execute 可能已自行返回 isError 而不抛异常（如 schema 校验失败），
+        // 这里走 recordError 路径让连错计数器跟得上
+        if (result.isError) {
+          const consecErr = deps.toolSafety.recordError(tool.name);
+          if (consecErr.blocked) {
+            deps.auditFn?.({
+              toolName: tool.name, args: effectiveInput,
+              result: consecErr.reason ?? '', status: 'error',
+              durationMs: Date.now() - start,
+              reason: `circuit_break: ${consecErr.reason ?? 'unknown'}`,
+            });
+            return { content: `⚠️ ${consecErr.reason}`, isError: true };
+          }
+          // 未触发熔断：把原错误返回给 LLM 继续修
+          return result;
+        }
         const noProgress = deps.toolSafety.recordResult(result.content);
         if (noProgress.blocked) {
           deps.auditFn?.({
@@ -274,6 +290,18 @@ export function adaptEvoclawTool(
           if (failResult?.additionalContexts?.length) {
             failureContent = msg + '\n\n' + failResult.additionalContexts.join('\n');
           }
+        }
+
+        // fix #1: 真实抛错也计入连续错误流
+        const consecErr = deps.toolSafety.recordError(tool.name);
+        if (consecErr.blocked) {
+          deps.auditFn?.({
+            toolName: tool.name, args: effectiveInput,
+            result: consecErr.reason ?? '', status: 'error',
+            durationMs: Date.now() - start,
+            reason: `circuit_break: ${consecErr.reason ?? 'unknown'}`,
+          });
+          return { content: `⚠️ ${consecErr.reason}`, isError: true };
         }
 
         deps.auditFn?.({
@@ -399,6 +427,18 @@ function wrapBuiltinTool(tool: KernelTool, deps: ToolAdapterDeps): KernelTool {
         result.content = ensureNonEmptyResult(result.content, tool.name);
         const threshold = tool.maxResultSizeChars ?? LARGE_RESULT_THRESHOLD;
         result.content = maybePersistLargeResult(result.content, tool.name, threshold);
+      } else {
+        // fix #1: builtin 工具自报 isError 也计入连续错误流
+        const consecErr = deps.toolSafety.recordError(tool.name);
+        if (consecErr.blocked) {
+          deps.auditFn?.({
+            toolName: tool.name, args: effectiveInput,
+            result: consecErr.reason ?? '', status: 'error',
+            durationMs: Date.now() - start,
+            reason: `circuit_break: ${consecErr.reason ?? 'unknown'}`,
+          });
+          return { content: `⚠️ ${consecErr.reason}`, isError: true };
+        }
       }
 
       deps.auditFn?.({

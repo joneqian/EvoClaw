@@ -46,6 +46,22 @@ export interface ToolSafetyConfig {
    *   —— 30 把"正常推进"也一刀切，误伤工程任务
    */
   runawayHardCap?: number;
+  /**
+   * 同一工具连续报错阈值（fix #1）
+   *
+   * 实测 DeepSeek-v4-pro 流式 tool_call 反复丢字段（如 file_path），
+   * 每次都说"让我重新调用"，但请求体里就是没传。同 tool 连续 N 次错误
+   * 即使错误信息略有变化（缺 file_path → 未被读取过 → 缺 file_path），
+   * 也是 LLM 卡住的强信号。
+   *
+   * 计数规则：
+   * - 同一 tool 报错 → +1（不要求错误文本完全一致）
+   * - 同一 tool 成功 → 重置该 tool 的计数（不影响其他 tool）
+   * - 其他 tool 调用 → 不重置（read 成功不放过 write 的错误流）
+   *
+   * 触发后建议 LLM 调 update_task_status('blocked') 上报，由责任链兜底。
+   */
+  consecutiveErrorsThreshold?: number;
   /** 结果截断字符数（默认 50000） */
   maxResultLength?: number;
 }
@@ -73,11 +89,14 @@ const TAIL_ERROR_PATTERNS = [
 export class ToolSafetyGuard {
   private calls: ToolCall[] = [];
   private totalCalls = 0;
+  /** fix #1: 每个 tool 的连续报错次数（成功一次即清零，仅当前 tool） */
+  private errorStreaks: Map<string, number> = new Map();
 
   private readonly repeatThreshold: number;
   private readonly noProgressThreshold: number;
   private readonly pingPongThreshold: number;
   private readonly runawayHardCap: number;
+  private readonly consecutiveErrorsThreshold: number;
   private readonly maxResultLength: number;
 
   constructor(config?: ToolSafetyConfig) {
@@ -85,6 +104,7 @@ export class ToolSafetyGuard {
     this.noProgressThreshold = config?.noProgressThreshold ?? 3;
     this.pingPongThreshold = config?.pingPongThreshold ?? 4;
     this.runawayHardCap = config?.runawayHardCap ?? 500;
+    this.consecutiveErrorsThreshold = config?.consecutiveErrorsThreshold ?? 3;
     this.maxResultLength = config?.maxResultLength ?? 50_000;
   }
 
@@ -122,15 +142,44 @@ export class ToolSafetyGuard {
   /**
    * 记录工具执行结果（用于无进展检测）
    * 在工具执行后调用
+   *
+   * 同时清零该 tool 的连续错误计数（成功一次即重置，与 noProgress 互补）
    */
   recordResult(result: string): LoopDetectionResult {
     const lastCall = this.calls[this.calls.length - 1];
     if (lastCall) {
       lastCall.resultHash = simpleHashStr(result);
+      // fix #1: 成功执行清零该 tool 的错误流（不影响其他 tool 的流）
+      this.errorStreaks.delete(lastCall.name);
     }
 
     // 无进展检测：同一工具连续返回相同结果
     return this.detectNoProgress();
+  }
+
+  /**
+   * 记录工具执行错误（fix #1）
+   *
+   * 在工具执行后、确认 isError=true 时调用。
+   * 累计该 tool 的连续错误数；同 tool 错误数达阈值即熔断。
+   * 注意：调用方需自行决定何时记 error（schema 错 / safety 拒 / 真实执行错）。
+   */
+  recordError(toolName: string): LoopDetectionResult {
+    const next = (this.errorStreaks.get(toolName) ?? 0) + 1;
+    this.errorStreaks.set(toolName, next);
+
+    if (next >= this.consecutiveErrorsThreshold) {
+      return {
+        blocked: true,
+        reason: `检测到工具熔断：工具 "${toolName}" 已连续报错 ${next} 次（阈值 ${this.consecutiveErrorsThreshold}）。请停止重试此工具，改用 update_task_status('blocked', outputSummary='...原因...') 上报阻塞，让协调者或用户介入。`,
+      };
+    }
+    return { blocked: false };
+  }
+
+  /** 测试用：读取某个 tool 的当前错误流计数 */
+  getErrorStreak(toolName: string): number {
+    return this.errorStreaks.get(toolName) ?? 0;
   }
 
   /**
@@ -170,6 +219,7 @@ export class ToolSafetyGuard {
   reset(): void {
     this.calls = [];
     this.totalCalls = 0;
+    this.errorStreaks.clear();
   }
 
   /** 重复模式检测 — 同一工具+相同参数连续调用 */

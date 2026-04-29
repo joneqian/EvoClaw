@@ -176,6 +176,29 @@ describe('write tool', () => {
     expect(r2.isError).toBe(true);
   });
 
+  // 跳出"重复缺参循环"：错误信息必须告诉 LLM 它实际传了什么
+  it('missing-param error 列出实际传入的 args 概要', async () => {
+    const r = await tool.call({ content: 'a'.repeat(1234) });
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('缺少必填参数 file_path');
+    expect(r.content).toContain('你实际传入的参数');
+    expect(r.content).toContain('content=string(1234 chars)');
+    expect(r.content).toContain('文件的绝对路径');
+  });
+
+  it('缺 content 时也展示已传 file_path', async () => {
+    const r = await tool.call({ file_path: '/tmp/x.txt' });
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('缺少必填参数 content');
+    expect(r.content).toContain('file_path=string(10 chars)');
+  });
+
+  it('完全空 args 时报告 "<空>"', async () => {
+    const r = await tool.call({});
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain('<空>');
+  });
+
   it('should be non-read-only and non-concurrent-safe', () => {
     expect(tool.isReadOnly()).toBe(false);
     expect(tool.isConcurrencySafe()).toBe(false);

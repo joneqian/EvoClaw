@@ -24,10 +24,13 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://api.anthropic.com/v1',
     api: 'anthropic-messages',
     models: [
-      // 4.6 系列（最新，支持 adaptive thinking）
-      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], reasoning: true, isDefault: true },
+      // 4.7 系列（最新旗舰，2026-Q2 发布；新 tokenizer，1M context）
+      // Source: https://www.anthropic.com/news/claude-opus-4-7
+      { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', contextWindow: 1000000, maxTokens: 32000, maxOutputLimit: 128000, input: ['text', 'image'], reasoning: true, isDefault: true },
+      // 4.6 系列（前代旗舰，支持 adaptive thinking）
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], reasoning: true },
       { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], reasoning: true },
-      // 4.5 系列（支持 enabled thinking，固定预算）
+      // 4.5 系列（支持 enabled thinking，固定预算；4 系列 2026-06-15 退役）
       { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], reasoning: true },
       { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], reasoning: true },
       { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], reasoning: true },
@@ -44,8 +47,13 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://api.openai.com/v1',
     api: 'openai-completions',
     models: [
-      // GPT-5.4 系列（最新旗舰）
-      { id: 'gpt-5.4', name: 'GPT-5.4', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], reasoning: true, isDefault: true },
+      // GPT-5.5 系列（最新旗舰，2026-04-24 GA；mini/nano 仍停留在 5.4 代）
+      // Source: https://openai.com/index/introducing-gpt-5-5/
+      // Note: gpt-5.5-pro 仅 Responses API，xhigh effort 默认
+      { id: 'gpt-5.5', name: 'GPT-5.5', contextWindow: 1000000, maxTokens: 128000, input: ['text', 'image'], reasoning: true, isDefault: true },
+      { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', contextWindow: 1000000, maxTokens: 128000, input: ['text', 'image'], reasoning: true },
+      // GPT-5.4 系列（前代旗舰）
+      { id: 'gpt-5.4', name: 'GPT-5.4', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], reasoning: true },
       { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], reasoning: true },
       { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', contextWindow: 400000, maxTokens: 128000, input: ['text', 'image'], reasoning: true },
       { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', contextWindow: 200000, maxTokens: 64000, input: ['text', 'image'], reasoning: true },
@@ -141,12 +149,13 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     api: 'openai-completions',
     models: [
-      // Qwen3.5 系列（最新旗舰）
-      { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], isDefault: true },
-      { id: 'qwen3.5-flash', name: 'Qwen3.5 Flash', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'] },
+      // Qwen3.5 系列（最新旗舰；qwen3+ 通过 enable_thinking 参数支持推理）
+      // Source: https://help.aliyun.com/zh/model-studio/
+      { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], reasoning: true, isDefault: true },
+      { id: 'qwen3.5-flash', name: 'Qwen3.5 Flash', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], reasoning: true },
       // Qwen3 系列
-      { id: 'qwen3-max', name: 'Qwen3 Max', contextWindow: 262144, maxTokens: 65536, input: ['text'] },
-      // Qwen3 Coder 系列（编码优化）
+      { id: 'qwen3-max', name: 'Qwen3 Max', contextWindow: 262144, maxTokens: 65536, input: ['text'], reasoning: true },
+      // Qwen3 Coder 系列（编码优化，无思考模式）
       { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text'] },
       { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', contextWindow: 262144, maxTokens: 65536, input: ['text'] },
       // Embedding

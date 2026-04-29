@@ -179,8 +179,10 @@ function kernelMessageToSnapshot(msg: KernelMessage): MessageSnapshot {
  * 根据 ThinkLevel + 模型能力解析 ThinkingConfig
  *
  * - thinkLevel === 'off' → disabled
- * - 模型支持 adaptive (4.6+ Anthropic) → adaptive
- * - 否则 → enabled (固定预算)
+ * - thinkLevel === 'adaptive' 且模型 thinkingLevels 包含 'adaptive' → adaptive
+ * - 其他等级（minimal/low/medium/high/xhigh/max）→ enabled（固定预算）
+ *
+ * 模型的 thinkingLevels 数组由 catalog 显式声明，去掉 4.6 硬编码的历史包袱。
  */
 function resolveThinkingConfig(
   thinkLevel: ThinkLevel,
@@ -190,15 +192,10 @@ function resolveThinkingConfig(
 ): ThinkingConfig {
   if (thinkLevel === 'off') return { type: 'disabled' };
 
-  // 检测是否支持 adaptive（仅 Anthropic 4.6+ 模型支持 adaptive thinking）
-  // 4.5 及以下仅支持 enabled（固定预算）模式
   const modelDef = resolveModelDefinition(provider, modelId);
-  const isAdaptiveCapable = provider === 'anthropic' && (
-    modelId.includes('opus-4-6') ||
-    modelId.includes('sonnet-4-6')
-  );
 
-  if (isAdaptiveCapable) {
+  // adaptive: 仅在 thinkLevel='adaptive' 且模型显式声明支持时使用
+  if (thinkLevel === 'adaptive' && modelDef?.thinkingLevels?.includes('adaptive')) {
     return { type: 'adaptive' };
   }
 

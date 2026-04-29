@@ -15,7 +15,7 @@ describe('lookupModelDefinition (exact)', () => {
   it('返回精确匹配的模型', () => {
     const def = lookupModelDefinition('anthropic', 'claude-opus-4-6');
     expect(def?.id).toBe('claude-opus-4-6');
-    expect(def?.reasoning).toBe(true);
+    expect(def?.defaultThinkLevel).toBe('adaptive');
   });
 
   it('未知模型返回 undefined（不做 forward-compat）', () => {
@@ -66,7 +66,7 @@ describe('resolveModelDefinition (forward-compat)', () => {
     it('claude-opus-4-7 精确命中（已收录）', () => {
       const def = resolveModelDefinition('anthropic', 'claude-opus-4-7');
       expect(def?.id).toBe('claude-opus-4-7');
-      expect(def?.reasoning).toBe(true);
+      expect(def?.defaultThinkLevel).toBe('adaptive');
       expect(def?.isDefault).toBe(true);
     });
 
@@ -95,7 +95,7 @@ describe('resolveModelDefinition (forward-compat)', () => {
     it('gpt-5.5 精确命中（已收录）', () => {
       const def = resolveModelDefinition('openai', 'gpt-5.5');
       expect(def?.id).toBe('gpt-5.5');
-      expect(def?.reasoning).toBe(true);
+      expect(def?.defaultThinkLevel).toBe('high');
       expect(def?.isDefault).toBe(true);
     });
 

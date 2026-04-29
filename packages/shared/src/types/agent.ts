@@ -1,11 +1,24 @@
 import type { ChannelType } from './channel.js';
 import type { PermissionMode } from './permission.js';
 
-/** Thinking 级别（渐进降级: high → medium → low → off） */
-export type ThinkLevel = 'off' | 'low' | 'medium' | 'high';
+/**
+ * Thinking 级别 — 8 档（参考 OpenClaw 等级体系）
+ *
+ * 渐进降级链: max → adaptive → xhigh → high → medium → low → minimal → off
+ *
+ * - off: 不思考
+ * - minimal/low/medium/high: 普通思考预算（小到大）
+ * - xhigh: 超高预算（部分 OpenAI 模型支持）
+ * - adaptive: Anthropic 4.6+ 专属，模型自适应分配预算
+ * - max: 最高预算（部分模型）
+ *
+ * 运行时使用 ThinkLevel 表达"用户期望的思考强度"，
+ * catalog.ts 用 ThinkLevel[] 声明每个模型支持哪些等级。
+ */
+export type ThinkLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'adaptive' | 'max';
 
-/** ThinkLevel 降级顺序 */
-export const THINK_LEVEL_ORDER: readonly ThinkLevel[] = ['high', 'medium', 'low', 'off'] as const;
+/** ThinkLevel 降级顺序（高到低） */
+export const THINK_LEVEL_ORDER: readonly ThinkLevel[] = ['max', 'adaptive', 'xhigh', 'high', 'medium', 'low', 'minimal', 'off'] as const;
 
 /** 降一级 ThinkLevel，已经 off 则返回 off */
 export function degradeThinkLevel(level: ThinkLevel): ThinkLevel {

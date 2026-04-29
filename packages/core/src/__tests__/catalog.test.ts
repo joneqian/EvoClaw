@@ -2,10 +2,8 @@
  * Catalog 元数据守护测试
  *
  * 不重复 forward-compat 的算法测试——仅锁定关键 model 的元数据
- * （reasoning / isDefault / 关键能力位），防止后续清单更新无意中改坏。
- *
- * 加新模型时不强制改这个文件；但若改动了 isDefault 漂移、reasoning 位翻转，
- * CI 应当显式提示。
+ * （thinkingLevels / defaultThinkLevel / isDefault / 关键能力位），防止后续
+ * 清单更新无意中改坏。
  */
 
 import { describe, it, expect } from 'vitest';
@@ -32,20 +30,42 @@ describe('catalog: 全局结构', () => {
       expect(chatModels.length, `provider ${p.id} 没有 chat 模型`).toBeGreaterThan(0);
     }
   });
+
+  it('thinkingLevels 必含 off 且 defaultThinkLevel 必须在数组内', () => {
+    for (const p of getAllProviderExtensions()) {
+      for (const m of p.models) {
+        if (!m.thinkingLevels) continue;
+        expect(m.thinkingLevels, `${p.id}/${m.id} thinkingLevels 缺 off`).toContain('off');
+        if (m.defaultThinkLevel !== undefined) {
+          expect(m.thinkingLevels, `${p.id}/${m.id} defaultThinkLevel=${m.defaultThinkLevel} 不在 thinkingLevels 内`).toContain(m.defaultThinkLevel);
+        }
+      }
+    }
+  });
 });
 
 describe('catalog: Anthropic', () => {
-  it('claude-opus-4-7 是当前默认旗舰', () => {
+  it('claude-opus-4-7 是当前默认旗舰，支持 adaptive thinking', () => {
     const def = lookupModelDefinition('anthropic', 'claude-opus-4-7');
     expect(def?.isDefault).toBe(true);
-    expect(def?.reasoning).toBe(true);
+    expect(def?.defaultThinkLevel).toBe('adaptive');
+    expect(def?.thinkingLevels).toContain('adaptive');
+    expect(def?.thinkingLevels).toContain('xhigh');
+    expect(def?.thinkingLevels).toContain('max');
     expect(def?.contextWindow).toBe(1_000_000);
     expect(def?.input).toContain('image');
   });
 
-  it('4.6 / 4.5 系列保留可选', () => {
-    expect(lookupModelDefinition('anthropic', 'claude-opus-4-6')?.reasoning).toBe(true);
-    expect(lookupModelDefinition('anthropic', 'claude-haiku-4-5')?.reasoning).toBe(true);
+  it('4.6 系列默认走 adaptive', () => {
+    expect(lookupModelDefinition('anthropic', 'claude-opus-4-6')?.defaultThinkLevel).toBe('adaptive');
+    expect(lookupModelDefinition('anthropic', 'claude-sonnet-4-6')?.defaultThinkLevel).toBe('adaptive');
+  });
+
+  it('4.5 系列默认 high（仅 enabled 固定预算，不支持 adaptive）', () => {
+    const opus45 = lookupModelDefinition('anthropic', 'claude-opus-4-5');
+    expect(opus45?.defaultThinkLevel).toBe('high');
+    expect(opus45?.thinkingLevels).not.toContain('adaptive');
+    expect(lookupModelDefinition('anthropic', 'claude-haiku-4-5')?.defaultThinkLevel).toBe('high');
   });
 });
 
@@ -53,12 +73,17 @@ describe('catalog: OpenAI', () => {
   it('gpt-5.5 是当前默认旗舰', () => {
     const def = lookupModelDefinition('openai', 'gpt-5.5');
     expect(def?.isDefault).toBe(true);
-    expect(def?.reasoning).toBe(true);
+    expect(def?.defaultThinkLevel).toBe('high');
     expect(def?.input).toContain('image');
   });
 
   it('gpt-5.5-pro 已收录', () => {
-    expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.reasoning).toBe(true);
+    expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.defaultThinkLevel).toBe('high');
+  });
+
+  it('gpt-4.1 / gpt-4o 系列无 thinking', () => {
+    expect(lookupModelDefinition('openai', 'gpt-4.1')?.thinkingLevels).toBeUndefined();
+    expect(lookupModelDefinition('openai', 'gpt-4o')?.thinkingLevels).toBeUndefined();
   });
 
   it('embedding 系列保留', () => {
@@ -70,51 +95,56 @@ describe('catalog: OpenAI', () => {
 });
 
 describe('catalog: Qwen 推理元数据修复', () => {
-  it('qwen3.5-plus 支持推理（通过 enable_thinking）', () => {
-    expect(lookupModelDefinition('qwen', 'qwen3.5-plus')?.reasoning).toBe(true);
+  it('qwen3.5-plus 二元思考开关', () => {
+    const def = lookupModelDefinition('qwen', 'qwen3.5-plus');
+    expect(def?.thinkingLevels).toEqual(['off', 'high']);
+    expect(def?.defaultThinkLevel).toBe('high');
   });
 
-  it('qwen3.5-flash 支持推理', () => {
-    expect(lookupModelDefinition('qwen', 'qwen3.5-flash')?.reasoning).toBe(true);
+  it('qwen3.5-flash 二元思考开关', () => {
+    expect(lookupModelDefinition('qwen', 'qwen3.5-flash')?.defaultThinkLevel).toBe('high');
   });
 
-  it('qwen3-max 支持推理', () => {
-    expect(lookupModelDefinition('qwen', 'qwen3-max')?.reasoning).toBe(true);
+  it('qwen3-max 二元思考开关', () => {
+    expect(lookupModelDefinition('qwen', 'qwen3-max')?.defaultThinkLevel).toBe('high');
   });
 
   it('qwen3-coder 系列不开思考（编码专用，无推理模式）', () => {
-    expect(lookupModelDefinition('qwen', 'qwen3-coder-plus')?.reasoning).toBeFalsy();
-    expect(lookupModelDefinition('qwen', 'qwen3-coder-next')?.reasoning).toBeFalsy();
+    expect(lookupModelDefinition('qwen', 'qwen3-coder-plus')?.thinkingLevels).toBeUndefined();
+    expect(lookupModelDefinition('qwen', 'qwen3-coder-next')?.thinkingLevels).toBeUndefined();
   });
 });
 
 describe('catalog: 国产 provider 元数据', () => {
-  it('GLM-5 默认开启 reasoning', () => {
-    expect(lookupModelDefinition('glm', 'glm-5')?.reasoning).toBe(true);
+  it('GLM-5 默认 high', () => {
+    expect(lookupModelDefinition('glm', 'glm-5')?.defaultThinkLevel).toBe('high');
   });
 
-  it('Kimi K2.5 默认（多模态、不开 reasoning）', () => {
+  it('Kimi K2.5 默认（多模态、不开 thinking）', () => {
     const def = lookupModelDefinition('kimi', 'kimi-k2.5');
     expect(def?.isDefault).toBe(true);
+    expect(def?.thinkingLevels).toBeUndefined();
     expect(def?.input).toContain('image');
   });
 
-  it('Kimi K2 Thinking 系列开 reasoning', () => {
-    expect(lookupModelDefinition('kimi', 'kimi-k2-thinking')?.reasoning).toBe(true);
+  it('Kimi K2 Thinking 系列开二元 thinking', () => {
+    const def = lookupModelDefinition('kimi', 'kimi-k2-thinking');
+    expect(def?.thinkingLevels).toEqual(['off', 'high']);
+    expect(def?.defaultThinkLevel).toBe('high');
   });
 
-  it('DeepSeek V4 系列开 reasoning（1M context, 384K output）', () => {
+  it('DeepSeek V4 系列默认 high（1M context, 384K output）', () => {
     const flash = lookupModelDefinition('deepseek', 'deepseek-v4-flash');
-    expect(flash?.reasoning).toBe(true);
+    expect(flash?.defaultThinkLevel).toBe('high');
     expect(flash?.contextWindow).toBe(1_000_000);
     expect(flash?.maxOutputLimit).toBe(384_000);
   });
 
-  it('Doubao Seed 2.0 Pro 开 reasoning', () => {
-    expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.reasoning).toBe(true);
+  it('Doubao Seed 2.0 Pro 默认 high', () => {
+    expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.defaultThinkLevel).toBe('high');
   });
 
-  it('MiniMax M2.7 开 reasoning', () => {
-    expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.reasoning).toBe(true);
+  it('MiniMax M2.7 默认 high', () => {
+    expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.defaultThinkLevel).toBe('high');
   });
 });

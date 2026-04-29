@@ -225,10 +225,14 @@ describe('Sprint 15.1: 可配置嵌套深度', () => {
 });
 
 describe('Sprint 15.3: ThinkLevel 渐进降级', () => {
-  it('high → medium → low → off 逐级降级', () => {
+  it('8 档降级链：max → adaptive → xhigh → high → medium → low → minimal → off', () => {
+    expect(degradeThinkLevel('max')).toBe('adaptive');
+    expect(degradeThinkLevel('adaptive')).toBe('xhigh');
+    expect(degradeThinkLevel('xhigh')).toBe('high');
     expect(degradeThinkLevel('high')).toBe('medium');
     expect(degradeThinkLevel('medium')).toBe('low');
-    expect(degradeThinkLevel('low')).toBe('off');
+    expect(degradeThinkLevel('low')).toBe('minimal');
+    expect(degradeThinkLevel('minimal')).toBe('off');
     expect(degradeThinkLevel('off')).toBe('off');
   });
 

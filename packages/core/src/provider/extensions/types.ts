@@ -3,6 +3,8 @@
  * 每个 provider 预设一组经过验证的 Agent 可用模型
  */
 
+import type { ThinkLevel } from '@evoclaw/shared';
+
 /** 模型输入模态 */
 export type ModelInputModality = 'text' | 'image';
 
@@ -23,8 +25,22 @@ export interface ModelDefinition {
   maxOutputLimit?: number;
   /** 支持的输入模态 */
   input: ModelInputModality[];
-  /** 是否支持 thinking/reasoning（默认 false） */
-  reasoning?: boolean;
+  /**
+   * 模型支持的思考等级（升序排列，必含 'off'；undefined = 不支持任何形式的思考）
+   *
+   * 例：
+   * - 普通推理模型: ['off', 'minimal', 'low', 'medium', 'high']
+   * - Anthropic 4.6+: 上述 + 'adaptive'
+   * - Anthropic 4.7: 上述 + 'xhigh' + 'max'
+   * - Kimi 二元开关: ['off', 'high']
+   */
+  thinkingLevels?: readonly ThinkLevel[];
+  /**
+   * auto 模式下的默认思考等级（必须是 thinkingLevels 之一）
+   *
+   * undefined = auto 模式下不思考（等价于 'off'）
+   */
+  defaultThinkLevel?: ThinkLevel;
   /** 是否支持工具调用（默认 true） */
   toolUse?: boolean;
   /** 是否为该 provider 的默认推荐模型 */

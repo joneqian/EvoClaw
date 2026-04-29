@@ -112,6 +112,9 @@ export async function probeChatHistory(args: ProbeChatHistoryArgs): Promise<Prob
           container_id: args.chatId,
           sort_type: 'ByCreateTimeDesc',
           page_size: pageSize,
+          // 验证：飞书 messages.list 是否对 bot sender 也按 user_id_type 返回 open_id
+          // 之前默认参数下 id_type='app_id'，这次显式 open_id 看会不会变
+          user_id_type: 'open_id',
           ...(pageToken ? { page_token: pageToken } : {}),
         },
       })) as MessageListResponse;

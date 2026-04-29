@@ -32,10 +32,10 @@ describe('ProviderRegistry', () => {
     expect(provider!.apiKeyRef).toBe('qwen-key');
     expect(provider!.models.length).toBeGreaterThanOrEqual(4);
 
-    // 默认模型应该是 qwen-max
+    // 默认模型应该是当前旗舰
     const defaultModel = provider!.models.find(m => m.isDefault);
     expect(defaultModel).toBeDefined();
-    expect(defaultModel!.id).toBe('qwen3.5-plus');
+    expect(defaultModel!.id).toBe('qwen3.6-plus');
   });
 
   it('registerGLM 应该正确注册智谱 GLM', () => {
@@ -48,7 +48,7 @@ describe('ProviderRegistry', () => {
     expect(provider!.models.length).toBeGreaterThanOrEqual(2);
 
     const defaultModel = provider!.models.find(m => m.isDefault);
-    expect(defaultModel!.id).toBe('glm-5');
+    expect(defaultModel!.id).toBe('glm-5.1');
   });
 
   it('registerDoubao 应该正确注册字节豆包', () => {

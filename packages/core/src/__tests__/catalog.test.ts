@@ -94,14 +94,21 @@ describe('catalog: OpenAI', () => {
   });
 });
 
-describe('catalog: Qwen 推理元数据修复', () => {
-  it('qwen3.5-plus 二元思考开关', () => {
-    const def = lookupModelDefinition('qwen', 'qwen3.5-plus');
+describe('catalog: Qwen', () => {
+  it('qwen3.6-plus 是当前默认旗舰，多模态 + 二元思考', () => {
+    const def = lookupModelDefinition('qwen', 'qwen3.6-plus');
+    expect(def?.isDefault).toBe(true);
     expect(def?.thinkingLevels).toEqual(['off', 'high']);
     expect(def?.defaultThinkLevel).toBe('high');
+    expect(def?.input).toContain('image');
   });
 
-  it('qwen3.5-flash 二元思考开关', () => {
+  it('qwen3.6-flash 也支持二元思考', () => {
+    expect(lookupModelDefinition('qwen', 'qwen3.6-flash')?.defaultThinkLevel).toBe('high');
+  });
+
+  it('qwen3.5-plus / flash 二元思考开关', () => {
+    expect(lookupModelDefinition('qwen', 'qwen3.5-plus')?.thinkingLevels).toEqual(['off', 'high']);
     expect(lookupModelDefinition('qwen', 'qwen3.5-flash')?.defaultThinkLevel).toBe('high');
   });
 
@@ -116,14 +123,30 @@ describe('catalog: Qwen 推理元数据修复', () => {
 });
 
 describe('catalog: 国产 provider 元数据', () => {
-  it('GLM-5 默认 high', () => {
-    expect(lookupModelDefinition('glm', 'glm-5')?.defaultThinkLevel).toBe('high');
+  it('GLM-5.1 是当前默认旗舰', () => {
+    const def = lookupModelDefinition('glm', 'glm-5.1');
+    expect(def?.isDefault).toBe(true);
+    expect(def?.defaultThinkLevel).toBe('high');
+    expect(def?.contextWindow).toBe(204_800);
   });
 
-  it('Kimi K2.5 默认（多模态、不开 thinking）', () => {
-    const def = lookupModelDefinition('kimi', 'kimi-k2.5');
+  it('GLM-5 已不是 default 但仍可用', () => {
+    const def = lookupModelDefinition('glm', 'glm-5');
+    expect(def?.isDefault).toBeFalsy();
+    expect(def?.defaultThinkLevel).toBe('high');
+  });
+
+  it('Kimi K2.6 是当前默认旗舰（编码焦点、二元 thinking、text only）', () => {
+    const def = lookupModelDefinition('kimi', 'kimi-k2.6');
     expect(def?.isDefault).toBe(true);
-    expect(def?.thinkingLevels).toBeUndefined();
+    expect(def?.thinkingLevels).toEqual(['off', 'high']);
+    expect(def?.defaultThinkLevel).toBe('high');
+    expect(def?.input).not.toContain('image');
+  });
+
+  it('Kimi K2.5 已不是 default 但保留多模态', () => {
+    const def = lookupModelDefinition('kimi', 'kimi-k2.5');
+    expect(def?.isDefault).toBeFalsy();
     expect(def?.input).toContain('image');
   });
 

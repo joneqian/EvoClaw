@@ -104,8 +104,11 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://api.moonshot.ai/v1',
     api: 'openai-completions',
     models: [
-      // K2.5（最新旗舰，多模态，无 thinking 模式）
-      { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262144, maxTokens: 262144, input: ['text', 'image'], isDefault: true },
+      // K2.6（最新旗舰，编码焦点，长程任务，二元 thinking）
+      // Source: https://www.kimi.com/blog/kimi-k2-6
+      { id: 'kimi-k2.6', name: 'Kimi K2.6', contextWindow: 262144, maxTokens: 262144, input: ['text'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high', isDefault: true },
+      // K2.5（前代旗舰，多模态，无 thinking）
+      { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262144, maxTokens: 262144, input: ['text', 'image'] },
       // K2 推理系列（二元 on/off）
       { id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 262144, maxTokens: 262144, input: ['text'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high' },
       { id: 'kimi-k2-thinking-turbo', name: 'Kimi K2 Thinking Turbo', contextWindow: 262144, maxTokens: 262144, input: ['text'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high' },
@@ -124,8 +127,11 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     api: 'openai-completions',
     models: [
-      // GLM-5 系列（最新旗舰）
-      { id: 'glm-5', name: 'GLM-5', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
+      // GLM-5.1 系列（最新旗舰，2026-Q2 GA，长程任务专精）
+      // Source: https://z.ai/blog/glm-5.1
+      { id: 'glm-5.1', name: 'GLM-5.1', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
+      // GLM-5 系列
+      { id: 'glm-5', name: 'GLM-5', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       { id: 'glm-5-turbo', name: 'GLM-5 Turbo', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // GLM-4.7 系列
       { id: 'glm-4.7', name: 'GLM-4.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
@@ -155,8 +161,12 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     api: 'openai-completions',
     models: [
-      // Qwen3.5 系列（最新旗舰）
-      { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high', isDefault: true },
+      // Qwen3.6 系列（最新旗舰，2026-04 发布；qwen3.6-plus 多模态）
+      // Source: https://help.aliyun.com/zh/model-studio/vision
+      { id: 'qwen3.6-plus', name: 'Qwen3.6 Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high', isDefault: true },
+      { id: 'qwen3.6-flash', name: 'Qwen3.6 Flash', contextWindow: 1000000, maxTokens: 32768, input: ['text', 'image'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high' },
+      // Qwen3.5 系列
+      { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high' },
       { id: 'qwen3.5-flash', name: 'Qwen3.5 Flash', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high' },
       // Qwen3 系列
       { id: 'qwen3-max', name: 'Qwen3 Max', contextWindow: 262144, maxTokens: 65536, input: ['text'], thinkingLevels: THINK_BINARY, defaultThinkLevel: 'high' },

@@ -119,9 +119,15 @@ describe('resolveModelDefinition (forward-compat)', () => {
   });
 
   describe('Kimi 跨版本', () => {
-    it('kimi-k2.6 → kimi-k2.5（不串到 thinking 变体）', () => {
+    it('kimi-k2.6 精确命中（已收录）', () => {
       const def = resolveModelDefinition('kimi', 'kimi-k2.6');
-      expect(def?.id).toBe('kimi-k2.5');
+      expect(def?.id).toBe('kimi-k2.6');
+      expect(def?.isDefault).toBe(true);
+    });
+
+    it('kimi-k2.7 → kimi-k2.6（未来版本回退到当前最新）', () => {
+      const def = resolveModelDefinition('kimi', 'kimi-k2.7');
+      expect(def?.id).toBe('kimi-k2.6');
     });
 
     it('kimi-k3 → kimi-k2.5（差异较大也能回退到同 provider 最近模板）', () => {
@@ -132,9 +138,15 @@ describe('resolveModelDefinition (forward-compat)', () => {
   });
 
   describe('GLM 跨版本（候选是查询的严格前缀）', () => {
-    it('glm-5.1 → glm-5（candidate 是 query 的 token 前缀）', () => {
+    it('glm-5.1 精确命中（已收录）', () => {
       const def = resolveModelDefinition('glm', 'glm-5.1');
-      expect(def?.id).toBe('glm-5');
+      expect(def?.id).toBe('glm-5.1');
+      expect(def?.isDefault).toBe(true);
+    });
+
+    it('glm-5.2 → glm-5.1（未来版本回退到当前最新）', () => {
+      const def = resolveModelDefinition('glm', 'glm-5.2');
+      expect(def?.id).toBe('glm-5.1');
     });
 
     it('glm-6 → undefined（仅共享 glm 前缀，token 数 < 2）', () => {

@@ -109,7 +109,7 @@ describe('ModelResolver', () => {
     const result = resolveModel({});
 
     expect(result.provider).toBe('qwen');
-    expect(result.modelId).toBe('qwen3.5-plus');
+    expect(result.modelId).toBe('qwen3.6-plus');
     expect(result.apiKeyRef).toBe('qwen-key');
   });
 
@@ -144,7 +144,7 @@ describe('ModelResolver', () => {
 
     // 无法匹配具体模型，降级到 Provider 默认模型
     expect(result.provider).toBe('qwen');
-    expect(result.modelId).toBe('qwen3.5-plus');
+    expect(result.modelId).toBe('qwen3.6-plus');
   });
 
   it('DB 默认配置 config_json 为空对象时 baseUrl 应该为空字符串', () => {

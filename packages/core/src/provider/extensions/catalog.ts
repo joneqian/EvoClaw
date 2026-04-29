@@ -13,7 +13,8 @@
  *
  * 思考默认值策略（面向非技术企业用户，2026-04-29 调整）:
  * - adaptive 可用 → 'adaptive'（Claude 4.7/4.6：模型自适应，最优 UX）
- * - 国产旗舰 → 'high'（GLM/Kimi/Qwen/Doubao/MiniMax/DeepSeek，用户选国产模型通常预期"用满"）
+ * - DeepSeek V4 → 'max'（官方对 Agent 场景建议，high/max 是其唯一有效区分）
+ * - 国产旗舰 → 'high'（GLM/Kimi/Qwen/Doubao/MiniMax，用户选国产模型通常预期"用满"）
  * - 海外通用 → 'low'（GPT-5.x / Claude 4.5：轻量思考、低延迟）
  * - 纯推理模型（o-series）→ 'high'（用户选它就是要深推理）
  * - 无思考模型 → undefined（auto 等价于 off）
@@ -27,6 +28,9 @@ const THINK_BASIC: readonly ThinkLevel[] = ['off', 'minimal', 'low', 'medium', '
 const THINK_BINARY: readonly ThinkLevel[] = ['off', 'high'] as const;
 const THINK_CLAUDE_46: readonly ThinkLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'adaptive'] as const;
 const THINK_CLAUDE_47: readonly ThinkLevel[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max'] as const;
+// DeepSeek V4：reasoning_effort 实际只区分 high/max（low/medium → high；xhigh → max）
+// 官方对 Agent 场景（Claude Code、OpenCode 等）建议 max
+const THINK_DEEPSEEK: readonly ThinkLevel[] = ['off', 'high', 'max'] as const;
 
 export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -97,8 +101,9 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://api.deepseek.com/anthropic',
     api: 'anthropic-messages',
     models: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      // EvoClaw 是 Agent 框架，按 DeepSeek 官方对 Agent 场景的建议默认走 max
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_DEEPSEEK, defaultThinkLevel: 'max', isDefault: true },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_DEEPSEEK, defaultThinkLevel: 'max' },
     ],
   },
 

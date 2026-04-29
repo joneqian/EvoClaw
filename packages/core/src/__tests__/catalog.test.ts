@@ -161,11 +161,15 @@ describe('catalog: 国产 provider 元数据', () => {
     expect(def?.defaultThinkLevel).toBe('high');
   });
 
-  it('DeepSeek V4 系列国产策略默认 high（1M context, 384K output；reasoning_effort=high）', () => {
+  it('DeepSeek V4 系列：thinkingLevels 仅 off/high/max；EvoClaw 是 Agent 默认 max', () => {
     const flash = lookupModelDefinition('deepseek', 'deepseek-v4-flash');
-    expect(flash?.defaultThinkLevel).toBe('high');
+    expect(flash?.thinkingLevels).toEqual(['off', 'high', 'max']);
+    expect(flash?.defaultThinkLevel).toBe('max');
     expect(flash?.contextWindow).toBe(1_000_000);
     expect(flash?.maxOutputLimit).toBe(384_000);
+
+    const pro = lookupModelDefinition('deepseek', 'deepseek-v4-pro');
+    expect(pro?.defaultThinkLevel).toBe('max');
   });
 
   it('Doubao Seed 2.0 Pro 国产策略默认 high', () => {

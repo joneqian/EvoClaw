@@ -12,10 +12,10 @@
  * - 不在此处做 forward-compat 模板配置（由 forward-compat.ts 算法自动处理）
  *
  * 思考默认值策略（面向非技术企业用户，2026-04-29 调整）:
- * - adaptive 可用 → 'adaptive'（模型自适应，最优 UX）
- * - 通用 5 档思考模型 → 'low'（轻量思考、低延迟；用户可设 thinkingMode='on' 提升到 high）
+ * - adaptive 可用 → 'adaptive'（Claude 4.7/4.6：模型自适应，最优 UX）
+ * - 国产旗舰（GLM/Kimi/Qwen/Doubao/MiniMax）→ 'high'（用户选国产模型通常预期"用满"）
+ * - 海外通用（GPT-5.x / Claude 4.5 / DeepSeek）→ 'low'（轻量思考、低延迟）
  * - 纯推理模型（o-series）→ 'high'（用户选它就是要深推理）
- * - 二元思考模型（Kimi/Qwen）→ 'high'（只有 off/high 两档，沿用激活 thinking 的预期）
  * - 无思考模型 → undefined（auto 等价于 off）
  */
 
@@ -137,22 +137,22 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     models: [
       // GLM-5.1 系列（最新旗舰，2026-Q2 GA，长程任务专精）
       // Source: https://z.ai/blog/glm-5.1
-      { id: 'glm-5.1', name: 'GLM-5.1', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low', isDefault: true },
+      { id: 'glm-5.1', name: 'GLM-5.1', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
       // GLM-5 系列
-      { id: 'glm-5', name: 'GLM-5', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-5-turbo', name: 'GLM-5 Turbo', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'glm-5', name: 'GLM-5', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-5-turbo', name: 'GLM-5 Turbo', contextWindow: 202800, maxTokens: 131100, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // GLM-4.7 系列
-      { id: 'glm-4.7', name: 'GLM-4.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash', contextWindow: 200000, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX', contextWindow: 200000, maxTokens: 128000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'glm-4.7', name: 'GLM-4.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash', contextWindow: 200000, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX', contextWindow: 200000, maxTokens: 128000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // GLM-4.6 系列
-      { id: 'glm-4.6', name: 'GLM-4.6', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-4.6v', name: 'GLM-4.6V', contextWindow: 128000, maxTokens: 32768, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'glm-4.6', name: 'GLM-4.6', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-4.6v', name: 'GLM-4.6V', contextWindow: 128000, maxTokens: 32768, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // GLM-4.5 系列
-      { id: 'glm-4.5', name: 'GLM-4.5', contextWindow: 131072, maxTokens: 98304, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-4.5-air', name: 'GLM-4.5 Air', contextWindow: 131072, maxTokens: 98304, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash', contextWindow: 131072, maxTokens: 98304, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
-      { id: 'glm-4.5v', name: 'GLM-4.5V', contextWindow: 64000, maxTokens: 16384, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'glm-4.5', name: 'GLM-4.5', contextWindow: 131072, maxTokens: 98304, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-4.5-air', name: 'GLM-4.5 Air', contextWindow: 131072, maxTokens: 98304, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash', contextWindow: 131072, maxTokens: 98304, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
+      { id: 'glm-4.5v', name: 'GLM-4.5V', contextWindow: 64000, maxTokens: 16384, input: ['text', 'image'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // Embedding
       { id: 'embedding-3', name: 'Embedding 3', contextWindow: 8192, maxTokens: 0, input: ['text'], toolUse: false, dimension: 2048 },
     ],
@@ -198,8 +198,8 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     api: 'openai-completions',
     models: [
       // Seed 2.0 系列（最新旗舰）
-      { id: 'doubao-seed-2-0-pro', name: 'Doubao Seed 2.0 Pro', contextWindow: 256000, maxTokens: 16384, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low', isDefault: true },
-      { id: 'doubao-seed-code', name: 'Doubao Seed Code', contextWindow: 256000, maxTokens: 16384, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'doubao-seed-2-0-pro', name: 'Doubao Seed 2.0 Pro', contextWindow: 256000, maxTokens: 16384, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
+      { id: 'doubao-seed-code', name: 'Doubao Seed Code', contextWindow: 256000, maxTokens: 16384, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
       // Seed 1.8（多模态，无 thinking）
       { id: 'doubao-seed-1-8', name: 'Doubao Seed 1.8', contextWindow: 256000, maxTokens: 16384, input: ['text', 'image'] },
       // 1.5 系列
@@ -220,8 +220,8 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://api.minimaxi.com/v1',
     api: 'openai-completions',
     models: [
-      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low', isDefault: true },
-      { id: 'MiniMax-M2.7-highspeed', name: 'MiniMax M2.7 Highspeed', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
+      { id: 'MiniMax-M2.7-highspeed', name: 'MiniMax M2.7 Highspeed', contextWindow: 204800, maxTokens: 131072, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
     ],
   },
 ];

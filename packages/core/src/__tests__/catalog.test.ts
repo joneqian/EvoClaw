@@ -128,17 +128,17 @@ describe('catalog: Qwen', () => {
 });
 
 describe('catalog: 国产 provider 元数据', () => {
-  it('GLM-5.1 是当前默认旗舰（企业默认 low）', () => {
+  it('GLM-5.1 是当前默认旗舰（国产策略默认 high）', () => {
     const def = lookupModelDefinition('glm', 'glm-5.1');
     expect(def?.isDefault).toBe(true);
-    expect(def?.defaultThinkLevel).toBe('low');
+    expect(def?.defaultThinkLevel).toBe('high');
     expect(def?.contextWindow).toBe(204_800);
   });
 
-  it('GLM-5 已不是 default 但仍可用（企业默认 low）', () => {
+  it('GLM-5 已不是 default 但仍可用（国产策略默认 high）', () => {
     const def = lookupModelDefinition('glm', 'glm-5');
     expect(def?.isDefault).toBeFalsy();
-    expect(def?.defaultThinkLevel).toBe('low');
+    expect(def?.defaultThinkLevel).toBe('high');
   });
 
   it('Kimi K2.6 是当前默认旗舰（编码焦点、二元 thinking、text only）', () => {
@@ -168,11 +168,11 @@ describe('catalog: 国产 provider 元数据', () => {
     expect(flash?.maxOutputLimit).toBe(384_000);
   });
 
-  it('Doubao Seed 2.0 Pro 企业默认 low', () => {
-    expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.defaultThinkLevel).toBe('low');
+  it('Doubao Seed 2.0 Pro 国产策略默认 high', () => {
+    expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.defaultThinkLevel).toBe('high');
   });
 
-  it('MiniMax M2.7 企业默认 low', () => {
-    expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.defaultThinkLevel).toBe('low');
+  it('MiniMax M2.7 国产策略默认 high', () => {
+    expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.defaultThinkLevel).toBe('high');
   });
 });

@@ -107,17 +107,27 @@ export class EscalationService {
     const startMs = Date.now();
     try {
       const tasks = this.fetchActiveTasksWithPlan();
+      // 预先按 plan_id 收集"已完成的 localId 集合"，给 checkTask 判断 dependsOn 是否满足
+      const doneByPlan = this.fetchDoneLocalIdsByPlan(
+        Array.from(new Set(tasks.map(({ plan }) => plan.id))),
+      );
       let escalations = 0;
+      let skippedWaiting = 0;
       if (tasks.length === 0) {
         logger.debug('escalation tick: 无活跃任务');
       } else {
         logger.debug(`escalation tick: 检查 ${tasks.length} 个活跃任务`);
         for (const { task, plan } of tasks) {
+          // 修复：pending 且 dependsOn 上游未完成 → 跳过，不算 idle
+          if (task.status === 'pending' && this.isWaitingOnUpstream(task, doneByPlan.get(plan.id) ?? new Set())) {
+            skippedWaiting++;
+            continue;
+          }
           const escalated = await this.checkTask(task, plan);
           if (escalated) escalations++;
         }
         logger.info(
-          `escalation tick 完成 active_tasks=${tasks.length} escalated=${escalations} duration_ms=${Date.now() - startMs}`,
+          `escalation tick 完成 active_tasks=${tasks.length} escalated=${escalations} skipped_waiting=${skippedWaiting} duration_ms=${Date.now() - startMs}`,
         );
       }
       // N5 修复：每 tick 顺手跑 GC 钩子（peer-bot-registry 过期清理等）
@@ -269,7 +279,49 @@ plan goal: ${plan.goal}
     }
   }
 
+  /**
+   * pending 任务的 dependsOn 上游是否还有未完成的。
+   * 用 plan 内已完成 localId 集合做差集，效率 O(deps)。
+   */
+  private isWaitingOnUpstream(task: TaskRow, doneLocalIds: Set<string>): boolean {
+    let deps: string[] = [];
+    try {
+      const parsed = JSON.parse(task.depends_on);
+      if (Array.isArray(parsed)) {
+        deps = parsed.filter((x): x is string => typeof x === 'string');
+      }
+    } catch {
+      // depends_on 解析失败按"无依赖"处理，避免误吞 escalation
+      return false;
+    }
+    if (deps.length === 0) return false;
+    return deps.some((dep) => !doneLocalIds.has(dep));
+  }
+
   // ─── DB 查询 ────────────────────────────────────────────────
+
+  /**
+   * 拉每个 plan 已 done 的 task localId 集合，用于判断 dependsOn 满足度。
+   * 一次查多 plan 比 per-task 单查省 round-trip。
+   */
+  private fetchDoneLocalIdsByPlan(planIds: string[]): Map<string, Set<string>> {
+    const result = new Map<string, Set<string>>();
+    if (planIds.length === 0) return result;
+    const placeholders = planIds.map(() => '?').join(',');
+    const rows = this.deps.store.all<{ plan_id: string; local_id: string }>(
+      `SELECT plan_id, local_id FROM tasks WHERE plan_id IN (${placeholders}) AND status = 'done'`,
+      ...planIds,
+    );
+    for (const r of rows) {
+      let set = result.get(r.plan_id);
+      if (!set) {
+        set = new Set<string>();
+        result.set(r.plan_id, set);
+      }
+      set.add(r.local_id);
+    }
+    return result;
+  }
 
   private fetchActiveTasksWithPlan(): Array<{ task: TaskRow; plan: TaskPlanRow }> {
     const placeholders = ACTIVE_TASK_STATUSES.map(() => '?').join(',');

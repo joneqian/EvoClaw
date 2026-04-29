@@ -91,6 +91,39 @@ function isDangerousWritePath(filePath: string): boolean {
 const FIND_MAX_FILES = 1000;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 缺参错误格式化（让 LLM 看到自己实际传了什么，跳出"重试同样错误"的循环）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 生成"缺少必填参数"的错误消息，附带 LLM 实际传入参数的概要。
+ *
+ * 实测 DeepSeek-v4-pro 流式 tool_call 会反复丢字段（如 file_path），
+ * 模型每次都自信地说"我有传啊"，但请求体里就是没有。把实际收到的 args 展示给它，
+ * 让它一眼看到差异，是最便宜也最有效的对策。
+ */
+function formatMissingParamError(
+  toolName: string,
+  missingParam: string,
+  paramHint: string,
+  input: Record<string, unknown>,
+): string {
+  const summary = summarizeInputArgs(input);
+  return `错误：调用 ${toolName} 时缺少必填参数 ${missingParam}。\n你实际传入的参数: ${summary}。\n请在下次调用时补上 ${missingParam}（${paramHint}）。`;
+}
+
+function summarizeInputArgs(input: Record<string, unknown>): string {
+  const entries = Object.entries(input).filter(([, v]) => v !== undefined && v !== null);
+  if (entries.length === 0) return '{ <空> }';
+  const parts = entries.map(([k, v]) => {
+    if (typeof v === 'string') return `${k}=string(${v.length} chars)`;
+    if (typeof v === 'number' || typeof v === 'boolean') return `${k}=${String(v)}`;
+    if (Array.isArray(v)) return `${k}=array(${v.length})`;
+    return `${k}=${typeof v}`;
+  });
+  return `{ ${parts.join(', ')} }`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Read Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -133,7 +166,7 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
       const limit = (input.limit as number) ?? adaptiveMaxLines;
 
       if (!filePath) {
-        return { content: '错误：缺少 file_path 参数', isError: true };
+        return { content: formatMissingParamError('read', 'file_path', '文件的绝对路径', input), isError: true };
       }
 
       // P0-3: 阻止危险设备路径
@@ -303,10 +336,10 @@ function createWriteTool(fileStateCache: FileStateCache): KernelTool {
       const content = input.content as string;
 
       if (!filePath) {
-        return { content: '错误：缺少 file_path 参数', isError: true };
+        return { content: formatMissingParamError('write', 'file_path', '文件的绝对路径', input), isError: true };
       }
       if (content === undefined || content === null) {
-        return { content: '错误：缺少 content 参数', isError: true };
+        return { content: formatMissingParamError('write', 'content', '文件内容（字符串）', input), isError: true };
       }
 
       // P0-5: 危险文件保护
@@ -459,9 +492,9 @@ function createEditTool(fileStateCache: FileStateCache): KernelTool {
       const newString = input.new_string as string;
       const replaceAll = (input.replace_all as boolean) ?? false;
 
-      if (!filePath) return { content: '错误：缺少 file_path 参数', isError: true };
-      if (oldString === undefined) return { content: '错误：缺少 old_string 参数', isError: true };
-      if (newString === undefined) return { content: '错误：缺少 new_string 参数', isError: true };
+      if (!filePath) return { content: formatMissingParamError('edit', 'file_path', '文件的绝对路径', input), isError: true };
+      if (oldString === undefined) return { content: formatMissingParamError('edit', 'old_string', '需要被替换的原文（精确匹配）', input), isError: true };
+      if (newString === undefined) return { content: formatMissingParamError('edit', 'new_string', '替换后的新文本', input), isError: true };
       if (oldString === newString) return { content: '错误：old_string 和 new_string 相同，无需替换', isError: true };
 
       // P0-5: 危险文件保护
@@ -611,7 +644,7 @@ function createGrepTool(): KernelTool {
       const offset = (input.offset as number) ?? 0;
 
       if (!pattern) {
-        return { content: '错误：缺少 pattern 参数', isError: true };
+        return { content: formatMissingParamError('grep', 'pattern', '正则表达式（如 "useState"、"function \\\\w+"）', input), isError: true };
       }
 
       try {
@@ -719,7 +752,7 @@ function createFindTool(): KernelTool {
       const searchPath = (input.path as string) || process.cwd();
 
       if (!pattern) {
-        return { content: '错误：缺少 pattern 参数', isError: true };
+        return { content: formatMissingParamError('find', 'pattern', '文件名 glob 模式（如 "*.ts"、"test*"）', input), isError: true };
       }
 
       try {

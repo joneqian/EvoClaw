@@ -120,5 +120,74 @@ describe('ToolSafetyGuard', () => {
       expect(stats.totalCalls).toBe(0);
       expect(stats.recentCalls).toEqual([]);
     });
+
+    it('重置清掉连续错误流（fix #1）', () => {
+      const guard = new ToolSafetyGuard({ consecutiveErrorsThreshold: 3 });
+      guard.recordError('write');
+      guard.recordError('write');
+      expect(guard.getErrorStreak('write')).toBe(2);
+      guard.reset();
+      expect(guard.getErrorStreak('write')).toBe(0);
+    });
+  });
+
+  describe('连续错误熔断（fix #1：DeepSeek 反复丢字段场景）', () => {
+    it('同 tool 连续报错达阈值即熔断', () => {
+      const guard = new ToolSafetyGuard({ consecutiveErrorsThreshold: 3 });
+      // 模拟架构师 / UI/UX 实测情况：write 反复缺 file_path
+      expect(guard.recordError('write').blocked).toBe(false); // 1
+      expect(guard.recordError('write').blocked).toBe(false); // 2
+      const r = guard.recordError('write'); // 3 → 触发
+      expect(r.blocked).toBe(true);
+      expect(r.reason).toContain('write');
+      expect(r.reason).toContain('已连续报错 3 次');
+      expect(r.reason).toContain("update_task_status('blocked'");
+    });
+
+    it('错误流仅按 tool 名计数，互不影响', () => {
+      const guard = new ToolSafetyGuard({ consecutiveErrorsThreshold: 3 });
+      guard.recordError('write');
+      guard.recordError('write');
+      guard.recordError('read'); // 不同 tool 不累加 write 流
+      expect(guard.getErrorStreak('write')).toBe(2);
+      expect(guard.getErrorStreak('read')).toBe(1);
+      expect(guard.recordError('write').blocked).toBe(true); // 第 3 次 write 报错触发熔断
+    });
+
+    it('成功一次清零该 tool 的错误流（不影响其他 tool）', () => {
+      const guard = new ToolSafetyGuard({ consecutiveErrorsThreshold: 3 });
+      guard.recordError('write');
+      guard.recordError('write');
+      guard.recordError('read');
+
+      // write 调用一次后 recordResult 应清零 write 流
+      guard.checkBeforeExecution('write', { file_path: '/x', content: 'ok' });
+      guard.recordResult('已写入');
+      expect(guard.getErrorStreak('write')).toBe(0);
+      // read 流不受影响
+      expect(guard.getErrorStreak('read')).toBe(1);
+    });
+
+    it('架构师场景：write 错 → write 错 → write 错 → read 成功 → write 错 第 4 次仍熔断', () => {
+      // 架构师实测序列: write-err × 3 (跨 read 间隔), read-success, write-err
+      // 期望：read 成功不该清掉 write 的错误流
+      const guard = new ToolSafetyGuard({ consecutiveErrorsThreshold: 4 });
+      guard.recordError('write');
+      guard.recordError('write');
+      guard.recordError('write');
+      // read 成功夹在中间
+      guard.checkBeforeExecution('read', { file_path: '/y' });
+      guard.recordResult('文件内容');
+      expect(guard.getErrorStreak('write')).toBe(3); // read 不清 write
+      // 第 4 次 write 错 → 触发熔断
+      expect(guard.recordError('write').blocked).toBe(true);
+    });
+
+    it('默认阈值是 3', () => {
+      const guard = new ToolSafetyGuard();
+      guard.recordError('x');
+      guard.recordError('x');
+      expect(guard.recordError('x').blocked).toBe(true);
+    });
   });
 });

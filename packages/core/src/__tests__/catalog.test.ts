@@ -161,9 +161,9 @@ describe('catalog: 国产 provider 元数据', () => {
     expect(def?.defaultThinkLevel).toBe('high');
   });
 
-  it('DeepSeek V4 系列企业默认 low（1M context, 384K output）', () => {
+  it('DeepSeek V4 系列国产策略默认 high（1M context, 384K output；reasoning_effort=high）', () => {
     const flash = lookupModelDefinition('deepseek', 'deepseek-v4-flash');
-    expect(flash?.defaultThinkLevel).toBe('low');
+    expect(flash?.defaultThinkLevel).toBe('high');
     expect(flash?.contextWindow).toBe(1_000_000);
     expect(flash?.maxOutputLimit).toBe(384_000);
   });

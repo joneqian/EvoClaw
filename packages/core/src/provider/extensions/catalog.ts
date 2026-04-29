@@ -13,8 +13,8 @@
  *
  * 思考默认值策略（面向非技术企业用户，2026-04-29 调整）:
  * - adaptive 可用 → 'adaptive'（Claude 4.7/4.6：模型自适应，最优 UX）
- * - 国产旗舰（GLM/Kimi/Qwen/Doubao/MiniMax）→ 'high'（用户选国产模型通常预期"用满"）
- * - 海外通用（GPT-5.x / Claude 4.5 / DeepSeek）→ 'low'（轻量思考、低延迟）
+ * - 国产旗舰 → 'high'（GLM/Kimi/Qwen/Doubao/MiniMax/DeepSeek，用户选国产模型通常预期"用满"）
+ * - 海外通用 → 'low'（GPT-5.x / Claude 4.5：轻量思考、低延迟）
  * - 纯推理模型（o-series）→ 'high'（用户选它就是要深推理）
  * - 无思考模型 → undefined（auto 等价于 off）
  */
@@ -97,8 +97,8 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     defaultBaseUrl: 'https://api.deepseek.com/anthropic',
     api: 'anthropic-messages',
     models: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low', isDefault: true },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'low' },
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high', isDefault: true },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], thinkingLevels: THINK_BASIC, defaultThinkLevel: 'high' },
     ],
   },
 

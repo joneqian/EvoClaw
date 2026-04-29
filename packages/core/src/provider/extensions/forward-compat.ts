@@ -84,10 +84,13 @@ function rank(
 
 function isBetter(a: Ranked, b: Ranked): boolean {
   if (a.lcp !== b.lcp) return a.lcp > b.lcp;
-  if (a.candIsStrictPrefix !== b.candIsStrictPrefix) return a.candIsStrictPrefix;
+  // 数字版本 bump（如 5.1 vs 5.2）优先于"family root"（如 glm-5）——
+  // 同 LCP 下数字相邻候选比通用模板更贴近查询的具体版本意图
   if (a.numericDivergence !== b.numericDivergence) return a.numericDivergence;
   if (a.numericDistance !== b.numericDistance)
     return a.numericDistance < b.numericDistance;
+  // 都不是数字 bump 时，候选是 query 严格前缀（family root）作为兜底
+  if (a.candIsStrictPrefix !== b.candIsStrictPrefix) return a.candIsStrictPrefix;
   if (a.idLen !== b.idLen) return a.idLen < b.idLen;
   return a.fileOrder < b.fileOrder;
 }

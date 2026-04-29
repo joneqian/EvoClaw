@@ -119,7 +119,9 @@ describe('TaskPlanService', () => {
     activateAgent(store, B);
     activateAgent(store, C);
 
-    svc = new TaskPlanService({ store, agentManager });
+    // boardRefreshDebounceMs=0 关闭 debounce，让单测保持同步语义；
+    // 单独的 debounce 测试用例自己 new 一个带 debounce 的 service
+    svc = new TaskPlanService({ store, agentManager, boardRefreshDebounceMs: 0 });
   });
 
   afterEach(() => {
@@ -468,6 +470,384 @@ describe('TaskPlanService', () => {
     expect(s1.id).not.toBe(s2.id);
     const active = svc.listGroupPlans(groupKey, 'active');
     expect(active.length).toBe(2);
+  });
+
+  // ─── M13 工作流懒加载：expectedArtifactKinds 持久化 ─────────────
+  describe('expectedArtifactKinds 持久化', () => {
+    it('createPlan 落盘 task.expectedArtifactKinds 后快照能读出', async () => {
+      const snap = await svc.createPlan(
+        {
+          goal: '健康 H5',
+          tasks: [
+            {
+              localId: 't1',
+              title: '撰写 PRD',
+              assigneeAgentId: B,
+              expectedArtifactKinds: ['markdown'],
+            },
+            {
+              localId: 't2',
+              title: '视觉稿',
+              assigneeAgentId: C,
+              dependsOn: ['t1'],
+              expectedArtifactKinds: ['image', 'file'],
+            },
+            {
+              localId: 't3',
+              title: '前端实现',
+              assigneeAgentId: B,
+              dependsOn: ['t2'],
+              // 不声明 expectedArtifactKinds — 保持 undefined
+            },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+      const t1 = snap.tasks.find((t) => t.localId === 't1');
+      const t2 = snap.tasks.find((t) => t.localId === 't2');
+      const t3 = snap.tasks.find((t) => t.localId === 't3');
+      expect(t1?.expectedArtifactKinds).toEqual(['markdown']);
+      expect(t2?.expectedArtifactKinds).toEqual(['image', 'file']);
+      expect(t3?.expectedArtifactKinds).toBeUndefined();
+    });
+
+    it('createPlan 收到 expectedArtifactKinds=[] 等价未声明（落 NULL）', async () => {
+      const snap = await svc.createPlan(
+        {
+          goal: 'x',
+          tasks: [
+            {
+              localId: 't1',
+              title: 'x',
+              assigneeAgentId: B,
+              expectedArtifactKinds: [],
+            },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+      expect(snap.tasks[0]?.expectedArtifactKinds).toBeUndefined();
+      // DB 直接读：列应为 NULL
+      const row = store.get<{ expected_artifact_kinds: string | null }>(
+        'SELECT expected_artifact_kinds FROM tasks WHERE plan_id = ? AND local_id = ?',
+        snap.id,
+        't1',
+      );
+      expect(row?.expected_artifact_kinds).toBeNull();
+    });
+
+    it('listGroupPlans 跨快照保留 expectedArtifactKinds', async () => {
+      const created = await svc.createPlan(
+        {
+          goal: 'g',
+          tasks: [
+            {
+              localId: 't1',
+              title: 'PRD',
+              assigneeAgentId: B,
+              expectedArtifactKinds: ['markdown', 'doc'],
+            },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+      const plans = svc.listGroupPlans(groupKey, 'active');
+      const matched = plans.find((p) => p.id === created.id);
+      expect(matched?.tasks[0]?.expectedArtifactKinds).toEqual(['markdown', 'doc']);
+    });
+  });
+
+  // ─── M13 修复："先派活后宣告"错位 ────────────────────────────
+  describe('TaskCompletedAnnouncer', () => {
+    it('updateTaskStatus("done") 先调 announceTaskCompleted 再 dispatchReadyTasks', async () => {
+      const callOrder: string[] = [];
+      svc.setTaskCompletedAnnouncer({
+        announceTaskCompleted: async ({ task, outputSummary }) => {
+          callOrder.push(`announce:${task.localId}:${outputSummary.slice(0, 10)}`);
+        },
+      });
+      svc.setTaskReadyNotifier({
+        notifyTaskReady: async ({ task }) => {
+          callOrder.push(`notify:${task.localId}`);
+        },
+      });
+
+      const snap = await svc.createPlan(
+        {
+          goal: 'H5 商城',
+          tasks: [
+            { localId: 't1', title: 'PRD', assigneeAgentId: B },
+            { localId: 't2', title: '设计', assigneeAgentId: C, dependsOn: ['t1'] },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+
+      // 微任务 flush — 等 createPlan 触发的 t1 ready notify 完成
+      await new Promise((r) => setTimeout(r, 0));
+      callOrder.length = 0; // 清掉 createPlan 派发记录，只关注 done 流程
+
+      const t1Id = store.get<{ id: string }>(
+        'SELECT id FROM tasks WHERE plan_id = ? AND local_id = ?',
+        snap.id,
+        't1',
+      )?.id as string;
+
+      svc.updateTaskStatus(
+        {
+          taskId: t1Id,
+          status: 'done',
+          outputSummary: 'PRD v1.0 已交付，5 模块全部锁定。',
+        },
+        B,
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      // 关键断言：announce 必须出现在 notify 之前
+      const announceIdx = callOrder.findIndex((s) => s.startsWith('announce:t1'));
+      const notifyIdx = callOrder.findIndex((s) => s === 'notify:t2');
+      expect(announceIdx).toBeGreaterThanOrEqual(0);
+      expect(notifyIdx).toBeGreaterThanOrEqual(0);
+      expect(announceIdx).toBeLessThan(notifyIdx);
+    });
+
+    it('announcer 透传 outputSummary 给回调', async () => {
+      const captured: Array<{ taskLocalId: string; outputSummary: string; assigneeAgentId: string }> = [];
+      svc.setTaskCompletedAnnouncer({
+        announceTaskCompleted: async ({ task, outputSummary }) => {
+          captured.push({
+            taskLocalId: task.localId,
+            outputSummary,
+            assigneeAgentId: task.assignee.agentId,
+          });
+        },
+      });
+
+      const snap = await svc.createPlan(
+        {
+          goal: 'g',
+          tasks: [{ localId: 't1', title: 'PRD', assigneeAgentId: B }],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+      const t1Id = store.get<{ id: string }>(
+        'SELECT id FROM tasks WHERE plan_id = ? AND local_id = ?',
+        snap.id,
+        't1',
+      )?.id as string;
+
+      svc.updateTaskStatus(
+        {
+          taskId: t1Id,
+          status: 'done',
+          outputSummary: 'PRD 已交付，含 5 模块、10 验收项、4 风险。',
+        },
+        B,
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0]?.taskLocalId).toBe('t1');
+      expect(captured[0]?.outputSummary).toBe('PRD 已交付，含 5 模块、10 验收项、4 风险。');
+      expect(captured[0]?.assigneeAgentId).toBe(B);
+    });
+
+    it('outputSummary 为空 / 空白 → 跳过宣告但不阻塞 dispatchReadyTasks', async () => {
+      const announceCalls: string[] = [];
+      const notifyCalls: string[] = [];
+      svc.setTaskCompletedAnnouncer({
+        announceTaskCompleted: async ({ task }) => {
+          announceCalls.push(task.localId);
+        },
+      });
+      svc.setTaskReadyNotifier({
+        notifyTaskReady: async ({ task }) => {
+          notifyCalls.push(task.localId);
+        },
+      });
+
+      const snap = await svc.createPlan(
+        {
+          goal: 'g',
+          tasks: [
+            { localId: 't1', title: 'PRD', assigneeAgentId: B },
+            { localId: 't2', title: '设计', assigneeAgentId: C, dependsOn: ['t1'] },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+      await new Promise((r) => setTimeout(r, 0));
+      notifyCalls.length = 0; // 清掉 createPlan 触发的 t1 ready
+      const t1Id = store.get<{ id: string }>(
+        'SELECT id FROM tasks WHERE plan_id = ? AND local_id = ?',
+        snap.id,
+        't1',
+      )?.id as string;
+
+      svc.updateTaskStatus({ taskId: t1Id, status: 'done' /* 不传 outputSummary */ }, B);
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(announceCalls).toHaveLength(0); // 没宣告
+      expect(notifyCalls).toContain('t2');   // 但下游派活照常
+    });
+
+    it('announcer 抛错不阻塞下游派活', async () => {
+      const notifyCalls: string[] = [];
+      svc.setTaskCompletedAnnouncer({
+        announceTaskCompleted: async () => {
+          throw new Error('模拟宣告失败');
+        },
+      });
+      svc.setTaskReadyNotifier({
+        notifyTaskReady: async ({ task }) => {
+          notifyCalls.push(task.localId);
+        },
+      });
+
+      const snap = await svc.createPlan(
+        {
+          goal: 'g',
+          tasks: [
+            { localId: 't1', title: 'PRD', assigneeAgentId: B },
+            { localId: 't2', title: '设计', assigneeAgentId: C, dependsOn: ['t1'] },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A },
+      );
+      await new Promise((r) => setTimeout(r, 0));
+      notifyCalls.length = 0;
+      const t1Id = store.get<{ id: string }>(
+        'SELECT id FROM tasks WHERE plan_id = ? AND local_id = ?',
+        snap.id,
+        't1',
+      )?.id as string;
+
+      // 不应抛 — fire-and-forget 的 .catch 兜住了错误
+      svc.updateTaskStatus(
+        {
+          taskId: t1Id,
+          status: 'done',
+          outputSummary: 'PRD 已交付，含 5 模块、10 验收项。',
+        },
+        B,
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(notifyCalls).toContain('t2'); // 下游派活仍然触发
+    });
+  });
+
+  // ─── M13 修复：refreshBoard debounce ────────────────────────────
+  describe('refreshBoard debounce', () => {
+    it('300ms 窗口内多次 refreshBoard 合并为一次实际发卡', async () => {
+      const tmpDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'm13-test-debounce-'));
+      const store2 = new SqliteStore(':memory:');
+      const migRunner = new (await import('../../infrastructure/db/migration-runner.js')).MigrationRunner(store2);
+      await migRunner.run();
+      const agentManager2 = new AgentManager(store2, tmpDir2);
+      const pm = await agentManager2.createAgent({ name: 'PM' });
+      const be = await agentManager2.createAgent({ name: '后端' });
+      const ui = await agentManager2.createAgent({ name: 'UI' });
+      activateAgent(store2, pm.id);
+      activateAgent(store2, be.id);
+      activateAgent(store2, ui.id);
+
+      // 用 100ms debounce 让测试快一点
+      const svc2 = new TaskPlanService({
+        store: store2,
+        agentManager: agentManager2,
+        boardRefreshDebounceMs: 100,
+      });
+
+      let boardSinkCalls = 0;
+      svc2.setBoardSink(async () => {
+        boardSinkCalls += 1;
+        return { cardId: `card-${boardSinkCalls}` };
+      });
+
+      // createPlan 触发 1 次 refreshBoard（service.ts:286 的 void this.refreshBoard）
+      const snap = await svc2.createPlan(
+        {
+          goal: 'g',
+          tasks: [
+            { localId: 't1', title: 'PRD', assigneeAgentId: be.id },
+            { localId: 't2', title: '设计', assigneeAgentId: ui.id, dependsOn: ['t1'] },
+          ],
+        },
+        { groupSessionKey: 'feishu:chat:oc_debounce', createdByAgentId: pm.id },
+      );
+
+      const t1Id = store2.get<{ id: string }>(
+        'SELECT id FROM tasks WHERE plan_id = ? AND local_id = ?',
+        snap.id,
+        't1',
+      )?.id as string;
+
+      // 在 100ms debounce 窗口内连续触发 5 次状态变更（每次都会 refreshBoard）
+      svc2.updateTaskStatus(
+        { taskId: t1Id, status: 'in_progress' },
+        be.id,
+      );
+      svc2.updateTaskStatus(
+        {
+          taskId: t1Id,
+          status: 'done',
+          outputSummary: 'PRD 已交付，5 模块覆盖完整链路。',
+        },
+        be.id,
+      );
+
+      // 等 debounce 触发 + 一些缓冲
+      await new Promise((r) => setTimeout(r, 250));
+
+      // 即使触发了 createPlan + 2 次 updateTaskStatus（共触发 3+ 次 refreshBoard 调用），
+      // 实际发卡次数应远少于（debounce 合并）。期望 ≤ 2（createPlan 一波 + done 一波）
+      expect(boardSinkCalls).toBeLessThanOrEqual(2);
+      expect(boardSinkCalls).toBeGreaterThanOrEqual(1);
+
+      // cleanup
+      if (fs.existsSync(tmpDir2)) fs.rmSync(tmpDir2, { recursive: true, force: true });
+    });
+
+    it('flushPendingBoardRefreshes 立即触发所有 pending', async () => {
+      const tmpDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'm13-test-flush-'));
+      const store2 = new SqliteStore(':memory:');
+      const migRunner = new (await import('../../infrastructure/db/migration-runner.js')).MigrationRunner(store2);
+      await migRunner.run();
+      const agentManager2 = new AgentManager(store2, tmpDir2);
+      const pm = await agentManager2.createAgent({ name: 'PM' });
+      const be = await agentManager2.createAgent({ name: '后端' });
+      activateAgent(store2, pm.id);
+      activateAgent(store2, be.id);
+
+      const svc2 = new TaskPlanService({
+        store: store2,
+        agentManager: agentManager2,
+        boardRefreshDebounceMs: 5000, // 长 debounce 让 timer 不会自然到点
+      });
+
+      let boardSinkCalls = 0;
+      svc2.setBoardSink(async () => {
+        boardSinkCalls += 1;
+        return { cardId: `card-${boardSinkCalls}` };
+      });
+
+      await svc2.createPlan(
+        { goal: 'g', tasks: [{ localId: 't1', title: 'PRD', assigneeAgentId: be.id }] },
+        { groupSessionKey: 'feishu:chat:oc_flush', createdByAgentId: pm.id },
+      );
+
+      // 此刻 boardSinkCalls = 0（还在 debounce 窗口里）
+      expect(boardSinkCalls).toBe(0);
+
+      // 立即 flush
+      svc2.flushPendingBoardRefreshes();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(boardSinkCalls).toBe(1);
+
+      if (fs.existsSync(tmpDir2)) fs.rmSync(tmpDir2, { recursive: true, force: true });
+    });
   });
 });
 

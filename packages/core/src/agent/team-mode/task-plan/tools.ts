@@ -26,6 +26,7 @@ import type { TaskPlanService } from './service.js';
 import { deriveAssigneeSessionKey } from './service.js';
 import { buildGroupSessionKey } from '../group-key-utils.js';
 import type {
+  ArtifactKind,
   CreatePlanTaskInput,
   CreateTaskPlanArgs,
   GroupSessionKey,
@@ -44,6 +45,15 @@ const VALID_TASK_STATUS: ReadonlyArray<TaskStatus> = [
   'blocked_on_clarification',
   'paused',
   'stalled',
+];
+
+const VALID_ARTIFACT_KINDS: ReadonlyArray<ArtifactKind> = [
+  'text',
+  'markdown',
+  'image',
+  'file',
+  'doc',
+  'link',
 ];
 
 /**
@@ -85,7 +95,9 @@ export function createTaskPlanTool(svc: TaskPlanService): ToolDefinition {
   return {
     name: 'create_task_plan',
     description:
-      '在当前群聊中创建一个团队协作计划（含 DAG 任务）。任何 Agent 都可调用——被 @ 的 Agent 自然成为 plan 的发起人和兜底责任人。计划创建后，无依赖任务的 assignee 会自动收到 task_ready 系统事件。',
+      '在当前群聊中创建一个团队协作计划（含 DAG 任务）。任何 Agent 都可调用——被 @ 的 Agent 自然成为 plan 的发起人和兜底责任人。计划创建后，无依赖任务的 assignee 会自动收到 task_ready 系统事件。\n\n' +
+      '**协调者额外约束**：如果系统 prompt 里有 <workflow_template>，请按其 phases 顺序拆任务（dependsOn 沿阶段链），并为每个 task 填 expectedArtifactKinds（来自所属 phase 的 expectedArtifactKinds）。**不要在任务描述里引用尚未产出的产物**——上游 attach_artifact 后才存在；当前阶段任务描述可以说 "待上游 PRD 完成后参考" 但不要凭空写 "基于 PRD v1.0..." 这类虚构引用。\n\n' +
+      '**协调者 + <workflow_bootstrap_required>**：禁止在没有团队工作流模板时直接调本工具，请先看 roster 推候选 → 用户确认 → 调 propose_team_workflow 落盘 → 再回来调本工具。',
     parameters: {
       type: 'object',
       properties: {
@@ -95,7 +107,7 @@ export function createTaskPlanTool(svc: TaskPlanService): ToolDefinition {
         },
         tasks: {
           type: 'array',
-          description: '任务列表（DAG）。每个任务必填 localId/title/assigneeAgentId，可选 description/dependsOn。',
+          description: '任务列表（DAG）。每个任务必填 localId/title/assigneeAgentId，可选 description/dependsOn/expectedArtifactKinds。',
           items: {
             type: 'object',
             properties: {
@@ -113,6 +125,12 @@ export function createTaskPlanTool(svc: TaskPlanService): ToolDefinition {
                 type: 'array',
                 description: '前置任务的 localId 列表（可空）',
                 items: { type: 'string' },
+              },
+              expectedArtifactKinds: {
+                type: 'array',
+                description:
+                  '本任务预期产出哪几类 artifact（可选；有 <workflow_template> 时强烈建议填，从所属 phase 的 expectedArtifactKinds 抄）。合法值：text/markdown/image/file/doc/link。空数组等价未声明。',
+                items: { type: 'string', enum: VALID_ARTIFACT_KINDS as unknown as string[] },
               },
             },
             required: ['localId', 'title', 'assigneeAgentId'],
@@ -147,7 +165,24 @@ export function createTaskPlanTool(svc: TaskPlanService): ToolDefinition {
         const dependsOn = Array.isArray(obj['dependsOn'])
           ? (obj['dependsOn'] as unknown[]).filter((x): x is string => typeof x === 'string')
           : undefined;
-        planTasks.push({ localId, title, description, assigneeAgentId, dependsOn });
+        // M13 工作流懒加载：可选 expectedArtifactKinds；只接受合法值，非法值丢弃但不报错
+        // （软约束 — service 不强校验，避免在 PM-agnostic 场景下误伤）
+        let expectedArtifactKinds: ArtifactKind[] | undefined;
+        if (Array.isArray(obj['expectedArtifactKinds'])) {
+          const filtered = (obj['expectedArtifactKinds'] as unknown[]).filter(
+            (x): x is ArtifactKind =>
+              typeof x === 'string' && VALID_ARTIFACT_KINDS.includes(x as ArtifactKind),
+          );
+          if (filtered.length > 0) expectedArtifactKinds = filtered;
+        }
+        planTasks.push({
+          localId,
+          title,
+          description,
+          assigneeAgentId,
+          dependsOn,
+          ...(expectedArtifactKinds ? { expectedArtifactKinds } : {}),
+        });
       }
 
       const initiatorUserId = typeof args['initiatorUserId'] === 'string'
@@ -192,7 +227,11 @@ function formatPlanCreatedResult(snapshot: import('./types.js').TaskPlanSnapshot
   lines.push(`任务列表（共 ${snapshot.tasks.length} 项）：`);
   for (const t of snapshot.tasks) {
     const deps = t.dependsOn.length > 0 ? ` 依赖[${t.dependsOn.join(',')}]` : '';
-    lines.push(`  - ${t.localId} (${t.status}) "${t.title}" → ${t.assignee.name}${deps}`);
+    const expects =
+      t.expectedArtifactKinds && t.expectedArtifactKinds.length > 0
+        ? ` 期望[${t.expectedArtifactKinds.join(',')}]`
+        : '';
+    lines.push(`  - ${t.localId} (${t.status}) "${t.title}" → ${t.assignee.name}${deps}${expects}`);
   }
 
   // 列出已被系统主动 @ 的 assignee（即"无依赖立即 ready 的任务"）
@@ -214,11 +253,15 @@ function formatPlanCreatedResult(snapshot: import('./types.js').TaskPlanSnapshot
 
 // ─── update_task_status ────────────────────────────────────────
 
+/** status='done' 时 outputSummary 最小字符数（防止 LLM 写"完成"两字应付） */
+export const DONE_OUTPUT_SUMMARY_MIN_LENGTH = 30;
+
 export function createUpdateTaskStatusTool(svc: TaskPlanService): ToolDefinition {
   return {
     name: 'update_task_status',
     description:
-      '更新自己名下任务的状态。仅 assignee 可调用。状态：pending/in_progress/done/cancelled/blocked/needs_help/blocked_on_clarification/paused/stalled。状态改 done 时会自动解锁下游依赖。',
+      '更新自己名下任务的状态。仅 assignee 可调用。状态：pending/in_progress/done/cancelled/blocked/needs_help/blocked_on_clarification/paused/stalled。状态改 done 时会自动解锁下游依赖。\n\n' +
+      '**status=\'done\' 时 outputSummary 必填**（至少 30 字）——会**以你的身份**自动发到群里告知所有同事，请写人话给同事看（含核心产出 / 关键决定 / 下游需要知道的事），不是写给系统的日志。',
     parameters: {
       type: 'object',
       properties: {
@@ -231,7 +274,8 @@ export function createUpdateTaskStatusTool(svc: TaskPlanService): ToolDefinition
         note: { type: 'string', description: '本次更新备注（可选，会显示在看板上）' },
         outputSummary: {
           type: 'string',
-          description: '完成时的产出摘要（status=done 时建议填，会写入数据库）',
+          description:
+            '产出摘要。**status=done 时必填且至少 30 字**——会以你的身份自动发到群里告知所有同事，写人话（含核心产出、关键决定、下游需要知道的事）。先 attach_artifact 把产物落盘后再写本字段。',
         },
       },
       required: ['taskId', 'status'],
@@ -250,6 +294,22 @@ export function createUpdateTaskStatusTool(svc: TaskPlanService): ToolDefinition
       const outputSummary = typeof args['outputSummary'] === 'string'
         ? (args['outputSummary'] as string)
         : undefined;
+
+      // M13 修复（"先派活后宣告"错位）：status=done 时强制 outputSummary 必填且 ≥30 字。
+      // service 会用本字段以 assignee 身份在群里发完成宣告，空 / 过短都没法当人话广播。
+      if (status === 'done') {
+        const trimmed = (outputSummary ?? '').trim();
+        if (trimmed.length < DONE_OUTPUT_SUMMARY_MIN_LENGTH) {
+          logger.warn(
+            `tool update_task_status reject agent=${ctx.agentId} task=${taskId} reason=outputSummary 不足 ${DONE_OUTPUT_SUMMARY_MIN_LENGTH} 字`,
+          );
+          return (
+            `错误：status='done' 时 outputSummary 必填且至少 ${DONE_OUTPUT_SUMMARY_MIN_LENGTH} 字。` +
+            '本字段会以你的身份自动发到群里告知所有同事，写人话（含核心产出 / 关键决定 / 下游需要知道的事）。' +
+            '先调 attach_artifact 把产物落盘，再用本字段做宣告。'
+          );
+        }
+      }
 
       const result = svc.updateTaskStatus(
         { taskId, status: status as TaskStatus, note, outputSummary },
@@ -309,7 +369,18 @@ export function createListTasksTool(svc: TaskPlanService): ToolDefinition {
         for (const t of p.tasks) {
           const deps = t.dependsOn.length > 0 ? ` 依赖[${t.dependsOn.join(',')}]` : '';
           const stale = t.staleMarker ? ` [${t.staleMarker}]` : '';
-          lines.push(`  - ${t.localId} (${t.status})${stale} "${t.title}" → ${t.assignee.name}${deps}`);
+          // M13 工作流懒加载：渲染期望/实际产物对账
+          const expects =
+            t.expectedArtifactKinds && t.expectedArtifactKinds.length > 0
+              ? ` 期望[${t.expectedArtifactKinds.join(',')}]`
+              : '';
+          const actualKinds = new Set(t.artifacts.map((a) => a.kind));
+          const actuals = t.expectedArtifactKinds && t.expectedArtifactKinds.length > 0
+            ? ' 实际[' + t.expectedArtifactKinds
+              .map((k) => actualKinds.has(k) ? `${k} ✅` : `${k} ⏳`)
+              .join(',') + ']'
+            : '';
+          lines.push(`  - ${t.localId} (${t.status})${stale} "${t.title}" → ${t.assignee.name}${deps}${expects}${actuals}`);
           if (t.artifacts.length > 0) {
             for (const a of t.artifacts) {
               lines.push(`      📎 ${a.title} [${a.kind}] ${a.summary.slice(0, 80)}`);

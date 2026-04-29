@@ -74,7 +74,7 @@ export class AgentManager {
   }
 
   /** 更新 Agent 配置 */
-  updateAgent(id: string, updates: Partial<Pick<AgentConfig, 'name' | 'emoji' | 'modelId' | 'provider' | 'permissionMode' | 'mcpServers' | 'isTeamCoordinator'>>): void {
+  updateAgent(id: string, updates: Partial<Pick<AgentConfig, 'name' | 'emoji' | 'modelId' | 'provider' | 'permissionMode' | 'mcpServers' | 'isTeamCoordinator' | 'teamWorkflow'>>): void {
     const agent = this.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
 
@@ -86,6 +86,15 @@ export class AgentManager {
       this.store.run(
         'UPDATE agents SET is_team_coordinator = ?, updated_at = ? WHERE id = ?',
         updates.isTeamCoordinator ? 1 : 0,
+        now,
+        id,
+      );
+    }
+    // M13 Roster 驱动懒加载：teamWorkflow 走专列 team_workflow_json（migration 035）
+    if (updates.teamWorkflow !== undefined) {
+      this.store.run(
+        'UPDATE agents SET team_workflow_json = ?, updated_at = ? WHERE id = ?',
+        updates.teamWorkflow === null ? null : JSON.stringify(updates.teamWorkflow),
         now,
         id,
       );
@@ -224,6 +233,16 @@ export class AgentManager {
 
   private rowToConfig(row: any): AgentConfig {
     const config = JSON.parse(row.config_json || '{}');
+    // M13 Roster 驱动懒加载：team_workflow_json 列由 migration 035 添加；
+    // 老库未升级 / 未设置时 row.team_workflow_json 为 undefined/null → teamWorkflow=undefined。
+    let teamWorkflow: AgentConfig['teamWorkflow'] | undefined;
+    if (row.team_workflow_json) {
+      try {
+        teamWorkflow = JSON.parse(row.team_workflow_json);
+      } catch {
+        // JSON 损坏忽略，让协调者重新走 bootstrap 流程，不阻塞读取
+      }
+    }
     return {
       id: row.id,
       name: row.name,
@@ -239,6 +258,8 @@ export class AgentManager {
       role: row.role ?? 'general',
       // M13 修改组 3：协调者标志由 migration 033 添加；老库未升级时为 undefined → 默认 false
       isTeamCoordinator: row.is_team_coordinator === 1,
+      // M13 Roster 驱动懒加载：仅协调者用；非协调者忽略
+      teamWorkflow,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

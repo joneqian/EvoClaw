@@ -15,6 +15,10 @@ const MIGRATION_021_SQL = fs.readFileSync(path.join(migrationsDir, '021_conversa
 const MIGRATION_WORKSPACE_STATE_SQL = fs.readFileSync(path.join(migrationsDir, '014_workspace_state.sql'), 'utf-8');
 // M13 修改组 3：协调者表列
 const MIGRATION_033_SQL = fs.readFileSync(path.join(migrationsDir, '033_agents_team_coordinator.sql'), 'utf-8');
+// M13 PR1：team-mode 表（含 tasks，035 ALTER 需要前置）
+const MIGRATION_031_SQL = fs.readFileSync(path.join(migrationsDir, '031_team_mode.sql'), 'utf-8');
+// M13 Roster 驱动懒加载：tasks.expected_artifact_kinds + agents.team_workflow_json
+const MIGRATION_035_SQL = fs.readFileSync(path.join(migrationsDir, '035_team_workflow_template.sql'), 'utf-8');
 
 describe('AgentManager', () => {
   let store: SqliteStore;
@@ -34,6 +38,8 @@ describe('AgentManager', () => {
     store.exec(MIGRATION_021_SQL);
     store.exec(MIGRATION_WORKSPACE_STATE_SQL);
     store.exec(MIGRATION_033_SQL);
+    store.exec(MIGRATION_031_SQL);
+    store.exec(MIGRATION_035_SQL);
     // 011: agents 表新增 last_chat_at 字段
     try { store.exec('ALTER TABLE agents ADD COLUMN last_chat_at TEXT'); } catch { /* 已存在 */ }
     manager = new AgentManager(store, agentsDir);
@@ -186,6 +192,103 @@ describe('AgentManager', () => {
     expect(aFromList?.isTeamCoordinator).toBe(true);
     const bFromList = list.find((x) => x.name === '普通 B');
     expect(bFromList?.isTeamCoordinator).toBe(false);
+  });
+
+  // ─── M13 Roster 驱动懒加载：teamWorkflow 持久化 ─────────────
+  it('新建 Agent 默认 teamWorkflow=undefined', async () => {
+    const agent = await manager.createAgent({ name: '工作流默认测试' });
+    const fetched = manager.getAgent(agent.id);
+    expect(fetched!.teamWorkflow).toBeUndefined();
+  });
+
+  it('updateAgent 落盘 teamWorkflow 后能完整读回', async () => {
+    const agent = await manager.createAgent({ name: '工作流落盘测试' });
+    manager.updateAgent(agent.id, {
+      teamWorkflow: {
+        whenToUse: '产品功能/页面/系统类需求',
+        phases: [
+          {
+            name: '需求',
+            roleHints: ['产品经理', 'PM'],
+            expectedArtifactKinds: ['markdown'],
+            description: '产品经理产出 PRD',
+          },
+          {
+            name: '视觉',
+            roleHints: ['UI/UX'],
+            expectedArtifactKinds: ['image', 'file'],
+            description: '出视觉稿',
+          },
+        ],
+        createdAt: '2026-04-28T01:00:00.000Z',
+        approvedBy: 'user-leyi',
+      },
+    });
+    const updated = manager.getAgent(agent.id);
+    expect(updated!.teamWorkflow).toBeDefined();
+    expect(updated!.teamWorkflow!.whenToUse).toBe('产品功能/页面/系统类需求');
+    expect(updated!.teamWorkflow!.phases).toHaveLength(2);
+    expect(updated!.teamWorkflow!.phases[0]).toEqual({
+      name: '需求',
+      roleHints: ['产品经理', 'PM'],
+      expectedArtifactKinds: ['markdown'],
+      description: '产品经理产出 PRD',
+    });
+    expect(updated!.teamWorkflow!.approvedBy).toBe('user-leyi');
+    expect(updated!.teamWorkflow!.createdAt).toBe('2026-04-28T01:00:00.000Z');
+  });
+
+  it('listAgents 返回的 Agent 包含 teamWorkflow 字段', async () => {
+    const a1 = await manager.createAgent({ name: '工作流 A' });
+    await manager.createAgent({ name: '无工作流 B' });
+    manager.updateAgent(a1.id, {
+      teamWorkflow: {
+        whenToUse: 'whatever',
+        phases: [
+          {
+            name: 'x',
+            roleHints: ['x'],
+            expectedArtifactKinds: ['markdown'],
+            description: 'x',
+          },
+        ],
+        createdAt: '2026-04-28T00:00:00.000Z',
+      },
+    });
+
+    const list = manager.listAgents();
+    const aFromList = list.find((x) => x.id === a1.id);
+    expect(aFromList?.teamWorkflow?.whenToUse).toBe('whatever');
+    const bFromList = list.find((x) => x.name === '无工作流 B');
+    expect(bFromList?.teamWorkflow).toBeUndefined();
+  });
+
+  it('updateAgent isTeamCoordinator 与 teamWorkflow 互不干扰', async () => {
+    const agent = await manager.createAgent({ name: '混合测试' });
+    manager.updateAgent(agent.id, {
+      isTeamCoordinator: true,
+      teamWorkflow: {
+        whenToUse: 'x',
+        phases: [
+          {
+            name: 'p',
+            roleHints: ['p'],
+            expectedArtifactKinds: ['markdown'],
+            description: 'p',
+          },
+        ],
+        createdAt: '2026-04-28T00:00:00.000Z',
+      },
+    });
+    const r1 = manager.getAgent(agent.id);
+    expect(r1?.isTeamCoordinator).toBe(true);
+    expect(r1?.teamWorkflow).toBeDefined();
+
+    // 关闭协调者，但保留工作流
+    manager.updateAgent(agent.id, { isTeamCoordinator: false });
+    const r2 = manager.getAgent(agent.id);
+    expect(r2?.isTeamCoordinator).toBe(false);
+    expect(r2?.teamWorkflow?.whenToUse).toBe('x'); // 工作流仍在
   });
 
   it('updateAgent 不存在的 Agent 应该抛出错误', () => {

@@ -23,6 +23,7 @@ import { generateSessionKey } from '../../../routing/session-key.js';
 import type { AgentManager } from '../../agent-manager.js';
 import type { LoopGuard } from '../loop-guard.js';
 import type {
+  ArtifactKind,
   CreatePlanTaskInput,
   CreateTaskPlanArgs,
   GroupSessionKey,
@@ -87,12 +88,35 @@ export interface TaskReadyNotifier {
   }): Promise<void>;
 }
 
+/**
+ * 任务完成广播器（M13 修复 — 解决"先派活后宣告"错位）
+ *
+ * 触发时机：assignee 调 update_task_status('done') → service 在 dispatchReadyTasks 之前
+ * 用 task.assignee.agentId 的身份在群里发一条人话宣告（含 outputSummary + 本任务 artifacts），
+ * 这样下游派活通知出现时，群里已经能看到上游 assignee 自己署名的"完成宣告"。
+ *
+ * 设计要点：
+ *   - 用 assignee 身份发，保留 Agent 人格（emoji + 名字署名）
+ *   - 内容来自 outputSummary（assignee 自己写的人话），不做二次改写
+ *   - 失败 fire-and-forget 不阻塞 dispatchReadyTasks（与 notifier 一致）
+ */
+export interface TaskCompletedAnnouncer {
+  announceTaskCompleted(args: {
+    plan: TaskPlanSnapshot;
+    task: TaskNodeSnapshot;
+    /** assignee 在 update_task_status 工具入参里写的产出摘要（人话） */
+    outputSummary: string;
+  }): Promise<void>;
+}
+
 export interface TaskPlanServiceDeps {
   store: SqliteStore;
   agentManager: AgentManager;
   loopGuard?: LoopGuard;
   /** 任务就绪 → 主动 @ assignee（M13 修复，可选；不注入时退化为旧 system event 模式） */
   taskReadyNotifier?: TaskReadyNotifier;
+  /** 任务完成 → 用 assignee 身份在群里宣告（M13 修复"先派活后宣告"错位，可选） */
+  taskCompletedAnnouncer?: TaskCompletedAnnouncer;
 }
 
 /** 创建 plan 时的辅助上下文（无法塞进 args） */
@@ -119,18 +143,36 @@ export type BoardSink = (
   existingCardId: string | null,
 ) => Promise<{ cardId: string }>;
 
+/** refreshBoard debounce 窗口（300 ms）— 同 plan 在窗口内的多次刷新合并为一次实际触发 */
+export const BOARD_REFRESH_DEBOUNCE_MS = 300;
+
 export class TaskPlanService {
   private store: SqliteStore;
   private agentManager: AgentManager;
   private loopGuard?: LoopGuard;
   private boardSink: BoardSink | null = null;
   private taskReadyNotifier: TaskReadyNotifier | null = null;
+  private taskCompletedAnnouncer: TaskCompletedAnnouncer | null = null;
+  /**
+   * refreshBoard per-plan debounce timers（M13 修复 — 解决"密集状态变化连发多张看板"）
+   *
+   * 同一个 planId 在 BOARD_REFRESH_DEBOUNCE_MS 窗口内的多次刷新只触发最后一次实际发卡。
+   * 典型场景：t1 done 解锁了 t2/t3，UI/UX 和架构师几乎同时调 update_task_status('in_progress')，
+   * 旧逻辑会连发 3 张看板，debounce 后合并成 1 张。
+   *
+   * 注：debounce 是"trailing edge"语义——窗口期内每次新 refresh 都重置 timer，最后一次到点才发。
+   */
+  private boardRefreshTimers = new Map<string, NodeJS.Timeout>();
+  /** 测试可设为 0 关闭 debounce（避免 vitest fake timer 复杂度） */
+  private boardRefreshDebounceMs: number;
 
-  constructor(deps: TaskPlanServiceDeps) {
+  constructor(deps: TaskPlanServiceDeps & { boardRefreshDebounceMs?: number }) {
     this.store = deps.store;
     this.agentManager = deps.agentManager;
     this.loopGuard = deps.loopGuard;
     this.taskReadyNotifier = deps.taskReadyNotifier ?? null;
+    this.taskCompletedAnnouncer = deps.taskCompletedAnnouncer ?? null;
+    this.boardRefreshDebounceMs = deps.boardRefreshDebounceMs ?? BOARD_REFRESH_DEBOUNCE_MS;
   }
 
   /** 注入任务就绪通知器（server.ts 装配，迟到注入兼容旧路径） */
@@ -138,13 +180,45 @@ export class TaskPlanService {
     this.taskReadyNotifier = notifier;
   }
 
+  /** 注入任务完成广播器（server.ts 装配，迟到注入兼容旧路径） */
+  setTaskCompletedAnnouncer(announcer: TaskCompletedAnnouncer): void {
+    this.taskCompletedAnnouncer = announcer;
+  }
+
   /** 注入看板回调（server.ts 装配时调）。未注入时看板不发，service 静默 */
   setBoardSink(sink: BoardSink): void {
     this.boardSink = sink;
   }
 
-  /** 内部：刷新看板，错误吞掉只记日志 */
+  /**
+   * 刷新看板（带 per-plan debounce）
+   *
+   * 调用契约不变：caller 仍 `void this.refreshBoard(planId)` fire-and-forget；
+   * 内部把"立刻发卡"改成"在 BOARD_REFRESH_DEBOUNCE_MS 后发，期间被 reset 则推迟"。
+   * 返回的 Promise 立即 resolve（debounce 安排完即返回），不等真实发送。
+   */
   private async refreshBoard(planId: string): Promise<void> {
+    if (!this.boardSink) return;
+
+    // debounce=0 → 同步走旧逻辑（测试用）
+    if (this.boardRefreshDebounceMs === 0) {
+      await this.doRefreshBoard(planId);
+      return;
+    }
+
+    // 已有 pending → 重置 timer（trailing edge）
+    const pending = this.boardRefreshTimers.get(planId);
+    if (pending) clearTimeout(pending);
+    const timer = setTimeout(() => {
+      this.boardRefreshTimers.delete(planId);
+      // 不 await — 让 timer 回调即时返回，发卡异常已在 doRefreshBoard 内吞掉
+      void this.doRefreshBoard(planId);
+    }, this.boardRefreshDebounceMs);
+    this.boardRefreshTimers.set(planId, timer);
+  }
+
+  /** 内部：实际发卡逻辑（不含 debounce） */
+  private async doRefreshBoard(planId: string): Promise<void> {
     if (!this.boardSink) return;
     const snap = this.getPlanSnapshot(planId);
     if (!snap) return;
@@ -165,6 +239,22 @@ export class TaskPlanService {
       logger.warn(
         `refreshBoard 失败 plan=${planId}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  }
+
+  /**
+   * 优雅关闭：刷新所有 pending board refresh timer
+   *
+   * 调用方：server.ts 优雅关闭路径。让 in-flight 的 debounce timer 立即触发实际发卡，
+   * 避免最后一次状态变更的看板永远不发。
+   */
+  flushPendingBoardRefreshes(): void {
+    const planIds = Array.from(this.boardRefreshTimers.keys());
+    for (const planId of planIds) {
+      const timer = this.boardRefreshTimers.get(planId);
+      if (timer) clearTimeout(timer);
+      this.boardRefreshTimers.delete(planId);
+      void this.doRefreshBoard(planId);
     }
   }
 
@@ -254,12 +344,19 @@ export class TaskPlanService {
     // 插入 tasks
     for (const t of args.tasks) {
       const taskId = crypto.randomUUID();
+      // M13 工作流懒加载：expectedArtifactKinds 落 expected_artifact_kinds 列。
+      // 软约束：未声明 → null；声明空数组也存 null（语义等价"未声明"）
+      const expectedKindsJson =
+        Array.isArray(t.expectedArtifactKinds) && t.expectedArtifactKinds.length > 0
+          ? JSON.stringify(t.expectedArtifactKinds)
+          : null;
       this.store.run(
         `INSERT INTO tasks
          (id, plan_id, local_id, assignee_agent_id, created_by_agent_id,
           title, description, status, depends_on, output_summary, last_note,
-          stale_marker, created_at, started_at, completed_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?, NULL, NULL, ?)`,
+          stale_marker, created_at, started_at, completed_at, updated_at,
+          expected_artifact_kinds)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, NULL, NULL, NULL, ?, NULL, NULL, ?, ?)`,
         taskId,
         planId,
         t.localId,
@@ -270,6 +367,7 @@ export class TaskPlanService {
         JSON.stringify(t.dependsOn ?? []),
         now,
         now,
+        expectedKindsJson,
       );
     }
 
@@ -454,6 +552,12 @@ export class TaskPlanService {
     if (!planSnapshot) return { ok: true, taskId: args.taskId };
 
     if (args.status === 'done') {
+      // M13 修复（"先派活后宣告"错位）：在 dispatchReadyTasks 之前先广播完成宣告，
+      // 用 assignee 身份把 outputSummary 发到群里。这样下游派活通知出现时，
+      // 群里已经能看到上游 assignee 的完成宣告，时序自洽。
+      // fire-and-forget — 失败不阻塞派活主流程
+      this.dispatchTaskCompletedAnnouncement(planSnapshot, updaterAgentId, args.outputSummary);
+
       // 扫下游：检查整个 plan 是否完成
       const allDone = planSnapshot.tasks.every((t) => t.status === 'done' || t.status === 'cancelled');
       if (allDone) {
@@ -560,6 +664,50 @@ export class TaskPlanService {
     if (dispatched === 0) {
       logger.debug(`dispatchReadyTasks plan=${plan.id} 无新就绪任务 (triggered=${triggeredBy})`);
     }
+  }
+
+  /**
+   * 任务完成宣告（M13 修复 — 解决"先派活后宣告"错位）
+   *
+   * 在 dispatchReadyTasks 之前调用。委托给 announcer 用 assignee 身份在群里广播
+   * outputSummary（含 artifact 摘要）。fire-and-forget，失败不阻塞派活。
+   *
+   * outputSummary 为空时跳过——宁可不发，也不发"X 完成了"这种空洞的机械消息
+   * （这种情况下工具层已 fail-fast 拒绝，理论上不会走到这里）。
+   */
+  private dispatchTaskCompletedAnnouncement(
+    plan: TaskPlanSnapshot,
+    assigneeAgentId: string,
+    outputSummary: string | undefined,
+  ): void {
+    if (!this.taskCompletedAnnouncer) {
+      logger.debug(
+        `taskCompletedAnnouncer 未注入，跳过完成宣告 plan=${plan.id} assignee=${assigneeAgentId}`,
+      );
+      return;
+    }
+    const summary = (outputSummary ?? '').trim();
+    if (!summary) {
+      logger.debug(
+        `outputSummary 为空，跳过完成宣告 plan=${plan.id} assignee=${assigneeAgentId}`,
+      );
+      return;
+    }
+    const task = plan.tasks.find((t) => t.assignee.agentId === assigneeAgentId && t.status === 'done');
+    if (!task) {
+      logger.warn(
+        `dispatchTaskCompletedAnnouncement 找不到 done 任务 plan=${plan.id} assignee=${assigneeAgentId}`,
+      );
+      return;
+    }
+    const announcer = this.taskCompletedAnnouncer;
+    announcer
+      .announceTaskCompleted({ plan, task, outputSummary: summary })
+      .catch((err) => {
+        logger.warn(
+          `taskCompletedAnnouncer 未捕获异常 plan=${plan.id} task=${task.localId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
   }
 
   /**
@@ -678,6 +826,23 @@ plan goal: ${plan.goal}
     } catch {
       logger.warn(`task ${row.id} depends_on JSON 解析失败: ${row.depends_on}`);
     }
+    // M13 工作流懒加载：读出 expected_artifact_kinds（可空）
+    let expectedArtifactKinds: ArtifactKind[] | undefined;
+    if (row.expected_artifact_kinds) {
+      try {
+        const parsed = JSON.parse(row.expected_artifact_kinds);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          expectedArtifactKinds = parsed.filter(
+            (x): x is ArtifactKind =>
+              typeof x === 'string' &&
+              (['text', 'markdown', 'image', 'file', 'doc', 'link'] as const).includes(x as ArtifactKind),
+          );
+          if (expectedArtifactKinds.length === 0) expectedArtifactKinds = undefined;
+        }
+      } catch {
+        logger.warn(`task ${row.id} expected_artifact_kinds JSON 解析失败: ${row.expected_artifact_kinds}`);
+      }
+    }
     return {
       id: row.id,
       localId: row.local_id,
@@ -698,6 +863,7 @@ plan goal: ${plan.goal}
         summary: a.summary,
       })),
       staleMarker: row.stale_marker ?? undefined,
+      ...(expectedArtifactKinds ? { expectedArtifactKinds } : {}),
     };
   }
 }

@@ -303,6 +303,7 @@ plan goal: ${plan.goal}
               t.started_at AS task_started_at,
               t.completed_at AS task_completed_at,
               t.updated_at AS task_updated_at,
+              t.expected_artifact_kinds AS task_expected_artifact_kinds,
               p.id AS plan_id_col,
               p.status AS plan_status,
               p.group_session_key AS plan_group_session_key,
@@ -344,6 +345,7 @@ function extractTaskRow(r: Record<string, unknown>): TaskRow {
     started_at: r['task_started_at'] as string | null,
     completed_at: r['task_completed_at'] as string | null,
     updated_at: r['task_updated_at'] as string,
+    expected_artifact_kinds: (r['task_expected_artifact_kinds'] as string | null) ?? null,
   };
 }
 

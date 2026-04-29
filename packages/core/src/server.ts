@@ -1267,6 +1267,84 @@ async function main() {
       },
     });
 
+    // M13 修复（"先派活后宣告"错位）：注入 TaskCompletedAnnouncer —
+    // assignee 调 update_task_status('done') 时，service 在 dispatchReadyTasks 之前
+    // 用 task.assignee.agentId 的身份在群里发"完成宣告"（含 outputSummary + 本任务 artifacts），
+    // 让群成员先看到上游 assignee 自己的宣告，再看到下游派活通知，时序自洽。
+    taskPlanService.setTaskCompletedAnnouncer({
+      announceTaskCompleted: async ({ plan, task, outputSummary }) => {
+        const adapter = teamChannelRegistry.resolve(plan.groupSessionKey);
+        if (!adapter) {
+          log.warn(
+            `[team-mode/announcer] 找不到 channel adapter group=${plan.groupSessionKey} task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 关键差异：用 task.assignee.agentId 作发送 bot（不是 plan owner）
+        // ——这才能让消息显示成"📈 产品经理:" 而不是 "🤖 项目经理:"
+        const senderAgentId = task.assignee.agentId;
+        const assigneeAgent = agentManager.getAgent(senderAgentId);
+        const assigneeName = assigneeAgent?.name ?? task.assignee.name;
+
+        const colonIdx = plan.groupSessionKey.indexOf(':');
+        const chatTypeIdx = plan.groupSessionKey.indexOf(':', colonIdx + 1);
+        const channelPart = plan.groupSessionKey.slice(0, colonIdx);
+        const chatIdPart = plan.groupSessionKey.slice(chatTypeIdx + 1);
+        const senderBindings = bindingRouter.listBindings(senderAgentId)
+          .filter((b) => b.channel === channelPart);
+        const senderAccountId = senderBindings.find((b) => b.isDefault)?.accountId
+          ?? senderBindings[0]?.accountId
+          ?? '';
+        if (!senderAccountId) {
+          log.warn(
+            `[team-mode/announcer] assignee=${senderAgentId}(${assigneeName}) 在 channel=${channelPart} 无 binding，跳过 task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 渲染完成宣告：用 assignee 自己写的 outputSummary 当主体
+        // 头部：✅ + task localId + 标题；尾部：附带本任务的 artifact 列表
+        // M13 cross-app 防御：剥 outputSummary 里的 <at> 标签，避免 LLM 写了跨 app open_id
+        // 触发 99992361。@ 同事的语义在 dispatchReadyTasks → notifier 路径上有正确处理。
+        const { stripFeishuAtTags } = await import('./tools/channel-tools.js');
+        const sanitizedSummary = channelPart === 'feishu'
+          ? stripFeishuAtTags(outputSummary).stripped
+          : outputSummary;
+        const lines: string[] = [];
+        lines.push(`✅ 任务 [${task.localId}] ${task.title} 已完成`);
+        lines.push('');
+        lines.push(sanitizedSummary);
+        if (task.artifacts.length > 0) {
+          lines.push('');
+          lines.push(`📎 产物（${task.artifacts.length} 件）：`);
+          for (const a of task.artifacts) {
+            lines.push(`  - ${a.title} [${a.kind}]`);
+          }
+        }
+        const message = lines.join('\n');
+
+        try {
+          await channelManager.sendMessage(
+            channelPart as import('@evoclaw/shared').ChannelType,
+            senderAccountId,
+            chatIdPart,
+            message,
+            'group',
+          );
+          log.info(
+            `[team-mode/announcer] 完成宣告已发送 plan=${plan.id} task=${task.localId} ` +
+              `from=${senderAgentId}(${assigneeName}) account=${senderAccountId} ` +
+              `bytes=${message.length} artifacts=${task.artifacts.length}`,
+          );
+        } catch (err) {
+          log.warn(
+            `[team-mode/announcer] 完成宣告发送失败 plan=${plan.id} task=${task.localId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    });
+
     teamModeServices = {
       loopGuard,
       peerRosterService,

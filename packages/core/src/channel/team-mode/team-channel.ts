@@ -144,6 +144,14 @@ export interface TaskNodeSnapshot {
   dependsOn: string[]; // local_id 数组
   artifacts: ArtifactSummary[];
   staleMarker?: 'yellow_15min' | 'red_30min';
+  /**
+   * 任务预期产出的 artifact 类型（M13 工作流懒加载，可空）
+   *
+   * 来自 create_task_plan 的入参 expectedArtifactKinds，用于 prompt 里的
+   * <active_plans> 期望/实际对账渲染。空数组 / undefined 表示未声明，
+   * 渲染时不展示对账行（保持 PM-agnostic 场景的中性）。
+   */
+  expectedArtifactKinds?: ArtifactKind[];
 }
 
 /**

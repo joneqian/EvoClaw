@@ -612,13 +612,15 @@ export async function handleChannelMessage(
   // - mention_peer (跨渠道 @ 同事，集成 loop-guard)
   // - create_task_plan / update_task_status / list_tasks / request_clarification
   // - attach_artifact / list_task_artifacts / fetch_artifact
+  // - propose_team_workflow（仅协调者）
   if (chatType === 'group' && deps.taskPlanService && deps.peerRosterService && deps.loopGuard && deps.bindingRouter && deps.artifactService) {
     try {
-      const [{ createTaskPlanTools }, { createMentionPeerTool }, { createArtifactTools }, { teamChannelRegistry }] = await Promise.all([
+      const [{ createTaskPlanTools }, { createMentionPeerTool }, { createArtifactTools }, { teamChannelRegistry }, { createProposeTeamWorkflowTool }] = await Promise.all([
         import('../agent/team-mode/task-plan/tools.js'),
         import('../agent/team-mode/mention-peer-tool.js'),
         import('../agent/team-mode/artifacts/tools.js'),
         import('../agent/team-mode/team-channel-registry.js'),
+        import('../agent/team-mode/team-workflow/index.js'),
       ]);
       const teamTools: ToolDefinition[] = [
         ...createTaskPlanTools(deps.taskPlanService),
@@ -631,6 +633,11 @@ export async function handleChannelMessage(
         }),
         ...createArtifactTools(deps.artifactService),
       ];
+      // M13 Roster 驱动懒加载：propose_team_workflow 仅协调者可见，
+      // 防止非协调者瞎调或被 LLM 误用
+      if (agent.isTeamCoordinator === true) {
+        teamTools.push(createProposeTeamWorkflowTool({ agentManager }));
+      }
       // 自动注入 sessionKey + agentId（防 agent 伪造）
       for (const tt of teamTools) {
         enhancedTools.push({
@@ -725,7 +732,14 @@ export async function handleChannelMessage(
       const myIsCoordinator = agent.isTeamCoordinator === true;
       // 注入条件放宽：只要有 roster **或** 有 active plan 就值得注入
       // （此前 peerRoster=空 直接 skip，会让 PM 二次唤醒时仍看不到 active plan）
-      if (peerRoster.length > 0 || activePlans.length > 0) {
+      // M13 Roster 驱动懒加载：协调者两态注入条件——
+      //   非协调者 → roster/plans 任意非空即注入（保持原行为）
+      //   协调者 → 即使 roster/plans 都空，只要团队里有同事 / 有过 plan / 是协调者本人，
+      //            也要注入以便 bootstrap_required 段提醒 LLM 先 propose_team_workflow。
+      //   实际触发条件：roster 非空（说明确实是多 Agent 群）OR active plan 非空 OR 当前是协调者
+      const shouldInject =
+        peerRoster.length > 0 || activePlans.length > 0 || myIsCoordinator;
+      if (shouldInject) {
         const myOpenTasks = deps.taskPlanService.listOpenTasksForAssignee(agentId, groupSessionKey);
         const { renderTeamModePrompt } = await import('../agent/team-mode/prompt-fragment.js');
         teamModeFragment = renderTeamModePrompt({
@@ -735,6 +749,8 @@ export async function handleChannelMessage(
           activePlans,
           myAgentId: agentId,
           myIsCoordinator,
+          // M13 Roster 驱动懒加载：透传当前 Agent 自己的 teamWorkflow（仅协调者用）
+          ...(agent.teamWorkflow ? { myTeamWorkflow: agent.teamWorkflow } : {}),
           myOpenTasks: myOpenTasks.map((t) => ({
             localId: t.localId,
             title: t.title,
@@ -745,7 +761,7 @@ export async function handleChannelMessage(
         log.debug(
           `[team-mode] prompt 注入 agent=${agentId} group=${peerId} ` +
             `peers=${peerRoster.length} my_tasks=${myOpenTasks.length} active_plans=${activePlans.length} ` +
-            `my_is_coordinator=${myIsCoordinator}`,
+            `my_is_coordinator=${myIsCoordinator} has_team_workflow=${!!agent.teamWorkflow}`,
         );
       }
     } catch (err) {

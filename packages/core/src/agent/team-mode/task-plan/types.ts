@@ -61,6 +61,8 @@ export interface TaskRow {
   started_at: string | null;
   completed_at: string | null;
   updated_at: string;
+  /** M13 工作流懒加载：JSON 字符串数组 ArtifactKind[]；NULL 表示未声明 */
+  expected_artifact_kinds: string | null;
 }
 
 /** task_artifacts 表行 */
@@ -93,6 +95,14 @@ export interface CreatePlanTaskInput {
   assigneeAgentId: string;
   /** 依赖的前置任务 localId（数组，可空） */
   dependsOn?: string[];
+  /**
+   * 任务预期产出哪几类 artifact（M13 — Roster 驱动懒加载）
+   *
+   * 软约束：service 不强校验。但如果 prompt 里有 <workflow_template>，强烈建议
+   * 协调者按 phase.expectedArtifactKinds 填，让下游 LLM 通过 <active_plans> 的
+   * "期望 vs 实际"对账段看出上游产物是否真的交付。
+   */
+  expectedArtifactKinds?: ArtifactKind[];
 }
 
 /** create_task_plan 入参 */

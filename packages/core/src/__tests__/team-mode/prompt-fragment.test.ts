@@ -308,4 +308,208 @@ describe('renderTeamModePrompt', () => {
     expect(result).not.toContain('<my_coordination_role>');
     expect(result).not.toContain('<team_coordinator>');
   });
+
+  // ─── M13 Roster 驱动懒加载 ─────────────────────────────────────
+  describe('M13 工作流懒加载', () => {
+    it('协调者 + teamWorkflow 为空 → 注入 <workflow_bootstrap_required>，禁止直接 createPlan', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理'), makePeer('a-ui', 'UI/UX')],
+        myOpenTasks: [],
+        myIsCoordinator: true,
+        // myTeamWorkflow 不传
+      });
+      expect(result).toContain('<workflow_bootstrap_required>');
+      expect(result).toContain('禁止调 create_task_plan');
+      expect(result).toContain('propose_team_workflow');
+      expect(result).toContain('看 <team_roster>');
+      // 不应同时注入 workflow_template
+      expect(result).not.toContain('<workflow_template>');
+    });
+
+    it('协调者 + teamWorkflow 已设置 → 注入 <workflow_template> 不再注 bootstrap', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理'), makePeer('a-ui', 'UI/UX')],
+        myOpenTasks: [],
+        myIsCoordinator: true,
+        myTeamWorkflow: {
+          whenToUse: '产品功能/页面/系统类需求',
+          phases: [
+            {
+              name: '需求',
+              roleHints: ['产品经理'],
+              expectedArtifactKinds: ['markdown'],
+              description: '产品经理产出 PRD',
+            },
+            {
+              name: '视觉',
+              roleHints: ['UI/UX'],
+              expectedArtifactKinds: ['image', 'file'],
+              description: 'UI/UX 出视觉稿',
+            },
+          ],
+          createdAt: '2026-04-28T01:00:00.000Z',
+        },
+      });
+      expect(result).toContain('<workflow_template>');
+      expect(result).toContain('适用场景：产品功能/页面/系统类需求');
+      expect(result).toContain('1. 需求');
+      expect(result).toContain('角色 [产品经理]');
+      expect(result).toContain('产出 [markdown]');
+      expect(result).toContain('2. 视觉');
+      expect(result).toContain('产出 [image,file]');
+      // bootstrap 已隐去
+      expect(result).not.toContain('<workflow_bootstrap_required>');
+    });
+
+    it('非协调者 → bootstrap 和 template 都不注入（PM-agnostic）', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        myIsCoordinator: false,
+        myTeamWorkflow: {
+          whenToUse: 'should not show',
+          phases: [
+            { name: 'x', roleHints: ['x'], expectedArtifactKinds: ['markdown'], description: 'x' },
+          ],
+          createdAt: '2026-04-28T01:00:00.000Z',
+        },
+      });
+      expect(result).not.toContain('<workflow_bootstrap_required>');
+      expect(result).not.toContain('<workflow_template>');
+    });
+
+    it('teamWorkflow.phases 为空数组 → 视作未设置，注入 bootstrap', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        myIsCoordinator: true,
+        myTeamWorkflow: {
+          whenToUse: 'whatever',
+          phases: [],
+          createdAt: '2026-04-28T01:00:00.000Z',
+        },
+      });
+      expect(result).toContain('<workflow_bootstrap_required>');
+      expect(result).not.toContain('<workflow_template>');
+    });
+
+    it('<active_plans> 渲染期望/实际产物对账（已交付）', () => {
+      const planWithArtifacts = makePlan({
+        tasks: [
+          {
+            id: 'task-1',
+            localId: 't1',
+            title: '撰写 PRD',
+            assignee: { agentId: 'a-prod', name: '产品经理', emoji: '📈' },
+            status: 'done',
+            dependsOn: [],
+            artifacts: [
+              {
+                id: 'art-1',
+                kind: 'markdown',
+                title: 'PRD v1',
+                uri: 'evoclaw-artifact://art-1',
+                summary: 'H5 商城首页 PRD',
+              },
+            ],
+            expectedArtifactKinds: ['markdown'],
+          },
+        ],
+      });
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        activePlans: [planWithArtifacts],
+        myAgentId: 'a-pm',
+      });
+      expect(result).toContain('期望[markdown]');
+      expect(result).toContain('实际[markdown ✅]');
+    });
+
+    it('<active_plans> 渲染期望/实际产物对账（未交付显示 ⏳）', () => {
+      const planMissingArtifact = makePlan({
+        tasks: [
+          {
+            id: 'task-1',
+            localId: 't1',
+            title: '撰写 PRD',
+            assignee: { agentId: 'a-prod', name: '产品经理', emoji: '📈' },
+            status: 'in_progress',
+            dependsOn: [],
+            artifacts: [], // 没产出
+            expectedArtifactKinds: ['markdown', 'doc'],
+          },
+        ],
+      });
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        activePlans: [planMissingArtifact],
+        myAgentId: 'a-pm',
+      });
+      expect(result).toContain('期望[markdown,doc]');
+      expect(result).toContain('实际[markdown ⏳,doc ⏳]');
+    });
+
+    it('<active_plans> 任务未声明 expectedArtifactKinds → task 行不渲染对账段（保持中性）', () => {
+      const planNoExpectations = makePlan(); // makePlan 默认 task 无 expectedArtifactKinds
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        activePlans: [planNoExpectations],
+        myAgentId: 'a-pm',
+      });
+      // task 行（以 "      - t" 开头）不应包含 "期望["
+      // 注：rules 段含 "期望[X]" 作示例文本，不算对账渲染
+      const taskLines = (result ?? '').split('\n').filter((line) => /^\s*-\s+t\d/.test(line));
+      expect(taskLines.length).toBeGreaterThan(0);
+      for (const line of taskLines) {
+        expect(line).not.toMatch(/期望\[[a-z,]+\]/);
+        expect(line).not.toMatch(/实际\[[a-z,✅⏳ ]+\]/);
+      }
+    });
+
+    it('<rules> 含工作流懒加载新增的 attach_artifact 提醒（hasMyOpenTasks）', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [
+          { localId: 't1', title: 'PRD', status: 'in_progress', dependsOn: [] },
+        ],
+      });
+      // M13"先派活后宣告"修复：标准三步 + outputSummary 必填且会被广播
+      expect(result).toMatch(/先调 attach_artifact 落盘产物/);
+      expect(result).toMatch(/再调 update_task_status\('done'/);
+      expect(result).toMatch(/outputSummary 必填且 ≥30 字/);
+      expect(result).toMatch(/以你的身份.*自动发到群里告知所有同事/);
+    });
+
+    it('<rules> 含工作流懒加载的"虚构产物"提醒（hasActivePlans）', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        activePlans: [makePlan()],
+        myAgentId: 'a-pm',
+      });
+      expect(result).toMatch(/期望.*实际.*对账/);
+      expect(result).toMatch(/不要在自己任务描述\/回复里引用那个虚构产物/);
+    });
+  });
 });

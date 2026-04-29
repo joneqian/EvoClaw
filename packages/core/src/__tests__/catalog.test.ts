@@ -61,24 +61,29 @@ describe('catalog: Anthropic', () => {
     expect(lookupModelDefinition('anthropic', 'claude-sonnet-4-6')?.defaultThinkLevel).toBe('adaptive');
   });
 
-  it('4.5 系列默认 high（仅 enabled 固定预算，不支持 adaptive）', () => {
+  it('4.5 系列默认 low（B 层企业默认；不支持 adaptive 走 enabled+budget）', () => {
     const opus45 = lookupModelDefinition('anthropic', 'claude-opus-4-5');
-    expect(opus45?.defaultThinkLevel).toBe('high');
+    expect(opus45?.defaultThinkLevel).toBe('low');
     expect(opus45?.thinkingLevels).not.toContain('adaptive');
-    expect(lookupModelDefinition('anthropic', 'claude-haiku-4-5')?.defaultThinkLevel).toBe('high');
+    expect(lookupModelDefinition('anthropic', 'claude-haiku-4-5')?.defaultThinkLevel).toBe('low');
   });
 });
 
 describe('catalog: OpenAI', () => {
-  it('gpt-5.5 是当前默认旗舰', () => {
+  it('gpt-5.5 是当前默认旗舰，企业默认 low（用户可一键 on 提升到 high）', () => {
     const def = lookupModelDefinition('openai', 'gpt-5.5');
     expect(def?.isDefault).toBe(true);
-    expect(def?.defaultThinkLevel).toBe('high');
+    expect(def?.defaultThinkLevel).toBe('low');
     expect(def?.input).toContain('image');
   });
 
-  it('gpt-5.5-pro 已收录', () => {
-    expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.defaultThinkLevel).toBe('high');
+  it('gpt-5.5-pro 已收录（企业默认 low）', () => {
+    expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.defaultThinkLevel).toBe('low');
+  });
+
+  it('o3 / o4-mini 是纯推理模型，保持默认 high', () => {
+    expect(lookupModelDefinition('openai', 'o3')?.defaultThinkLevel).toBe('high');
+    expect(lookupModelDefinition('openai', 'o4-mini')?.defaultThinkLevel).toBe('high');
   });
 
   it('gpt-4.1 / gpt-4o 系列无 thinking', () => {
@@ -123,17 +128,17 @@ describe('catalog: Qwen', () => {
 });
 
 describe('catalog: 国产 provider 元数据', () => {
-  it('GLM-5.1 是当前默认旗舰', () => {
+  it('GLM-5.1 是当前默认旗舰（企业默认 low）', () => {
     const def = lookupModelDefinition('glm', 'glm-5.1');
     expect(def?.isDefault).toBe(true);
-    expect(def?.defaultThinkLevel).toBe('high');
+    expect(def?.defaultThinkLevel).toBe('low');
     expect(def?.contextWindow).toBe(204_800);
   });
 
-  it('GLM-5 已不是 default 但仍可用', () => {
+  it('GLM-5 已不是 default 但仍可用（企业默认 low）', () => {
     const def = lookupModelDefinition('glm', 'glm-5');
     expect(def?.isDefault).toBeFalsy();
-    expect(def?.defaultThinkLevel).toBe('high');
+    expect(def?.defaultThinkLevel).toBe('low');
   });
 
   it('Kimi K2.6 是当前默认旗舰（编码焦点、二元 thinking、text only）', () => {
@@ -156,18 +161,18 @@ describe('catalog: 国产 provider 元数据', () => {
     expect(def?.defaultThinkLevel).toBe('high');
   });
 
-  it('DeepSeek V4 系列默认 high（1M context, 384K output）', () => {
+  it('DeepSeek V4 系列企业默认 low（1M context, 384K output）', () => {
     const flash = lookupModelDefinition('deepseek', 'deepseek-v4-flash');
-    expect(flash?.defaultThinkLevel).toBe('high');
+    expect(flash?.defaultThinkLevel).toBe('low');
     expect(flash?.contextWindow).toBe(1_000_000);
     expect(flash?.maxOutputLimit).toBe(384_000);
   });
 
-  it('Doubao Seed 2.0 Pro 默认 high', () => {
-    expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.defaultThinkLevel).toBe('high');
+  it('Doubao Seed 2.0 Pro 企业默认 low', () => {
+    expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.defaultThinkLevel).toBe('low');
   });
 
-  it('MiniMax M2.7 默认 high', () => {
-    expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.defaultThinkLevel).toBe('high');
+  it('MiniMax M2.7 企业默认 low', () => {
+    expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.defaultThinkLevel).toBe('low');
   });
 });

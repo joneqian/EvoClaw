@@ -15,7 +15,7 @@ export const bunSSEResponses = new WeakMap<Request, Response>();
 import { AgentManager } from '../agent/agent-manager.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
-import { lookupModelDefinition } from '../provider/extensions/index.js';
+import { resolveModelDefinition } from '../provider/extensions/index.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
@@ -787,8 +787,8 @@ export function createChatRoutes(
       enhancedTools.push(...createScheduleTool({ cronRunner, agentId, sessionKey }));
     }
 
-    // 查 extension 获取模型参数（用于 contextWindow/maxTokens）
-    const modelDef = lookupModelDefinition(provider, modelId);
+    // 查 extension 获取模型参数（用于 contextWindow/maxTokens；forward-compat 回退未注册的新版本）
+    const modelDef = resolveModelDefinition(provider, modelId);
 
     // 子 Agent 工具（需 laneQueue）
     let spawner: SubAgentSpawner | undefined;

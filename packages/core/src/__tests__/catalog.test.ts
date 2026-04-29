@@ -61,7 +61,7 @@ describe('catalog: Anthropic', () => {
     expect(lookupModelDefinition('anthropic', 'claude-sonnet-4-6')?.defaultThinkLevel).toBe('adaptive');
   });
 
-  it('4.5 系列默认 high（仅 enabled 固定预算，不支持 adaptive）', () => {
+  it('4.5 系列默认 high（不支持 adaptive，走 enabled+budget 模式）', () => {
     const opus45 = lookupModelDefinition('anthropic', 'claude-opus-4-5');
     expect(opus45?.defaultThinkLevel).toBe('high');
     expect(opus45?.thinkingLevels).not.toContain('adaptive');
@@ -70,15 +70,20 @@ describe('catalog: Anthropic', () => {
 });
 
 describe('catalog: OpenAI', () => {
-  it('gpt-5.5 是当前默认旗舰', () => {
+  it('gpt-5.5 是当前默认旗舰，默认 high', () => {
     const def = lookupModelDefinition('openai', 'gpt-5.5');
     expect(def?.isDefault).toBe(true);
     expect(def?.defaultThinkLevel).toBe('high');
     expect(def?.input).toContain('image');
   });
 
-  it('gpt-5.5-pro 已收录', () => {
+  it('gpt-5.5-pro 已收录（默认 high）', () => {
     expect(lookupModelDefinition('openai', 'gpt-5.5-pro')?.defaultThinkLevel).toBe('high');
+  });
+
+  it('o3 / o4-mini 是纯推理模型，保持默认 high', () => {
+    expect(lookupModelDefinition('openai', 'o3')?.defaultThinkLevel).toBe('high');
+    expect(lookupModelDefinition('openai', 'o4-mini')?.defaultThinkLevel).toBe('high');
   });
 
   it('gpt-4.1 / gpt-4o 系列无 thinking', () => {
@@ -123,14 +128,14 @@ describe('catalog: Qwen', () => {
 });
 
 describe('catalog: 国产 provider 元数据', () => {
-  it('GLM-5.1 是当前默认旗舰', () => {
+  it('GLM-5.1 是当前默认旗舰（国产策略默认 high）', () => {
     const def = lookupModelDefinition('glm', 'glm-5.1');
     expect(def?.isDefault).toBe(true);
     expect(def?.defaultThinkLevel).toBe('high');
     expect(def?.contextWindow).toBe(204_800);
   });
 
-  it('GLM-5 已不是 default 但仍可用', () => {
+  it('GLM-5 已不是 default 但仍可用（国产策略默认 high）', () => {
     const def = lookupModelDefinition('glm', 'glm-5');
     expect(def?.isDefault).toBeFalsy();
     expect(def?.defaultThinkLevel).toBe('high');
@@ -156,18 +161,22 @@ describe('catalog: 国产 provider 元数据', () => {
     expect(def?.defaultThinkLevel).toBe('high');
   });
 
-  it('DeepSeek V4 系列默认 high（1M context, 384K output）', () => {
+  it('DeepSeek V4 系列：thinkingLevels 仅 off/high/max；EvoClaw 是 Agent 默认 max', () => {
     const flash = lookupModelDefinition('deepseek', 'deepseek-v4-flash');
-    expect(flash?.defaultThinkLevel).toBe('high');
+    expect(flash?.thinkingLevels).toEqual(['off', 'high', 'max']);
+    expect(flash?.defaultThinkLevel).toBe('max');
     expect(flash?.contextWindow).toBe(1_000_000);
     expect(flash?.maxOutputLimit).toBe(384_000);
+
+    const pro = lookupModelDefinition('deepseek', 'deepseek-v4-pro');
+    expect(pro?.defaultThinkLevel).toBe('max');
   });
 
-  it('Doubao Seed 2.0 Pro 默认 high', () => {
+  it('Doubao Seed 2.0 Pro 国产策略默认 high', () => {
     expect(lookupModelDefinition('doubao', 'doubao-seed-2-0-pro')?.defaultThinkLevel).toBe('high');
   });
 
-  it('MiniMax M2.7 默认 high', () => {
+  it('MiniMax M2.7 国产策略默认 high', () => {
     expect(lookupModelDefinition('minimax', 'MiniMax-M2.7')?.defaultThinkLevel).toBe('high');
   });
 });

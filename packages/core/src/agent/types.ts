@@ -23,7 +23,7 @@ export interface AgentRunConfig {
   agent: AgentConfig;
   systemPrompt: string;
   workspaceFiles: Record<string, string>;
-  /** Agent 工作目录 (cwd) — 工具执行和 PI session 的工作目录 */
+  /** Agent 工作目录 (cwd) — 工具执行和 runner 的工作目录 */
   workspacePath?: string;
   modelId: string;
   provider: string;
@@ -89,6 +89,35 @@ export interface AgentRunConfig {
     /** MIME 类型；缺失时从扩展名推断 */
     mimeType?: string;
   }>;
+  /**
+   * 本轮入站消息是否来自 peer Agent（M13 多 Agent 协作）
+   *
+   * channel-message-handler 在 ctx.fromPeerOpenId 非空时设为 true。
+   * embedded-runner-prompt 据此条件化 NO_REPLY 规则——peer @ 允许 NO_REPLY，
+   * 解决 reply-to 协议兜底导致的"被反复触发回'嗯好的'"噪音。
+   *
+   * 默认 false（即 user @）—— 保持向后兼容，user 入站走"@ 必回"严格规则。
+   */
+  inboundFromPeer?: boolean;
+
+  /**
+   * 任务超时收尾回调（M13 重构 — runner 超时责任链）
+   *
+   * 当 runner idle / wallclock 撞墙时调用此函数，传入 sessionKey + 超时类型，
+   * 期望实现：
+   *   1. 解析 sessionKey 找到当前 assignee 名下 in_progress 任务
+   *   2. 调 TaskPlanService.updateTaskStatus(taskId, 'blocked', { note: 'runner ${kind} 超时' })
+   *   3. 返回更新过的任务列表（仅供 logger）
+   *
+   * 非团队模式或无 active 任务返回空数组即可。失败抛错由 attempt 自身吞掉，
+   * 不影响主超时返回。
+   *
+   * 装配位置：`server.ts` 装配 channelMessageHandlerCtx 时把 finalizer 注入进来。
+   */
+  taskTimeoutFinalizer?: (
+    sessionKey: string,
+    kind: 'idle' | 'wallclock',
+  ) => Array<{ taskId: string; localId: string }>;
 }
 
 // ─── 单次执行结果 ───

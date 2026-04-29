@@ -52,4 +52,20 @@ export interface ChannelMessage {
    * adapter 根据 broadcast 配置在 inbound 时决定。未设置时走正常 binding 路径。
    */
   broadcastTargets?: string[];
+  /**
+   * peer @ 来源信息（M13 多 Agent 协作 — 兜底 @ 回提问者）
+   *
+   * 当本条入站消息是**同事 Agent 通过 mention_peer @ 我**时，由 adapter 在 inbound
+   * 分类（kind === 'peer'）阶段填充：
+   *   - peerAgentId: 提问者的 EvoClaw Agent ID
+   *   - peerOpenId: 提问者 bot 的 open_id（飞书等渠道 @ 用）
+   *
+   * channel-message-handler 在发主回复前用它做兜底：若 LLM 主回复正文里没有任何
+   * `<at user_id="ou_..."/>` 标记，则前缀注入 `<at user_id="${peerOpenId}"/>`，确保
+   * 提问者 bot 收到推送、对话链不断。
+   *
+   * 非 peer 消息（用户消息 / 单聊 / 非 mention）不填，handler 兜底逻辑直接跳过。
+   */
+  fromPeerAgentId?: string;
+  fromPeerOpenId?: string;
 }

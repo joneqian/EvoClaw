@@ -2,11 +2,17 @@
  * 工具安全机制 — 循环检测 + 结果截断
  * 参考 OpenClaw tool-loop-detection.ts + tool-result-truncation.ts
  *
- * 循环检测（4 种模式）:
+ * 循环检测（3 种真模式 + 1 个绝对上限）:
  * - 重复模式: 同一工具+相同参数连续调用 N 次
  * - 无进展模式: 同一工具返回相同结果（参考 OpenClaw known_poll_no_progress）
  * - 乒乓模式: 两个工具交替调用
- * - 全局熔断: 单次会话工具调用总数超过阈值
+ * - 绝对上限（hard cap）: 单 turn 工具调用 > runawayHardCap（默认 500）才中断；
+ *     用于防真死循环跑死 sidecar/吃光 token。日常工程任务（codegen 多文件、
+ *     长 bash 链）远到不了；只有真死循环才能堆这么高
+ *
+ * 注（M13 修复）：原 circuitBreakerThreshold=30 已退役 —— 把"正常推进"和"循环"
+ * 一刀切是误伤（前端建项目要 10-20 次 write，30 太低）。真循环由前 3 种模式抓，
+ * 兜底由 hard cap + query-loop 的 maxTurns 限制。
  *
  * 结果截断（头尾保留策略，参考 OpenClaw tool-result-truncation.ts）:
  * - 保留头部 70% + 尾部 30%（尾部常含错误信息）
@@ -29,8 +35,17 @@ export interface ToolSafetyConfig {
   noProgressThreshold?: number;
   /** 乒乓检测阈值（两工具交替 N 次触发） */
   pingPongThreshold?: number;
-  /** 全局熔断阈值 */
-  circuitBreakerThreshold?: number;
+  /**
+   * 绝对上限（防真死循环跑死 sidecar / 吃光 token）
+   *
+   * 单 turn 工具调用数硬天花板。复杂工程任务（codegen 多文件、长 bash 链）
+   * 通常 10-50 次内能完成，500 是给真·死循环留的兜底。一旦撞上说明 LLM
+   * 已彻底失控，应当中断 turn。
+   *
+   * 注（M13 修复）：替代原 circuitBreakerThreshold=30 的全局熔断
+   *   —— 30 把"正常推进"也一刀切，误伤工程任务
+   */
+  runawayHardCap?: number;
   /** 结果截断字符数（默认 50000） */
   maxResultLength?: number;
 }
@@ -62,20 +77,22 @@ export class ToolSafetyGuard {
   private readonly repeatThreshold: number;
   private readonly noProgressThreshold: number;
   private readonly pingPongThreshold: number;
-  private readonly circuitBreakerThreshold: number;
+  private readonly runawayHardCap: number;
   private readonly maxResultLength: number;
 
   constructor(config?: ToolSafetyConfig) {
     this.repeatThreshold = config?.repeatThreshold ?? 5;
     this.noProgressThreshold = config?.noProgressThreshold ?? 3;
     this.pingPongThreshold = config?.pingPongThreshold ?? 4;
-    this.circuitBreakerThreshold = config?.circuitBreakerThreshold ?? 30;
+    this.runawayHardCap = config?.runawayHardCap ?? 500;
     this.maxResultLength = config?.maxResultLength ?? 50_000;
   }
 
   /**
    * 记录工具调用并检测循环
    * 在工具执行前调用，返回是否应阻止执行
+   *
+   * 检测顺序：先抓真循环（重复 / 乒乓 — O(1)），最后撞绝对上限（真死循环兜底）
    */
   checkBeforeExecution(toolName: string, args: Record<string, unknown>): LoopDetectionResult {
     this.totalCalls++;
@@ -83,21 +100,21 @@ export class ToolSafetyGuard {
     const call: ToolCall = { name: toolName, argsHash, timestamp: Date.now() };
     this.calls.push(call);
 
-    // 全局熔断
-    if (this.totalCalls > this.circuitBreakerThreshold) {
-      return {
-        blocked: true,
-        reason: `工具调用次数已达熔断阈值（${this.circuitBreakerThreshold} 次）。请检查是否陷入了死循环。`,
-      };
-    }
-
-    // 重复模式检测
+    // 重复模式检测（同一工具+参数连续 N 次）
     const repeatResult = this.detectRepeat(toolName, argsHash);
     if (repeatResult.blocked) return repeatResult;
 
-    // 乒乓模式检测
+    // 乒乓模式检测（两工具交替 N 次）
     const pingPongResult = this.detectPingPong();
     if (pingPongResult.blocked) return pingPongResult;
+
+    // 绝对上限兜底（防真死循环跑死 sidecar）—— 默认 500，正常工程任务远达不到
+    if (this.totalCalls > this.runawayHardCap) {
+      return {
+        blocked: true,
+        reason: `工具调用已达绝对上限（${this.runawayHardCap} 次）。这通常意味着进入了未识别的循环；请改用 update_task_status('needs_help') 或 update_task_status('blocked') 上报阻塞，让责任链兜底处理。`,
+      };
+    }
 
     return { blocked: false };
   }

@@ -47,6 +47,28 @@ vi.mock('../../agent/embedded-runner-errors.js', () => ({
 const mockSmartTimeout = { clear: vi.fn(), timedOut: false, timedOutDuringCompaction: false };
 vi.mock('../../agent/embedded-runner-timeout.js', () => ({
   createSmartTimeout: vi.fn().mockReturnValue(mockSmartTimeout),
+  RUNNER_WALLCLOCK_MS: 1_800_000,
+  RUNNER_WALLCLOCK_WARNING_RATIO: 0.75,
+}));
+
+// IdleWatchdog mock — 不真的启动定时器；timedOut 标志可被测试翻转
+const mockIdleWatchdog = {
+  start: vi.fn(),
+  touch: vi.fn(),
+  stop: vi.fn(),
+  pause: vi.fn(),
+  resume: vi.fn(),
+  timedOut: false as boolean,
+};
+vi.mock('../../agent/kernel/idle-watchdog.js', () => ({
+  IdleWatchdog: class MockIdleWatchdog {
+    start = mockIdleWatchdog.start;
+    touch = mockIdleWatchdog.touch;
+    stop = mockIdleWatchdog.stop;
+    pause = mockIdleWatchdog.pause;
+    resume = mockIdleWatchdog.resume;
+    get timedOut() { return mockIdleWatchdog.timedOut; }
+  },
 }));
 
 vi.mock('../../agent/memory-flush.js', () => ({
@@ -139,6 +161,12 @@ beforeEach(() => {
   mockSmartTimeout.timedOut = false;
   mockSmartTimeout.timedOutDuringCompaction = false;
   mockSmartTimeout.clear.mockClear();
+  mockIdleWatchdog.timedOut = false;
+  mockIdleWatchdog.start.mockClear();
+  mockIdleWatchdog.touch.mockClear();
+  mockIdleWatchdog.stop.mockClear();
+  mockIdleWatchdog.pause.mockClear();
+  mockIdleWatchdog.resume.mockClear();
   mockClassifyError.mockReturnValue({ type: 'unknown', message: 'unknown error' });
   mockIsAbortError.mockReturnValue(false);
 
@@ -283,7 +311,7 @@ describe('错误分类', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('超时', () => {
-  it('smartTimeout 触发 → timedOut=true', async () => {
+  it('wallclock 超时（smartTimeout）→ timedOut=true，error 含 wallclock', async () => {
     mockSmartTimeout.timedOut = true;
     mockQueryLoop.mockRejectedValue(new Error('timeout'));
 
@@ -291,6 +319,20 @@ describe('超时', () => {
 
     expect(result.success).toBe(false);
     expect(result.timedOut).toBe(true);
+    expect(result.errorType).toBe('timeout');
+    expect(result.error).toContain('wallclock');
+  });
+
+  it('idle 超时（idleWatchdog）→ timedOut=true，error 含 idle', async () => {
+    mockIdleWatchdog.timedOut = true;
+    mockQueryLoop.mockRejectedValue(new Error('idle timeout'));
+
+    const result = await runSingleAttempt(makeParams());
+
+    expect(result.success).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.errorType).toBe('timeout');
+    expect(result.error).toContain('idle');
   });
 
   it('超时时 messagesSnapshot 仍然返回', async () => {
@@ -302,6 +344,57 @@ describe('超时', () => {
     expect(result.timedOut).toBe(true);
     expect(result.messagesSnapshot).toBeDefined();
   });
+
+  it('成功路径下 idleWatchdog.start / stop 都被调', async () => {
+    await runSingleAttempt(makeParams());
+    expect(mockIdleWatchdog.start).toHaveBeenCalled();
+    expect(mockIdleWatchdog.stop).toHaveBeenCalled();
+  });
+
+  it('idle 超时 + taskTimeoutFinalizer 配置 → finalizer 被调，传入 idle kind', async () => {
+    mockIdleWatchdog.timedOut = true;
+    mockQueryLoop.mockRejectedValue(new Error('idle timeout'));
+
+    const finalizer = vi.fn().mockReturnValue([{ taskId: 't-uuid', localId: 't1' }]);
+    const result = await runSingleAttempt(makeParams({
+      config: makeConfig({
+        sessionKey: 'agent:a-prod:feishu:group:oc_x',
+        taskTimeoutFinalizer: finalizer,
+      }),
+    }));
+
+    expect(result.timedOut).toBe(true);
+    expect(finalizer).toHaveBeenCalledWith('agent:a-prod:feishu:group:oc_x', 'idle');
+  });
+
+  it('finalizer 抛错 → 主流程仍返回 timeout 结果', async () => {
+    mockSmartTimeout.timedOut = true;
+    mockQueryLoop.mockRejectedValue(new Error('timeout'));
+
+    const finalizer = vi.fn(() => { throw new Error('finalizer 失败'); });
+    const result = await runSingleAttempt(makeParams({
+      config: makeConfig({
+        sessionKey: 'agent:a-prod:feishu:group:oc_x',
+        taskTimeoutFinalizer: finalizer,
+      }),
+    }));
+
+    expect(result.timedOut).toBe(true);
+    expect(finalizer).toHaveBeenCalled();
+  });
+
+  it('无 sessionKey 或无 finalizer → 跳过 finalizer 调用', async () => {
+    mockIdleWatchdog.timedOut = true;
+    mockQueryLoop.mockRejectedValue(new Error('idle timeout'));
+
+    const finalizer = vi.fn();
+    const result = await runSingleAttempt(makeParams({
+      config: makeConfig({ taskTimeoutFinalizer: finalizer }),  // 没传 sessionKey
+    }));
+
+    expect(result.timedOut).toBe(true);
+    expect(finalizer).not.toHaveBeenCalled();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -309,15 +402,17 @@ describe('超时', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('Finally 清理', () => {
-  it('成功时 smartTimeout.clear 被调用', async () => {
+  it('成功时 smartTimeout.clear + idleWatchdog.stop 都被调用', async () => {
     await runSingleAttempt(makeParams());
     expect(mockSmartTimeout.clear).toHaveBeenCalled();
+    expect(mockIdleWatchdog.stop).toHaveBeenCalled();
   });
 
-  it('错误时 smartTimeout.clear 仍被调用', async () => {
+  it('错误时 smartTimeout.clear + idleWatchdog.stop 仍被调用', async () => {
     mockQueryLoop.mockRejectedValue(new Error('fail'));
     await runSingleAttempt(makeParams());
     expect(mockSmartTimeout.clear).toHaveBeenCalled();
+    expect(mockIdleWatchdog.stop).toHaveBeenCalled();
   });
 });
 

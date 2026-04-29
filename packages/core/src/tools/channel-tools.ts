@@ -28,6 +28,66 @@ export interface ChannelTool {
 }
 
 /**
+ * 剥掉飞书 `<at user_id="...">名字</at>` 标签，留下 "@名字"（M13 cross-app 修复）
+ *
+ * 背景：飞书 open_id 是 app-scoped 的——LLM 在 feishu_send / feishu_card content
+ * 里写 `<at user_id="ou_xxx">名字</at>`，如果 ou_xxx 是从其他 viewer App 视角学来的，
+ * 通过自己的 App 发送时会触发 99992361 "open_id cross app" 错误。
+ *
+ * @ 同事**必须用 mention_peer 工具**，工具内部走 peer-bot-registry 拿对的 viewer
+ * 视角 open_id。feishu_send / feishu_card 里的 `<at>` 标签全部剥成纯文本 @ 兜底。
+ *
+ * 处理规则：
+ *   - `<at user_id="ou_xxx">名字</at>`            → `@名字`
+ *   - `<at user_id="ou_xxx">名字</at>` (无 text)  → `@`（保留语义提示）
+ *   - `<at user_id="all"></at>`                   → `@所有人`
+ *   - 自闭合 `<at user_id="..."/>`                → ``（移除）
+ */
+export function stripFeishuAtTags(content: string): { stripped: string; removed: number } {
+  if (!content) return { stripped: content, removed: 0 };
+  let removed = 0;
+  // 1. <at user_id="all"></at> → @所有人
+  let out = content.replace(/<at\s+user_id\s*=\s*["']all["']\s*>\s*<\/at>/gi, () => {
+    removed++;
+    return '@所有人';
+  });
+  // 2. <at user_id="..."/>（自闭合无文本）→ 移除
+  out = out.replace(/<at\s+user_id\s*=\s*["'][^"']*["']\s*\/>/gi, () => {
+    removed++;
+    return '';
+  });
+  // 3. <at user_id="...">文本</at> → @文本
+  out = out.replace(/<at\s+user_id\s*=\s*["'][^"']*["']\s*>([^<]*)<\/at>/gi, (_, text: string) => {
+    removed++;
+    return text.trim() ? `@${text.trim()}` : '@';
+  });
+  return { stripped: out, removed };
+}
+
+/** 检测错误是否为飞书 99992361 cross-app open_id（深翻 cause 链） */
+function isCrossAppOpenIdError(err: unknown): boolean {
+  if (err === null || err === undefined) return false;
+  const candidates: unknown[] = [err];
+  // 沿 cause 链 + AxiosError.response.data 翻
+  for (let i = 0; i < 5 && candidates.length > 0; i++) {
+    const next = candidates.shift();
+    if (next === null || typeof next !== 'object') continue;
+    const obj = next as Record<string, unknown>;
+    if (obj['code'] === 99992361) return true;
+    const msg = obj['msg'];
+    if (typeof msg === 'string' && msg.toLowerCase().includes('open_id cross app')) return true;
+    const message = obj['message'];
+    if (typeof message === 'string' && message.toLowerCase().includes('open_id cross app')) return true;
+    if (obj['cause']) candidates.push(obj['cause']);
+    const response = obj['response'] as Record<string, unknown> | undefined;
+    if (response && typeof response === 'object') {
+      candidates.push(response['data']);
+    }
+  }
+  return false;
+}
+
+/**
  * 根据 agentId 反查 binding 表定位对应的飞书 accountId + adapter
  *
  * 绑定语义：Agent ↔ 飞书应用 **1:1**（产品约束），所以 agentId + channel='feishu'
@@ -111,8 +171,24 @@ export function createChannelTools(
         const chatType = (params['chatType'] as 'private' | 'group') ?? 'private';
         if (!peerId || !content) return '错误：缺少 peerId 或 content';
         const { accountId } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
-        await channelManager.sendMessage('feishu', accountId, peerId, content, chatType);
-        return `已发送到飞书 ${peerId}`;
+        // M13 cross-app 修复：99992361 自愈——LLM 在 content 里写了跨 app open_id 的 <at> 标签时，
+        // 剥成纯文本 @ 重试一次，并把告警内容返回给 LLM 让它下次用 mention_peer
+        try {
+          await channelManager.sendMessage('feishu', accountId, peerId, content, chatType);
+          return `已发送到飞书 ${peerId}`;
+        } catch (err) {
+          if (!isCrossAppOpenIdError(err)) throw err;
+          const { stripped, removed } = stripFeishuAtTags(content);
+          if (removed === 0) {
+            // content 里没 <at> 标签但还报 cross-app（极罕见）— 让错误冒上去
+            throw err;
+          }
+          await channelManager.sendMessage('feishu', accountId, peerId, stripped, chatType);
+          return (
+            `已发送到飞书 ${peerId}（自动剥除 ${removed} 个跨 app <at> 标签）。` +
+            '⚠️ 下次 @ 同事请用 mention_peer 工具——feishu_send 的 content 里写 <at user_id="..."> 会跨 app 失败。'
+          );
+        }
       },
     });
 
@@ -133,8 +209,21 @@ export function createChannelTools(
         const agentId = params['agentId'] as string | undefined;
         if (!peerId || !card) return '错误：缺少 peerId 或 card';
         const { accountId } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
-        await channelManager.sendMessage('feishu', accountId, peerId, card);
-        return `已发送飞书卡片到 ${peerId}`;
+        // M13 cross-app 修复：99992361 自愈（同 feishu_send）。card 是 JSON 字符串，
+        // <at> 标签可能嵌在 markdown 字段里，用 regex 剥同样有效（只命中 <at user_id="..."> 形式）。
+        try {
+          await channelManager.sendMessage('feishu', accountId, peerId, card);
+          return `已发送飞书卡片到 ${peerId}`;
+        } catch (err) {
+          if (!isCrossAppOpenIdError(err)) throw err;
+          const { stripped, removed } = stripFeishuAtTags(card);
+          if (removed === 0) throw err;
+          await channelManager.sendMessage('feishu', accountId, peerId, stripped);
+          return (
+            `已发送飞书卡片到 ${peerId}（自动剥除 ${removed} 个跨 app <at> 标签）。` +
+            '⚠️ 下次 @ 同事请用 mention_peer 工具——feishu_card 的 card content 里写 <at user_id="..."> 会跨 app 失败。'
+          );
+        }
       },
     });
 

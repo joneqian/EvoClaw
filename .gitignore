@@ -141,3 +141,6 @@ apps/desktop/public/brand-icon.png
 apps/desktop/index.html
 apps/desktop/src/index.css
 
+# brand-apply 的最近一次品牌标记（切换品牌时用于 invalidate turbo cache）
+.brand-applied
+

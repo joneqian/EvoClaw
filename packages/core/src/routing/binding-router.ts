@@ -1,4 +1,7 @@
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('binding-router');
 
 /** Binding 记录 */
 export interface Binding {
@@ -10,6 +13,14 @@ export interface Binding {
   priority: number;         // 匹配优先级（越高越优先）
   isDefault: boolean;       // 是否为默认 Agent
   createdAt: string;
+  /**
+   * Bot 自身在该渠道的"用户身份"标识（M13 多 Agent 团队协作）
+   *
+   * 飞书：`open_id`（ou_xxx），用于跨 bot @ 的真·原生 mention 元素 `<at user_id="ou_xxx"/>`。
+   * 在 channel.connect 成功后由 adapter 拉 /open-apis/bot/v3/info 写回。
+   * 其它渠道按需扩展（slack→user_id、企微→userid）。
+   */
+  botOpenId: string | null;
 }
 
 /** 渠道消息（用于匹配） */
@@ -27,13 +38,14 @@ export class BindingRouter {
   constructor(private db: SqliteStore) {}
 
   /** 添加 Binding */
-  addBinding(binding: Omit<Binding, 'id' | 'createdAt'>): string {
+  addBinding(binding: Omit<Binding, 'id' | 'createdAt' | 'botOpenId'> & { botOpenId?: string | null }): string {
     const id = crypto.randomUUID();
     this.db.run(
-      `INSERT INTO bindings (id, agent_id, channel, account_id, peer_id, priority, is_default, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO bindings (id, agent_id, channel, account_id, peer_id, priority, is_default, bot_open_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       id, binding.agentId, binding.channel, binding.accountId ?? null,
       binding.peerId ?? null, binding.priority, binding.isDefault ? 1 : 0,
+      binding.botOpenId ?? null,
     );
     return id;
   }
@@ -41,6 +53,33 @@ export class BindingRouter {
   /** 移除 Binding */
   removeBinding(id: string): void {
     this.db.run('DELETE FROM bindings WHERE id = ?', id);
+  }
+
+  /**
+   * 写入 / 刷新某个 binding 的 bot_open_id（M13 @ 死锁修复）
+   *
+   * 触发：飞书 channel connect 成功后 server.ts 拉到 botOpenId → 调本方法回填。
+   * 影响范围：(channel, accountId) 全匹配的所有行（同 accountId 一般只对应一个 agent，
+   * 但保险起见 UPDATE 而不是只改一行）。
+   */
+  setBotOpenId(channel: string, accountId: string, botOpenId: string | null): number {
+    const result = this.db.run(
+      `UPDATE bindings SET bot_open_id = ? WHERE channel = ? AND account_id = ?`,
+      botOpenId, channel, accountId,
+    );
+    const changes = result.changes ?? 0;
+    if (changes > 0) {
+      log.info(
+        `bot_open_id 已写入 channel=${channel} accountId=${accountId} ` +
+          `botOpenId=${botOpenId ?? '(null)'} affected=${changes}`,
+      );
+    } else {
+      log.debug(
+        `bot_open_id 写入未命中 binding channel=${channel} accountId=${accountId} ` +
+          `（可能尚未创建该账号对应的 binding）`,
+      );
+    }
+    return changes;
   }
 
   /** 列出所有 Bindings */
@@ -105,5 +144,6 @@ function rowToBinding(row: Record<string, unknown>): Binding {
     priority: row['priority'] as number,
     isDefault: (row['is_default'] as number) === 1,
     createdAt: row['created_at'] as string,
+    botOpenId: (row['bot_open_id'] as string | null) ?? null,
   };
 }

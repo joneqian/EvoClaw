@@ -36,23 +36,38 @@ describe('ToolSafetyGuard', () => {
       expect(result.reason).toContain('乒乓');
     });
 
-    it('全局熔断: 超过阈值应阻止', () => {
-      const guard = new ToolSafetyGuard({ circuitBreakerThreshold: 5 });
+    // M13 修复：原 circuitBreakerThreshold=30 退役，改为 runawayHardCap=500（默认）
+    it('绝对上限: 超过 runawayHardCap 应阻止（兜底真死循环）', () => {
+      const guard = new ToolSafetyGuard({ runawayHardCap: 5 });
       for (let i = 0; i < 5; i++) {
         guard.checkBeforeExecution(`tool${i}`, { i });
       }
       const result = guard.checkBeforeExecution('another', {});
       expect(result.blocked).toBe(true);
-      expect(result.reason).toContain('熔断');
+      expect(result.reason).toContain('绝对上限');
+      expect(result.reason).toContain('update_task_status'); // 引导上报
     });
 
-    it('默认熔断阈值为 30', () => {
+    it('40 次正常推进的工具调用不再被阻止（之前 30 次熔断已退役）', () => {
       const guard = new ToolSafetyGuard();
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 40; i++) {
+        const result = guard.checkBeforeExecution(`tool${i}`, { i });
+        expect(result.blocked).toBe(false);
+      }
+    });
+
+    it('默认 runawayHardCap 为 500', () => {
+      const guard = new ToolSafetyGuard();
+      // 499 次都应放行
+      for (let i = 0; i < 499; i++) {
         guard.checkBeforeExecution(`tool${i}`, { i });
       }
-      const result = guard.checkBeforeExecution('overflow', {});
-      expect(result.blocked).toBe(true);
+      // 第 500 次仍放行（>500 才阻）
+      const at500 = guard.checkBeforeExecution('tool499b', {});
+      expect(at500.blocked).toBe(false);
+      // 第 501 次应阻止
+      const overflow = guard.checkBeforeExecution('overflow', {});
+      expect(overflow.blocked).toBe(true);
     });
   });
 

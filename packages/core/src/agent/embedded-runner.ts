@@ -4,7 +4,7 @@
  * 架构：
  *   embedded-runner.ts (入口)
  *   └─ embedded-runner-loop.ts (外层重试循环 + Provider Failover)
- *      └─ embedded-runner-attempt.ts (单次 PI session.prompt())
+ *      └─ embedded-runner-attempt.ts (单次 query-loop 调用)
  *
  * 辅助模块：
  *   - embedded-runner-errors.ts — 错误分类器

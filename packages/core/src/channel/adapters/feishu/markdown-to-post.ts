@@ -12,9 +12,11 @@
 
 /** Post 元素（对应 post-to-text 的 PostElement 子集） */
 export interface PostBuilderElement {
-  tag: 'text' | 'a' | 'code_block' | 'md';
+  tag: 'text' | 'a' | 'code_block' | 'md' | 'at';
   text?: string;
   href?: string;
+  /** at 元素：被 @ 用户 / bot 的 open_id；'all' = @所有人（飞书规范） */
+  user_id?: string;
   /** 飞书 Post 支持：'bold' / 'italic' / 'underline' / 'lineThrough' */
   style?: Array<'bold' | 'italic' | 'underline' | 'lineThrough'>;
 }
@@ -30,8 +32,11 @@ export interface PostBuilderPayload {
 
 const CODE_FENCE = /^```([\w+-]*)\s*$/;
 
-/** 判断字符串是否"看起来像 Markdown"，不确定时也当成 Markdown 走富文本 */
-const MARKDOWN_HINT_RE = /(\*\*|__|`|~~|^\s*[-*+]\s|^\s*\d+\.\s|^\s*#{1,6}\s|^\s*>|\[[^\]]+\]\()/m;
+/** 判断字符串是否"看起来像 Markdown"，不确定时也当成 Markdown 走富文本
+ *
+ * 含 `<at user_id="..."/>` 也走 markdown 路径，否则被当作纯文本发出去会失去真·@ 效果
+ */
+const MARKDOWN_HINT_RE = /(\*\*|__|`|~~|^\s*[-*+]\s|^\s*\d+\.\s|^\s*#{1,6}\s|^\s*>|\[[^\]]+\]\(|<at\s+user_id\s*=)/m;
 
 export function looksLikeMarkdown(text: string): boolean {
   return MARKDOWN_HINT_RE.test(text);
@@ -91,16 +96,37 @@ function parseInlineMarkdown(line: string): PostBuilderRow {
   if (!line) return [{ tag: 'text', text: '' }];
 
   const out: PostBuilderRow = [];
+  // 先识别飞书 at 元素：<at user_id="ou_xxx"/> 或 <at user_id="ou_xxx"></at>
+  // user_id="all" 表示 @所有人
+  // 必须先于链接解析，避免被当成纯文本带过去
+  const atRe = /<at\s+user_id\s*=\s*"([^"]+)"\s*\/?>(?:<\/at>)?/g;
   const linkRe = /\[([^\]]+)\]\(([^)]+)\)/g;
   let lastIdx = 0;
-  let match: RegExpExecArray | null;
 
-  while ((match = linkRe.exec(line)) !== null) {
-    if (match.index > lastIdx) {
-      out.push(...splitByInlineCode(line.slice(lastIdx, match.index)));
+  // 收集所有 at 和 link 的 match，按位置排序统一处理
+  type Marker =
+    | { kind: 'at'; start: number; end: number; userId: string }
+    | { kind: 'link'; start: number; end: number; text: string; href: string };
+  const markers: Marker[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = atRe.exec(line)) !== null) {
+    markers.push({ kind: 'at', start: m.index, end: m.index + m[0].length, userId: m[1]! });
+  }
+  while ((m = linkRe.exec(line)) !== null) {
+    markers.push({ kind: 'link', start: m.index, end: m.index + m[0].length, text: m[1]!, href: m[2]! });
+  }
+  markers.sort((a, b) => a.start - b.start);
+
+  for (const mk of markers) {
+    if (mk.start > lastIdx) {
+      out.push(...splitByInlineCode(line.slice(lastIdx, mk.start)));
     }
-    out.push({ tag: 'a', text: match[1]!, href: match[2]! });
-    lastIdx = match.index + match[0].length;
+    if (mk.kind === 'at') {
+      out.push({ tag: 'at', user_id: mk.userId });
+    } else {
+      out.push({ tag: 'a', text: mk.text, href: mk.href });
+    }
+    lastIdx = mk.end;
   }
   if (lastIdx < line.length) {
     out.push(...splitByInlineCode(line.slice(lastIdx)));

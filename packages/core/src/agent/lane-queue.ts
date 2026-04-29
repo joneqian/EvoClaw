@@ -57,7 +57,7 @@ export class LaneQueue {
         reject,
         abortController: options.abortController ?? new AbortController(),
         enqueuedAt: Date.now(),
-        timeoutMs: options.timeoutMs ?? 600_000,
+        timeoutMs: options.timeoutMs ?? 0, // 0 = 不超时；超时由 attempt 内的 IdleWatchdog + Wallclock 唯一负责（M13 重构）
       };
       this.queues.get(options.lane)!.push(item);
       this.drain(options.lane);
@@ -113,20 +113,22 @@ export class LaneQueue {
       this.runningKeys.set(item.sessionKey, item.id);
       this.runningItems.set(item.sessionKey, item);
 
-      // 设置超时
-      const timer = setTimeout(() => {
-        item.abortController.abort();
-        item.reject(new Error(`Task ${item.id} timed out after ${item.timeoutMs}ms`));
-      }, item.timeoutMs);
+      // 设置超时（M13 重构：timeoutMs=0 → 不设超时，由 attempt 内的看门狗负责）
+      const timer = item.timeoutMs > 0
+        ? setTimeout(() => {
+            item.abortController.abort();
+            item.reject(new Error(`Task ${item.id} timed out after ${item.timeoutMs}ms`));
+          }, item.timeoutMs)
+        : null;
 
       // 执行任务
       item.task()
         .then(result => {
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           item.resolve(result);
         })
         .catch(err => {
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           item.reject(err);
         })
         .finally(() => {

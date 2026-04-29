@@ -1,5 +1,5 @@
 /**
- * 错误分类器 — 将 PI/LLM 错误归类为可恢复类型
+ * 错误分类器 — 将 runner / LLM 错误归类为可恢复类型
  *
  * 参考 OpenClaw: src/agents/pi-embedded-runner/run.ts 的错误处理分支
  * 外层重试循环根据错误类型决定恢复策略（退避/切 provider/降级/裁剪）
@@ -13,7 +13,7 @@ export type ErrorType =
   | 'auth'       // 401, invalid key — 立即切 provider
   | 'billing'    // credit balance, payment — 立即切 provider
   | 'abort'      // AbortError — 不重试
-  | 'timeout'    // PI 超时 — 不重试
+  | 'timeout'    // runner 超时 — 不重试
   | 'unknown';   // 未识别 — 不重试
 
 /** 错误分类结果 */
@@ -57,8 +57,8 @@ export function classifyError(err: unknown): ClassifiedError {
     return { type: 'abort', retryable: false, message: msg };
   }
 
-  // PI 超时
-  if (/PI 超时|pi.*timeout/i.test(msg)) {
+  // runner 超时
+  if (/runner 超时|runner.*timeout/i.test(msg)) {
     return { type: 'timeout', retryable: false, message: msg };
   }
 

@@ -222,6 +222,10 @@ async function streamOneRound(
     signal: config.abortSignal,
     discoveredToolNames: config.discoveredToolNames,
   })) {
+    // M13 重构：每个 stream event 都重置 idle watchdog
+    // —— 让长 codegen / 多文件 write 不会被误伤；只有真死循环（stream 卡住）才会撞超时
+    config.idleWatchdog?.touch();
+
     switch (event.type) {
       case 'text_delta':
         await config.onEvent({ type: 'text_delta', delta: event.delta, timestamp: Date.now() });
@@ -401,6 +405,21 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
     if (state.turnCount >= config.maxTurns) {
       log.info(`达到最大 turn 数 (${config.maxTurns})，退出`);
       return applyGraceCallAndBuild('max_turns');
+    }
+
+    // ─── 1b. 注入 pending inbound 消息（M13 重构 — 软警告 / 系统事件）───
+    // attempt 通过 IdleWatchdog.onWarning 等回调 push 文本到 pendingInboundMessages，
+    // 这里 splice 取空并作为 user 消息追加，下一轮 LLM 能看到"你即将超时，请收尾"。
+    if (config.pendingInboundMessages && config.pendingInboundMessages.length > 0) {
+      const drained = config.pendingInboundMessages.splice(0, config.pendingInboundMessages.length);
+      for (const text of drained) {
+        state.messages.push({
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: [{ type: 'text', text }],
+        });
+        log.info(`注入 pending inbound 消息（${text.length} 字）`);
+      }
     }
 
     // ─── 2. 上下文压缩 (turn > 0 时检查) ───
@@ -636,6 +655,10 @@ export async function queryLoop(config: QueryLoopConfig): Promise<QueryLoopResul
       onEvent: config.onEvent,
       signal: config.abortSignal,
     });
+
+    // M13 重构：工具结果收集完毕（一轮真正"推进了一步"）→ 重置 idle watchdog
+    // 长 bash / 长 codegen 工具不会被 idle 误伤
+    config.idleWatchdog?.touch();
 
     const toolResultMsg = buildToolResultMessage(toolResults);
     const lookups = buildMessageLookups([roundResult.assistantMessage, toolResultMsg]);

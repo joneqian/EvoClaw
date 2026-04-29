@@ -46,6 +46,7 @@ import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { BindingRouter } from './routing/binding-router.js';
 import { generateSessionKey } from './routing/session-key.js';
+import { buildGroupSessionKey } from './agent/team-mode/group-key-utils.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
 import type { ChannelMessage, ChannelType } from '@evoclaw/shared';
@@ -107,6 +108,22 @@ process.on('uncaughtException', (err) => {
 
 /** MCP Manager — 异步初始化，通过 getter 延迟获取（模块作用域供 createApp 闭包访问） */
 let sharedMcpManager: import('./mcp/mcp-client.js').McpManager | undefined;
+
+/**
+ * Team-mode 用户命令去重窗口（M13 PR5-B1 修复）
+ *
+ * 多 bot 同群被 fanout 时，每条消息会让每个 bot 各自调一次 userCommandHandler.handle，
+ * /pause /cancel 会重复执行 + replyText 重发多次。这里用 5s 窗口去重，相同
+ * (groupKey, command-prefix) 只发一次回执。
+ */
+const recentTeamCmds = new Map<string, number>();
+const TEAM_CMD_DEDUP_WINDOW_MS = 5_000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of recentTeamCmds) {
+    if (now - ts > TEAM_CMD_DEDUP_WINDOW_MS) recentTeamCmds.delete(k);
+  }
+}, TEAM_CMD_DEDUP_WINDOW_MS).unref();
 
 /** 在端口范围内生成随机端口 */
 function getRandomPort(): number {
@@ -202,14 +219,21 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
   );
 
   // 请求/响应日志
+  //
+  // 轮询性请求（前端定时拉取）日志降到 DEBUG 级别，避免日常使用时日志被挤爆：
+  //   - GET /health        — 桌面端 30s 心跳
+  //   - GET /tasks         — 前端任务列表轮询（约 5-6 秒一次）
+  //   - GET /chat/recents  — 会话历史轮询
+  // 其他请求（POST/PUT/PATCH/DELETE 或非轮询 GET）仍然走 INFO 级别。
   const httpLog = createLogger('http');
+  const POLLING_PATHS = new Set(['/health', '/tasks', '/chat/recents']);
   app.use('*', async (c, next) => {
     const start = Date.now();
     const { method, path } = c.req;
-    const isHealth = path === '/health';
+    const isPolling = method === 'GET' && POLLING_PATHS.has(path);
 
     // 请求参数
-    if (!isHealth) {
+    if (!isPolling) {
       const query = c.req.query();
       const queryStr = Object.keys(query).length
         ? ` query=${JSON.stringify(query)}`
@@ -243,7 +267,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     const status = c.res.status;
 
     // 响应：仅记录状态码和耗时，body 仅 debug 级别
-    if (!isHealth) {
+    if (!isPolling) {
       httpLog.info(`<-- ${method} ${path} ${status} ${ms}ms`);
       // 响应体仅 debug 级别记录（避免大响应撑爆日志）
       try {
@@ -717,12 +741,58 @@ async function dispatchBroadcastMessage(
           mediaPath: msg.mediaPath,
           mediaType: msg.mediaType,
           quoted: msg.quoted,
+          ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
+          ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
         },
         channelMsgDeps,
       );
     } catch (err) {
       log.error(`广播消息处理失败 (agent=${agentId}): ${err}`);
     }
+  }
+}
+
+/**
+ * 触发飞书 bot 在指定群里 prebake 上线打招呼（M13 cross-app cold-start 修复）
+ *
+ * 场景：bot 入群时 / sidecar 启动后枚举已加群时调用。
+ * 失败兜底：所有错误吞掉打 warn，不阻塞主流程。
+ *
+ * 依赖：通过 bindingRouter 反查 accountId → agentId → AgentManager 拿 name/emoji。
+ */
+async function triggerFeishuPrebake(args: {
+  adapter: import('./channel/adapters/feishu/index.js').FeishuAdapter;
+  accountId: string;
+  chatId: string;
+  prebake: import('./channel/adapters/feishu/chat-prebake.js').ChatPrebakeService | null;
+  agentManager: AgentManager;
+  bindingRouter: BindingRouter;
+}): Promise<void> {
+  if (!args.prebake) return;
+  try {
+    const binding = args.bindingRouter
+      .listBindings()
+      .find((b) => b.channel === 'feishu' && b.accountId === args.accountId);
+    if (!binding) {
+      log.debug(`prebake 跳过（无 binding） account=${args.accountId} chat=${args.chatId}`);
+      return;
+    }
+    const agent = args.agentManager.getAgent(binding.agentId);
+    if (!agent) {
+      log.debug(`prebake 跳过（agent 不存在） agent=${binding.agentId} chat=${args.chatId}`);
+      return;
+    }
+    await args.prebake.maybePrebake({
+      chatId: args.chatId,
+      accountId: args.accountId,
+      agentName: agent.name,
+      agentEmoji: agent.emoji,
+      sendFn: async (text) => {
+        await args.adapter.sendMessage(args.chatId, text, 'group');
+      },
+    });
+  } catch (err) {
+    log.warn(`prebake 异常（已忽略） account=${args.accountId} chat=${args.chatId}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -840,20 +910,137 @@ async function main() {
         const { WeixinAdapter } = await import('./channel/adapters/weixin.js');
         channelManager.registerFactory('weixin', () => new WeixinAdapter(channelStateRepo));
       }
+
+      const bindingRouter = new BindingRouter(db);
+
+      // M13 team-mode: 跨渠道 adapter registry + 飞书实现
+      // 飞书 chat.members.get 不返回机器人成员，所以用被动缓存模式：从入站消息和
+      // bot.added/deleted 事件累积 (chatId, appId, openId)
+      let feishuTeamChannel: import('./channel/adapters/feishu/team-channel.js').FeishuTeamChannel | null = null;
+      let feishuPeerBotRegistry: import('./channel/adapters/feishu/peer-bot-registry.js').FeishuPeerBotRegistry | null = null;
+      let feishuChatPrebake: import('./channel/adapters/feishu/chat-prebake.js').ChatPrebakeService | null = null;
       if (Feature.FEISHU) {
         const { FeishuAdapter } = await import('./channel/adapters/feishu/index.js');
-        channelManager.registerFactory('feishu', () => new FeishuAdapter());
+        const { FeishuPeerBotRegistry } = await import('./channel/adapters/feishu/peer-bot-registry.js');
+        const { FeishuTeamChannel } = await import('./channel/adapters/feishu/team-channel.js');
+        const { ChatPrebakeService } = await import('./channel/adapters/feishu/chat-prebake.js');
+        const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
+
+        feishuPeerBotRegistry = new FeishuPeerBotRegistry({ bindingRouter });
+        feishuChatPrebake = new ChatPrebakeService({ store: db });
+        feishuTeamChannel = new FeishuTeamChannel({
+          peerBotRegistry: feishuPeerBotRegistry,
+          bindingRouter,
+          // M13 cross-app 修复 — prober 用：通过 channelManager 反查指定 viewer 的 Lark client
+          getLarkClientByAccountId: (accountId: string) => {
+            const adapter = channelManager.getAdapter('feishu', accountId);
+            if (!adapter) return null;
+            // FeishuAdapter 暴露 getLarkClient()
+            const fn = (adapter as unknown as { getLarkClient?: () => unknown }).getLarkClient;
+            if (typeof fn !== 'function') return null;
+            return (fn.call(adapter) as import('@larksuiteoapi/node-sdk').Client | null) ?? null;
+          },
+        });
+        teamChannelRegistry.register('feishu', feishuTeamChannel);
+
+        // factory：每个 accountId 创建一个 FeishuAdapter 实例，挂上同一组 team-mode
+        // 钩子（共享 peerBotRegistry / teamChannel 单例）
+        channelManager.registerFactory('feishu', () => {
+          const adapter = new FeishuAdapter();
+          // 入站分类器：peer-bot-registry.classifyPeer 副作用更新缓存（按 viewer 视角）
+          adapter.setTeamModeClassifier(({ chatId, senderAppId, senderOpenId, senderUnionId, ownAccountId }) => {
+            if (!chatId || !senderAppId) return 'stranger';
+            if (senderAppId === ownAccountId) return 'self';
+            const peer = feishuPeerBotRegistry!.classifyPeer({
+              viewerAccountId: ownAccountId,
+              chatId,
+              senderAppId,
+              senderOpenId,
+              senderUnionId,
+            });
+            return peer ? 'peer' : 'stranger';
+          });
+          // M13 修复（C-1）：把 senderAppId → peer agentId 反查给 inbound，
+          // 让 ChannelMessage.fromPeerAgentId 能填上
+          adapter.setPeerAgentResolver(({ chatId, senderAppId }) => {
+            if (!chatId || !senderAppId) return null;
+            // viewer 视角是当前 adapter 自己的 accountId
+            const viewer = adapter.getStatus().accountId ?? '';
+            if (!viewer) return null;
+            const list = feishuPeerBotRegistry!.listInChat(chatId, viewer, '');
+            const found = list.find((p) => p.appId === senderAppId);
+            return found?.agentId ?? null;
+          });
+          // M13 cross-app 修复：发送 messageId → agentId 注册表用，反查 accountId 对应的 agentId
+          adapter.setSenderAgentResolver((accountId: string) => {
+            if (!accountId) return null;
+            const binding = bindingRouter.listBindings()
+              .find(b => b.channel === 'feishu' && b.accountId === accountId);
+            return binding?.agentId ?? null;
+          });
+          // 事件钩子：bot 入群 / 出群 / p2p 进入 → 更新 registry（占位）+ 广播成员变更
+          // 入群事件回调里没有 union_id / openId（事件来源是飞书管理面板），
+          // 写入占位 set，后续入站消息升级
+          adapter.setEventCallbacks({
+            onBotAddedToChat: async (event) => {
+              const accountId = adapter.getStatus().accountId ?? '';
+              if (!event.chat_id || !accountId) return;
+              // viewer = 自己（自己 bot 入群）；target = 自己
+              feishuPeerBotRegistry!.registerBotInChat({
+                chatId: event.chat_id,
+                viewerAppId: accountId,
+                targetAppId: accountId,
+              });
+              feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'added');
+
+              // M13 cross-app cold-start 修复：bot 入群时 prebake 上线打招呼
+              // —— 让其他 bot 的 ws 收到 sender_type='app' 事件，各自学到本 bot 的 open_id
+              void triggerFeishuPrebake({
+                adapter,
+                accountId,
+                chatId: event.chat_id,
+                prebake: feishuChatPrebake,
+                agentManager,
+                bindingRouter,
+              });
+            },
+            onBotRemovedFromChat: async (event) => {
+              const accountId = adapter.getStatus().accountId ?? '';
+              if (!event.chat_id || !accountId) return;
+              feishuPeerBotRegistry!.unregisterBotInChat(event.chat_id, accountId);
+              feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'deleted');
+            },
+            onP2pChatEntered: async (event) => {
+              const accountId = adapter.getStatus().accountId ?? '';
+              if (!event.chat_id || !accountId) return;
+              feishuPeerBotRegistry!.registerBotInChat({
+                chatId: event.chat_id,
+                viewerAppId: accountId,
+                targetAppId: accountId,
+              });
+              feishuTeamChannel!.notifyMembershipChange(event.chat_id, 'p2p_entered');
+            },
+          });
+          return adapter;
+        });
       }
-      const bindingRouter = new BindingRouter(db);
+
       profiler.checkpoint('channel_ready');
-      return { channelManager, channelStateRepo, bindingRouter };
+      return {
+        channelManager,
+        channelStateRepo,
+        bindingRouter,
+        feishuTeamChannel,
+        feishuPeerBotRegistry,
+        feishuChatPrebake,
+      };
     })(),
   ]);
 
   // 解构并行结果
   const { vectorStore, memoryStore, ftsStore, knowledgeGraph, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
   const { agentManager, laneQueue, cronRunner } = agentSys;
-  const { channelManager, channelStateRepo, bindingRouter } = channelSys;
+  const { channelManager, channelStateRepo, bindingRouter, feishuTeamChannel, feishuPeerBotRegistry, feishuChatPrebake } = channelSys;
 
   profiler.checkpoint('systems_ready');
 
@@ -874,6 +1061,305 @@ async function main() {
 
   const dispatchCommand = createCommandDispatcher(commandRegistry);
 
+  // M13 team-mode 服务装配（每个进程单例，多渠道共享）
+  // - LoopGuard：5 层熔断
+  // - PeerRosterService：跨渠道 roster 解析
+  // - TaskPlanService：DAG + 依赖解锁
+  // - ArtifactService：中间产物
+  // - UserCommandHandler：/pause /cancel /revise 触发词
+  // - EscalationService：5 min cron 责任链超时
+  let teamModeServices: {
+    loopGuard: import('./agent/team-mode/loop-guard.js').LoopGuard;
+    peerRosterService: import('./agent/team-mode/peer-roster-service.js').PeerRosterService;
+    taskPlanService: import('./agent/team-mode/task-plan/service.js').TaskPlanService;
+    artifactService: import('./agent/team-mode/artifacts/service.js').ArtifactService;
+    userCommandHandler: import('./agent/team-mode/user-commands.js').UserCommandHandler;
+    escalationService: import('./agent/team-mode/escalation-service.js').EscalationService;
+  } | null = null;
+  try {
+    const [
+      { LoopGuard },
+      { PeerRosterService },
+      { TaskPlanService },
+      { ArtifactService },
+      { UserCommandHandler },
+      { EscalationService },
+    ] = await Promise.all([
+      import('./agent/team-mode/loop-guard.js'),
+      import('./agent/team-mode/peer-roster-service.js'),
+      import('./agent/team-mode/task-plan/service.js'),
+      import('./agent/team-mode/artifacts/service.js'),
+      import('./agent/team-mode/user-commands.js'),
+      import('./agent/team-mode/escalation-service.js'),
+    ]);
+    const loopGuard = new LoopGuard();
+    const peerRosterService = new PeerRosterService({ agentManager });
+    const taskPlanService = new TaskPlanService({ store: db, agentManager, loopGuard });
+    const artifactService = new ArtifactService({ store: db });
+    const userCommandHandler = new UserCommandHandler({ taskPlanService });
+    // N5 修复：把 FeishuPeerBotRegistry GC 接到 escalation tick（每 5 min 清一次过期 entry）
+    const gcHooks: Array<() => void> = [];
+    if (feishuPeerBotRegistry) {
+      gcHooks.push(() => feishuPeerBotRegistry!.gc());
+    }
+    const escalationService = new EscalationService({
+      store: db,
+      taskPlanService,
+      agentManager,
+      channelManager,
+      bindingRouter,
+      gcHooks,
+    });
+    escalationService.start();
+
+    // B4 修复：注入看板回调 — plan 创建/状态变化时通过 adapter 渲染卡片 + sendMessage
+    // PR3 的 updateTaskBoard 占位仍是"返回原 cardId 不真原地更新"，所以这里实际是
+    // 每次状态变化都发新一条卡片。PR4 后续接 cardkit-streaming 真做原地更新。
+    const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
+    taskPlanService.setBoardSink(async (plan, existingCardId) => {
+      const adapter = teamChannelRegistry.resolve(plan.groupSessionKey);
+      if (!adapter) {
+        log.debug(`boardSink 跳过：未注册 ${plan.groupSessionKey} 的 team-channel adapter`);
+        return { cardId: existingCardId ?? '' };
+      }
+      const outbound = adapter.renderTaskBoard(plan);
+      // 解析 channel 和 chatId 用于 sendMessage（plan.groupSessionKey 是
+      // "<channel>:chat:<chatId>" 格式）
+      const colonIdx = plan.groupSessionKey.indexOf(':');
+      const chatTypeIdx = plan.groupSessionKey.indexOf(':', colonIdx + 1);
+      const channelPart = plan.groupSessionKey.slice(0, colonIdx);
+      const chatIdPart = plan.groupSessionKey.slice(chatTypeIdx + 1);
+      // 用 plan.created_by 的 binding 拿到 accountId
+      const bindings = bindingRouter.listBindings(plan.createdBy.agentId)
+        .filter((b) => b.channel === channelPart);
+      const accountId = bindings.find((b) => b.isDefault)?.accountId ?? bindings[0]?.accountId ?? '';
+      try {
+        // 发卡片：fallbackText 兜底（多数渠道支持）；payload 走 channel-specific 路径
+        // 当前 channelManager.sendMessage 只接 string content。先发 fallbackText。
+        // TODO(team-mode/M13-followup): 升级 channelManager.sendMessage 支持 card payload
+        // 然后这里改成 outbound.payload，实现真·CardKit 卡片
+        await channelManager.sendMessage(
+          channelPart as import('@evoclaw/shared').ChannelType,
+          accountId,
+          chatIdPart,
+          outbound.fallbackText,
+          'group',
+        );
+        log.info(
+          `[team-mode/board] 看板已发送 plan=${plan.id} group=${chatIdPart} bytes=${outbound.fallbackText.length}`,
+        );
+        // 当前用 fallbackText 不返回真 cardId，传一个占位避免下次状态变化时被误重放
+        return { cardId: `fallback-${plan.id}-${plan.updatedAt}` };
+      } catch (err) {
+        log.warn(`[team-mode/board] 看板发送失败 plan=${plan.id}: ${err instanceof Error ? err.message : String(err)}`);
+        return { cardId: existingCardId ?? '' };
+      }
+    });
+    // M13 修复：注入 TaskReadyNotifier — 任务就绪时主动通过渠道原生 @ 推送给 assignee
+    // （不再依赖 LLM 自觉 / system event 被动 drain）。同时被 create_task_plan 自动触发，
+    // 也被 update_task_status='done' 解锁下游时触发。
+    //
+    // 派活身份策略（M13 修复 — 问题 3）：notifier **始终**用 plan.createdBy 身份发送，
+    // 跟 boardSink 走同一条路径（"plan owner 是这个 plan 的统一协调声音"）。
+    // triggeredBy 仅做"上游推进者署名"用，不再决定发送 bot —— 否则 update_task_status='done'
+    // 解锁下游时，notifier 会从"完成上游的人"bot 发出，导致同一 plan 的看板/派活分裂。
+    const { mentionPeerNotificationTracker } = await import('./agent/team-mode/mention-peer-tool.js');
+    taskPlanService.setTaskReadyNotifier({
+      notifyTaskReady: async ({ plan, task, triggeredByAgentId }) => {
+        const adapter = teamChannelRegistry.resolve(plan.groupSessionKey);
+        if (!adapter) {
+          log.warn(
+            `[team-mode/notifier] 找不到 channel adapter group=${plan.groupSessionKey} task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 派活身份用 plan.createdBy（与 boardSink 一致）
+        const senderAgentId = plan.createdBy.agentId;
+
+        const colonIdx = plan.groupSessionKey.indexOf(':');
+        const chatTypeIdx = plan.groupSessionKey.indexOf(':', colonIdx + 1);
+        const channelPart = plan.groupSessionKey.slice(0, colonIdx);
+        const chatIdPart = plan.groupSessionKey.slice(chatTypeIdx + 1);
+        const senderBindings = bindingRouter.listBindings(senderAgentId)
+          .filter((b) => b.channel === channelPart);
+        const senderAccountId = senderBindings.find((b) => b.isDefault)?.accountId
+          ?? senderBindings[0]?.accountId
+          ?? '';
+        if (!senderAccountId) {
+          log.warn(
+            `[team-mode/notifier] plan owner=${senderAgentId} 在 channel=${channelPart} 无 binding，跳过 task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 反查 assignee 的 PeerBotInfo（用 plan owner 视角，与 boardSink 一致）
+        const groupSessionKey = plan.groupSessionKey;
+        const roster = await peerRosterService.buildRoster(senderAgentId, groupSessionKey);
+        const peer = roster.find((p) => p.agentId === task.assignee.agentId);
+        if (!peer) {
+          log.warn(
+            `[team-mode/notifier] assignee=${task.assignee.agentId} 不在 plan owner=${senderAgentId} 视角的 roster，跳过 task=${task.localId}`,
+          );
+          return;
+        }
+
+        // loop-guard 评估（用 plan owner → assignee 计数，pingpong 检测更准）
+        const decision = loopGuard.evaluate({
+          groupSessionKey,
+          fromAgentId: senderAgentId,
+          toAgentId: task.assignee.agentId,
+          taskId: task.id,
+          chainDepth: 0,
+        });
+        if (decision.result === 'block') {
+          log.warn(
+            `[team-mode/notifier] loop-guard 拦截 from=${senderAgentId} to=${task.assignee.agentId} ` +
+              `reason=${decision.reason} task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 渲染 @ 文案：把任务核心信息塞进去，让 assignee 看到 @ 就能直接干活
+        const messageLines: string[] = [];
+        messageLines.push(`📌 你被指派了任务 [${task.localId}] ${task.title}`);
+        if (task.description) messageLines.push(task.description);
+        messageLines.push(`目标：${plan.goal}`);
+        messageLines.push(`计划 ID：${plan.id} · 任务 ID：${task.id}`);
+        if (task.dependsOn.length > 0) {
+          messageLines.push(`前置已完成：${task.dependsOn.join(', ')}`);
+        }
+        messageLines.push(`完成后请调 update_task_status('${task.id}', 'done', outputSummary=...) 解锁下游。`);
+        // 上游推进者署名：当 triggeredBy ≠ plan owner（即 update_task_status='done' 解锁下游时），
+        // 在底部附一行让用户知道是谁让任务进入 ready 的
+        if (triggeredByAgentId !== senderAgentId) {
+          const triggerName = agentManager.getAgent(triggeredByAgentId)?.name ?? triggeredByAgentId;
+          messageLines.push(`（由 ${triggerName} 完成上游推进）`);
+        }
+        const message = messageLines.join('\n');
+
+        try {
+          const outbound = await adapter.buildMention(groupSessionKey, peer, message, {
+            taskId: task.id,
+            planId: plan.id,
+            chainDepth: 1,
+          });
+          await channelManager.sendMessage(
+            channelPart as import('@evoclaw/shared').ChannelType,
+            senderAccountId,
+            chatIdPart,
+            outbound.fallbackText,
+            'group',
+          );
+          // 修复 2B：登记本次主动 @，给后续 mention_peer 软去重看
+          mentionPeerNotificationTracker.mark(groupSessionKey, task.assignee.agentId, task.id);
+          log.info(
+            `[team-mode/notifier] 已主动 @ assignee plan=${plan.id} task=${task.localId} ` +
+              `from=${senderAgentId}(plan_owner) trigger=${triggeredByAgentId} ` +
+              `to=${task.assignee.agentId}(${peer.name}) mention_id=${peer.mentionId} ` +
+              `account=${senderAccountId} bytes=${outbound.fallbackText.length}`,
+          );
+        } catch (err) {
+          log.warn(
+            `[team-mode/notifier] @ 推送失败 plan=${plan.id} task=${task.localId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    });
+
+    // M13 修复（"先派活后宣告"错位）：注入 TaskCompletedAnnouncer —
+    // assignee 调 update_task_status('done') 时，service 在 dispatchReadyTasks 之前
+    // 用 task.assignee.agentId 的身份在群里发"完成宣告"（含 outputSummary + 本任务 artifacts），
+    // 让群成员先看到上游 assignee 自己的宣告，再看到下游派活通知，时序自洽。
+    taskPlanService.setTaskCompletedAnnouncer({
+      announceTaskCompleted: async ({ plan, task, outputSummary }) => {
+        const adapter = teamChannelRegistry.resolve(plan.groupSessionKey);
+        if (!adapter) {
+          log.warn(
+            `[team-mode/announcer] 找不到 channel adapter group=${plan.groupSessionKey} task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 关键差异：用 task.assignee.agentId 作发送 bot（不是 plan owner）
+        // ——这才能让消息显示成"📈 产品经理:" 而不是 "🤖 项目经理:"
+        const senderAgentId = task.assignee.agentId;
+        const assigneeAgent = agentManager.getAgent(senderAgentId);
+        const assigneeName = assigneeAgent?.name ?? task.assignee.name;
+
+        const colonIdx = plan.groupSessionKey.indexOf(':');
+        const chatTypeIdx = plan.groupSessionKey.indexOf(':', colonIdx + 1);
+        const channelPart = plan.groupSessionKey.slice(0, colonIdx);
+        const chatIdPart = plan.groupSessionKey.slice(chatTypeIdx + 1);
+        const senderBindings = bindingRouter.listBindings(senderAgentId)
+          .filter((b) => b.channel === channelPart);
+        const senderAccountId = senderBindings.find((b) => b.isDefault)?.accountId
+          ?? senderBindings[0]?.accountId
+          ?? '';
+        if (!senderAccountId) {
+          log.warn(
+            `[team-mode/announcer] assignee=${senderAgentId}(${assigneeName}) 在 channel=${channelPart} 无 binding，跳过 task=${task.localId}`,
+          );
+          return;
+        }
+
+        // 渲染完成宣告：用 assignee 自己写的 outputSummary 当主体
+        // 头部：✅ + task localId + 标题；尾部：附带本任务的 artifact 列表
+        // M13 cross-app 防御：剥 outputSummary 里的 <at> 标签，避免 LLM 写了跨 app open_id
+        // 触发 99992361。@ 同事的语义在 dispatchReadyTasks → notifier 路径上有正确处理。
+        const { stripFeishuAtTags } = await import('./tools/channel-tools.js');
+        const sanitizedSummary = channelPart === 'feishu'
+          ? stripFeishuAtTags(outputSummary).stripped
+          : outputSummary;
+        const lines: string[] = [];
+        lines.push(`✅ 任务 [${task.localId}] ${task.title} 已完成`);
+        lines.push('');
+        lines.push(sanitizedSummary);
+        if (task.artifacts.length > 0) {
+          lines.push('');
+          lines.push(`📎 产物（${task.artifacts.length} 件）：`);
+          for (const a of task.artifacts) {
+            lines.push(`  - ${a.title} [${a.kind}]`);
+          }
+        }
+        const message = lines.join('\n');
+
+        try {
+          await channelManager.sendMessage(
+            channelPart as import('@evoclaw/shared').ChannelType,
+            senderAccountId,
+            chatIdPart,
+            message,
+            'group',
+          );
+          log.info(
+            `[team-mode/announcer] 完成宣告已发送 plan=${plan.id} task=${task.localId} ` +
+              `from=${senderAgentId}(${assigneeName}) account=${senderAccountId} ` +
+              `bytes=${message.length} artifacts=${task.artifacts.length}`,
+          );
+        } catch (err) {
+          log.warn(
+            `[team-mode/announcer] 完成宣告发送失败 plan=${plan.id} task=${task.localId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      },
+    });
+
+    teamModeServices = {
+      loopGuard,
+      peerRosterService,
+      taskPlanService,
+      artifactService,
+      userCommandHandler,
+      escalationService,
+    };
+    log.info(
+      `[team-mode] 服务已启动 feishuTeamChannel=${feishuTeamChannel ? 'on' : 'off'} feishuPeerBotRegistry=${feishuPeerBotRegistry ? 'on' : 'off'}`,
+    );
+  } catch (err) {
+    log.error(`[team-mode] 服务启动失败 (功能将降级为单 Agent 行为): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // 渠道消息处理依赖
   const channelMsgDeps: ChannelMessageDeps = {
     store: db,
@@ -890,6 +1376,15 @@ async function main() {
     ftsStore,
     knowledgeGraph,
     bindingRouter,
+    ...(teamModeServices
+      ? {
+          taskPlanService: teamModeServices.taskPlanService,
+          artifactService: teamModeServices.artifactService,
+          peerRosterService: teamModeServices.peerRosterService,
+          loopGuard: teamModeServices.loopGuard,
+          userCommandHandler: teamModeServices.userCommandHandler,
+        }
+      : {}),
   };
 
   // 注册全局消息回调 — 从 IM 渠道收到消息后路由到对应 Agent 处理
@@ -908,6 +1403,47 @@ async function main() {
     if (!targetAgentId) {
       log.warn(`渠道消息无路由: channel=${msg.channel} peer=${msg.peerId}`);
       return;
+    }
+
+    // --- M13 team-mode 用户命令拦截（B1 修复）---
+    // /pause /cancel /revise 必须在 isSlashCommand 之前识别，否则会被 dispatchCommand
+    // 当作未知 slash command 直接回"未知命令"。命中后**只在第一个被命中 agent 处理**
+    // （多 bot 同群避免重复执行：用 module-level lock + 5s 窗口去重）
+    if (msg.chatType === 'group' && teamModeServices) {
+      try {
+        const groupSessionKey = buildGroupSessionKey(msg.channel, msg.peerId);
+        const cmdResult = await teamModeServices.userCommandHandler.handle(
+          msg.content,
+          groupSessionKey,
+          msg.senderId,
+        );
+        if (cmdResult?.shortCircuit) {
+          // 多 bot fanout 去重：相同 (group, cmd-window) 只发一次回执
+          const dedupKey = `${groupSessionKey}|${msg.content.trim().slice(0, 32)}`;
+          if (!recentTeamCmds.has(dedupKey)) {
+            recentTeamCmds.set(dedupKey, Date.now());
+            try {
+              await channelManager.sendMessage(
+                msg.channel,
+                msg.accountId ?? '',
+                msg.peerId,
+                cmdResult.replyText,
+                msg.chatType,
+              );
+            } catch (sendErr) {
+              log.error(`team-mode 命令回复发送失败: ${sendErr}`);
+            }
+            log.info(
+              `[team-mode] 用户命令短路 group=${msg.peerId} affected_plans=${cmdResult.affectedPlans}`,
+            );
+          } else {
+            log.debug(`[team-mode] 用户命令已被其他 bot 处理，跳过 dedup_key=${dedupKey}`);
+          }
+          return;
+        }
+      } catch (cmdErr) {
+        log.warn(`[team-mode] 用户命令处理失败 group=${msg.peerId}: ${cmdErr instanceof Error ? cmdErr.message : String(cmdErr)}`);
+      }
     }
 
     // --- 渠道命令拦截 ---
@@ -948,6 +1484,9 @@ async function main() {
                 chatType: msg.chatType,
                 mediaPath: msg.mediaPath,
                 mediaType: msg.mediaType,
+                senderId: msg.senderId,
+                ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
+                ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
               },
               channelMsgDeps,
             );
@@ -985,6 +1524,9 @@ async function main() {
           mediaPath: msg.mediaPath,
           mediaType: msg.mediaType,
           quoted: msg.quoted,
+          senderId: msg.senderId,
+          ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
+          ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
         },
         channelMsgDeps,
       );
@@ -1043,6 +1585,9 @@ async function main() {
     consolidator?.stop();
     memoryMonitor.stop();
     skillEvolverScheduler?.stop();
+    // B7 修复：team-mode escalation cron + peer-roster 缓存清理
+    teamModeServices?.escalationService.stop();
+    teamModeServices?.peerRosterService.dispose();
   }});
   registerShutdownHandler({ name: '渠道', priority: 20, handler: () => { channelManager.disconnectAll(); }});
   // MCP shutdown handler 在 mcpManager 初始化后注册（见 Phase 3a.5）
@@ -1259,6 +1804,46 @@ async function main() {
             name: savedName ?? chType,
             credentials,
           });
+          // M13 团队 @ 修复：恢复连接成功后回填 bot_open_id
+          try {
+            const adapter = channelManager.getAdapter(chType as any, accountId);
+            const fn = adapter ? (adapter as { getBotOpenId?: () => string | null }).getBotOpenId : undefined;
+            const botOpenId = typeof fn === 'function' ? fn.call(adapter) ?? null : null;
+            if (botOpenId) {
+              bindingRouter.setBotOpenId(chType as any, accountId, botOpenId);
+            } else {
+              log.debug(`渠道 ${chType}[${accountId}] 恢复后未拿到 bot_open_id（adapter 未实现或 API 失败）`);
+            }
+          } catch (err) {
+            log.warn(`回填 bot_open_id 失败 ${chType}[${accountId}]: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          // M13 cross-app cold-start 修复：飞书 connect 完成后枚举已加群 → 各群 prebake
+          // 上线打招呼（24h 去重，重启不会刷屏）。失败兜底，不阻塞 connect。
+          if (chType === 'feishu' && feishuChatPrebake) {
+            const feishuAdapter = channelManager.getAdapter('feishu' as any, accountId);
+            if (feishuAdapter && typeof (feishuAdapter as any).listChats === 'function') {
+              void (async () => {
+                try {
+                  const chats = await (feishuAdapter as unknown as {
+                    listChats: () => Promise<Array<{ chatId: string }>>;
+                  }).listChats();
+                  log.info(`飞书 prebake 枚举 account=${accountId} chats=${chats.length}`);
+                  for (const c of chats) {
+                    void triggerFeishuPrebake({
+                      adapter: feishuAdapter as any,
+                      accountId,
+                      chatId: c.chatId,
+                      prebake: feishuChatPrebake,
+                      agentManager,
+                      bindingRouter,
+                    });
+                  }
+                } catch (err) {
+                  log.warn(`飞书 prebake 枚举失败 account=${accountId}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+              })();
+            }
+          }
           log.info(`渠道 ${chType}[${accountId}] 已自动恢复连接`);
         } catch (err) {
           log.warn(

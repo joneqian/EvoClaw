@@ -27,6 +27,9 @@ import { emitServerEvent } from '../infrastructure/event-bus.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { runEmbeddedAgent, NO_REPLY_TOKEN } from '../agent/embedded-runner.js';
 import { buildGroupPeerRoster } from '../agent/peer-roster.js';
+import { buildGroupSessionKey } from '../agent/team-mode/group-key-utils.js';
+import { createTaskTimeoutFinalizer } from '../agent/team-mode/task-timeout-finalizer.js';
+import { drainFormattedSystemEvents } from '../infrastructure/system-events.js';
 import {
   reconstructDisplayContent,
   shouldDisplayMessage,
@@ -79,6 +82,23 @@ export interface ChannelMessageContext {
    * DB 里的 user 行也会带上这段前缀，history 自动携带引用上下文。
    */
   quoted?: QuotedMessage;
+  /**
+   * 真人用户标识（M13 PR5-B5 修复）
+   *
+   * Team mode 责任链第三跳要 @ 的就是这个 ID。team-mode 工具 create_task_plan
+   * 创建 plan 时通过 args 自动注入到 task_plans.initiator_user_id。
+   */
+  senderId?: string;
+  /**
+   * peer @ 来源信息（M13 多 Agent 协作 — 兜底 @ 回提问者）
+   *
+   * 当本条入站消息是同事 Agent 通过 mention_peer @ 我时由 inbound 填充。
+   * channel-message-handler 在发主回复前会用这俩字段做兜底——若 LLM 主回复正文
+   * 没有任何 `<at user_id="ou_..."/>` 标记，则前缀注入 `<at user_id="${fromPeerOpenId}"/>`，
+   * 确保提问者 bot 收到推送、对话链不断（飞书等渠道不 @ 不唤醒）
+   */
+  fromPeerAgentId?: string;
+  fromPeerOpenId?: string;
 }
 
 /** 处理器依赖 */
@@ -98,6 +118,12 @@ export interface ChannelMessageDeps {
   knowledgeGraph?: KnowledgeGraphStore;
   /** 用于多账号渠道工具按 agentId 反查正确的 accountId + adapter */
   bindingRouter?: import('../routing/binding-router.js').BindingRouter;
+  // M13 team-mode 依赖（可选；缺省则 team mode 工具不注入，旧单 Agent 行为保留）
+  taskPlanService?: import('../agent/team-mode/task-plan/service.js').TaskPlanService;
+  artifactService?: import('../agent/team-mode/artifacts/service.js').ArtifactService;
+  peerRosterService?: import('../agent/team-mode/peer-roster-service.js').PeerRosterService;
+  loopGuard?: import('../agent/team-mode/loop-guard.js').LoopGuard;
+  userCommandHandler?: import('../agent/team-mode/user-commands.js').UserCommandHandler;
 }
 
 /** 通道特定的工具禁止规则 */
@@ -371,6 +397,10 @@ export async function handleChannelMessage(
   // 更新最近对话时间
   agentManager.touchLastChat(agentId);
 
+  // M13 team-mode 用户命令（/pause /cancel /revise）的识别已上提到 server.ts onMessage
+  // 入口（B1 修复），那里统一做 dedup + 直接调 channelManager.sendMessage。本处不再重复处理。
+  // 留这条注释作为后人不要再回填的警示。
+
   // 2. 解析模型 + API 配置
   let modelId = '';
   let provider = '';
@@ -578,6 +608,56 @@ export async function handleChannelMessage(
     });
   }
 
+  // M13 team-mode 工具：仅当群聊且服务齐全时注入
+  // - mention_peer (跨渠道 @ 同事，集成 loop-guard)
+  // - create_task_plan / update_task_status / list_tasks / request_clarification
+  // - attach_artifact / list_task_artifacts / fetch_artifact
+  // - propose_team_workflow（仅协调者）
+  if (chatType === 'group' && deps.taskPlanService && deps.peerRosterService && deps.loopGuard && deps.bindingRouter && deps.artifactService) {
+    try {
+      const [{ createTaskPlanTools }, { createMentionPeerTool }, { createArtifactTools }, { teamChannelRegistry }, { createProposeTeamWorkflowTool }] = await Promise.all([
+        import('../agent/team-mode/task-plan/tools.js'),
+        import('../agent/team-mode/mention-peer-tool.js'),
+        import('../agent/team-mode/artifacts/tools.js'),
+        import('../agent/team-mode/team-channel-registry.js'),
+        import('../agent/team-mode/team-workflow/index.js'),
+      ]);
+      const teamTools: ToolDefinition[] = [
+        ...createTaskPlanTools(deps.taskPlanService),
+        createMentionPeerTool({
+          rosterService: deps.peerRosterService,
+          registry: teamChannelRegistry,
+          loopGuard: deps.loopGuard,
+          channelManager,
+          bindingRouter: deps.bindingRouter,
+        }),
+        ...createArtifactTools(deps.artifactService),
+      ];
+      // M13 Roster 驱动懒加载：propose_team_workflow 仅协调者可见，
+      // 防止非协调者瞎调或被 LLM 误用
+      if (agent.isTeamCoordinator === true) {
+        teamTools.push(createProposeTeamWorkflowTool({ agentManager }));
+      }
+      // 自动注入 sessionKey + agentId（防 agent 伪造）
+      for (const tt of teamTools) {
+        enhancedTools.push({
+          name: tt.name,
+          description: tt.description,
+          parameters: tt.parameters,
+          // B5 修复：把真人用户 senderId 注入为 initiatorUserId，create_task_plan
+          // 用它落入 task_plans.initiator_user_id，escalation 第三跳才能真 @ 用户
+          execute: async (args, ctx2) =>
+            tt.execute({ ...args, agentId, sessionKey, initiatorUserId: ctx.senderId }, ctx2),
+        });
+      }
+      log.debug(`[team-mode] 注入 ${teamTools.length} 个工具 agent=${agentId} group=${peerId} initiator=${ctx.senderId ?? '(none)'}`);
+    } catch (err) {
+      log.warn(
+        `[team-mode] 工具注入失败 agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // 通道特定工具禁止
   const channelType = parseSessionKey(sessionKey)?.channel;
   const channelDeny = channelType ? (CHANNEL_TOOL_DENY[channelType] ?? []) : [];
@@ -636,6 +716,61 @@ export async function handleChannelMessage(
       ? buildGroupPeerRoster(agentId, channel, deps.bindingRouter, agentManager)
       : null;
 
+  // M13 team-mode：当群聊 + team-mode 服务齐全 + roster 非空时，叠一段 <team_mode>
+  // XML（含同事 mention_id / 我的待办 / 行为规则）。前面 buildGroupPeerRoster 仍保留
+  // 作为旧版 fallback，两段都会 append 到 system prompt 末尾。
+  let teamModeFragment: string | null = null;
+  if (chatType === 'group' && deps.peerRosterService && deps.taskPlanService) {
+    try {
+      // B3 修复：必须用 buildGroupSessionKey 剥掉 peerId 上的 sender/topic 后缀，
+      // 否则 group_session_key 落库带后缀，多 sender 共享群里的 plan 互相不可见
+      const groupSessionKey = buildGroupSessionKey(channel, peerId);
+      const peerRoster = await deps.peerRosterService.buildRoster(agentId, groupSessionKey);
+      // M13 修复（3B）：把 active_plans 喂给 prompt-fragment，防 LLM 重复 createPlan / 重述 WBS
+      const activePlans = deps.taskPlanService.listGroupPlans(groupSessionKey, 'active');
+      // M13 修改组 3：协调者标志（自身视角）— 来自 AgentConfig 配置驱动，不预设角色
+      const myIsCoordinator = agent.isTeamCoordinator === true;
+      // 注入条件放宽：只要有 roster **或** 有 active plan 就值得注入
+      // （此前 peerRoster=空 直接 skip，会让 PM 二次唤醒时仍看不到 active plan）
+      // M13 Roster 驱动懒加载：协调者两态注入条件——
+      //   非协调者 → roster/plans 任意非空即注入（保持原行为）
+      //   协调者 → 即使 roster/plans 都空，只要团队里有同事 / 有过 plan / 是协调者本人，
+      //            也要注入以便 bootstrap_required 段提醒 LLM 先 propose_team_workflow。
+      //   实际触发条件：roster 非空（说明确实是多 Agent 群）OR active plan 非空 OR 当前是协调者
+      const shouldInject =
+        peerRoster.length > 0 || activePlans.length > 0 || myIsCoordinator;
+      if (shouldInject) {
+        const myOpenTasks = deps.taskPlanService.listOpenTasksForAssignee(agentId, groupSessionKey);
+        const { renderTeamModePrompt } = await import('../agent/team-mode/prompt-fragment.js');
+        teamModeFragment = renderTeamModePrompt({
+          channelType: channel,
+          groupSessionKey,
+          roster: peerRoster,
+          activePlans,
+          myAgentId: agentId,
+          myIsCoordinator,
+          // M13 Roster 驱动懒加载：透传当前 Agent 自己的 teamWorkflow（仅协调者用）
+          ...(agent.teamWorkflow ? { myTeamWorkflow: agent.teamWorkflow } : {}),
+          myOpenTasks: myOpenTasks.map((t) => ({
+            localId: t.localId,
+            title: t.title,
+            status: t.status,
+            dependsOn: t.dependsOn,
+          })),
+        });
+        log.debug(
+          `[team-mode] prompt 注入 agent=${agentId} group=${peerId} ` +
+            `peers=${peerRoster.length} my_tasks=${myOpenTasks.length} active_plans=${activePlans.length} ` +
+            `my_is_coordinator=${myIsCoordinator} has_team_workflow=${!!agent.teamWorkflow}`,
+        );
+      }
+    } catch (err) {
+      log.warn(
+        `team-mode prompt 注入失败 agent=${agentId} group=${peerId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   const runConfig: AgentRunConfig = {
     agent,
     systemPrompt,
@@ -650,13 +785,23 @@ export async function handleChannelMessage(
     messages,
     permissionInterceptFn,
     auditLogFn,
-    ...(groupPeerRoster
-      ? {
-          promptOverrides: [
-            { level: 'agent' as const, mode: 'append' as const, content: groupPeerRoster },
-          ],
-        }
+    // M13 修复：peer @ 入站时让 NO_REPLY 段允许静默回复，避免 reply-to 兜底引发的反复回响
+    inboundFromPeer: !!ctx.fromPeerOpenId,
+    // M13 重构：runner 超时（idle / wallclock）时自动把 in_progress 任务标 blocked，
+    // 避免 task 永远卡 in_progress 等 escalation 15 分钟
+    ...(deps.taskPlanService
+      ? { taskTimeoutFinalizer: createTaskTimeoutFinalizer({ taskPlanService: deps.taskPlanService }) }
       : {}),
+    ...(() => {
+      const overrides: Array<{ level: 'agent'; mode: 'append'; content: string }> = [];
+      if (groupPeerRoster) {
+        overrides.push({ level: 'agent', mode: 'append', content: groupPeerRoster });
+      }
+      if (teamModeFragment) {
+        overrides.push({ level: 'agent', mode: 'append', content: teamModeFragment });
+      }
+      return overrides.length > 0 ? { promptOverrides: overrides } : {};
+    })(),
     // 多模态附件：IM 渠道（飞书/微信）下载到本地的图片通过 inputAttachments
     // 原生注入 user message，embedded-runner 会转成 ImageBlock 喂给模型，
     // 省去 Agent 再调 image 工具的弯路
@@ -691,13 +836,28 @@ export async function handleChannelMessage(
   });
   saveMessage(store, agentId, sessionKey, 'user', message, undefined, userKernelMessageJson);
 
+  // M13 修复 (C1): 把 system events 队列里的待消费事件（task_ready / task_stale /
+  // task_notification 等）以 `System:` 前缀拼到喂给模型的 message 上。chat.ts 已有同样
+  // 的 drain 注入；channel-message-handler 这里之前漏了，导致团队模式下 task_ready
+  // 永远沉默躺在队列里。
+  // 注：drainFormattedSystemEvents 自带 heartbeat 噪音过滤 + 时间戳格式化。
+  const systemLines = drainFormattedSystemEvents(sessionKey);
+  if (systemLines.length > 0) {
+    log.info(
+      `[system-events] drain agent=${agentId} sessionKey=${sessionKey} lines=${systemLines.length}`,
+    );
+  }
+  const effectiveMessage = systemLines.length > 0
+    ? `System:\n${systemLines.map((l) => `  ${l}`).join('\n')}\n\n${message}`
+    : message;
+
   // 8. 运行 Agent（收集 text_delta + 工具调用事件）
   let fullResponse = '';
   let thinkingHintSent = false;
   const collectedToolCalls: ToolCallRecord[] = [];
 
   const runAgent = async (abortSignal?: AbortSignal) => {
-    await runEmbeddedAgent(runConfig, message, (event) => {
+    await runEmbeddedAgent(runConfig, effectiveMessage, (event) => {
       if (event.type === 'text_delta' && event.delta) {
         fullResponse += event.delta;
       }
@@ -731,7 +891,7 @@ export async function handleChannelMessage(
       lane: 'main',
       abortController,
       task: () => runAgent(abortController.signal),
-      timeoutMs: 600_000,
+      // M13 重构：超时由 attempt 内 IdleWatchdog + Wallclock 唯一负责（不在这里再叠一层）
     });
   } else {
     await runAgent();
@@ -743,11 +903,31 @@ export async function handleChannelMessage(
   // 9. 清理 assistant 响应文本（剥离 PI 框架内部的工具调用/响应 XML 标记，供渠道发送使用）
   // 注：Assistant 消息已由 IncrementalPersister 在 query-loop 每轮结束后持久化到 conversation_log
   //    此处不再重复 saveMessage，避免前端历史展示重复和顺序混乱。
-  const cleanResponse = fullResponse
+  let cleanResponse = fullResponse
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
     .replace(/<function_response>[\s\S]*?<\/function_response>/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+
+  // M13 修复（C-2）：兜底 @ 回提问者
+  //
+  // 飞书等渠道：群消息**不 @ 某个 bot** → 那个 bot 收不到推送、不触发 chat handler。
+  // 当本条入站是同事 Agent 通过 mention_peer @ 我时（fromPeerOpenId 非空），如果 LLM
+  // 主回复正文里**没有任何 `<at user_id="ou_..."/>` 标记**，说明它忘了 @ 回提问者，
+  // 系统在主回复前缀注入 `<at user_id="${fromPeerOpenId}"/>` 兜住对话链。
+  const fallbackResult = applyAtFallbackPrefix({
+    cleanResponse,
+    chatType,
+    fromPeerOpenId: ctx.fromPeerOpenId,
+  });
+  if (fallbackResult.applied) {
+    log.info(
+      `[at-fallback] 主回复未 @ peer，前缀注入 @ 提问者 ` +
+        `agent=${agentId} from_peer_agent=${ctx.fromPeerAgentId ?? 'unknown'} ` +
+        `peer_open_id=${ctx.fromPeerOpenId}`,
+    );
+  }
+  cleanResponse = fallbackResult.text;
 
   // 诊断：明确报告响应状态，便于排查"Agent 回了但渠道没发"问题
   log.info(
@@ -811,4 +991,37 @@ export async function handleChannelMessage(
   });
 
   return cleanResponse;
+}
+
+/**
+ * 协议层 reply-to 兜底前缀（M13 多 Agent 协作）
+ *
+ * 设计：飞书等渠道未 @ 不唤醒，peer @ 链路若 LLM 主回复没 @ 提问者就会断。
+ * 系统层强保障——只要本轮入站是 peer @（fromPeerOpenId 非空）+ chatType=group
+ * + 主回复非空非 NO_REPLY → **永远**前缀 `<at user_id="ou_提问者"/>`。
+ *
+ * 此函数是"协议层信息送达"语义，不做"应用层礼仪"判断：
+ *   - 不扫描 LLM 主回复正文是否已有 `<at>`（之前那版扫描了 `<at user_id="ou_">`，
+ *     但 LLM 在主回复里 @ 的可能是第三方，提问者还是该被 @ 回——不要混淆"reply-to
+ *     提问者"和"决策性 @ 第三方"两件事）
+ *   - 极少数场景下出现"主回复正文同时 @ 提问者 + @ 第三方"是健康的（reply-to + 通知协作）
+ *   - 私聊没有 peer mention 概念，跳过
+ *
+ * @returns `{ text, applied }` text=新文本（未变化时同入参）；applied=是否真注入了前缀
+ */
+export function applyAtFallbackPrefix(opts: {
+  cleanResponse: string;
+  chatType: 'private' | 'group';
+  fromPeerOpenId?: string;
+}): { text: string; applied: boolean } {
+  const { cleanResponse, chatType, fromPeerOpenId } = opts;
+  if (chatType !== 'group') return { text: cleanResponse, applied: false };
+  if (!fromPeerOpenId) return { text: cleanResponse, applied: false };
+  if (!cleanResponse || cleanResponse === NO_REPLY_TOKEN) {
+    return { text: cleanResponse, applied: false };
+  }
+  return {
+    text: `<at user_id="${fromPeerOpenId}"/> ${cleanResponse}`,
+    applied: true,
+  };
 }

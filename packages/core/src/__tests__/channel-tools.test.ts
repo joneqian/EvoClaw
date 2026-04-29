@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createChannelTools, getChannelToolNames } from '../tools/channel-tools.js';
+import { createChannelTools, getChannelToolNames, stripFeishuAtTags } from '../tools/channel-tools.js';
 import type { ChannelManager } from '../channel/channel-manager.js';
 import type { FeishuAdapter } from '../channel/adapters/feishu/index.js';
 
@@ -336,5 +336,146 @@ describe('getChannelToolNames', () => {
 
   it('未知 channel 返回 [desktop_notify]', () => {
     expect(getChannelToolNames('dingtalk')).toEqual(['desktop_notify']);
+  });
+});
+
+// ─── M13 cross-app 修复 ────────────────────────────────────────
+describe('stripFeishuAtTags', () => {
+  it('剥 <at user_id="ou_xxx">名字</at> → @名字', () => {
+    const out = stripFeishuAtTags('hi <at user_id="ou_abc123">产品经理</at> 帮看下');
+    expect(out.stripped).toBe('hi @产品经理 帮看下');
+    expect(out.removed).toBe(1);
+  });
+
+  it('剥 <at user_id="all"></at> → @所有人', () => {
+    const out = stripFeishuAtTags('注意 <at user_id="all"></at> 通知');
+    expect(out.stripped).toBe('注意 @所有人 通知');
+    expect(out.removed).toBe(1);
+  });
+
+  it('剥自闭合 <at user_id="..."/> → 空', () => {
+    const out = stripFeishuAtTags('开始 <at user_id="ou_x"/>大家好');
+    expect(out.stripped).toBe('开始 大家好');
+    expect(out.removed).toBe(1);
+  });
+
+  it('多个 <at> 标签都剥', () => {
+    const out = stripFeishuAtTags(
+      '<at user_id="ou_a">A</at> 和 <at user_id="ou_b">B</at> 你们好',
+    );
+    expect(out.stripped).toBe('@A 和 @B 你们好');
+    expect(out.removed).toBe(2);
+  });
+
+  it('空 text 的 <at>...</at> → @', () => {
+    const out = stripFeishuAtTags('hi <at user_id="ou_x"></at> 来吧');
+    expect(out.stripped).toBe('hi @ 来吧');
+    expect(out.removed).toBe(1);
+  });
+
+  it('无 <at> 标签 → 原样返回 + removed=0', () => {
+    const out = stripFeishuAtTags('普通文本，没有 at 标签');
+    expect(out.stripped).toBe('普通文本，没有 at 标签');
+    expect(out.removed).toBe(0);
+  });
+
+  it('空字符串边界', () => {
+    expect(stripFeishuAtTags('')).toEqual({ stripped: '', removed: 0 });
+  });
+
+  it('单引号属性也支持', () => {
+    const out = stripFeishuAtTags(`hi <at user_id='ou_x'>名</at>`);
+    expect(out.stripped).toBe('hi @名');
+    expect(out.removed).toBe(1);
+  });
+});
+
+describe('feishu_send · 99992361 cross-app 自愈', () => {
+  function makeCmThatThrowsCrossAppOnce() {
+    const sendMessage = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        const err = new Error('Request failed with status code 400') as Error & {
+          response: { data: { code: number; msg: string } };
+        };
+        err.response = { data: { code: 99992361, msg: 'open_id cross app' } };
+        throw err;
+      })
+      .mockResolvedValueOnce(undefined);
+    const cm = {
+      sendMessage,
+      sendMediaMessage: vi.fn(),
+      getAdapter: vi.fn().mockReturnValue({} as FeishuAdapter),
+    } as unknown as ChannelManager;
+    return { cm, sendMessage };
+  }
+
+  it('content 含 <at> + 99992361 → 自动剥标签重试 + 提示 LLM', async () => {
+    const { cm, sendMessage } = makeCmThatThrowsCrossAppOnce();
+    const tools = createChannelTools(cm, 'feishu');
+    const feishuSend = tools.find((t) => t.name === 'feishu_send')!;
+
+    const result = await feishuSend.execute({
+      peerId: 'oc_chat_xxx',
+      content: 'PRD 完成 <at user_id="ou_cross_app">产品经理</at> 来确认',
+      chatType: 'group',
+    });
+
+    // 第一次发：原 content（带 <at>）→ 抛 99992361
+    expect((sendMessage as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[3])
+      .toContain('<at user_id="ou_cross_app">');
+    // 第二次发：剥过 <at> 的 content → 成功
+    expect((sendMessage as unknown as { mock: { calls: unknown[][] } }).mock.calls[1]?.[3])
+      .toBe('PRD 完成 @产品经理 来确认');
+    // 返回值告知 LLM
+    expect(result).toMatch(/自动剥除 1 个跨 app/);
+    expect(result).toMatch(/mention_peer/);
+  });
+
+  it('non-cross-app 错误 → 原样抛出（不吃错）', async () => {
+    const sendMessage = vi.fn().mockRejectedValue(new Error('其他原因'));
+    const cm = {
+      sendMessage,
+      sendMediaMessage: vi.fn(),
+      getAdapter: vi.fn().mockReturnValue({} as FeishuAdapter),
+    } as unknown as ChannelManager;
+    const tools = createChannelTools(cm, 'feishu');
+    const feishuSend = tools.find((t) => t.name === 'feishu_send')!;
+
+    await expect(
+      feishuSend.execute({
+        peerId: 'oc_chat_xxx',
+        content: 'hi <at user_id="ou_x">名</at>',
+        chatType: 'group',
+      }),
+    ).rejects.toThrow(/其他原因/);
+    // 不应有第二次调用
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('99992361 但 content 里无 <at> 标签 → 不静默吞错（避免无限循环）', async () => {
+    const sendMessage = vi.fn().mockImplementation(async () => {
+      const err = new Error('cross app') as Error & {
+        response: { data: { code: number; msg: string } };
+      };
+      err.response = { data: { code: 99992361, msg: 'open_id cross app' } };
+      throw err;
+    });
+    const cm = {
+      sendMessage,
+      sendMediaMessage: vi.fn(),
+      getAdapter: vi.fn().mockReturnValue({} as FeishuAdapter),
+    } as unknown as ChannelManager;
+    const tools = createChannelTools(cm, 'feishu');
+    const feishuSend = tools.find((t) => t.name === 'feishu_send')!;
+
+    await expect(
+      feishuSend.execute({
+        peerId: 'oc_chat_xxx',
+        content: '没有 at 标签的纯文本',
+        chatType: 'group',
+      }),
+    ).rejects.toThrow();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });

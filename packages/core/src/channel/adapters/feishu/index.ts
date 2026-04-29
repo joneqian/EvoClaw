@@ -27,6 +27,7 @@ import {
   registerInboundHandlers,
   type MediaDownloader,
   type FeishuMessageFetcher,
+  type InboundContext,
 } from './inbound.js';
 import { createFeishuMessageCache } from './message-cache.js';
 import { parseFeishuContent } from './parse-content.js';
@@ -181,6 +182,34 @@ export class FeishuAdapter implements ChannelAdapter {
   /** 群聊旁听缓冲（多机器人协作） */
   private readonly groupHistory = new GroupHistoryBuffer();
   /**
+   * Team mode 入站分类器（M13 PR4 注入）
+   *
+   * 由外层（server.ts）按"FeishuPeerBotRegistry.classifyPeer + 自身 accountId 比对"
+   * 装配；未注入时退化为旧行为（一刀切丢 sender_type=app）。
+   */
+  private classifyAppSender:
+    | InboundContext['classifyAppSender']
+    | undefined = undefined;
+  /**
+   * 反查同事 bot 对应的 EvoClaw Agent ID（M13 多 Agent 协作 — 兜底 @ 回提问者）
+   *
+   * 由外层 server.ts 注入（用 FeishuPeerBotRegistry.listInChat 反查），
+   * 让 inbound 把 peer agentId 透传到 ChannelMessage.fromPeerAgentId。
+   */
+  private resolvePeerAgentId:
+    | InboundContext['resolvePeerAgentId']
+    | undefined = undefined;
+  /**
+   * 反查发送方 EvoClaw agentId（M13 cross-app 修复）
+   *
+   * 由 server.ts 注入：通过 bindingRouter 把 accountId 映射到 agentId。
+   * sendMessage 完成后用它把 (messageId, senderAgentId) 注册到全局表，
+   * 让其他 bot 收到 ws 事件时能反查"是谁发的"。
+   */
+  private senderAgentResolver:
+    | ((accountId: string) => string | null)
+    | undefined = undefined;
+  /**
    * 广播场景下把 feishu bot open_id 映射到 agentId（可选）
    *
    * 常见单 adapter 模型下用户不必配置（`mention-first` 会因映射为空而退化为
@@ -218,6 +247,9 @@ export class FeishuAdapter implements ChannelAdapter {
         getBotIdToAgentId: () => this.botIdToAgentId,
         getMessageCache: () => this.messageCache,
         getMessageFetcher: () => this.messageFetcher,
+        // M13 team-mode：未注入时为 undefined → inbound 走旧丢 app 行为
+        classifyAppSender: this.classifyAppSender,
+        resolvePeerAgentId: this.resolvePeerAgentId,
       });
 
       registerCardActionHandlers(bundle.dispatcher, {
@@ -307,11 +339,21 @@ export class FeishuAdapter implements ChannelAdapter {
     chatType?: 'private' | 'group',
   ): Promise<void> {
     const client = this.requireClient();
-    await withFeishuRetry(
+    const result = await withFeishuRetry(
       () => sendSmartMessage(client, peerId, content, chatType),
       { label: 'sendMessage' },
     );
     this.recordBotReplyToGroupHistory(peerId, content, chatType);
+
+    // M13 cross-app 修复：把 (messageId, senderAccountId) 注册到全局表，让其他
+    // bot 收到这条消息的 ws 事件时能反查出"是谁发的" → 写 peer-bot-registry。
+    // 飞书 ws 事件里 sender_type='bot' 不带 app_id，唯一稳定信号是 message_id。
+    const accountId = this.credentials?.appId;
+    const senderAgentId = this.senderAgentResolver?.(accountId ?? '') ?? null;
+    if (result?.messageId && senderAgentId && accountId) {
+      const { recordSentMessage } = await import('./sent-message-registry.js');
+      recordSentMessage(result.messageId, senderAgentId, accountId);
+    }
   }
 
   /**
@@ -427,6 +469,18 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   /**
+   * 读取本 adapter 在 connect 时拉到的 bot 自身 open_id
+   *
+   * 用于：M13 多 Agent 团队协作 — server.ts connect 成功后通过 BindingRouter.setBotOpenId
+   * 把它回填到 binding 行，listInChat 兜底冷启动时的 mention_id。
+   *
+   * 返回 null：connect 还未完成 / `/open-apis/bot/v3/info` 失败。
+   */
+  getBotOpenId(): string | null {
+    return this.botOpenId;
+  }
+
+  /**
    * 设置 bot open_id → agentId 映射（广播 `mention-first` 模式用）
    *
    * 单 Feishu app + 多 agent 场景下无需调用（@ 到共享 bot 时由 `any-mention`
@@ -443,6 +497,75 @@ export class FeishuAdapter implements ChannelAdapter {
    */
   setEventCallbacks(callbacks: FeishuEventCallbacks): void {
     this.eventCallbacks = callbacks;
+  }
+
+  /**
+   * 注入 team-mode 入站分类器（M13 PR4）
+   *
+   * 调用方（server.ts）传入 `(params) => peerBotRegistry.classifyPeer(...) ? 'peer' : 'self/stranger'`
+   * 的具体逻辑。未注入时 inbound 走旧行为（丢所有 sender_type=app）。
+   */
+  setPeerAgentResolver(resolver: InboundContext['resolvePeerAgentId']): void {
+    this.resolvePeerAgentId = resolver;
+  }
+
+  /** M13 cross-app 修复：注入 accountId → agentId 反查 */
+  setSenderAgentResolver(resolver: (accountId: string) => string | null): void {
+    this.senderAgentResolver = resolver;
+  }
+
+  setTeamModeClassifier(classifier: InboundContext['classifyAppSender']): void {
+    this.classifyAppSender = classifier;
+  }
+
+  /**
+   * 暴露当前 Lark client 给 team-mode 主动 API（如 chat-history-prober）。
+   * 未连接时返回 null，调用方应静默跳过 probe。
+   */
+  getLarkClient(): Lark.Client | null {
+    return this.bundle?.client ?? null;
+  }
+
+  /**
+   * 列出当前 bot 加入的所有群（用于启动 prebake 枚举）
+   *
+   * 返回 (chatId, chatName) 列表。仅包含 chat_type='group'（私聊不需要 prebake）。
+   * 失败时返回空数组——上层应静默跳过 prebake，不阻塞 connect。
+   *
+   * 注意：必须用 `client.request()` 低层 API。SDK 高层 `client.im.chat.list` 在
+   * Bun runtime 下会触发 "socket closed unexpectedly" 错误（OpenClaw 同样踩过，
+   * 见 defaultHydrateBotOpenId 处的注释）。
+   */
+  async listChats(pageSize = 100): Promise<Array<{ chatId: string; name?: string }>> {
+    const client = this.bundle?.client;
+    if (!client) return [];
+    try {
+      const res = await client.request<{
+        code?: number;
+        msg?: string;
+        data?: { items?: Array<{ chat_id?: string; name?: string; chat_mode?: string }> };
+      }>({
+        method: 'GET',
+        url: '/open-apis/im/v1/chats',
+        params: { page_size: Math.min(Math.max(1, pageSize), 100) },
+      });
+      if (res.code !== 0) {
+        log.warn(`listChats 业务错 code=${res.code} msg=${res.msg}`);
+        return [];
+      }
+      const items = res.data?.items ?? [];
+      const out: Array<{ chatId: string; name?: string }> = [];
+      for (const c of items) {
+        // chat_mode 'group' 是群聊；'p2p' 是私聊（跳过）；'topic' 是话题（保留）
+        if (!c.chat_id) continue;
+        if (c.chat_mode === 'p2p') continue;
+        out.push({ chatId: c.chat_id, ...(c.name ? { name: c.name } : {}) });
+      }
+      return out;
+    } catch (err) {
+      log.warn(`listChats 抛错（已忽略）: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
   }
 
   private requireClient(): Lark.Client {

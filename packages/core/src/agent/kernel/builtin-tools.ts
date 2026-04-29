@@ -1,5 +1,5 @@
 /**
- * 内置文件工具 — 替代 PI 的 codingTools + grepTool + findTool + lsTool
+ * 内置文件工具 — 替代 Claude Code 的 codingTools + grepTool + findTool + lsTool
  *
  * 工具列表:
  * - read: 读取文件内容 (cat -n 格式行号, 图片 base64, offset/limit)
@@ -13,7 +13,7 @@
  * - FileReadTool: docs/research/10-file-tools.md
  * - FileEditTool: 三步匹配降级 (精确 → 引号规范化 → XML 反消毒)
  *
- * 核心原则: 严格匹配 PI 的输出格式，避免模型行为偏移
+ * 核心原则: 严格匹配 Claude Code 的输出格式，避免模型行为偏移
  */
 
 import fs from 'node:fs';

@@ -118,6 +118,8 @@ export interface FeishuReceiveEvent {
       open_id?: string;
       user_id?: string;
       union_id?: string;
+      /** sender_type=app 时填，bot 的 app_id（cli_xxx），用于识别本机 / 同事 / 陌生 */
+      app_id?: string;
     };
     sender_type: string;
     tenant_key?: string;
@@ -181,6 +183,34 @@ export interface InboundContext {
   getMessageCache?: () => FeishuMessageCache | null;
   /** LRU miss 时的 API 回查，缺省或失败时降级为 `[引用消息]` 占位 */
   getMessageFetcher?: () => FeishuMessageFetcher | null;
+  /**
+   * Team mode: 同事 bot 消息分类器（M13 PR4 接入）
+   *
+   * 未提供时退化为旧行为（一刀切丢弃 sender_type=app）。提供时按 self/peer/stranger
+   * 分类：self/stranger 丢，peer 透传到正常处理（让被 @ 的本机 bot 收到同事 @）。
+   *
+   * 副作用：peer 识别会顺手把 (chatId, senderAppId, senderOpenId) 写入 peer-bot-registry，
+   * 让 listPeerBots 能看到。
+   */
+  classifyAppSender?: (params: {
+    chatId: string;
+    senderAppId: string;
+    senderOpenId: string;
+    /** 发送方在 viewer 视角下的 union_id（M13 cross-app 修复：用作机器人身份主键） */
+    senderUnionId?: string;
+    ownAccountId: string;
+  }) => 'self' | 'peer' | 'stranger';
+  /**
+   * 反查同事 bot 对应的 EvoClaw Agent ID
+   *
+   * 当 classifyAppSender 判定 'peer' 时，inbound 用本回调拿到 senderAppId → peerAgentId，
+   * 透传到 ChannelMessage.fromPeerAgentId（M13 多 Agent 协作 — 兜底 @ 回提问者）。
+   * 未提供时仍能正常工作，只是兜底逻辑拿不到 peer agent id（仅靠 open_id 也够 @ 回）。
+   */
+  resolvePeerAgentId?: (params: {
+    chatId: string;
+    senderAppId: string;
+  }) => string | null;
 }
 
 /**
@@ -228,10 +258,78 @@ export async function handleReceiveMessage(
   const handler = ctx.getHandler();
   if (!handler) return;
 
-  // 忽略机器人自己的消息
-  if (data.sender.sender_type === 'app') return;
-
   const accountId = ctx.getAccountId();
+
+  // Team mode 入站分类（M13 PR4）：同事 bot 消息允许通过，自己/陌生 bot 仍丢
+  // 旧行为兜底：classifyAppSender 未提供时一刀切丢 sender_type=app
+  //
+  // M13 修复（C-1）：当 verdict='peer' 时记下 peerAgentId + peerOpenId，
+  // 后面注入到 ChannelMessage.fromPeerAgentId / fromPeerOpenId，
+  // channel-message-handler 兜底"@ 回提问者"会用到
+  let peerInboundInfo: { agentId: string | null; openId: string } | null = null;
+  // M13 cross-app 修复：飞书实测 bot-to-bot 事件 sender_type='bot'（不是 'app'），
+  // 且 sender_id 不含 app_id（只有 open_id + union_id）。两种值都走 classify 路径。
+  if (data.sender.sender_type === 'app' || data.sender.sender_type === 'bot') {
+    const classify = ctx.classifyAppSender;
+    if (!classify) {
+      log.debug(`[${accountId}] team-mode 未启用，丢弃 sender_type=${data.sender.sender_type} 消息`);
+      return;
+    }
+    let senderAppId = data.sender.sender_id?.app_id ?? '';
+    const senderOpenIdForClassify = data.sender.sender_id?.open_id ?? '';
+    const senderUnionIdForClassify = data.sender.sender_id?.union_id;
+    const chatIdForClassify = data.message?.chat_id ?? '';
+
+    // M13 cross-app 修复：sender_type='bot' 事件没 app_id，用 message_id 反查全局
+    // 发送注册表（sendMessage 完成后写入）。所有 5 个 bot 在同一进程共享内存。
+    if (!senderAppId && data.message?.message_id) {
+      const { lookupSentMessage } = await import('./sent-message-registry.js');
+      const sent = lookupSentMessage(data.message.message_id);
+      if (sent) {
+        senderAppId = sent.senderAccountId;
+        log.info(
+          `[${accountId}] 通过 message_id 反查到发送方 messageId=${data.message.message_id} sender_account=${sent.senderAccountId}`,
+        );
+      }
+    }
+
+    if (!senderAppId || !chatIdForClassify) {
+      log.debug(`[${accountId}] sender_type=${data.sender.sender_type} 但缺 app_id/chat_id（message_id 也反查不到），丢弃 messageId=${data.message?.message_id}`);
+      return;
+    }
+    const verdict = classify({
+      chatId: chatIdForClassify,
+      senderAppId,
+      senderOpenId: senderOpenIdForClassify,
+      senderUnionId: senderUnionIdForClassify,
+      ownAccountId: accountId,
+    });
+    if (verdict === 'self') {
+      log.debug(`[${accountId}] 自身回声丢弃 messageId=${data.message?.message_id}`);
+      return;
+    }
+    if (verdict === 'stranger') {
+      log.debug(
+        `[${accountId}] 陌生 bot 丢弃 sender=${senderAppId} messageId=${data.message?.message_id}`,
+      );
+      return;
+    }
+    // verdict === 'peer'：放行 → 走正常入站流程，下文 isGroup 检查仍生效
+    const peerAgentId = ctx.resolvePeerAgentId?.({
+      chatId: chatIdForClassify,
+      senderAppId,
+    }) ?? null;
+    peerInboundInfo = {
+      agentId: peerAgentId,
+      openId: senderOpenIdForClassify,
+    };
+    log.info(
+      `[${accountId}] 接收到同事 bot peer 消息 sender_app=${senderAppId} ` +
+        `peer_agent=${peerAgentId ?? 'unknown'} peer_open_id=${senderOpenIdForClassify || 'unknown'} ` +
+        `chat=${chatIdForClassify} messageId=${data.message?.message_id}`,
+    );
+  }
+
   const message = data.message;
 
   // 去重（见文件顶部 SEEN_MESSAGE_IDS 说明）：飞书服务端可能向**同一 app** 重推
@@ -385,6 +483,15 @@ export async function handleReceiveMessage(
     const broadcastTargets = resolveBroadcastFanout(ctx, message, parsed.text);
     if (broadcastTargets && broadcastTargets.length > 0) {
       normalized.broadcastTargets = broadcastTargets;
+    }
+  }
+
+  // C-1：peer 入站时把 sender peer 信息透传到 ChannelMessage，让 channel-message-handler
+  // 在主回复发送前能兜底前缀 `<at user_id="ou_..."/>` 回 @ 提问者
+  if (peerInboundInfo && peerInboundInfo.openId) {
+    normalized.fromPeerOpenId = peerInboundInfo.openId;
+    if (peerInboundInfo.agentId) {
+      normalized.fromPeerAgentId = peerInboundInfo.agentId;
     }
   }
 

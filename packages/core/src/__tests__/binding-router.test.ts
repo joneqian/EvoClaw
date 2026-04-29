@@ -18,6 +18,12 @@ const MIGRATION_007 = fs.readFileSync(
   'utf-8',
 );
 
+/** 032: bindings 加 bot_open_id 列（M13 多 Agent 团队 @ 死锁修复） */
+const MIGRATION_032 = fs.readFileSync(
+  path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '032_binding_bot_open_id.sql'),
+  'utf-8',
+);
+
 /** 测试用 Agent ID */
 const AGENT_A = 'agent-aaa';
 const AGENT_B = 'agent-bbb';
@@ -37,6 +43,7 @@ describe('BindingRouter', () => {
     store = new SqliteStore(dbPath);
     store.exec(MIGRATION_001);
     store.exec(MIGRATION_007);
+    store.exec(MIGRATION_032);
 
     // 插入测试 Agent
     for (const id of [AGENT_A, AGENT_B, AGENT_C, AGENT_D]) {

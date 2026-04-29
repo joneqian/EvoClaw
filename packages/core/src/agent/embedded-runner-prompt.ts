@@ -278,16 +278,32 @@ When the user asks to find a file:
   }
 
   // § 7 Silent reply（静态指令 — autonomous 模式跳过，自主 Agent 不需要静默回复）
+  //
+  // M13 修复：NO_REPLY 规则按入站来源拆分（user vs peer Agent）
+  //   - user @ 仍然"必须回复"（人类期待回应，不能 ghost）
+  //   - peer @（同事 Agent）允许 NO_REPLY ——FYI / 进度同步类消息不需要"嗯好的"回复
+  //     防止协议层 reply-to 兜底叠加"@ 必回"导致 PM 反复 chat handler 触发的噪音
   if (mode === 'interactive') {
+    const inboundFromPeer = config.inboundFromPeer === true;
+    const exceptionBlock = inboundFromPeer
+      ? `Exception (peer @): The current message is from another AGENT (peer @-mention). NO_REPLY is allowed when:
+  - The message is purely an FYI / progress update (e.g., "task X done", board refresh, system event)
+  - You have nothing to add, decide, escalate, or transfer
+  - Not replying does not block the workflow
+
+When in doubt for peer @, prefer NO_REPLY over a content-free acknowledgment ("got it" / "OK").`
+      : `Exception (user @): If the current message is from a HUMAN user and @-mentions you (or contains @_all), do NOT use ${NO_REPLY_TOKEN}.
+You were explicitly addressed and must reply even if briefly (a short acknowledgment is fine).`;
     blocks.push({
       text: `<silent_reply>
 If you determine the current message needs no reply (e.g., it's just an acknowledgment, emoji, or system notification),
 reply with "${NO_REPLY_TOKEN}" only (without quotes). The system will not show anything to the user.
 
-Exception: If the current message @-mentions you or contains @_all, do NOT use ${NO_REPLY_TOKEN}.
-You were explicitly addressed and must reply even if briefly (a short acknowledgment is fine).
+${exceptionBlock}
 </silent_reply>`,
-      cacheControl: { type: 'ephemeral', scope: 'global' },
+      // M13 修复：silent_reply 块按 inboundFromPeer 分两种变体，从 global 缓存降级
+      // 仅依赖 LRU（不带 scope 走默认行为，避免不同入站源混用同一 cache key）
+      cacheControl: { type: 'ephemeral' },
       label: 'silent_reply',
     });
   }

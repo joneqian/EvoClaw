@@ -1,0 +1,195 @@
+/**
+ * Provider Catalog — 内置 provider + 模型清单的单一数据源
+ *
+ * 添加新模型: 在对应 provider 的 models 数组追加一条 ModelDefinition
+ * 添加新 provider: 在 PROVIDER_CATALOG 追加一项 ProviderDefinition
+ *
+ * 数据维护规范:
+ * - 每个 provider 段落顶部注明官方文档 URL + 最近核对日期
+ * - 每个模型尽量按"最新 → 最旧"顺序排列
+ * - isDefault 标记当前推荐的旗舰模型（每 provider 仅一个）
+ * - 不在此处做 forward-compat 模板配置（由 forward-compat.ts 算法自动处理）
+ */
+
+import type { ProviderDefinition } from './types.js';
+
+export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Anthropic — https://docs.anthropic.com/en/docs/about-claude/models
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
+    api: 'anthropic-messages',
+    models: [
+      // 4.6 系列（最新，支持 adaptive thinking）
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], reasoning: true, isDefault: true },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', contextWindow: 1000000, maxTokens: 128000, maxOutputLimit: 128000, input: ['text', 'image'], reasoning: true },
+      // 4.5 系列（支持 enabled thinking，固定预算）
+      { id: 'claude-opus-4-5', name: 'Claude Opus 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], reasoning: true },
+      { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], reasoning: true },
+      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200000, maxTokens: 16384, maxOutputLimit: 64000, input: ['text', 'image'], reasoning: true },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // OpenAI — https://platform.openai.com/docs/models
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    api: 'openai-completions',
+    models: [
+      // GPT-5.4 系列（最新旗舰）
+      { id: 'gpt-5.4', name: 'GPT-5.4', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], reasoning: true, isDefault: true },
+      { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', contextWindow: 1050000, maxTokens: 128000, input: ['text', 'image'], reasoning: true },
+      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', contextWindow: 400000, maxTokens: 128000, input: ['text', 'image'], reasoning: true },
+      { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', contextWindow: 200000, maxTokens: 64000, input: ['text', 'image'], reasoning: true },
+      // GPT-4.1 系列
+      { id: 'gpt-4.1', name: 'GPT-4.1', contextWindow: 1000000, maxTokens: 32768, input: ['text', 'image'] },
+      { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', contextWindow: 1000000, maxTokens: 32768, input: ['text', 'image'] },
+      { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', contextWindow: 1000000, maxTokens: 32768, input: ['text', 'image'] },
+      // 推理系列
+      { id: 'o3', name: 'o3', contextWindow: 200000, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
+      { id: 'o4-mini', name: 'o4 Mini', contextWindow: 200000, maxTokens: 100000, input: ['text', 'image'], reasoning: true },
+      // GPT-4o 系列（旧版）
+      { id: 'gpt-4o', name: 'GPT-4o', contextWindow: 128000, maxTokens: 16384, input: ['text', 'image'] },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', contextWindow: 128000, maxTokens: 16384, input: ['text', 'image'] },
+      // Embedding
+      { id: 'text-embedding-3-small', name: 'Text Embedding 3 Small', contextWindow: 8191, maxTokens: 0, input: ['text'], toolUse: false, dimension: 1536 },
+      { id: 'text-embedding-3-large', name: 'Text Embedding 3 Large', contextWindow: 8191, maxTokens: 0, input: ['text'], toolUse: false, dimension: 3072 },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // DeepSeek — https://api-docs.deepseek.com/quick_start/pricing
+  // Last verified: 2026-04-29
+  // 走 Anthropic 协议端点（原生支持 prompt caching，降低成本）
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    defaultBaseUrl: 'https://api.deepseek.com/anthropic',
+    api: 'anthropic-messages',
+    models: [
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], reasoning: true, isDefault: true },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', contextWindow: 1000000, maxTokens: 384000, maxOutputLimit: 384000, input: ['text'], reasoning: true },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Kimi (Moonshot) — https://platform.moonshot.ai/docs
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'kimi',
+    name: 'Kimi (Moonshot)',
+    defaultBaseUrl: 'https://api.moonshot.ai/v1',
+    api: 'openai-completions',
+    models: [
+      // K2.5（最新旗舰，多模态）
+      { id: 'kimi-k2.5', name: 'Kimi K2.5', contextWindow: 262144, maxTokens: 262144, input: ['text', 'image'], isDefault: true },
+      // K2 推理系列
+      { id: 'kimi-k2-thinking', name: 'Kimi K2 Thinking', contextWindow: 262144, maxTokens: 262144, input: ['text'], reasoning: true },
+      { id: 'kimi-k2-thinking-turbo', name: 'Kimi K2 Thinking Turbo', contextWindow: 262144, maxTokens: 262144, input: ['text'], reasoning: true },
+      // K2 快速
+      { id: 'kimi-k2-turbo', name: 'Kimi K2 Turbo', contextWindow: 256000, maxTokens: 16384, input: ['text'] },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 智谱 GLM — https://docs.bigmodel.cn / https://docs.z.ai
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'glm',
+    name: '智谱 GLM',
+    defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    api: 'openai-completions',
+    models: [
+      // GLM-5 系列（最新旗舰）
+      { id: 'glm-5', name: 'GLM-5', contextWindow: 202800, maxTokens: 131100, input: ['text'], reasoning: true, isDefault: true },
+      { id: 'glm-5-turbo', name: 'GLM-5 Turbo', contextWindow: 202800, maxTokens: 131100, input: ['text'], reasoning: true },
+      // GLM-4.7 系列
+      { id: 'glm-4.7', name: 'GLM-4.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], reasoning: true },
+      { id: 'glm-4.7-flash', name: 'GLM-4.7 Flash', contextWindow: 200000, maxTokens: 131072, input: ['text'], reasoning: true },
+      { id: 'glm-4.7-flashx', name: 'GLM-4.7 FlashX', contextWindow: 200000, maxTokens: 128000, input: ['text'], reasoning: true },
+      // GLM-4.6 系列
+      { id: 'glm-4.6', name: 'GLM-4.6', contextWindow: 204800, maxTokens: 131072, input: ['text'], reasoning: true },
+      { id: 'glm-4.6v', name: 'GLM-4.6V', contextWindow: 128000, maxTokens: 32768, input: ['text', 'image'], reasoning: true },
+      // GLM-4.5 系列
+      { id: 'glm-4.5', name: 'GLM-4.5', contextWindow: 131072, maxTokens: 98304, input: ['text'], reasoning: true },
+      { id: 'glm-4.5-air', name: 'GLM-4.5 Air', contextWindow: 131072, maxTokens: 98304, input: ['text'], reasoning: true },
+      { id: 'glm-4.5-flash', name: 'GLM-4.5 Flash', contextWindow: 131072, maxTokens: 98304, input: ['text'], reasoning: true },
+      { id: 'glm-4.5v', name: 'GLM-4.5V', contextWindow: 64000, maxTokens: 16384, input: ['text', 'image'], reasoning: true },
+      // Embedding
+      { id: 'embedding-3', name: 'Embedding 3', contextWindow: 8192, maxTokens: 0, input: ['text'], toolUse: false, dimension: 2048 },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 通义千问 Qwen — https://help.aliyun.com/zh/model-studio/
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'qwen',
+    name: '通义千问',
+    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    api: 'openai-completions',
+    models: [
+      // Qwen3.5 系列（最新旗舰）
+      { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'], isDefault: true },
+      { id: 'qwen3.5-flash', name: 'Qwen3.5 Flash', contextWindow: 1000000, maxTokens: 65536, input: ['text', 'image'] },
+      // Qwen3 系列
+      { id: 'qwen3-max', name: 'Qwen3 Max', contextWindow: 262144, maxTokens: 65536, input: ['text'] },
+      // Qwen3 Coder 系列（编码优化）
+      { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', contextWindow: 1000000, maxTokens: 65536, input: ['text'] },
+      { id: 'qwen3-coder-next', name: 'Qwen3 Coder Next', contextWindow: 262144, maxTokens: 65536, input: ['text'] },
+      // Embedding
+      { id: 'text-embedding-v4', name: 'Text Embedding V4', contextWindow: 8192, maxTokens: 0, input: ['text'], toolUse: false, dimension: 1024 },
+      { id: 'text-embedding-v3', name: 'Text Embedding V3', contextWindow: 8192, maxTokens: 0, input: ['text'], toolUse: false, dimension: 1024 },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 字节豆包 Doubao — https://www.volcengine.com/docs/82379/
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'doubao',
+    name: '字节豆包',
+    defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    api: 'openai-completions',
+    models: [
+      // Seed 2.0 系列（最新旗舰）
+      { id: 'doubao-seed-2-0-pro', name: 'Doubao Seed 2.0 Pro', contextWindow: 256000, maxTokens: 16384, input: ['text'], reasoning: true, isDefault: true },
+      { id: 'doubao-seed-code', name: 'Doubao Seed Code', contextWindow: 256000, maxTokens: 16384, input: ['text'], reasoning: true },
+      // Seed 1.8（多模态）
+      { id: 'doubao-seed-1-8', name: 'Doubao Seed 1.8', contextWindow: 256000, maxTokens: 16384, input: ['text', 'image'] },
+      // 1.5 系列
+      { id: 'doubao-1-5-pro-256k', name: 'Doubao 1.5 Pro 256K', contextWindow: 256000, maxTokens: 12288, input: ['text'] },
+      { id: 'doubao-1-5-pro-32k', name: 'Doubao 1.5 Pro 32K', contextWindow: 32000, maxTokens: 12288, input: ['text'] },
+      // 多模态
+      { id: 'doubao-1-5-vision-pro', name: 'Doubao 1.5 Vision Pro', contextWindow: 128000, maxTokens: 16384, input: ['text', 'image'] },
+    ],
+  },
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // MiniMax — https://platform.minimax.io/docs
+  // Last verified: 2026-04-29
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    id: 'minimax',
+    name: 'MiniMax',
+    defaultBaseUrl: 'https://api.minimaxi.com/v1',
+    api: 'openai-completions',
+    models: [
+      { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', contextWindow: 204800, maxTokens: 131072, input: ['text'], reasoning: true, isDefault: true },
+      { id: 'MiniMax-M2.7-highspeed', name: 'MiniMax M2.7 Highspeed', contextWindow: 204800, maxTokens: 131072, input: ['text'], reasoning: true },
+    ],
+  },
+];

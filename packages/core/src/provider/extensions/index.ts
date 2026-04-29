@@ -1,37 +1,19 @@
 /**
- * Model Extensions — 统一注册入口
+ * Provider Extensions — 公共查询 API
  *
- * 所有 provider 的预设模型定义在此汇总。
- * 用户添加 provider 时从这里加载模型列表，不走 API 同步。
+ * 数据来源: catalog.ts (PROVIDER_CATALOG)
+ * - 加新模型: 在 catalog.ts 对应 provider 的 models 数组追加一条
+ * - 加新 provider: 在 catalog.ts 的 PROVIDER_CATALOG 数组追加一项
  */
 
 import type { ProviderDefinition, ModelDefinition } from './types.js';
 import { findForwardCompatTemplate } from './forward-compat.js';
-import { QWEN_PROVIDER } from './qwen.js';
-import { GLM_PROVIDER } from './glm.js';
-import { DOUBAO_PROVIDER } from './doubao.js';
-import { DEEPSEEK_PROVIDER } from './deepseek.js';
-import { MINIMAX_PROVIDER } from './minimax.js';
-import { KIMI_PROVIDER } from './kimi.js';
-import { OPENAI_PROVIDER } from './openai.js';
-import { ANTHROPIC_PROVIDER } from './anthropic.js';
+import { PROVIDER_CATALOG } from './catalog.js';
 
 /** 所有预设 provider（按 ID 索引） */
-const PROVIDER_EXTENSIONS = new Map<string, ProviderDefinition>();
-
-// 注册所有预设
-for (const def of [
-  QWEN_PROVIDER,
-  GLM_PROVIDER,
-  DOUBAO_PROVIDER,
-  DEEPSEEK_PROVIDER,
-  MINIMAX_PROVIDER,
-  KIMI_PROVIDER,
-  OPENAI_PROVIDER,
-  ANTHROPIC_PROVIDER,
-]) {
-  PROVIDER_EXTENSIONS.set(def.id, def);
-}
+const PROVIDER_EXTENSIONS = new Map<string, ProviderDefinition>(
+  PROVIDER_CATALOG.map(p => [p.id, p]),
+);
 
 /** 获取预设 provider 定义 */
 export function getProviderExtension(providerId: string): ProviderDefinition | undefined {

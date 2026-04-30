@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentStatus } from '@evoclaw/shared';
+import type { AgentConfig, AgentStatus, SessionKey } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR, AGENTS_DIR } from '@evoclaw/shared';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import crypto from 'node:crypto';
@@ -6,6 +6,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { readFileWithCache, invalidateCache } from './workspace-cache.js';
+import { isWorkspaceFileAccessAllowed } from './workspace-files-policy.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('agent-manager');
+
+/**
+ * 工作区受限文件访问被拒绝（subagent / cron 试访问 BOOTSTRAP/HEARTBEAT/MEMORY 根文件）
+ *
+ * 不传 sessionKey 视为内部 / 管理员调用，**不门控**（避免 reconciler 等内部组件回归）。
+ */
+export class WorkspaceAccessDeniedError extends Error {
+  readonly code = 'WORKSPACE_ACCESS_DENIED';
+  constructor(public readonly file: string, public readonly sessionKey: string) {
+    super(`Access denied: file '${file}' not accessible from session '${sessionKey}'`);
+    this.name = 'WorkspaceAccessDeniedError';
+  }
+}
 
 /**
  * Agent 生命周期管理器 — CRUD + 工作区目录管理
@@ -159,8 +176,18 @@ export class AgentManager {
     return this.getWorkspacePath(agentId);
   }
 
-  /** 读取工作区文件 */
-  readWorkspaceFile(agentId: string, file: string): string | undefined {
+  /**
+   * 读取工作区文件
+   *
+   * @param sessionKey 可选；传入时对 subagent/cron 受限文件做 fail-closed 门控
+   *                   （抛 WorkspaceAccessDeniedError）。
+   *                   不传 = 内部 / 管理员调用，不门控（保留 reconciler 等内部组件行为）。
+   */
+  readWorkspaceFile(agentId: string, file: string, sessionKey?: SessionKey | string): string | undefined {
+    if (!isWorkspaceFileAccessAllowed(sessionKey, file)) {
+      log.warn(`workspace read denied: agent=${agentId} file=${file} session=${String(sessionKey)}`);
+      throw new WorkspaceAccessDeniedError(file, String(sessionKey));
+    }
     const wsPath = this.getWorkspacePath(agentId);
     const filePath = path.join(wsPath, file);
 
@@ -184,8 +211,16 @@ export class AgentManager {
     return fs.statSync(resolved).mtime.toISOString();
   }
 
-  /** 写入工作区文件 */
-  writeWorkspaceFile(agentId: string, file: string, content: string): void {
+  /**
+   * 写入工作区文件
+   *
+   * @param sessionKey 可选；同 readWorkspaceFile，subagent/cron 写受限文件抛 WorkspaceAccessDeniedError
+   */
+  writeWorkspaceFile(agentId: string, file: string, content: string, sessionKey?: SessionKey | string): void {
+    if (!isWorkspaceFileAccessAllowed(sessionKey, file)) {
+      log.warn(`workspace write denied: agent=${agentId} file=${file} session=${String(sessionKey)}`);
+      throw new WorkspaceAccessDeniedError(file, String(sessionKey));
+    }
     const filePath = path.join(this.getWorkspacePath(agentId), file);
     fs.writeFileSync(filePath, content, 'utf-8');
     invalidateCache(path.resolve(filePath));

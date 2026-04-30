@@ -14,6 +14,7 @@ import { createBunSSEResponse } from '../infrastructure/bun-sse.js';
 export const bunSSEResponses = new WeakMap<Request, Response>();
 import { AgentManager } from '../agent/agent-manager.js';
 import { reconcileBootstrapState } from '../agent/bootstrap-reconciler.js';
+import { selectWorkspaceFiles } from '../agent/workspace-files-policy.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
 import { resolveModelDefinition } from '../provider/extensions/index.js';
@@ -687,22 +688,16 @@ export function createChatRoutes(
     // 组装最终 system prompt
     const systemPrompt = turnCtx.injectedContext.join('\n\n---\n\n');
 
-    // 根据 session 类型选择加载的文件（参考 OpenClaw 的分层策略）
-    const ALL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md', 'TODO.json'];
-    const MINIMAL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md'];
-    const HEARTBEAT_FILES = ['HEARTBEAT.md', 'AGENTS.md'];
-
-    const isSubAgent = sessionKey.includes(':subagent:');
-    const isCron = sessionKey.includes(':cron:');
+    // P1-A: 文件清单选择 + sessionKey 门控（DRY 化原四档分支，参考 OpenClaw MINIMAL_BOOTSTRAP_ALLOWLIST）
     const isHeartbeat = body.isHeartbeat === true;
     const isLightContext = isHeartbeat && body.lightContext === true;
-
-    const LIGHT_FILES = ['HEARTBEAT.md'];
-    const filesToLoad = isLightContext ? LIGHT_FILES : isHeartbeat ? HEARTBEAT_FILES : (isSubAgent || isCron) ? MINIMAL_FILES : ALL_FILES;
+    const filesToLoad = selectWorkspaceFiles(sessionKey, { isHeartbeat, isLightContext });
 
     const workspaceFiles: Record<string, string> = {};
     for (const file of filesToLoad) {
-      const content = agentManager.readWorkspaceFile(agentId, file);
+      // 显式传 sessionKey：subagent/cron 试访问 RESTRICTED 会被 fail-closed 拒绝
+      // 但 selectWorkspaceFiles 已经把 RESTRICTED 从清单里筛掉，正常路径不会触发
+      const content = agentManager.readWorkspaceFile(agentId, file, sessionKey);
       if (content) workspaceFiles[file] = content;
     }
 
@@ -913,7 +908,7 @@ export function createChatRoutes(
     }> = [];
 
     // 自主执行会话标记（heartbeat/cron/boot）— 无人值守，权限策略不同
-    const isAutonomousSession = isHeartbeat || isCron || sessionKey.includes(':boot');
+    const isAutonomousSession = isHeartbeat || sessionKey.includes(':cron:') || sessionKey.includes(':boot');
 
     // 破坏性操作待发通知（permissionInterceptFn 设置，onEvent 消费）
     let pendingDestructive: { toolName: string; category?: string; warning: string } | null = null;

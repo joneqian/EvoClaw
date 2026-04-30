@@ -38,3 +38,37 @@ export function isGroupChat(key: SessionKey | string): boolean {
 export function isDirectChat(key: SessionKey | string): boolean {
   return parseSessionKey(key).chatType === 'direct';
 }
+
+/**
+ * 判断是否为子 Agent session（受限会话）
+ * marker 来源：sub-agent-spawner.ts 的 `agent:<id>:local:subagent:<taskId>` 格式
+ */
+export function isSubAgentSessionKey(key: SessionKey | string): boolean {
+  return key.includes(':subagent:');
+}
+
+/**
+ * 判断是否为 Cron 任务 session（受限会话）
+ * marker 来源：cron-runner.ts 的 `agent:<id>:cron:<jobId>` 格式
+ */
+export function isCronSessionKey(key: SessionKey | string): boolean {
+  return key.includes(':cron:');
+}
+
+/**
+ * 判断是否为心跳轮询 session（仍属主 session 范畴）
+ * marker 来源：heartbeat-runner / channel-message-handler 的 `:heartbeat:` 内嵌
+ */
+export function isHeartbeatSessionKey(key: SessionKey | string): boolean {
+  return key.includes(':heartbeat:');
+}
+
+/**
+ * 是否为受限会话（subagent 或 cron）
+ *
+ * 受限会话访问 workspace RESTRICTED 文件（BOOTSTRAP/HEARTBEAT/MEMORY 根文件）会被 fail-closed 拒绝。
+ * 注意：heartbeat 不算受限——它仍是主 session 的延伸，需要读 HEARTBEAT.md 才能干活。
+ */
+export function isPrivilegedSessionKey(key: SessionKey | string): boolean {
+  return !isSubAgentSessionKey(key) && !isCronSessionKey(key);
+}

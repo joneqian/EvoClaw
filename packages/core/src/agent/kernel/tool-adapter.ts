@@ -137,6 +137,12 @@ export interface BuildToolsConfig {
    */
   fsGuard?: AgentFsGuard;
   /**
+   * P1-A: 当前请求的 sessionKey
+   * 传入时启用 builtin read/write/edit 对 workspace 根目录受限文件（BOOTSTRAP/HEARTBEAT/MEMORY）的门控。
+   * subagent / cron 试访问会被 fail-closed 拒绝。
+   */
+  sessionKey?: string;
+  /**
    * agents/ 根目录绝对路径，bash 命令扫描时定位 hallucinate UUID 用
    * 与 fsGuard 同时提供时才启用 bash 命令预检
    */
@@ -543,7 +549,7 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
   const builtinTools = createBuiltinTools(
     config.builtinContextWindow,
     undefined,
-    { workspaceRoot: config.workspaceRoot, fsGuard: config.fsGuard },
+    { workspaceRoot: config.workspaceRoot, fsGuard: config.fsGuard, sessionKey: config.sessionKey },
   ).map(tool => wrapBuiltinTool(tool, deps));
 
   // 2. 增强 bash (适配为 KernelTool)

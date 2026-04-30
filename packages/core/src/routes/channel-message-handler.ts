@@ -11,6 +11,7 @@ import { composeMessageWithQuote } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
 import { reconcileBootstrapState } from '../agent/bootstrap-reconciler.js';
+import { selectWorkspaceFiles } from '../agent/workspace-files-policy.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ChannelManager } from '../channel/channel-manager.js';
@@ -519,20 +520,12 @@ export async function handleChannelMessage(
 
   const systemPrompt = turnCtx.injectedContext.join('\n\n---\n\n');
 
-  // 按 session 类型选择工作区文件
-  const ALL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md', 'MEMORY.md', 'HEARTBEAT.md', 'BOOTSTRAP.md'];
-  const MINIMAL_FILES = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'TOOLS.md', 'USER.md'];
-  const HEARTBEAT_FILES = ['HEARTBEAT.md'];
-
-  const isSubAgent = sessionKey.includes(':subagent:');
-  const isCron = sessionKey.includes(':cron:');
-  const isHeartbeat = sessionKey.includes(':heartbeat:');
-
-  const filesToLoad = isHeartbeat ? HEARTBEAT_FILES : (isSubAgent || isCron) ? MINIMAL_FILES : ALL_FILES;
+  // P1-A: 文件清单选择 + sessionKey 门控（与 chat.ts 共用 selectWorkspaceFiles，消除原 drift）
+  const filesToLoad = selectWorkspaceFiles(sessionKey, {});
 
   const workspaceFiles: Record<string, string> = {};
   for (const file of filesToLoad) {
-    const content = agentManager.readWorkspaceFile(agentId, file);
+    const content = agentManager.readWorkspaceFile(agentId, file, sessionKey);
     if (content) workspaceFiles[file] = content;
   }
 

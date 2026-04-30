@@ -27,6 +27,7 @@ import type {
 } from './types.js';
 import { ApiError, systemPromptBlocksToString } from './types.js';
 import type { SystemPromptBlock } from './types.js';
+import { dedupeCacheBreakpoints } from './system-prompt-cache.js';
 import { createLogger } from '../../infrastructure/logger.js';
 
 const log = createLogger('stream-client');
@@ -271,8 +272,12 @@ function buildAnthropicRequest(config: StreamConfig): RequestSpec {
   // scope: 'global' → 跨用户共享缓存（1P 专属，命中费用 1/10）
   // scope: 'org' → 组织级缓存（不传 scope，服务端按 API key 推断）
   // scope: undefined → 不传 scope（默认 ephemeral 行为）
+  //
+  // dedupeCacheBreakpoints 强制 cache_control 数 ≤ 4（Anthropic 单请求 breakpoint 上限）。
+  // embedded-runner-prompt.ts 在 interactive 模式产生 9-10 个标记，相邻同 scope
+  // 视为一段，只在段尾保留标记（参考 OpenClaw cache_boundary 思路）。
   const systemParam = Array.isArray(config.systemPrompt)
-    ? (config.systemPrompt as readonly SystemPromptBlock[]).map(block => ({
+    ? dedupeCacheBreakpoints(config.systemPrompt as readonly SystemPromptBlock[]).map(block => ({
         type: 'text' as const,
         text: block.text,
         ...(block.cacheControl ? {

@@ -13,6 +13,7 @@ import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
 import { ConfigManager } from './infrastructure/config-manager.js';
 import { AgentManager } from './agent/agent-manager.js';
+import { reconcileBootstrapState } from './agent/bootstrap-reconciler.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createChatRoutes } from './routes/chat.js';
 import { createMemoryRoutes } from './routes/memory.js';
@@ -1944,8 +1945,20 @@ async function main() {
   orphanReconciler.start();
   log.info('OrphanReconciler 已启动（30s 后首次扫描）');
 
-  // 3d. BOOT.md 启动执行 — 异步，不阻塞
+  // 3d. BOOTSTRAP 状态机启动自愈 — 给老 workspace（无 bootstrap_seeded_at 但已编辑 profile）补行
   const activeAgents = agentManager.listAgents('active');
+  for (const agent of activeAgents) {
+    try {
+      const result = reconcileBootstrapState({ agentId: agent.id, agentManager });
+      if (result.repaired) {
+        log.info(`Agent ${agent.id} BOOTSTRAP 启动 reconcile: ${result.reason}`);
+      }
+    } catch (err) {
+      log.error(`Agent ${agent.id} BOOTSTRAP reconcile 失败:`, err);
+    }
+  }
+
+  // 3e. BOOT.md 启动执行 — 异步，不阻塞
   for (const agent of activeAgents) {
     let bootContent = agentManager.readWorkspaceFile(agent.id, 'BOOT.md');
     if (!bootContent) continue;

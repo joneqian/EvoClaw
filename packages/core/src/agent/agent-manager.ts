@@ -540,7 +540,7 @@ const DEFAULT_BOOT_MD = `# Startup Script
 `;
 
 /** BOOTSTRAP.md — first conversation onboarding */
-function generateBootstrapMd(config: AgentConfig): string {
+export function generateBootstrapMd(config: AgentConfig): string {
   return `# Hello, World
 
 _You just woke up. You are ${config.emoji} ${config.name}. Time to meet your user._
@@ -582,7 +582,7 @@ _Good luck. Make every conversation count._
 }
 
 /** IDENTITY.md — identity card */
-function generateIdentityMd(config: AgentConfig): string {
+export function generateIdentityMd(config: AgentConfig): string {
   return `---
 name: ${config.name}
 emoji: ${config.emoji}

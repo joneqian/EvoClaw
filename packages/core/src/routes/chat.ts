@@ -13,6 +13,7 @@ import { createBunSSEResponse } from '../infrastructure/bun-sse.js';
  */
 export const bunSSEResponses = new WeakMap<Request, Response>();
 import { AgentManager } from '../agent/agent-manager.js';
+import { reconcileBootstrapState } from '../agent/bootstrap-reconciler.js';
 import { runEmbeddedAgent } from '../agent/embedded-runner.js';
 import type { AgentRunConfig } from '../agent/types.js';
 import { resolveModelDefinition } from '../provider/extensions/index.js';
@@ -705,23 +706,16 @@ export function createChatRoutes(
       if (content) workspaceFiles[file] = content;
     }
 
-    // BOOTSTRAP.md 生命周期检测
-    const bootstrapSeeded = agentManager.getWorkspaceState(agentId, 'bootstrap_seeded_at');
-    const setupCompleted = agentManager.getWorkspaceState(agentId, 'setup_completed_at');
-
-    if (bootstrapSeeded && !setupCompleted) {
-      // 检查 BOOTSTRAP.md 是否已被 Agent 删除或清空
-      const bootstrapContent = agentManager.readWorkspaceFile(agentId, 'BOOTSTRAP.md');
-      const bootstrapDone = !bootstrapContent || bootstrapContent.trim().length === 0 || history.length >= 12;
-      if (bootstrapDone) {
-        agentManager.setWorkspaceState(agentId, 'setup_completed_at', new Date().toISOString());
-        // 清空磁盘上的 BOOTSTRAP.md（无论是 Agent 主动清空还是兜底触发）
-        agentManager.writeWorkspaceFile(agentId, 'BOOTSTRAP.md', '');
-      }
-    }
-
-    // setup 已完成 → 不再注入 BOOTSTRAP.md（出生只有一次）
-    if (setupCompleted) {
+    // BOOTSTRAP.md 状态机自愈（取代旧 12 轮硬编码兜底）
+    // - 用户编辑 USER.md / SOUL.md / IDENTITY.md 即视为 setup 完成
+    // - Agent 主动清空 BOOTSTRAP.md 即视为完成
+    // - 历史 >= 30 轮兜底强清（safety net，远高于原 12 轮）
+    const reconcile = reconcileBootstrapState({
+      agentId,
+      agentManager,
+      historyLength: history.length,
+    });
+    if (reconcile.setupCompleted) {
       delete workspaceFiles['BOOTSTRAP.md'];
     }
 

@@ -5,8 +5,8 @@ import {
   withFeishuRetry,
   computeBackoffDelay,
   DEFAULT_MAX_DELAY_MS,
-} from '../channel/adapters/feishu/retry.js';
-import { FeishuApiError } from '../channel/adapters/feishu/outbound.js';
+} from '../channel/adapters/feishu/common/retry.js';
+import { FeishuApiError } from '../channel/adapters/feishu/outbound/index.js';
 
 describe('extractRetryAfterSeconds', () => {
   it('解析 "Retry-After: <n>" 形式', () => {

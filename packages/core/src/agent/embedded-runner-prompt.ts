@@ -22,6 +22,10 @@ import os from 'node:os';
 import type { AgentRunConfig } from './types.js';
 import type { SystemPromptBlock } from './kernel/types.js';
 import { systemPromptBlocksToString } from './kernel/types.js';
+import {
+  FEISHU_DOC_COLLAB_PROMPT,
+  hasFeishuDocTools,
+} from './prompts/feishu-doc-collab.js';
 // Git context 不注入 — EvoClaw 面向企业用户，非开发者，无需 Git 状态
 
 /** 提示词构建模式 */
@@ -305,6 +309,17 @@ ${exceptionBlock}
       // 仅依赖 LRU（不带 scope 走默认行为，避免不同入站源混用同一 cache key）
       cacheControl: { type: 'ephemeral' },
       label: 'silent_reply',
+    });
+  }
+
+  // § 7.5 Feishu 文档协作工作流（M13 Phase 5 C5）
+  // 仅在装载了 feishu_read_doc 工具时引入；非飞书 agent 完全跳过，避免 prompt 噪音
+  const feishuDocTools = (config.tools ?? []).map((t) => t.name);
+  if (hasFeishuDocTools(feishuDocTools)) {
+    blocks.push({
+      text: FEISHU_DOC_COLLAB_PROMPT,
+      cacheControl: { type: 'ephemeral', scope: 'global' },
+      label: 'feishu_doc_collab',
     });
   }
 

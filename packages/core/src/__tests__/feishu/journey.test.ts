@@ -108,6 +108,90 @@ describe('飞书 E2E journey', () => {
     });
   });
 
+  describe('飞书文档完整闭环 read + comment + edit (M13 Phase 5 C5)', () => {
+    it('drive 评论 → adapter 读 doc → 替换块 → 出站 SDK 调用顺序正确', async () => {
+      await h.boot();
+
+      // 1. drive 评论触发 → handler 收到 ChannelMessage
+      await h.simulateDocComment({
+        fileToken: 'doc_tok',
+        fileType: 'docx',
+        commentId: 'cmt_1',
+        fromOpenId: 'ou_alice',
+        content: '帮我把第二段改成中文',
+      });
+      expect(h.inboundMessages).toHaveLength(1);
+      const msg = h.inboundMessages[0]!;
+      expect(msg.feishuDoc?.fileToken).toBe('doc_tok');
+
+      // 2. agent 模拟：先调 readDoc 拿上下文（mock SDK 返回 2 个块）
+      h.mock.lastClient!.request.mockResolvedValueOnce({
+        code: 0,
+        data: {
+          has_more: false,
+          items: [
+            {
+              block_id: 'b_1',
+              block_type: 2,
+              parent_id: 'doc_root',
+              text: { elements: [{ text_run: { content: 'first paragraph' } }] },
+            },
+            {
+              block_id: 'b_2',
+              block_type: 2,
+              parent_id: 'doc_root',
+              text: { elements: [{ text_run: { content: 'second paragraph in english' } }] },
+            },
+          ],
+        },
+      });
+      const snapshot = await h.adapter.readDoc({
+        fileToken: msg.feishuDoc!.fileToken,
+        fileType: 'docx',
+      });
+      expect(snapshot.blocks).toHaveLength(2);
+      expect(snapshot.blocks[1]!.id).toBe('b_2');
+
+      // 3. agent 模拟：调 replaceDocBlock 改 b_2（含再次 read for audit before_text + PATCH）
+      h.mock.lastClient!.request
+        .mockResolvedValueOnce({
+          // replaceDocBlock 内部读 doc 拿 before_text
+          code: 0,
+          data: {
+            has_more: false,
+            items: [
+              { block_id: 'b_1', block_type: 2, text: { elements: [{ text_run: { content: 'first paragraph' } }] } },
+              { block_id: 'b_2', block_type: 2, text: { elements: [{ text_run: { content: 'second paragraph in english' } }] } },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({ code: 0, data: { document_revision_id: 100 } });
+
+      const result = await h.adapter.replaceDocBlock({
+        fileToken: 'doc_tok',
+        fileType: 'docx',
+        blockId: 'b_2',
+        text: '第二段已翻译为中文',
+        agentId: 'agent_alice',
+      });
+
+      expect(result.beforeText).toBe('second paragraph in english');
+      expect(result.revisionId).toBe(100);
+
+      // 4. 验证 SDK 调用顺序：read（步骤 2） + read（步骤 3 audit before）+ PATCH（步骤 3）
+      const calls = h.mock.lastClient!.request.mock.calls.map((c) => ({
+        method: (c[0] as { method?: string }).method ?? 'GET',
+        url: (c[0] as { url: string }).url,
+      }));
+      // 跳过 connect 时的 bot/v3/info 等 — 找出文档相关调用
+      const docCalls = calls.filter((c) => c.url.includes('/docx/v1/documents/'));
+      expect(docCalls).toHaveLength(3);
+      expect(docCalls[0]).toMatchObject({ method: 'GET', url: expect.stringContaining('/blocks?') });
+      expect(docCalls[1]).toMatchObject({ method: 'GET', url: expect.stringContaining('/blocks?') });
+      expect(docCalls[2]).toMatchObject({ method: 'PATCH', url: expect.stringContaining('/blocks/b_2') });
+    });
+  });
+
   describe('飞书文档评论 → agent dispatch (M13 Phase 5 C1)', () => {
     it('用户在 docx 上评论 → handler 收到带 feishuDoc 的 ChannelMessage', async () => {
       await h.boot();

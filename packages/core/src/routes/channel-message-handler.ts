@@ -10,6 +10,7 @@ import type { ChatMessage, ChatMessageAttachment, QuotedMessage } from '@evoclaw
 import { composeMessageWithQuote } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
+import { reconcileBootstrapState } from '../agent/bootstrap-reconciler.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ChannelManager } from '../channel/channel-manager.js';
@@ -535,21 +536,13 @@ export async function handleChannelMessage(
     if (content) workspaceFiles[file] = content;
   }
 
-  // BOOTSTRAP.md 生命周期检测
-  const bootstrapSeeded = agentManager.getWorkspaceState(agentId, 'bootstrap_seeded_at');
-  const setupCompleted = agentManager.getWorkspaceState(agentId, 'setup_completed_at');
-
-  if (bootstrapSeeded && !setupCompleted) {
-    const bootstrapContent = agentManager.readWorkspaceFile(agentId, 'BOOTSTRAP.md');
-    const bootstrapDone = !bootstrapContent || bootstrapContent.trim().length === 0 || history.length >= 12;
-    if (bootstrapDone) {
-      agentManager.setWorkspaceState(agentId, 'setup_completed_at', new Date().toISOString());
-      agentManager.writeWorkspaceFile(agentId, 'BOOTSTRAP.md', '');
-    }
-  }
-
-  // setup 已完成 → 不再注入 BOOTSTRAP.md（出生只有一次）
-  if (setupCompleted || agentManager.getWorkspaceState(agentId, 'setup_completed_at')) {
+  // BOOTSTRAP.md 状态机自愈（与 chat.ts 共用 reconciler）
+  const reconcile = reconcileBootstrapState({
+    agentId,
+    agentManager,
+    historyLength: history.length,
+  });
+  if (reconcile.setupCompleted) {
     delete workspaceFiles['BOOTSTRAP.md'];
   }
 

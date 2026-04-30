@@ -48,7 +48,7 @@ describe('createChannelTools', () => {
     expect(tools.map((t) => t.name)).toEqual(['desktop_notify']);
   });
 
-  it('feishu channel 暴露 desktop_notify + 8 个飞书工具', () => {
+  it('feishu channel 暴露 desktop_notify + 9 个飞书工具', () => {
     const cm = createMockChannelManager();
     const tools = createChannelTools(cm, 'feishu');
     const names = tools.map((t) => t.name);
@@ -61,6 +61,7 @@ describe('createChannelTools', () => {
       'feishu_request_approval',
       'feishu_reply_comment',
       'feishu_add_whole_comment',
+      'feishu_append_block',
       'feishu_read_doc',
       'feishu_list_comment_replies',
     ]);
@@ -315,7 +316,7 @@ describe('getChannelToolNames', () => {
     expect(getChannelToolNames('local')).toEqual(['desktop_notify']);
   });
 
-  it('feishu 返回 9 个工具名', () => {
+  it('feishu 返回 10 个工具名', () => {
     const names = getChannelToolNames('feishu');
     expect(names).toEqual([
       'desktop_notify',
@@ -328,6 +329,7 @@ describe('getChannelToolNames', () => {
       'feishu_add_whole_comment',
       'feishu_list_comment_replies',
       'feishu_read_doc',
+      'feishu_append_block',
     ]);
   });
 

@@ -17,6 +17,7 @@ import {
   listCommentReplies,
   toTextElements,
   getDocContent,
+  appendTextBlock,
 } from '../../channel/adapters/feishu/doc/doc-api.js';
 import { FeishuApiError } from '../../channel/adapters/feishu/outbound/index.js';
 
@@ -480,5 +481,151 @@ describe('getDocContent', () => {
       fileType: 'docx',
     });
     expect(client.request.mock.calls[0]![0].url).toContain('tok%20with%2Fspace');
+  });
+});
+
+describe('appendTextBlock', () => {
+  it('成功路径：默认追加到 doc 根 + URL 含 documentId 编码', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        children: [{ block_id: 'new_block_42' }],
+        document_revision_id: 12345,
+      },
+    });
+
+    const result = await appendTextBlock(client as unknown as Lark.Client, {
+      fileToken: 'docx_tok',
+      fileType: 'docx',
+      text: '这段是 agent 加的',
+    });
+
+    expect(result).toEqual({ blockId: 'new_block_42', revisionId: 12345 });
+    expect(client.request).toHaveBeenCalledOnce();
+    const call = client.request.mock.calls[0]![0];
+    // parentBlockId 缺省 → block_id 路径段 = fileToken 自身（doc 根）
+    expect(call.url).toBe(
+      '/open-apis/docx/v1/documents/docx_tok/blocks/docx_tok/children',
+    );
+    expect(call.method).toBe('POST');
+    expect(call.data).toEqual({
+      children: [
+        {
+          block_type: 2,
+          text: { elements: [{ text_run: { content: '这段是 agent 加的' } }] },
+        },
+      ],
+    });
+  });
+
+  it('指定 parentBlockId：URL 用 parent block 而非 doc 根', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: { children: [{ block_id: 'b' }] },
+    });
+
+    await appendTextBlock(client as unknown as Lark.Client, {
+      fileToken: 'docx_tok',
+      fileType: 'docx',
+      parentBlockId: 'parent_block_99',
+      text: 'hi',
+    });
+
+    expect(client.request.mock.calls[0]![0].url).toBe(
+      '/open-apis/docx/v1/documents/docx_tok/blocks/parent_block_99/children',
+    );
+  });
+
+  it('documentRevisionId 透传到 query 参数', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 0, data: { children: [{}] } });
+    await appendTextBlock(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      text: 'x',
+      documentRevisionId: 999,
+    });
+    expect(client.request.mock.calls[0]![0].url).toContain('?document_revision_id=999');
+  });
+
+  it('未传 documentRevisionId 时 URL 不带 query', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 0, data: { children: [{}] } });
+    await appendTextBlock(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      text: 'x',
+    });
+    expect(client.request.mock.calls[0]![0].url).not.toContain('?');
+  });
+
+  it('特殊字符的 fileToken / parentBlockId 走 URL 编码', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 0, data: { children: [{}] } });
+    await appendTextBlock(client as unknown as Lark.Client, {
+      fileToken: 'tok with/space',
+      fileType: 'docx',
+      parentBlockId: 'block/x',
+      text: 'x',
+    });
+    const url = client.request.mock.calls[0]![0].url;
+    expect(url).toContain('tok%20with%2Fspace');
+    expect(url).toContain('block%2Fx');
+  });
+
+  it('230108（version 过期）抛 FeishuApiError，不在 doc-api 层重试', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 230108,
+      msg: 'document_revision_id expired',
+    });
+
+    await expect(
+      appendTextBlock(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'docx',
+        text: 'x',
+        documentRevisionId: 100,
+      }),
+    ).rejects.toThrow(FeishuApiError);
+    expect(client.request).toHaveBeenCalledOnce(); // 不重试
+  });
+
+  it('230109（block 不存在）抛 FeishuApiError', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 230109, msg: 'block not found' });
+    await expect(
+      appendTextBlock(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'docx',
+        parentBlockId: 'nonexistent',
+        text: 'x',
+      }),
+    ).rejects.toThrow(FeishuApiError);
+  });
+
+  it('非 docx fileType 直接抛错（v1 范围限制）', async () => {
+    const client = makeClient();
+    await expect(
+      appendTextBlock(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'sheet',
+        text: 'x',
+      }),
+    ).rejects.toThrow(/只支持 docx/);
+    expect(client.request).not.toHaveBeenCalled();
+  });
+
+  it('响应缺 children 时 blockId/revisionId 都为 null（不抛）', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 0, data: {} });
+    const result = await appendTextBlock(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      text: 'x',
+    });
+    expect(result).toEqual({ blockId: null, revisionId: null });
   });
 });

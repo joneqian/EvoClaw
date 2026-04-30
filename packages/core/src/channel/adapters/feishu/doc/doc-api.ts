@@ -324,3 +324,81 @@ export async function getDocContent(
 
   return { documentId, blocks, plainText };
 }
+
+// ─── 块创建（M13 Phase 5 C3） ──────────────────────────────────────────
+
+/**
+ * 在 docx 末尾或某 block 下追加一个文本块
+ *
+ * 行为：
+ * - 调 `POST /open-apis/docx/v1/documents/:document_id/blocks/:block_id/children`
+ *   把新 block 作为 `parentBlockId`（默认=doc 根）的最后一个 child
+ * - block_type=2（飞书 text 块）+ 单 text_run 元素，避免暴露 SDK 复杂 schema
+ * - 可选 `documentRevisionId` 乐观锁：传入后服务端校验文档版本，过期则 230108
+ *   错（agent 可重新 read_doc 后重试）
+ *
+ * 错误处理：
+ * - 230108（document_revision_id 过期）/ 230109（block 不存在）走 FeishuApiError
+ *   通道，agent 的 catch 路径决定是否重读 + 重试（不在工具层自动重试，避免覆盖
+ *   并发用户编辑）
+ *
+ * @returns 新建 block 的 block_id；data 缺失时返回 null
+ */
+export async function appendTextBlock(
+  client: Lark.Client,
+  params: {
+    fileToken: string;
+    fileType: FeishuFileType;
+    /** 父 block_id，默认等于 fileToken（即 docx 根） */
+    parentBlockId?: string;
+    /** 要追加的文本内容（纯文本，单 text_run） */
+    text: string;
+    /**
+     * 文档版本号（乐观锁）
+     *
+     * 不传时服务端不做版本校验；传入则校验，过期 → 230108。建议从前一次
+     * `getDocContent` 或 `appendTextBlock` 的响应中取值。
+     */
+    documentRevisionId?: number;
+  },
+): Promise<{ blockId: string | null; revisionId: number | null }> {
+  if (params.fileType !== 'docx') {
+    throw new Error(`appendTextBlock 当前只支持 docx，收到 ${params.fileType}`);
+  }
+  const documentId = encodeURIComponent(params.fileToken);
+  const parentBlockId = encodeURIComponent(params.parentBlockId ?? params.fileToken);
+  const query =
+    params.documentRevisionId !== undefined
+      ? `?document_revision_id=${encodeURIComponent(String(params.documentRevisionId))}`
+      : '';
+
+  const res = (await client.request({
+    url: `/open-apis/docx/v1/documents/${documentId}/blocks/${parentBlockId}/children${query}`,
+    method: 'POST',
+    data: {
+      children: [
+        {
+          block_type: 2, // text block
+          text: {
+            elements: [{ text_run: { content: params.text } }],
+          },
+        },
+      ],
+    },
+  })) as {
+    code?: number;
+    msg?: string;
+    data?: {
+      children?: Array<{ block_id?: string }>;
+      document_revision_id?: number;
+    };
+  };
+
+  if (res.code) {
+    throw new FeishuApiError('追加文本块', res.code, res.msg ?? '');
+  }
+  return {
+    blockId: res.data?.children?.[0]?.block_id ?? null,
+    revisionId: res.data?.document_revision_id ?? null,
+  };
+}

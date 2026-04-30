@@ -391,6 +391,65 @@ export function createChannelTools(
     });
 
     tools.push({
+      name: 'feishu_append_block',
+      description:
+        '在飞书 docx 末尾或某父 block 下追加一个文本块（最常见的 doc edit）。failure code 230108/230109 不会自动重试 —— 拿到错请重读 doc 后再尝试。',
+      channel: 'feishu',
+      parameters: {
+        type: 'object',
+        properties: {
+          fileToken: { type: 'string', description: '文档唯一标识（drive 事件 file_token）' },
+          fileType: {
+            type: 'string',
+            description: '文档类型（v1 仅支持 docx）',
+            enum: ['docx'],
+          },
+          text: { type: 'string', description: '要追加的文本内容（纯文本）' },
+          parentBlockId: {
+            type: 'string',
+            description: '父 block_id（默认=fileToken=docx 根；指定时块作为该 block 的最后一个 child）',
+          },
+          documentRevisionId: {
+            type: 'number',
+            description: '可选乐观锁：上次 read_doc 拿到的 revision；不传时不校验版本，传入则版本过期时返回 230108',
+          },
+        },
+        required: ['fileToken', 'fileType', 'text'],
+      },
+      execute: async (params) => {
+        const fileToken = params['fileToken'] as string;
+        const fileType = params['fileType'] as DocFileTypeParam;
+        const text = params['text'] as string;
+        const parentBlockId = params['parentBlockId'] as string | undefined;
+        const documentRevisionId = params['documentRevisionId'] as number | undefined;
+        if (!fileToken || !fileType || !text) {
+          return '错误：缺少 fileToken / fileType / text';
+        }
+        if (fileType !== 'docx') {
+          return `错误：feishu_append_block 当前仅支持 docx，收到 ${fileType}`;
+        }
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        const appendParams: {
+          fileToken: string;
+          fileType: DocFileTypeParam;
+          text: string;
+          parentBlockId?: string;
+          documentRevisionId?: number;
+        } = { fileToken, fileType, text };
+        if (parentBlockId) appendParams.parentBlockId = parentBlockId;
+        if (typeof documentRevisionId === 'number') {
+          appendParams.documentRevisionId = documentRevisionId;
+        }
+        const result = await adapter.appendDocBlock(appendParams);
+        return JSON.stringify({
+          block_id: result.blockId,
+          document_revision_id: result.revisionId,
+        });
+      },
+    });
+
+    tools.push({
       name: 'feishu_read_doc',
       description:
         '读取飞书 docx 全文（用于 agent 在 drive 评论触发后获取上下文，再决定如何回复/编辑）',
@@ -572,6 +631,7 @@ export function getChannelToolNames(channel: ChannelType): string[] {
         'feishu_add_whole_comment',
         'feishu_list_comment_replies',
         'feishu_read_doc',
+        'feishu_append_block',
       ];
     case 'wecom':
       return [...base, 'wecom_send'];

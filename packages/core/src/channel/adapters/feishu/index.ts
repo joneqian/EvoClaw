@@ -29,6 +29,7 @@ import {
   type FeishuMessageFetcher,
   type InboundContext,
 } from './inbound/index.js';
+import { DebounceCoalescer } from './inbound/debounce-coalescer.js';
 import { createFeishuMessageCache } from './common/message-cache.js';
 import { parseFeishuContent } from './inbound/parse-content.js';
 import { sendMediaMessage, sendSmartMessage } from './outbound/index.js';
@@ -182,6 +183,13 @@ export class FeishuAdapter implements ChannelAdapter {
   /** 群聊旁听缓冲（多机器人协作） */
   private readonly groupHistory = new GroupHistoryBuffer();
   /**
+   * 入站文本合并器（debounce）
+   *
+   * connect() 时按 credentials.debounce 配置构造；disconnect() 时 shutdown() 清空 buffer。
+   * 闭包内 lazy 读 this.handler，handler 可在多次 connect / onMessage 之间变化。
+   */
+  private coalescer: DebounceCoalescer | null = null;
+  /**
    * Team mode 入站分类器（M13 PR4 注入）
    *
    * 由外层（server.ts）按"FeishuPeerBotRegistry.classifyPeer + 自身 accountId 比对"
@@ -235,10 +243,17 @@ export class FeishuAdapter implements ChannelAdapter {
       });
       this.bundle = bundle;
 
+      // 构造 coalescer：闭包内 lazy 读 this.handler，避免抓 stale reference
+      this.coalescer = new DebounceCoalescer(credentials.debounce, async (msg) => {
+        const h = this.handler;
+        if (h) await h(msg);
+      });
+
       registerInboundHandlers(bundle.dispatcher, {
         getAccountId: () => this.credentials?.appId ?? '',
         getBotOpenId: () => this.botOpenId,
         getHandler: () => this.handler,
+        getCoalescer: () => this.coalescer,
         getMediaDownloader: () => this.mediaDownloader,
         getGroupSessionScope: () => this.credentials?.groupSessionScope ?? 'group',
         getGroupHistory: () => this.groupHistory,
@@ -314,6 +329,9 @@ export class FeishuAdapter implements ChannelAdapter {
     this.approvalRegistry.cancelAll();
     // 清空群聊旁听缓冲（断开视为会话边界重置）
     this.groupHistory.clear();
+    // flush + 清理 debounce coalescer（in-flight buffer 在 handler 已 null 的情况下静默丢弃）
+    this.coalescer?.shutdown();
+    this.coalescer = null;
     this.status = { ...this.status, status: 'disconnected', error: undefined };
   }
 

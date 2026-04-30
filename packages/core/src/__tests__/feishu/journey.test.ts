@@ -8,7 +8,7 @@
  * 主要价值是把"真机灰度时手动跑的关键路径"自动化，回归阻挡核心 channel 行为破坏。
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FeishuTestHarness } from './_harness.js';
 
 describe('飞书 E2E journey', () => {
@@ -105,6 +105,31 @@ describe('飞书 E2E journey', () => {
       expect(h.adapter.getStatus().status).toBe('disconnected');
       // 重复 shutdown 应幂等（afterEach 还会再调一次）
       await h.shutdown();
+    });
+  });
+
+  describe('debounce coalescer 端到端', () => {
+    it('启用 debounce 后连发 3 条文本：handler 只调 1 次（合并）', async () => {
+      vi.useFakeTimers();
+      const h2 = new FeishuTestHarness({ debounceEnabled: true });
+      try {
+        await h2.boot();
+        await h2.simulateP2PText({ text: '你好' });
+        await vi.advanceTimersByTimeAsync(1000);
+        await h2.simulateP2PText({ text: '我想问一下' });
+        await vi.advanceTimersByTimeAsync(1000);
+        await h2.simulateP2PText({ text: '天气怎么样' });
+        // 还在安静窗口内：handler 未被调用
+        expect(h2.inboundMessages).toHaveLength(0);
+
+        // 推进过安静窗口
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(h2.inboundMessages).toHaveLength(1);
+        expect(h2.inboundMessages[0]!.content).toBe('你好\n我想问一下\n天气怎么样');
+      } finally {
+        await h2.shutdown();
+        vi.useRealTimers();
+      }
     });
   });
 });

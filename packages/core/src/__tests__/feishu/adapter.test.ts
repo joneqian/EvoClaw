@@ -126,7 +126,7 @@ describe('FeishuCredentialsSchema', () => {
 
   it('缺少 appId 应拒绝', () => {
     expect(() =>
-      FeishuCredentialsSchema.parse({ appId: '', appSecret: 'x' }),
+      FeishuCredentialsSchema.parse({ appId: '', appSecret: 'x', debounceEnabled: 'false' }),
     ).toThrow();
   });
 
@@ -173,7 +173,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书测试',
-      credentials: { appId: 'cli_1', appSecret: 'sec_1' },
+      credentials: { appId: 'cli_1', appSecret: 'sec_1', debounceEnabled: 'false' },
     });
 
     expect(mock.lastWs?.start).toHaveBeenCalledOnce();
@@ -194,7 +194,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'cli_bot', appSecret: 's' },
+      credentials: { appId: 'cli_bot', appSecret: 's', debounceEnabled: 'false' },
     });
 
     // bot 发现 API 被调用
@@ -221,7 +221,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'cli_x', appSecret: 's' },
+      credentials: { appId: 'cli_x', appSecret: 's', debounceEnabled: 'false' },
     });
     // 覆盖 request 为失败
     mock.lastClient!.request.mockRejectedValueOnce(new Error('403'));
@@ -235,7 +235,7 @@ describe('FeishuAdapter', () => {
     await adapter2.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'a', appSecret: 'b' },
+      credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
     });
     expect(adapter2.getStatus().status).toBe('connected');
   });
@@ -244,13 +244,13 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'a', appSecret: 'b' },
+      credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
     });
     const firstWs = mock.lastWs!;
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'a', appSecret: 'b' },
+      credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
     });
     expect(firstWs.close).toHaveBeenCalled();
   });
@@ -280,7 +280,7 @@ describe('FeishuAdapter', () => {
       adapter.connect({
         type: 'feishu',
         name: '测试',
-        credentials: { appId: 'a', appSecret: 'b' },
+        credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
       }),
     ).rejects.toThrow('网络错误');
     expect(adapter.getStatus().status).toBe('error');
@@ -291,7 +291,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'a', appSecret: 'b' },
+      credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
     });
     const wsBefore = mock.lastWs!;
     await adapter.disconnect();
@@ -303,7 +303,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'a', appSecret: 'b' },
+      credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
     });
 
     await adapter.sendMessage('ou_user', '你好', 'private');
@@ -335,7 +335,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'a', appSecret: 'b' },
+      credentials: { appId: 'a', appSecret: 'b', debounceEnabled: 'false' },
     });
     mock.lastClient!.im.v1.message.create.mockResolvedValueOnce({
       code: 230001,
@@ -352,7 +352,7 @@ describe('FeishuAdapter', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书',
-      credentials: { appId: 'cli_bot', appSecret: 's' },
+      credentials: { appId: 'cli_bot', appSecret: 's', debounceEnabled: 'false' },
     });
 
     // 触发 im.message.receive_v1
@@ -794,7 +794,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
     await adapter.connect({
       type: 'feishu',
       name: '飞书-Bot-X',
-      credentials: { appId: 'cli_x', appSecret: 's' },
+      credentials: { appId: 'cli_x', appSecret: 's', debounceEnabled: 'false' },
     });
 
     // 真人 Alice 在群里发言（未 @Bot）
@@ -839,7 +839,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
     await adapter.connect({
       type: 'feishu',
       name: 'Agent-A',
-      credentials: { appId: 'cli_a', appSecret: 's' },
+      credentials: { appId: 'cli_a', appSecret: 's', debounceEnabled: 'false' },
     });
 
     // Step 1: Bot A 被 @，回一句话
@@ -896,7 +896,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
     await adapter.connect({
       type: 'feishu',
       name: 'Bot',
-      credentials: { appId: 'cli', appSecret: 's' },
+      credentials: { appId: 'cli', appSecret: 's', debounceEnabled: 'false' },
     });
     await adapter.sendMessage('ou_alice', 'hi', 'private');
     // 直接发群消息验证 buffer 空
@@ -927,6 +927,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
         appId: 'cli',
         appSecret: 's',
         groupHistoryEnabled: 'false',
+        debounceEnabled: 'false',
       },
     });
 
@@ -971,6 +972,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
         appId: 'cli',
         appSecret: 's',
         groupHistoryIncludeBotMessages: 'false',
+        debounceEnabled: 'false',
       },
     });
 
@@ -999,7 +1001,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
     await adapter.connect({
       type: 'feishu',
       name: 'Bot',
-      credentials: { appId: 'cli', appSecret: 's' },
+      credentials: { appId: 'cli', appSecret: 's', debounceEnabled: 'false' },
     });
 
     // 灌入一条旁听
@@ -1024,7 +1026,7 @@ describe('FeishuAdapter 群旁听缓冲 (Phase A)', () => {
     await adapter2.connect({
       type: 'feishu',
       name: 'Bot',
-      credentials: { appId: 'cli', appSecret: 's' },
+      credentials: { appId: 'cli', appSecret: 's', debounceEnabled: 'false' },
     });
     await mock.lastDispatcher!.invoke('im.message.receive_v1', {
       sender: { sender_id: { open_id: 'ou_alice' }, sender_type: 'user' },

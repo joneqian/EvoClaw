@@ -12,6 +12,7 @@
 import { z } from 'zod';
 import { FEISHU_GROUP_SESSION_SCOPES } from './common/session-key.js';
 import { DEFAULT_GROUP_HISTORY_CONFIG } from './inbound/group-history.js';
+import { DEFAULT_DEBOUNCE_CONFIG } from './inbound/debounce-coalescer.js';
 import {
   BROADCAST_TRIGGER_MODES,
   DEFAULT_BROADCAST_CONFIG,
@@ -76,6 +77,31 @@ export const FeishuCredentialsSchema = z.object({
         .default(DEFAULT_BROADCAST_CONFIG.triggerMode),
     })
     .default({ ...DEFAULT_BROADCAST_CONFIG }),
+  /**
+   * 入站文本合并器（debounce）
+   * - enabled         总开关（默认 true，关闭后每条消息直通 handler）
+   * - quietWindowMs   安静窗口 ms（reset-on-msg）
+   * - maxWaitMs       单 session 累积硬上限 ms
+   *
+   * 仅作用于无 mediaPath / quoted / broadcastTargets 的纯文本消息；其它直通。
+   */
+  debounce: z
+    .object({
+      enabled: z.boolean().default(DEFAULT_DEBOUNCE_CONFIG.enabled),
+      quietWindowMs: z
+        .number()
+        .int()
+        .min(0)
+        .max(60_000)
+        .default(DEFAULT_DEBOUNCE_CONFIG.quietWindowMs),
+      maxWaitMs: z
+        .number()
+        .int()
+        .min(0)
+        .max(300_000)
+        .default(DEFAULT_DEBOUNCE_CONFIG.maxWaitMs),
+    })
+    .default({ ...DEFAULT_DEBOUNCE_CONFIG }),
 });
 
 export type FeishuCredentials = z.infer<typeof FeishuCredentialsSchema>;
@@ -173,6 +199,20 @@ export function parseFeishuCredentials(raw: Record<string, string>): FeishuCrede
       ),
       peerAgents: parseBroadcastPeerAgents(raw['broadcastPeerAgents']),
       triggerMode: parseTriggerMode(raw['broadcastTriggerMode']),
+    },
+    debounce: {
+      enabled: parseBool(
+        raw['debounceEnabled'],
+        DEFAULT_DEBOUNCE_CONFIG.enabled,
+      ),
+      quietWindowMs: parseInt10(
+        raw['debounceQuietWindowMs'],
+        DEFAULT_DEBOUNCE_CONFIG.quietWindowMs,
+      ),
+      maxWaitMs: parseInt10(
+        raw['debounceMaxWaitMs'],
+        DEFAULT_DEBOUNCE_CONFIG.maxWaitMs,
+      ),
     },
   });
   if (!result.success) {

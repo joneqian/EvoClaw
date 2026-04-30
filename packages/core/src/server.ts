@@ -924,10 +924,12 @@ async function main() {
         const { FeishuPeerBotRegistry } = await import('./channel/adapters/feishu/common/peer-bot-registry.js');
         const { FeishuTeamChannel } = await import('./channel/adapters/feishu/team-channel.js');
         const { ChatPrebakeService } = await import('./channel/adapters/feishu/inbound/chat-prebake.js');
+        const { DocEditAuditLog } = await import('./channel/adapters/feishu/doc/audit-log.js');
         const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
 
         feishuPeerBotRegistry = new FeishuPeerBotRegistry({ bindingRouter });
         feishuChatPrebake = new ChatPrebakeService({ store: db });
+        const docAuditLog = new DocEditAuditLog(db);
         feishuTeamChannel = new FeishuTeamChannel({
           peerBotRegistry: feishuPeerBotRegistry,
           bindingRouter,
@@ -944,9 +946,9 @@ async function main() {
         teamChannelRegistry.register('feishu', feishuTeamChannel);
 
         // factory：每个 accountId 创建一个 FeishuAdapter 实例，挂上同一组 team-mode
-        // 钩子（共享 peerBotRegistry / teamChannel 单例）
+        // 钩子（共享 peerBotRegistry / teamChannel / docAuditLog 单例）
         channelManager.registerFactory('feishu', () => {
-          const adapter = new FeishuAdapter();
+          const adapter = new FeishuAdapter({ auditLog: docAuditLog });
           // 入站分类器：peer-bot-registry.classifyPeer 副作用更新缓存（按 viewer 视角）
           adapter.setTeamModeClassifier(({ chatId, senderAppId, senderOpenId, senderUnionId, ownAccountId }) => {
             if (!chatId || !senderAppId) return 'stranger';

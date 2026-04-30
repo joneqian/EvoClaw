@@ -63,9 +63,12 @@ import {
   listCommentReplies as apiListCommentReplies,
   getDocContent as apiGetDocContent,
   appendTextBlock as apiAppendTextBlock,
+  replaceBlockText as apiReplaceBlockText,
+  deleteBlock as apiDeleteBlock,
   type FeishuFileType as DocFileType,
   type DocContentSnapshot,
 } from './doc/doc-api.js';
+import type { DocEditAuditLog } from './doc/audit-log.js';
 import { createFeishuSdkLogger, type FeishuWsStatusEvent } from './common/ws-logger.js';
 
 const log = createLogger('feishu-adapter');
@@ -76,6 +79,13 @@ export interface FeishuAdapterOptions {
   sdk?: FeishuSdk;
   /** 覆盖 bot 身份自动发现（测试用） */
   hydrateBotOpenId?: (client: Lark.Client) => Promise<string | null>;
+  /**
+   * 文档编辑审计日志（M13 Phase 5 C4）
+   *
+   * 由 server.ts 单例注入：每个 FeishuAdapter 实例共用同一份 DocEditAuditLog（背后
+   * 共用 SqliteStore）。未注入时 doc edit 工具静默跳过 audit 写入（不阻塞 edit）。
+   */
+  auditLog?: DocEditAuditLog;
 }
 
 /**
@@ -512,12 +522,95 @@ export class FeishuAdapter implements ChannelAdapter {
     text: string;
     parentBlockId?: string;
     documentRevisionId?: number;
+    /** agent ID（用于 audit log；工具执行时由 channel-tools 注入）*/
+    agentId?: string;
   }): Promise<{ blockId: string | null; revisionId: number | null }> {
     const client = this.requireClient();
-    return await withFeishuRetry(
+    const result = await withFeishuRetry(
       () => apiAppendTextBlock(client, params),
       { label: 'appendDocBlock' },
     );
+    this.options.auditLog?.record({
+      ts: Date.now(),
+      agentId: params.agentId ?? null,
+      accountId: this.credentials?.appId ?? '',
+      fileToken: params.fileToken,
+      blockId: result.blockId ?? '',
+      action: 'append',
+      afterText: params.text,
+      documentRevisionId: result.revisionId,
+    });
+    return result;
+  }
+
+  /**
+   * 替换 docx 中某 block 的文本（M13 Phase 5 C4）
+   *
+   * 流程：先 read 拿 before_text → PATCH → 写 audit。230108/230109 不重试。
+   */
+  async replaceDocBlock(params: {
+    fileToken: string;
+    fileType: DocFileType;
+    blockId: string;
+    text: string;
+    documentRevisionId?: number;
+    agentId?: string;
+  }): Promise<{ revisionId: number | null; beforeText: string }> {
+    const client = this.requireClient();
+    // 读 before（用 retry，因为读操作幂等）
+    const snapshot = await withFeishuRetry(
+      () => apiGetDocContent(client, { fileToken: params.fileToken, fileType: params.fileType }),
+      { label: 'replaceDocBlock.read' },
+    );
+    const target = snapshot.blocks.find((b) => b.id === params.blockId);
+    const beforeText = target?.text ?? '';
+
+    const result = await withFeishuRetry(
+      () => apiReplaceBlockText(client, params),
+      { label: 'replaceDocBlock' },
+    );
+    this.options.auditLog?.record({
+      ts: Date.now(),
+      agentId: params.agentId ?? null,
+      accountId: this.credentials?.appId ?? '',
+      fileToken: params.fileToken,
+      blockId: params.blockId,
+      action: 'replace',
+      beforeText,
+      afterText: params.text,
+      documentRevisionId: result.revisionId,
+    });
+    return { revisionId: result.revisionId, beforeText };
+  }
+
+  /**
+   * 删除 docx 中某 block（M13 Phase 5 C4）
+   *
+   * 内部会读 doc 查 parent + index → 调 batch_delete。before_text 落 audit log。
+   */
+  async deleteDocBlock(params: {
+    fileToken: string;
+    fileType: DocFileType;
+    blockId: string;
+    documentRevisionId?: number;
+    agentId?: string;
+  }): Promise<{ revisionId: number | null; deletedText: string }> {
+    const client = this.requireClient();
+    const result = await withFeishuRetry(
+      () => apiDeleteBlock(client, params),
+      { label: 'deleteDocBlock' },
+    );
+    this.options.auditLog?.record({
+      ts: Date.now(),
+      agentId: params.agentId ?? null,
+      accountId: this.credentials?.appId ?? '',
+      fileToken: params.fileToken,
+      blockId: params.blockId,
+      action: 'delete',
+      beforeText: result.deletedText,
+      documentRevisionId: result.revisionId,
+    });
+    return result;
   }
 
   getStatus(): ChannelStatusInfo {

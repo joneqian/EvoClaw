@@ -77,6 +77,7 @@ import { HybridSearcher } from './memory/hybrid-searcher.js';
 import { MemoryExtractor } from './memory/memory-extractor.js';
 import { DecayScheduler } from './memory/decay-scheduler.js';
 import { MemoryConsolidator } from './memory/memory-consolidator.js';
+import { OrphanReconcilerScheduler } from './agent/orphan-reconciler.js';
 import { CostTracker } from './cost/cost-tracker.js';
 import { createUsageRoutes } from './routes/usage.js';
 import { SessionSummarizer } from './memory/session-summarizer.js';
@@ -1573,6 +1574,7 @@ async function main() {
   // 延迟初始化的调度器引用（在 cleanup 中关闭）
   let decayScheduler: DecayScheduler | null = null;
   let consolidator: MemoryConsolidator | null = null;
+  let orphanReconciler: OrphanReconcilerScheduler | null = null;
 
   // 优雅关闭 — 注册各资源的关闭处理器（按优先级执行）
   const { registerShutdownHandler, installShutdownHandlers } = await import('./infrastructure/graceful-shutdown.js');
@@ -1587,6 +1589,7 @@ async function main() {
     consolidator?.stop();
     memoryMonitor.stop();
     skillEvolverScheduler?.stop();
+    orphanReconciler?.stop();
     // B7 修复：team-mode escalation cron + peer-roster 缓存清理
     teamModeServices?.escalationService.stop();
     teamModeServices?.peerRosterService.dispose();
@@ -1933,6 +1936,13 @@ async function main() {
   consolidator = new MemoryConsolidator(db, llmCallForConsolidation, memoryDataDir, undefined, ftsStore);
   consolidator.start();
   log.info('DecayScheduler + MemoryConsolidator 已启动');
+
+  // 3c.6. 孤儿工作区目录扫描调度器（启动后 30s 跑一次，之后每 24h）
+  //       兜底清理：DB row 不存在但磁盘目录还在（如 deleteAgent 的 fs.rmSync 失败、
+  //       或历史遗留的 LLM hallucinate UUID 影子目录）。隔离到 _orphan/，永不直接 rm
+  orphanReconciler = new OrphanReconcilerScheduler(db, agentManager.getAgentsBaseDir());
+  orphanReconciler.start();
+  log.info('OrphanReconciler 已启动（30s 后首次扫描）');
 
   // 3d. BOOT.md 启动执行 — 异步，不阻塞
   const activeAgents = agentManager.listAgents('active');

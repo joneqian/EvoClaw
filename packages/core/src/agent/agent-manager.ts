@@ -145,6 +145,11 @@ export class AgentManager {
     return path.join(this.agentsBaseDir, agentId, 'workspace');
   }
 
+  /** 获取 agents 根目录（含所有 agent 子目录） */
+  getAgentsBaseDir(): string {
+    return this.agentsBaseDir;
+  }
+
   /**
    * 获取 Agent 工作目录 (cwd) — 指向 per-agent workspace
    * cwd = workspace = bootstrap 文件所在目录，相对路径自然正确
@@ -360,7 +365,7 @@ These are static workspace files (not the DB) and you may edit them when you dis
 - A new operating rule from a mistake → edit \`AGENTS.md\`
 - Personality / voice adjustment → edit \`SOUL.md\`
 
-**Use absolute paths from runtime info when writing files.**
+**Use workspace-relative paths when writing files (e.g. \`SOUL.md\`, \`@workspace/sub/foo.md\`). Never hand-type the agent UUID — the runner injects your workspace automatically.**
 
 ### "I'll keep that in mind" = Does Not Exist
 

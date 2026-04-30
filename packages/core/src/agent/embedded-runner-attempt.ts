@@ -29,6 +29,7 @@ import { createSmartTimeout, RUNNER_WALLCLOCK_MS, RUNNER_WALLCLOCK_WARNING_RATIO
 import { IdleWatchdog } from './kernel/idle-watchdog.js';
 import { queryLoop } from './kernel/query-loop.js';
 import { buildKernelTools } from './kernel/tool-adapter.js';
+import { AgentFsGuard } from './agent-fs-guard.js';
 import { resetCompactorState } from './kernel/context-compactor.js';
 import type { QueryLoopConfig, KernelMessage, ApiProtocol } from './kernel/types.js';
 import { AbortError } from './kernel/types.js';
@@ -307,6 +308,14 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     sessionKey: config.sessionKey,
   }) as import('./kernel/types.js').KernelTool;
 
+  // Layer 1+2: workspace 边界注入 + agentsBaseDir hallucinate 防护
+  // workspacePath 结构：<agentsBaseDir>/<agentId>/workspace —— 倒推两级即得 agentsBaseDir
+  const workspaceRoot = config.workspacePath ?? undefined;
+  const agentsBaseDir = workspaceRoot ? path.dirname(path.dirname(workspaceRoot)) : undefined;
+  const fsGuard = store && agentsBaseDir
+    ? new AgentFsGuard(store, agentsBaseDir)
+    : undefined;
+
   // 先构建基础工具池（不含 ToolSearch，因为 ToolSearch 需要完整工具列表）
   const baseTools = buildKernelTools({
     builtinContextWindow: contextWindow,
@@ -316,6 +325,9 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     auditFn: config.auditLogFn,
     provider: effectiveProvider,
     extraTools: [skillTool],
+    workspaceRoot,
+    fsGuard,
+    agentsBaseDir,
   });
 
   // ToolSearchTool 需要完整工具列表才能搜索（包含 deferred 工具）
@@ -528,6 +540,9 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
           toolSafety: flushToolSafety,
           auditFn: config.auditLogFn,
           provider: effectiveProvider,
+          workspaceRoot,
+          fsGuard,
+          agentsBaseDir,
         });
 
         await queryLoop({

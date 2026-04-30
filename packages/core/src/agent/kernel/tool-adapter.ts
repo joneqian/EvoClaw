@@ -20,6 +20,7 @@ import type { ToolHookRegistry, ToolHookContext } from './tool-hooks.js';
 import { normalizeToolSchema } from '../schema-adapter.js';
 import { createBuiltinTools } from './builtin-tools.js';
 import { createEnhancedExecTool } from '../embedded-runner-tools.js';
+import { AgentFsGuard, inspectBashCommand } from '../agent-fs-guard.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants — 工具能力声明
@@ -124,6 +125,22 @@ export interface BuildToolsConfig {
   hookRegistry?: ToolHookRegistry;
   /** 钩子执行上下文 */
   hookContext?: ToolHookContext;
+  /**
+   * 当前 agent 的 workspace 绝对路径
+   * - 启用 builtin 工具的 workspace-relative 路径解析（"foo.md" → workspace/foo.md）
+   * - 作为 bash 工具默认 cwd，让 LLM 不需要手写 agent UUID
+   */
+  workspaceRoot?: string;
+  /**
+   * 工作区写入边界守卫（Layer 2）
+   * 拦截 LLM hallucinate UUID 写到不存在的"影子 agent 目录"
+   */
+  fsGuard?: AgentFsGuard;
+  /**
+   * agents/ 根目录绝对路径，bash 命令扫描时定位 hallucinate UUID 用
+   * 与 fsGuard 同时提供时才启用 bash 命令预检
+   */
+  agentsBaseDir?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -523,16 +540,35 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
   };
 
   // 1. 内置工具 (包装权限 + 安全)
-  const builtinTools = createBuiltinTools(config.builtinContextWindow)
-    .map(tool => wrapBuiltinTool(tool, deps));
+  const builtinTools = createBuiltinTools(
+    config.builtinContextWindow,
+    undefined,
+    { workspaceRoot: config.workspaceRoot, fsGuard: config.fsGuard },
+  ).map(tool => wrapBuiltinTool(tool, deps));
 
   // 2. 增强 bash (适配为 KernelTool)
+  //    - 默认 cwd 注入 workspaceRoot（避免 LLM 手拼 UUID）
+  //    - 命令预检 inspectBashCommand：扫到 ~/.{brand}/agents/<uuid>/... 校验 uuid 是否存在
   const bashDef = createEnhancedExecTool();
+  const originalBashExecute = bashDef.execute;
+  const bashExecute: typeof bashDef.execute = async (args, ctx) => {
+    if (config.fsGuard && config.agentsBaseDir) {
+      const command = (args.command as string) ?? '';
+      const inspect = inspectBashCommand(command, config.fsGuard, config.agentsBaseDir);
+      if (!inspect.ok) {
+        return `错误：${inspect.reason}\n${inspect.hint}`;
+      }
+    }
+    const finalArgs = config.workspaceRoot && !args.workdir
+      ? { ...args, workdir: config.workspaceRoot }
+      : args;
+    return originalBashExecute(finalArgs, ctx);
+  };
   const bashTool = adaptEvoclawTool({
     name: bashDef.name,
     description: bashDef.description,
     parameters: bashDef.parameters,
-    execute: bashDef.execute,
+    execute: bashExecute,
   }, deps);
 
   // 3. EvoClaw 自定义工具

@@ -370,6 +370,34 @@ export class SkillUsageStore implements SkillTelemetrySink {
     );
   }
 
+  /**
+   * P1-B Phase 4: 信号检测器用 — 返回 session 最近 N 秒内的 skill 调用（含时间戳）。
+   * 按 invoked_at DESC 排序。
+   */
+  listRecentInSession(
+    sessionKey: string,
+    withinSeconds: number,
+  ): Array<{ skillName: string; invokedAt: string }> {
+    try {
+      const sinceIso = new Date(Date.now() - withinSeconds * 1000).toISOString();
+      // - 用 datetime() 包裹两侧防字符串格式不一致比较
+      // - 输出转为 ISO + Z（让 detector 的 Date.parse 当 UTC 处理；SQLite datetime('now') 默认 UTC）
+      return this.db.all<{ skillName: string; invokedAt: string }>(
+        `SELECT
+           skill_name AS skillName,
+           strftime('%Y-%m-%dT%H:%M:%fZ', invoked_at) AS invokedAt
+         FROM skill_usage
+         WHERE session_key = ? AND datetime(invoked_at) >= datetime(?)
+         ORDER BY invoked_at DESC, id DESC`,
+        sessionKey,
+        sinceIso,
+      );
+    } catch (err) {
+      log.warn('listRecentInSession 查询失败', { err: String(err), sessionKey });
+      return [];
+    }
+  }
+
   /** Session 内所有出现过的 Skill（摘要生成器分组用） */
   listSkillsInSession(sessionKey: string): string[] {
     const rows = this.db.all<{ skillName: string }>(

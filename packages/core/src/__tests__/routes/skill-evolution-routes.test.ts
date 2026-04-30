@@ -107,6 +107,59 @@ describe('skill-evolution routes', () => {
     expect(res.status).toBe(400);
   });
 
+  it('P1-B: GET /log 暴露 triggerSource 字段', async () => {
+    insertRefineLog('s1', validSkill('s1', 'a'), validSkill('s1', 'b'));
+    db.run(
+      `INSERT INTO skill_evolution_log (
+         skill_name, decision, reasoning, evidence_count, trigger_source, duration_ms
+       ) VALUES ('s2', 'skip', 'inline run', 0, 'inline', 50)`,
+    );
+    const res = await app.request('/skill-evolution/log');
+    const body = await res.json() as { entries: Array<{ skillName: string; triggerSource: string }> };
+    const m = new Map(body.entries.map(e => [e.skillName, e.triggerSource]));
+    expect(m.get('s1')).toBe('cron');
+    expect(m.get('s2')).toBe('inline');
+  });
+
+  it('P1-B: GET /log/:id 对 inline 记录关联 conversational_feedback', async () => {
+    // 先写一条 skill_usage（含 conversational_feedback）
+    db.run(
+      `INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`,
+      'agent-1', 'agent-1', '🤖', 'active',
+    );
+    db.run(
+      `INSERT INTO skill_usage (
+         skill_name, agent_id, session_key,
+         trigger_type, execution_mode, success, conversational_feedback
+       ) VALUES ('arxiv', 'agent-1', 'sk-1', 'invoke_skill', 'inline', 0, '不要这样')`,
+    );
+    // inline 进化日志
+    const res1 = db.run(
+      `INSERT INTO skill_evolution_log (
+         skill_name, decision, reasoning, evidence_count,
+         previous_content, new_content, trigger_source, duration_ms
+       ) VALUES ('arxiv', 'refine', 'fix from feedback', 1, ?, ?, 'inline', 100)`,
+      validSkill('arxiv', 'old'),
+      validSkill('arxiv', 'new'),
+    );
+    const id = Number(res1.lastInsertRowid);
+
+    const res = await app.request(`/skill-evolution/log/${id}`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { entry: { triggerSource: string; conversationalFeedback?: string | null } };
+    expect(body.entry.triggerSource).toBe('inline');
+    expect(body.entry.conversationalFeedback).toBe('不要这样');
+  });
+
+  it('P1-B: cron 记录详情不返回 conversationalFeedback', async () => {
+    const id = insertRefineLog('cron-only', validSkill('cron-only', 'a'), validSkill('cron-only', 'b'));
+    const res = await app.request(`/skill-evolution/log/${id}`);
+    const body = await res.json() as { entry: { triggerSource: string; conversationalFeedback?: string | null } };
+    expect(body.entry.triggerSource).toBe('cron');
+    // 未进入 inline 分支 → 字段缺省
+    expect(body.entry.conversationalFeedback ?? null).toBeNull();
+  });
+
   describe('POST /log/:id/rollback', () => {
     it('合法 refine 记录 → 回滚成功 + 磁盘恢复 + rolled_back=1', async () => {
       const prev = validSkill('roll', 'original');

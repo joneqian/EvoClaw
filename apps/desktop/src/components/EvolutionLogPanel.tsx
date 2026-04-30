@@ -10,6 +10,8 @@ import { get, post } from '../lib/api';
 
 type Decision = 'refine' | 'create' | 'skip';
 
+type TriggerSource = 'cron' | 'inline';
+
 interface EvolutionLogListItem {
   id: number;
   skillName: string;
@@ -24,12 +26,25 @@ interface EvolutionLogListItem {
   durationMs: number | null;
   errorMessage: string | null;
   rolledBack: number;
+  triggerSource: TriggerSource;
 }
 
 interface EvolutionLogDetail extends EvolutionLogListItem {
   evidenceSummary: string | null;
   previousContent: string | null;
   newContent: string | null;
+  /** P1-B: 仅 trigger_source='inline' 可能填充 */
+  conversationalFeedback?: string | null;
+}
+
+function triggerLabel(source: TriggerSource): string {
+  return source === 'inline' ? '自我修复' : '定时';
+}
+
+function triggerBadgeClass(source: TriggerSource): string {
+  return source === 'inline'
+    ? 'bg-violet-100 text-violet-700'
+    : 'bg-slate-100 text-slate-600';
 }
 
 function decisionColor(decision: Decision, rolledBack: boolean): string {
@@ -118,11 +133,27 @@ export default function EvolutionLogPanel() {
     );
   }
 
+  // P1-B Phase 6: 自我修复（inline）统计 — 基于当前已加载的 entries
+  const inlineEntries = entries.filter(e => e.triggerSource === 'inline');
+  const inlineSuccessful = inlineEntries.filter(
+    e => (e.decision === 'refine' || e.decision === 'create') && !e.errorMessage,
+  ).length;
+  const inlineSuccessRate = inlineEntries.length > 0
+    ? Math.round((inlineSuccessful / inlineEntries.length) * 100)
+    : null;
+
   return (
     <div className="flex gap-4 h-full">
       {/* 左列：列表 */}
       <div className="w-[360px] shrink-0 overflow-y-auto">
-        <div className="text-xs text-slate-500 mb-2">{entries.length} 条记录（最近 100 条）</div>
+        <div className="text-xs text-slate-500 mb-2 flex items-center justify-between">
+          <span>{entries.length} 条记录（最近 100 条）</span>
+          {inlineEntries.length > 0 && (
+            <span className="text-violet-600">
+              自我修复 {inlineEntries.length} · 成功率 {inlineSuccessRate}%
+            </span>
+          )}
+        </div>
         {entries.map(e => {
           const active = e.id === selectedId;
           const canRollback = e.decision === 'refine' && e.rolledBack === 0 && !e.errorMessage;
@@ -133,9 +164,14 @@ export default function EvolutionLogPanel() {
               className={`w-full text-left p-3 mb-2 rounded-lg border transition-colors ${active ? 'border-brand bg-brand/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-xs font-semibold ${decisionColor(e.decision, e.rolledBack === 1)}`}>
-                  {decisionLabel(e.decision)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold ${decisionColor(e.decision, e.rolledBack === 1)}`}>
+                    {decisionLabel(e.decision)}
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${triggerBadgeClass(e.triggerSource)}`}>
+                    {triggerLabel(e.triggerSource)}
+                  </span>
+                </div>
                 <span className="text-xs text-slate-400">
                   {new Date(e.evolvedAt).toLocaleString()}
                 </span>
@@ -162,10 +198,15 @@ export default function EvolutionLogPanel() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-slate-800">{detail.skillName}</h3>
-                <div className="text-xs text-slate-500 mt-1">
-                  {new Date(detail.evolvedAt).toLocaleString()} · {decisionLabel(detail.decision)}
-                  {detail.modelUsed && ` · ${detail.modelUsed}`}
-                  {detail.durationMs != null && ` · ${Math.round(detail.durationMs)}ms`}
+                <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                  <span>{new Date(detail.evolvedAt).toLocaleString()}</span>
+                  <span>·</span>
+                  <span>{decisionLabel(detail.decision)}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${triggerBadgeClass(detail.triggerSource)}`}>
+                    {triggerLabel(detail.triggerSource)}
+                  </span>
+                  {detail.modelUsed && <span>· {detail.modelUsed}</span>}
+                  {detail.durationMs != null && <span>· {Math.round(detail.durationMs)}ms</span>}
                 </div>
               </div>
               {detail.decision === 'refine' && detail.rolledBack === 0 && !detail.errorMessage && (
@@ -191,6 +232,12 @@ export default function EvolutionLogPanel() {
             {detail.errorMessage && (
               <div className="mt-3 p-2 rounded bg-rose-50 border border-rose-200 text-xs text-rose-700 whitespace-pre-wrap">
                 <strong>错误：</strong>{detail.errorMessage}
+              </div>
+            )}
+            {detail.triggerSource === 'inline' && detail.conversationalFeedback && (
+              <div className="mt-3 p-2 rounded bg-violet-50 border border-violet-200 text-xs text-violet-800">
+                <strong className="text-violet-600">用户反馈原文：</strong>
+                <span className="whitespace-pre-wrap">{detail.conversationalFeedback}</span>
               </div>
             )}
           </div>

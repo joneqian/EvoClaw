@@ -6,8 +6,10 @@
  */
 
 import crypto from 'node:crypto';
+import path from 'node:path';
+import os from 'node:os';
 import type { ChatMessage, ChatMessageAttachment, QuotedMessage } from '@evoclaw/shared';
-import { composeMessageWithQuote } from '@evoclaw/shared';
+import { composeMessageWithQuote, DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
 import { reconcileBootstrapState } from '../agent/bootstrap-reconciler.js';
@@ -975,6 +977,25 @@ export async function handleChannelMessage(
   contextEngine.afterTurn(afterTurnCtx).catch((err) => {
     log.error('afterTurn 失败:', err);
   });
+
+  // 13. P1-B Phase 4: Skill 信号驱动 Inline Review（异步，不阻塞 Agent 主回复）
+  if (store && secondaryLLMCall) {
+    void (async () => {
+      try {
+        const { triggerInlineReviewIfSignaled } = await import('../skill/skill-inline-review-hook.js');
+        await triggerInlineReviewIfSignaled({
+          userMessage: message,
+          sessionKey,
+          db: store,
+          userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+          llmCall: secondaryLLMCall,
+          model: configManager?.getConfig().security?.skillEvolver?.model,
+        });
+      } catch (err) {
+        log.warn('inline review hook 异常（已吞）:', err);
+      }
+    })();
+  }
 
   return cleanResponse;
 }

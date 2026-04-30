@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import crypto from 'node:crypto';
+import path from 'node:path';
+import os from 'node:os';
 import { isBun } from '../infrastructure/runtime.js';
 import { createBunSSEResponse } from '../infrastructure/bun-sse.js';
 
@@ -22,6 +24,7 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ChatMessage } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { parseQuotedPrefix } from '@evoclaw/shared';
 import { ContextEngine } from '../context/context-engine.js';
 import type { TurnContext } from '../context/plugin.interface.js';
@@ -1378,6 +1381,27 @@ export function createChatRoutes(
       contextEngine.afterTurn(afterTurnCtx).catch((err) => {
         log.error('afterTurn 失败:', err);
       });
+
+      // P1-B Phase 4: Skill 信号驱动 Inline Review（异步，不阻塞响应）
+      if (store) {
+        void (async () => {
+          try {
+            const llmCallForReview = configManager ? createSecondaryLLMCallFn(configManager) : undefined;
+            if (!llmCallForReview) return;
+            const { triggerInlineReviewIfSignaled } = await import('../skill/skill-inline-review-hook.js');
+            await triggerInlineReviewIfSignaled({
+              userMessage: message,
+              sessionKey,
+              db: store,
+              userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+              llmCall: llmCallForReview,
+              model: configManager?.getConfig().security?.skillEvolver?.model,
+            });
+          } catch (err) {
+            log.warn('inline review hook 异常（已吞）:', err);
+          }
+        })();
+      }
     };
 
     // Bun: 绕过 Hono 中间件的 Response 包装，使用原生 ReadableStream 确保逐条 flush

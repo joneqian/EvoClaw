@@ -286,6 +286,42 @@ describe('SkillUsageStore', () => {
       expect(() => usage.getLastInlineReviewAt('x')).not.toThrow();
     });
   });
+
+  describe('listRecentInSession（Phase 4 hook 用）', () => {
+    it('返回 session 内 N 秒内调用，按时间倒序', () => {
+      usage.record({
+        skillName: 'old', agentId: AGENT_A, sessionKey: SESSION_1,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: true,
+      });
+      usage.record({
+        skillName: 'new', agentId: AGENT_A, sessionKey: SESSION_1,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: true,
+      });
+      const rows = usage.listRecentInSession(SESSION_1, 60);
+      expect(rows.length).toBe(2);
+      // 倒序：new 在前
+      expect(rows[0].skillName).toBe('new');
+    });
+
+    it('过滤其它 session', () => {
+      usage.record({
+        skillName: 'a', agentId: AGENT_A, sessionKey: SESSION_1,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: true,
+      });
+      usage.record({
+        skillName: 'b', agentId: AGENT_A, sessionKey: SESSION_2,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: true,
+      });
+      const rows = usage.listRecentInSession(SESSION_1, 60);
+      expect(rows.map(r => r.skillName)).toEqual(['a']);
+    });
+
+    it('表不存在 → 返回空数组（不抛）', () => {
+      db.exec('DROP TABLE skill_usage');
+      const rows = usage.listRecentInSession(SESSION_1, 60);
+      expect(rows).toEqual([]);
+    });
+  });
 });
 
 describe('sanitizeErrorSummary', () => {

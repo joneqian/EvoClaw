@@ -183,7 +183,8 @@ describe('write tool', () => {
     expect(r.content).toContain('缺少必填参数 file_path');
     expect(r.content).toContain('你实际传入的参数');
     expect(r.content).toContain('content=string(1234 chars)');
-    expect(r.content).toContain('文件的绝对路径');
+    // hint 提示包含路径相关说明（具体措辞随 Layer 1 改动；保留语义断言而非精确字符串）
+    expect(r.content).toMatch(/文件路径|绝对路径/);
   });
 
   it('缺 content 时也展示已传 file_path', async () => {

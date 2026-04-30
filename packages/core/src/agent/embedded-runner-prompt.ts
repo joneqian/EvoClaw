@@ -362,12 +362,17 @@ ${exceptionBlock}
   // Scratchpad / 工作区路径
   if (config.workspacePath) {
     runtimeLines.push(`Workspace path: ${config.workspacePath}`);
-    runtimeLines.push(`Scratchpad: ${config.workspacePath}/tmp/ (temporary files)`);
+    runtimeLines.push(`Scratchpad: tmp/ (relative; temporary files)`);
   }
 
   runtimeLines.push(
     `Long-term memory: stored in DB — use memory_write/update/delete/forget_topic/pin tools (not files)`,
     `Work output: files generated for the user (HTML/PDF/images etc.) go to workspace root`,
+    `Path convention (read/write/edit/grep/find/ls/bash):`,
+    `  • Prefer workspace-relative paths: file_path="foo.md" or "@workspace/sub/bar.md"`,
+    `  • bash defaults cwd to workspace; do NOT manually cd into ~/.{brand}/agents/<id>/`,
+    `  • Only use absolute paths for resources outside the agents/ tree (e.g. /tmp/foo, user-supplied paths)`,
+    `  • NEVER hand-type the agent UUID — relative paths or @workspace prefix avoid hallucination`,
   );
 
   blocks.push({ text: `<runtime>\n${runtimeLines.join('\n')}\n</runtime>`, cacheControl: null, label: 'runtime' });

@@ -18,10 +18,12 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execSync } from 'node:child_process';
 import type { KernelTool, ToolCallResult } from './types.js';
 import { FileStateCache } from './file-state-cache.js';
 import { which } from '../../infrastructure/runtime.js';
+import type { AgentFsGuard } from '../agent-fs-guard.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -87,6 +89,69 @@ function isDangerousWritePath(filePath: string): boolean {
   return segments.some(s => DANGEROUS_PATH_SEGMENTS.has(s));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Workspace-relative path resolution (Layer 1：让 LLM 不再手写 UUID)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 把 LLM 传入的 file_path 解析成绝对路径。
+ *
+ * 规则：
+ * - `@workspace/...` / `@workspace` → 替换为当前 agent workspace 根
+ * - 不以 `/`、`~`、`@` 开头 → 视为 workspace 相对路径，join workspace 根
+ * - 以 `~/` 开头 → 展开 home 目录（沿用旧 backfillObservableInput 行为）
+ * - 绝对路径 → 透传（由 Layer 2 兜底校验是否落在合法 agent 目录）
+ *
+ * workspaceRoot 缺失时（向后兼容）：仅做 `~/` 展开，其它原样透传。
+ */
+function resolveAgentPath(input: string, workspaceRoot?: string): string {
+  if (!input) return input;
+
+  // @workspace 系列
+  if (input === '@workspace') {
+    return workspaceRoot ?? input;
+  }
+  if (input.startsWith('@workspace/')) {
+    const rest = input.slice('@workspace/'.length);
+    return workspaceRoot ? path.join(workspaceRoot, rest) : input;
+  }
+
+  // ~/ 展开
+  if (input.startsWith('~/')) {
+    return path.join(os.homedir(), input.slice(2));
+  }
+
+  // 绝对路径 / 其它特殊前缀（@artifact 等）→ 透传
+  if (path.isAbsolute(input) || input.startsWith('@')) {
+    return input;
+  }
+
+  // 相对路径 → 落在当前 agent workspace
+  if (workspaceRoot) {
+    return path.resolve(workspaceRoot, input);
+  }
+
+  // 没有 workspaceRoot 时保持旧行为：相对 process.cwd()
+  return path.resolve(input);
+}
+
+/**
+ * 写入路径合法性兜底（Layer 2）：fs guard 校验 → 命中拒绝时返回带自纠提示的错误内容。
+ * fsGuard 缺失（旧调用方未注入）时直接放行。
+ */
+function checkWriteGuard(
+  absPath: string,
+  fsGuard: AgentFsGuard | undefined,
+): ToolCallResult | null {
+  if (!fsGuard) return null;
+  const result = fsGuard.validateWritePath(absPath);
+  if (result.ok) return null;
+  return {
+    content: `错误：${result.reason}\n${result.hint}`,
+    isError: true,
+  };
+}
+
 /** find 最大文件数 */
 const FIND_MAX_FILES = 1000;
 
@@ -127,7 +192,7 @@ function summarizeInputArgs(input: Record<string, unknown>): string {
 // Read Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCache): KernelTool {
+function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCache, workspaceRoot?: string): KernelTool {
   // 自适应读取上限 (参考 adaptive-read.ts)
   const adaptiveMaxBytes = Math.min(
     Math.max(contextWindowTokens * CHARS_PER_TOKEN * CONTEXT_SHARE, 50 * 1024),
@@ -137,14 +202,14 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
 
   return {
     name: 'read',
-    description: '读取文件内容（文本或图片），大文件用 offset/limit 分段',
+    description: '读取文件内容（文本或图片），大文件用 offset/limit 分段。路径推荐相对 workspace 或 @workspace/ 前缀',
     // Read 工具永不持久化 — 持久化后 LLM 会用 Read 读取持久化文件，造成循环引用
     // Read 通过自身 limit 参数控制大小
     maxResultSizeChars: Infinity,
     inputSchema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: '文件的绝对路径' },
+        file_path: { type: 'string', description: '文件路径（相对 workspace、@workspace/... 或绝对路径）' },
         offset: { type: 'number', description: '起始行号 (1-indexed)' },
         limit: { type: 'number', description: '读取的行数' },
       },
@@ -154,20 +219,21 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
     // 输入分叉: hooks 看到展开后的路径，call 看到原始输入
     backfillObservableInput(input: Record<string, unknown>): Record<string, unknown> {
       const filePath = input.file_path as string;
-      if (filePath?.startsWith('~/')) {
-        return { ...input, file_path: path.join(process.env.HOME ?? '', filePath.slice(2)) };
-      }
-      return input;
+      if (!filePath) return input;
+      const resolved = resolveAgentPath(filePath, workspaceRoot);
+      return resolved === filePath ? input : { ...input, file_path: resolved };
     },
 
     async call(input): Promise<ToolCallResult> {
-      const filePath = input.file_path as string;
+      const rawPath = input.file_path as string;
       const offset = (input.offset as number) ?? 1;
       const limit = (input.limit as number) ?? adaptiveMaxLines;
 
-      if (!filePath) {
-        return { content: formatMissingParamError('read', 'file_path', '文件的绝对路径', input), isError: true };
+      if (!rawPath) {
+        return { content: formatMissingParamError('read', 'file_path', '文件路径（相对 workspace 或绝对）', input), isError: true };
       }
+
+      const filePath = resolveAgentPath(rawPath, workspaceRoot);
 
       // P0-3: 阻止危险设备路径
       if (isBlockedReadPath(filePath)) {
@@ -318,34 +384,40 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
 // Write Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createWriteTool(fileStateCache: FileStateCache): KernelTool {
+function createWriteTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard): KernelTool {
   return {
     name: 'write',
-    description: '创建或覆盖文件，自动创建父目录',
+    description: '创建或覆盖文件，自动创建父目录。路径推荐相对 workspace 或 @workspace/ 前缀',
     inputSchema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: '文件的绝对路径' },
+        file_path: { type: 'string', description: '文件路径（相对 workspace、@workspace/... 或绝对路径）' },
         content: { type: 'string', description: '文件内容' },
       },
       required: ['file_path', 'content'],
     },
 
     async call(input): Promise<ToolCallResult> {
-      const filePath = input.file_path as string;
+      const rawPath = input.file_path as string;
       const content = input.content as string;
 
-      if (!filePath) {
-        return { content: formatMissingParamError('write', 'file_path', '文件的绝对路径', input), isError: true };
+      if (!rawPath) {
+        return { content: formatMissingParamError('write', 'file_path', '文件路径（相对 workspace 或绝对）', input), isError: true };
       }
       if (content === undefined || content === null) {
         return { content: formatMissingParamError('write', 'content', '文件内容（字符串）', input), isError: true };
       }
 
+      const filePath = resolveAgentPath(rawPath, workspaceRoot);
+
       // P0-5: 危险文件保护
       if (isDangerousWritePath(filePath)) {
         return { content: `错误：此文件受保护，不允许修改 - ${filePath}`, isError: true };
       }
+
+      // Layer 2: agentsBaseDir 内边界守卫（防 LLM hallucinate UUID 写到影子目录）
+      const blocked = checkWriteGuard(filePath, fsGuard);
+      if (blocked) return blocked;
 
       try {
         const dir = path.dirname(filePath);
@@ -463,14 +535,14 @@ function applyQuoteStyle(newString: string, originalContext: string): string {
   return result;
 }
 
-function createEditTool(fileStateCache: FileStateCache): KernelTool {
+function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard): KernelTool {
   return {
     name: 'edit',
-    description: '精确替换文件中的文本片段（oldText → newText）',
+    description: '精确替换文件中的文本片段（oldText → newText）。路径推荐相对 workspace 或 @workspace/ 前缀',
     inputSchema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: '文件的绝对路径' },
+        file_path: { type: 'string', description: '文件路径（相对 workspace、@workspace/... 或绝对路径）' },
         old_string: { type: 'string', description: '要替换的原始文本' },
         new_string: { type: 'string', description: '替换后的新文本' },
         replace_all: { type: 'boolean', description: '是否替换所有匹配 (默认 false)' },
@@ -487,20 +559,26 @@ function createEditTool(fileStateCache: FileStateCache): KernelTool {
     },
 
     async call(input): Promise<ToolCallResult> {
-      const filePath = input.file_path as string;
+      const rawPath = input.file_path as string;
       const oldString = input.old_string as string;
       const newString = input.new_string as string;
       const replaceAll = (input.replace_all as boolean) ?? false;
 
-      if (!filePath) return { content: formatMissingParamError('edit', 'file_path', '文件的绝对路径', input), isError: true };
+      if (!rawPath) return { content: formatMissingParamError('edit', 'file_path', '文件路径（相对 workspace 或绝对）', input), isError: true };
       if (oldString === undefined) return { content: formatMissingParamError('edit', 'old_string', '需要被替换的原文（精确匹配）', input), isError: true };
       if (newString === undefined) return { content: formatMissingParamError('edit', 'new_string', '替换后的新文本', input), isError: true };
       if (oldString === newString) return { content: '错误：old_string 和 new_string 相同，无需替换', isError: true };
+
+      const filePath = resolveAgentPath(rawPath, workspaceRoot);
 
       // P0-5: 危险文件保护
       if (isDangerousWritePath(filePath)) {
         return { content: `错误：此文件受保护，不允许修改 - ${filePath}`, isError: true };
       }
+
+      // Layer 2: agentsBaseDir 内边界守卫
+      const blocked = checkWriteGuard(filePath, fsGuard);
+      if (blocked) return blocked;
 
       try {
         if (!fs.existsSync(filePath)) {
@@ -615,18 +693,18 @@ function countOccurrences(text: string, search: string): number {
 // Grep Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createGrepTool(): KernelTool {
+function createGrepTool(workspaceRoot?: string): KernelTool {
   /** VCS 排除目录 (参考 Claude Code GrepTool) */
   const VCS_EXCLUDES = ['.git', '.svn', '.hg', '.bzr', 'node_modules'];
 
   return {
     name: 'grep',
-    description: '搜索文件内容，返回匹配行+文件路径+行号',
+    description: '搜索文件内容，返回匹配行+文件路径+行号。默认搜索 workspace',
     inputSchema: {
       type: 'object',
       properties: {
         pattern: { type: 'string', description: '搜索的正则表达式模式' },
-        path: { type: 'string', description: '搜索目录 (默认当前目录)' },
+        path: { type: 'string', description: '搜索目录（默认当前 workspace；可填 @workspace/sub、绝对路径）' },
         include: { type: 'string', description: '文件 glob 过滤 (如 "*.ts")' },
         output_mode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: '输出模式 (默认 files_with_matches)' },
         head_limit: { type: 'number', description: '限制结果数 (默认 250)' },
@@ -637,7 +715,10 @@ function createGrepTool(): KernelTool {
 
     async call(input): Promise<ToolCallResult> {
       const pattern = input.pattern as string;
-      const searchPath = (input.path as string) || process.cwd();
+      const rawSearchPath = (input.path as string) || '';
+      const searchPath = rawSearchPath
+        ? resolveAgentPath(rawSearchPath, workspaceRoot)
+        : (workspaceRoot ?? process.cwd());
       const include = input.include as string | undefined;
       const outputMode = (input.output_mode as string) || 'files_with_matches';
       const headLimit = (input.head_limit as number) ?? 250;
@@ -734,22 +815,25 @@ function createGrepTool(): KernelTool {
 // Find Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createFindTool(): KernelTool {
+function createFindTool(workspaceRoot?: string): KernelTool {
   return {
     name: 'find',
-    description: '按 glob 模式搜索文件路径',
+    description: '按 glob 模式搜索文件路径。默认搜索 workspace',
     inputSchema: {
       type: 'object',
       properties: {
         pattern: { type: 'string', description: '文件名 glob 模式 (如 "*.ts", "test*")' },
-        path: { type: 'string', description: '搜索目录 (默认当前目录)' },
+        path: { type: 'string', description: '搜索目录（默认当前 workspace；可填 @workspace/sub、绝对路径）' },
       },
       required: ['pattern'],
     },
 
     async call(input): Promise<ToolCallResult> {
       const pattern = input.pattern as string;
-      const searchPath = (input.path as string) || process.cwd();
+      const rawSearchPath = (input.path as string) || '';
+      const searchPath = rawSearchPath
+        ? resolveAgentPath(rawSearchPath, workspaceRoot)
+        : (workspaceRoot ?? process.cwd());
 
       if (!pattern) {
         return { content: formatMissingParamError('find', 'pattern', '文件名 glob 模式（如 "*.ts"、"test*"）', input), isError: true };
@@ -792,19 +876,22 @@ function createFindTool(): KernelTool {
 // Ls Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createLsTool(): KernelTool {
+function createLsTool(workspaceRoot?: string): KernelTool {
   return {
     name: 'ls',
-    description: '列出目录内容',
+    description: '列出目录内容。默认列 workspace',
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: '目录路径 (默认当前目录)' },
+        path: { type: 'string', description: '目录路径（默认当前 workspace；可填 @workspace/sub、绝对路径）' },
       },
     },
 
     async call(input): Promise<ToolCallResult> {
-      const dirPath = (input.path as string) || process.cwd();
+      const rawPath = (input.path as string) || '';
+      const dirPath = rawPath
+        ? resolveAgentPath(rawPath, workspaceRoot)
+        : (workspaceRoot ?? process.cwd());
 
       try {
         const stat = fs.statSync(dirPath);
@@ -947,20 +1034,35 @@ const BUILTIN_SEARCH_HINTS: Record<string, string> = {
   ls: 'list directory contents files',
 };
 
+/**
+ * 内置工具构建选项
+ *
+ * - workspaceRoot: 当前 agent workspace 绝对路径；启用相对路径解析（"foo.md" → workspace/foo.md）
+ * - fsGuard: agentsBaseDir 内边界守卫，拦截 LLM hallucinate UUID 写到影子目录
+ *
+ * 二者均为可选；缺失时退化为旧行为（绝对路径透传，不做边界校验），保证向后兼容。
+ */
+export interface BuiltinToolsOpts {
+  workspaceRoot?: string;
+  fsGuard?: AgentFsGuard;
+}
+
 export function createBuiltinTools(
   contextWindowTokens: number,
   externalFileStateCache?: FileStateCache,
+  opts: BuiltinToolsOpts = {},
 ): KernelTool[] {
   // 使用外部缓存（子代理 clone 的）或创建新缓存
   const fileStateCache = externalFileStateCache ?? new FileStateCache();
+  const { workspaceRoot, fsGuard } = opts;
 
   const tools = [
-    createReadTool(contextWindowTokens, fileStateCache),
-    createWriteTool(fileStateCache),
-    createEditTool(fileStateCache),
-    createGrepTool(),
-    createFindTool(),
-    createLsTool(),
+    createReadTool(contextWindowTokens, fileStateCache, workspaceRoot),
+    createWriteTool(fileStateCache, workspaceRoot, fsGuard),
+    createEditTool(fileStateCache, workspaceRoot, fsGuard),
+    createGrepTool(workspaceRoot),
+    createFindTool(workspaceRoot),
+    createLsTool(workspaceRoot),
   ];
 
   // 注入 searchHint（内置工具不延迟加载）
@@ -988,4 +1090,6 @@ export const _testing = {
   applyQuoteStyle,
   simpleGlobMatch,
   detectEncoding,
+  resolveAgentPath,
+  checkWriteGuard,
 };

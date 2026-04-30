@@ -90,7 +90,9 @@ async function triggerInternal(opts: TriggerInlineReviewOptions): Promise<Inline
     return { triggered: false, reason: 'signal=none' };
   }
 
-  log.info(`signal hit: skill=${signal.skillName} pattern=${signal.matchedPattern}`);
+  log.info(`[inline-review-signal-hit] skill=${signal.skillName} pattern=${signal.matchedPattern}`, {
+    skillName: signal.skillName, pattern: signal.matchedPattern,
+  });
 
   // 4. 收集本 session 已用 skill 列表（Phase 5 优先级注入）
   const currentlyUsedSkills = store.listSkillsInSession(opts.sessionKey);

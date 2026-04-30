@@ -88,6 +88,7 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
   // 2. 防递归：仅主 user turn 触发
   for (const marker of NON_MAIN_TURN_MARKERS) {
     if (opts.sessionKey.includes(marker)) {
+      log.info('[inline-review-block] event=recursion_guard', { skillName: opts.signal.skillName, marker });
       return { triggered: false, reason: `recursion guard: sessionKey contains "${marker}"` };
     }
   }
@@ -101,6 +102,7 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
     if (lastAt) {
       const ageMs = Date.now() - Date.parse(lastAt);
       if (Number.isFinite(ageMs) && ageMs < rateLimitMs) {
+        log.info('[inline-review-block] event=rate_limited', { skillName, ageSec: Math.round(ageMs / 1000), windowSec: Math.round(rateLimitMs / 1000) });
         return {
           triggered: false,
           reason: `rate limited: last inline review ${Math.round(ageMs / 1000)}s ago (window=${Math.round(rateLimitMs / 1000)}s)`,
@@ -131,13 +133,17 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
 
   // 6. SKILL.md 缺失 / 用户手改 → 静默 skip
   if (!evidence.currentSkillMd) {
+    log.warn('[inline-review-block] event=skill_md_missing', { skillName });
     return { triggered: false, reason: 'SKILL.md not found' };
   }
   if (evidence.userModified) {
+    log.info('[inline-review-block] event=user_modified', { skillName });
     return { triggered: false, reason: 'user modified skill (hash mismatch)' };
   }
 
-  log.info(`inline review start: skill=${skillName} reason=${opts.signal.matchedPattern ?? 'unknown'}`);
+  log.info(`[inline-review-start] skill=${skillName} pattern=${opts.signal.matchedPattern ?? 'unknown'}`, {
+    skillName, pattern: opts.signal.matchedPattern,
+  });
 
   // 7. 跑共享决策核心
   const result = await runEvolverDecision({
@@ -185,7 +191,9 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
     triggerSource: 'inline',
   });
 
-  log.info(`inline review done: skill=${skillName} decision=${decision.decision} duration=${durationMs}ms`);
+  log.info(`[inline-review-done] skill=${skillName} decision=${decision.decision} duration=${durationMs}ms`, {
+    skillName, decision: decision.decision, durationMs, hadError: Boolean(outcome.error),
+  });
 
   return {
     triggered: true,

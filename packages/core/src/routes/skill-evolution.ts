@@ -199,5 +199,82 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
     return c.json({ ok: true, rolledBackId: id });
   });
 
+  /**
+   * GET /inline-stats?days=7
+   *
+   * P1-B 触发率观测：聚合 trigger_source='inline' 的记录给前端 / 排查用。
+   *
+   * 返回：
+   * - total: 时间窗口内 inline review 总数
+   * - byDecision: { refine, create, skip } 三档计数
+   * - errorCount: error_message 非空的记录数
+   * - topSkills: 触发最多的 skill TOP 5
+   * - byDate: 最近 N 天每日计数（含 0 的日子）
+   */
+  app.get('/inline-stats', (c) => {
+    const days = Math.max(1, Math.min(Number(c.req.query('days')) || 7, 90));
+    const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
+
+    const totalRow = deps.db.get<{ total: number; errorCount: number }>(
+      `SELECT
+         COUNT(*)                                            AS total,
+         SUM(CASE WHEN error_message IS NOT NULL THEN 1 ELSE 0 END) AS errorCount
+       FROM skill_evolution_log
+       WHERE trigger_source = 'inline' AND datetime(evolved_at) >= datetime(?)`,
+      sinceIso,
+    );
+
+    const decisionRows = deps.db.all<{ decision: string; cnt: number }>(
+      `SELECT decision, COUNT(*) AS cnt
+       FROM skill_evolution_log
+       WHERE trigger_source = 'inline' AND datetime(evolved_at) >= datetime(?)
+       GROUP BY decision`,
+      sinceIso,
+    );
+    const byDecision = { refine: 0, create: 0, skip: 0 };
+    for (const r of decisionRows) {
+      if (r.decision === 'refine') byDecision.refine = r.cnt;
+      else if (r.decision === 'create') byDecision.create = r.cnt;
+      else if (r.decision === 'skip') byDecision.skip = r.cnt;
+    }
+
+    const topSkills = deps.db.all<{ skillName: string; count: number }>(
+      `SELECT skill_name AS skillName, COUNT(*) AS count
+       FROM skill_evolution_log
+       WHERE trigger_source = 'inline' AND datetime(evolved_at) >= datetime(?)
+       GROUP BY skill_name
+       ORDER BY count DESC, skill_name ASC
+       LIMIT 5`,
+      sinceIso,
+    );
+
+    const dateRows = deps.db.all<{ date: string; count: number }>(
+      `SELECT strftime('%Y-%m-%d', evolved_at) AS date, COUNT(*) AS count
+       FROM skill_evolution_log
+       WHERE trigger_source = 'inline' AND datetime(evolved_at) >= datetime(?)
+       GROUP BY date
+       ORDER BY date ASC`,
+      sinceIso,
+    );
+
+    // 把缺失的日期补 0，让前端折线图无断点
+    const byDate: Array<{ date: string; count: number }> = [];
+    const dateMap = new Map(dateRows.map(r => [r.date, r.count]));
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400_000);
+      const iso = d.toISOString().slice(0, 10);
+      byDate.push({ date: iso, count: dateMap.get(iso) ?? 0 });
+    }
+
+    return c.json({
+      windowDays: days,
+      total: totalRow?.total ?? 0,
+      errorCount: totalRow?.errorCount ?? 0,
+      byDecision,
+      topSkills,
+      byDate,
+    });
+  });
+
   return app;
 }

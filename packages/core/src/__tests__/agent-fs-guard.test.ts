@@ -133,3 +133,95 @@ describe('inspectBashCommand', () => {
     expect(r.uuid).toBe(fakeUuid);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// P1-A 跟尾：bash 命令访问 workspace RESTRICTED 文件门控（subagent/cron 拦）
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('inspectBashRestrictedFiles', () => {
+  // workspaceRoot 用临时目录模拟，sessionKey 用字符串
+  const wsRoot = '/tmp/test-ws';
+  const SUBAGENT = 'agent:abc:local:subagent:t1';
+  const CRON = 'agent:abc:cron:job1';
+  const MAIN = 'agent:abc:default:direct:';
+
+  it('subagent: cat BOOTSTRAP.md 应被拒绝', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    const r = inspectBashRestrictedFiles('cat BOOTSTRAP.md', SUBAGENT, wsRoot);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('unreachable');
+    expect(r.reason).toMatch(/BOOTSTRAP\.md/);
+  });
+
+  it('subagent: cat ./HEARTBEAT.md 应被拒绝', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    const r = inspectBashRestrictedFiles('cat ./HEARTBEAT.md', SUBAGENT, wsRoot);
+    expect(r.ok).toBe(false);
+  });
+
+  it('subagent: head -n 100 MEMORY.md 应被拒绝', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    const r = inspectBashRestrictedFiles('head -n 100 MEMORY.md', SUBAGENT, wsRoot);
+    expect(r.ok).toBe(false);
+  });
+
+  it('subagent: echo "" > BOOTSTRAP.md 应被拒绝（写入也拦）', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    const r = inspectBashRestrictedFiles('echo "" > BOOTSTRAP.md', SUBAGENT, wsRoot);
+    expect(r.ok).toBe(false);
+  });
+
+  it('subagent: 绝对路径 cat /tmp/test-ws/BOOTSTRAP.md 应被拒绝', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    const r = inspectBashRestrictedFiles(`cat ${wsRoot}/BOOTSTRAP.md`, SUBAGENT, wsRoot);
+    expect(r.ok).toBe(false);
+  });
+
+  it('subagent: cat sub/BOOTSTRAP.md（子目录同名）应放行', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles('cat sub/BOOTSTRAP.md', SUBAGENT, wsRoot).ok).toBe(true);
+    expect(inspectBashRestrictedFiles('cat ./sub/HEARTBEAT.md', SUBAGENT, wsRoot).ok).toBe(true);
+  });
+
+  it('subagent: 文件名是 RESTRICTED 子串（如 MYBOOTSTRAP.md）应放行', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles('cat MYBOOTSTRAP.md', SUBAGENT, wsRoot).ok).toBe(true);
+    expect(inspectBashRestrictedFiles('cat HEARTBEAT.md.bak', SUBAGENT, wsRoot).ok).toBe(true);
+  });
+
+  it('cron: cat BOOTSTRAP.md 应被拒绝', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    const r = inspectBashRestrictedFiles('cat BOOTSTRAP.md', CRON, wsRoot);
+    expect(r.ok).toBe(false);
+  });
+
+  it('主 session: cat BOOTSTRAP.md 应放行', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles('cat BOOTSTRAP.md', MAIN, wsRoot).ok).toBe(true);
+  });
+
+  it('缺 sessionKey 或 缺 workspaceRoot → 不门控', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles('cat BOOTSTRAP.md', undefined, wsRoot).ok).toBe(true);
+    expect(inspectBashRestrictedFiles('cat BOOTSTRAP.md', SUBAGENT, undefined).ok).toBe(true);
+  });
+
+  it('引号包裹文件名也能识别', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles(`cat 'BOOTSTRAP.md'`, SUBAGENT, wsRoot).ok).toBe(false);
+    expect(inspectBashRestrictedFiles(`cat "BOOTSTRAP.md"`, SUBAGENT, wsRoot).ok).toBe(false);
+  });
+
+  it('管道 / 复合命令也能识别', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles('cat MEMORY.md | head -10', SUBAGENT, wsRoot).ok).toBe(false);
+    expect(inspectBashRestrictedFiles('ls && cat BOOTSTRAP.md', SUBAGENT, wsRoot).ok).toBe(false);
+  });
+
+  it('普通命令（无 RESTRICTED 引用）→ 放行', async () => {
+    const { inspectBashRestrictedFiles } = await import('../agent/agent-fs-guard.js');
+    expect(inspectBashRestrictedFiles('ls -la', SUBAGENT, wsRoot).ok).toBe(true);
+    expect(inspectBashRestrictedFiles('cat README.md', SUBAGENT, wsRoot).ok).toBe(true);
+    expect(inspectBashRestrictedFiles('cat SOUL.md', SUBAGENT, wsRoot).ok).toBe(true);
+  });
+});

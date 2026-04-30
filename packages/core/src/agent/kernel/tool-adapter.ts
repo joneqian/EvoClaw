@@ -20,7 +20,7 @@ import type { ToolHookRegistry, ToolHookContext } from './tool-hooks.js';
 import { normalizeToolSchema } from '../schema-adapter.js';
 import { createBuiltinTools } from './builtin-tools.js';
 import { createEnhancedExecTool } from '../embedded-runner-tools.js';
-import { AgentFsGuard, inspectBashCommand } from '../agent-fs-guard.js';
+import { AgentFsGuard, inspectBashCommand, inspectBashRestrictedFiles } from '../agent-fs-guard.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants — 工具能力声明
@@ -555,15 +555,22 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
   // 2. 增强 bash (适配为 KernelTool)
   //    - 默认 cwd 注入 workspaceRoot（避免 LLM 手拼 UUID）
   //    - 命令预检 inspectBashCommand：扫到 ~/.{brand}/agents/<uuid>/... 校验 uuid 是否存在
+  //    - P1-A 跟尾 inspectBashRestrictedFiles：subagent / cron 不能用 bash 访问
+  //      workspace 根目录的 BOOTSTRAP/HEARTBEAT/MEMORY 文件（堵 cat 绕开 read 工具的口子）
   const bashDef = createEnhancedExecTool();
   const originalBashExecute = bashDef.execute;
   const bashExecute: typeof bashDef.execute = async (args, ctx) => {
+    const command = (args.command as string) ?? '';
     if (config.fsGuard && config.agentsBaseDir) {
-      const command = (args.command as string) ?? '';
       const inspect = inspectBashCommand(command, config.fsGuard, config.agentsBaseDir);
       if (!inspect.ok) {
         return `错误：${inspect.reason}\n${inspect.hint}`;
       }
+    }
+    // P1-A: subagent / cron 受限文件门控
+    const restrictedInspect = inspectBashRestrictedFiles(command, config.sessionKey, config.workspaceRoot);
+    if (!restrictedInspect.ok) {
+      return `错误：${restrictedInspect.reason}\n${restrictedInspect.hint}`;
     }
     const finalArgs = config.workspaceRoot && !args.workdir
       ? { ...args, workdir: config.workspaceRoot }

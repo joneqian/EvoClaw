@@ -15,6 +15,8 @@ import { createSkillUsageRoutes } from '../../routes/skill-usage.js';
 const MIGRATIONS_DIR = path.join(import.meta.dirname, '..', '..', 'infrastructure', 'db', 'migrations');
 const MIGRATION_001 = fs.readFileSync(path.join(MIGRATIONS_DIR, '001_initial.sql'), 'utf-8');
 const MIGRATION_027 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_skill_usage.sql'), 'utf-8');
+const MIGRATION_028 = fs.readFileSync(path.join(MIGRATIONS_DIR, '028_skill_evolution_log.sql'), 'utf-8');
+const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
 
 const AGENT_ID = 'agent-a';
 
@@ -34,6 +36,8 @@ describe('skill-usage routes', () => {
     db = new SqliteStore(path.join(tmpDir, 'test.db'));
     db.exec(MIGRATION_001);
     db.exec(MIGRATION_027);
+    db.exec(MIGRATION_028);
+    db.exec(MIGRATION_037);
     db.run(`INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`, AGENT_ID, AGENT_ID, '🤖', 'active');
     store = new SkillUsageStore(db);
     app = new Hono();

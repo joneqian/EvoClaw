@@ -46,6 +46,10 @@ export interface SkillUsageRow {
   errorSummary: string | null;
   userFeedback: number | null;
   feedbackNote: string | null;
+  /** P1-B: 用户对话中的负反馈原文（截断 200 字，PII 已过滤） */
+  conversationalFeedback: string | null;
+  /** P1-B: 最近一次 inline review 触发时间（ISO，限速去重用） */
+  inlineReviewTriggeredAt: string | null;
 }
 
 export interface SkillAggregateStats {
@@ -142,6 +146,86 @@ export class SkillUsageStore implements SkillTelemetrySink {
     }
   }
 
+  /**
+   * P1-B Phase 2: 记录用户对话中的负反馈原文，写入该 session+skill 的最新一条 skill_usage。
+   * 失败静默（绝不阻塞 Agent）。
+   */
+  recordConversationalFeedback(params: {
+    skillName: string;
+    sessionKey: string;
+    feedback: string;
+  }): boolean {
+    try {
+      const truncated = params.feedback.slice(0, 200);
+      const result = this.db.run(
+        `UPDATE skill_usage
+           SET conversational_feedback = ?
+         WHERE id = (
+           SELECT id FROM skill_usage
+            WHERE skill_name = ? AND session_key = ?
+            ORDER BY invoked_at DESC, id DESC
+            LIMIT 1
+         )`,
+        truncated,
+        params.skillName,
+        params.sessionKey,
+      );
+      return result.changes > 0;
+    } catch (err) {
+      log.warn('skill_usage.conversational_feedback 写入失败', { err: String(err), skill: params.skillName });
+      return false;
+    }
+  }
+
+  /**
+   * P1-B Phase 2: 标记一次 inline review 已触发（写入 inline_review_triggered_at = now()）。
+   * 限速去重 + 防递归用，更新该 session+skill 最新一条 row。
+   */
+  markInlineReviewTriggered(params: {
+    skillName: string;
+    sessionKey: string;
+  }): boolean {
+    try {
+      const nowIso = new Date().toISOString();
+      const result = this.db.run(
+        `UPDATE skill_usage
+           SET inline_review_triggered_at = ?
+         WHERE id = (
+           SELECT id FROM skill_usage
+            WHERE skill_name = ? AND session_key = ?
+            ORDER BY invoked_at DESC, id DESC
+            LIMIT 1
+         )`,
+        nowIso,
+        params.skillName,
+        params.sessionKey,
+      );
+      return result.changes > 0;
+    } catch (err) {
+      log.warn('skill_usage.inline_review_triggered_at 写入失败', { err: String(err), skill: params.skillName });
+      return false;
+    }
+  }
+
+  /**
+   * P1-B Phase 2: 限速查询：返回该 skill 全局最近一次 inline review 触发时间。
+   * 失败静默（返回 null）。
+   */
+  getLastInlineReviewAt(skillName: string): string | null {
+    try {
+      const row = this.db.get<{ lastAt: string | null }>(
+        `SELECT MAX(inline_review_triggered_at) AS lastAt
+         FROM skill_usage
+         WHERE skill_name = ?`,
+        skillName,
+      );
+      return row?.lastAt ?? null;
+    } catch (err) {
+      log.warn('skill_usage.inline_review_triggered_at 查询失败', { err: String(err), skill: skillName });
+      return null;
+    }
+  }
+
   /** 用户反馈（前端 👍/👎） */
   recordUserFeedback(id: number, feedback: 1 | -1, note?: string): boolean {
     try {
@@ -186,7 +270,9 @@ export class SkillUsageStore implements SkillTelemetrySink {
          output_tokens   AS outputTokens,
          error_summary   AS errorSummary,
          user_feedback   AS userFeedback,
-         feedback_note   AS feedbackNote
+         feedback_note   AS feedbackNote,
+         conversational_feedback     AS conversationalFeedback,
+         inline_review_triggered_at  AS inlineReviewTriggeredAt
        FROM skill_usage
        WHERE ${where}
        ORDER BY invoked_at DESC
@@ -273,7 +359,9 @@ export class SkillUsageStore implements SkillTelemetrySink {
          output_tokens   AS outputTokens,
          error_summary   AS errorSummary,
          user_feedback   AS userFeedback,
-         feedback_note   AS feedbackNote
+         feedback_note   AS feedbackNote,
+         conversational_feedback     AS conversationalFeedback,
+         inline_review_triggered_at  AS inlineReviewTriggeredAt
        FROM skill_usage
        WHERE session_key = ? AND skill_name = ?
        ORDER BY invoked_at ASC`,

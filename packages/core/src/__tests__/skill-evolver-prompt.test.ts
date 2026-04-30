@@ -131,6 +131,8 @@ describe('renderEvidenceAsPrompt', () => {
       errorSummary: 'timeout',
       userFeedback: null,
       feedbackNote: null,
+      conversationalFeedback: null,
+      inlineReviewTriggeredAt: null,
     }];
     expect(renderEvidenceAsPrompt(ev)).toContain('timeout');
   });

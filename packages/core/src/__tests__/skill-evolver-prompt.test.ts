@@ -27,6 +27,7 @@ function emptyEvidence(skillName = 'test'): EvolutionEvidence {
       positiveFeedbackCount: 0,
       negativeFeedbackCount: 0,
     },
+    usedInCurrentSession: false,
   };
 }
 

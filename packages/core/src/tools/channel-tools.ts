@@ -391,6 +391,109 @@ export function createChannelTools(
     });
 
     tools.push({
+      name: 'feishu_replace_block_text',
+      description:
+        '替换飞书 docx 某文本块的内容（保留 block_type，仅换 text）。失败码 230108/230109 不会自动重试 —— 拿到错请重读 doc 后再尝试。',
+      channel: 'feishu',
+      parameters: {
+        type: 'object',
+        properties: {
+          fileToken: { type: 'string', description: '文档唯一标识' },
+          fileType: { type: 'string', description: '文档类型', enum: ['docx'] },
+          blockId: { type: 'string', description: '要替换的 block_id（来自 feishu_read_doc）' },
+          text: { type: 'string', description: '新的文本内容（纯文本）' },
+          documentRevisionId: {
+            type: 'number',
+            description: '可选乐观锁：上次 read_doc 拿到的 revision；过期时返回 230108',
+          },
+        },
+        required: ['fileToken', 'fileType', 'blockId', 'text'],
+      },
+      execute: async (params) => {
+        const fileToken = params['fileToken'] as string;
+        const fileType = params['fileType'] as DocFileTypeParam;
+        const blockId = params['blockId'] as string;
+        const text = params['text'] as string;
+        const documentRevisionId = params['documentRevisionId'] as number | undefined;
+        if (!fileToken || !fileType || !blockId || !text) {
+          return '错误：缺少 fileToken / fileType / blockId / text';
+        }
+        if (fileType !== 'docx') {
+          return `错误：feishu_replace_block_text 当前仅支持 docx，收到 ${fileType}`;
+        }
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        const replaceParams: {
+          fileToken: string;
+          fileType: DocFileTypeParam;
+          blockId: string;
+          text: string;
+          documentRevisionId?: number;
+          agentId?: string;
+        } = { fileToken, fileType, blockId, text };
+        if (typeof documentRevisionId === 'number') {
+          replaceParams.documentRevisionId = documentRevisionId;
+        }
+        if (agentId) replaceParams.agentId = agentId;
+        const result = await adapter.replaceDocBlock(replaceParams);
+        return JSON.stringify({
+          document_revision_id: result.revisionId,
+          before_text: result.beforeText,
+        });
+      },
+    });
+
+    tools.push({
+      name: 'feishu_delete_block',
+      description:
+        '删除飞书 docx 中的某 block。会先读文档查 parent + index 再删 — 失败码 230108/230109 不重试。',
+      channel: 'feishu',
+      parameters: {
+        type: 'object',
+        properties: {
+          fileToken: { type: 'string', description: '文档唯一标识' },
+          fileType: { type: 'string', description: '文档类型', enum: ['docx'] },
+          blockId: { type: 'string', description: '要删除的 block_id（来自 feishu_read_doc）' },
+          documentRevisionId: {
+            type: 'number',
+            description: '可选乐观锁',
+          },
+        },
+        required: ['fileToken', 'fileType', 'blockId'],
+      },
+      execute: async (params) => {
+        const fileToken = params['fileToken'] as string;
+        const fileType = params['fileType'] as DocFileTypeParam;
+        const blockId = params['blockId'] as string;
+        const documentRevisionId = params['documentRevisionId'] as number | undefined;
+        if (!fileToken || !fileType || !blockId) {
+          return '错误：缺少 fileToken / fileType / blockId';
+        }
+        if (fileType !== 'docx') {
+          return `错误：feishu_delete_block 当前仅支持 docx，收到 ${fileType}`;
+        }
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        const deleteParams: {
+          fileToken: string;
+          fileType: DocFileTypeParam;
+          blockId: string;
+          documentRevisionId?: number;
+          agentId?: string;
+        } = { fileToken, fileType, blockId };
+        if (typeof documentRevisionId === 'number') {
+          deleteParams.documentRevisionId = documentRevisionId;
+        }
+        if (agentId) deleteParams.agentId = agentId;
+        const result = await adapter.deleteDocBlock(deleteParams);
+        return JSON.stringify({
+          document_revision_id: result.revisionId,
+          deleted_text: result.deletedText,
+        });
+      },
+    });
+
+    tools.push({
       name: 'feishu_append_block',
       description:
         '在飞书 docx 末尾或某父 block 下追加一个文本块（最常见的 doc edit）。failure code 230108/230109 不会自动重试 —— 拿到错请重读 doc 后再尝试。',
@@ -631,6 +734,8 @@ export function getChannelToolNames(channel: ChannelType): string[] {
         'feishu_add_whole_comment',
         'feishu_list_comment_replies',
         'feishu_read_doc',
+        'feishu_replace_block_text',
+        'feishu_delete_block',
         'feishu_append_block',
       ];
     case 'wecom':

@@ -18,6 +18,8 @@ import {
   toTextElements,
   getDocContent,
   appendTextBlock,
+  replaceBlockText,
+  deleteBlock,
 } from '../../channel/adapters/feishu/doc/doc-api.js';
 import { FeishuApiError } from '../../channel/adapters/feishu/outbound/index.js';
 
@@ -627,5 +629,182 @@ describe('appendTextBlock', () => {
       text: 'x',
     });
     expect(result).toEqual({ blockId: null, revisionId: null });
+  });
+});
+
+describe('replaceBlockText', () => {
+  it('成功路径：PATCH 到 /documents/X/blocks/Y + body 含 update_text_elements', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: { document_revision_id: 7 },
+    });
+
+    const result = await replaceBlockText(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      blockId: 'b_42',
+      text: '新内容',
+    });
+
+    expect(result.revisionId).toBe(7);
+    const call = client.request.mock.calls[0]![0];
+    expect(call.url).toBe('/open-apis/docx/v1/documents/tok/blocks/b_42');
+    expect(call.method).toBe('PATCH');
+    expect(call.data).toEqual({
+      update_text_elements: {
+        elements: [{ text_run: { content: '新内容' } }],
+      },
+    });
+  });
+
+  it('documentRevisionId 透传到 query', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 0, data: {} });
+    await replaceBlockText(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      blockId: 'b',
+      text: 'x',
+      documentRevisionId: 99,
+    });
+    expect(client.request.mock.calls[0]![0].url).toContain('?document_revision_id=99');
+  });
+
+  it('230108（version 过期）抛 FeishuApiError，不重试', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 230108, msg: 'expired' });
+    await expect(
+      replaceBlockText(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'docx',
+        blockId: 'b',
+        text: 'x',
+      }),
+    ).rejects.toThrow(FeishuApiError);
+    expect(client.request).toHaveBeenCalledOnce();
+  });
+
+  it('非 docx 直接抛错', async () => {
+    const client = makeClient();
+    await expect(
+      replaceBlockText(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'sheet',
+        blockId: 'b',
+        text: 'x',
+      }),
+    ).rejects.toThrow(/只支持 docx/);
+    expect(client.request).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteBlock', () => {
+  it('成功路径：先读 doc 找 parent + index，再 batch_delete', async () => {
+    const client = makeClient();
+    // 第一次 request：getDocContent
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [
+          { block_id: 'b_a', block_type: 2, parent_id: 'doc_root', text: { elements: [{ text_run: { content: 'A' } }] } },
+          { block_id: 'b_b', block_type: 2, parent_id: 'doc_root', text: { elements: [{ text_run: { content: 'B' } }] } },
+          { block_id: 'b_c', block_type: 2, parent_id: 'doc_root', text: { elements: [{ text_run: { content: 'C' } }] } },
+        ],
+      },
+    });
+    // 第二次 request：batch_delete
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: { document_revision_id: 12 },
+    });
+
+    const result = await deleteBlock(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      blockId: 'b_b',
+    });
+
+    expect(result).toEqual({ revisionId: 12, deletedText: 'B' });
+    expect(client.request).toHaveBeenCalledTimes(2);
+    const call2 = client.request.mock.calls[1]![0];
+    expect(call2.url).toBe(
+      '/open-apis/docx/v1/documents/tok/blocks/doc_root/children/batch_delete',
+    );
+    expect(call2.method).toBe('DELETE');
+    expect(call2.data).toEqual({ start_index: 1, end_index: 2 });
+  });
+
+  it('block_id 不存在抛错（不调 batch_delete）', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: { has_more: false, items: [{ block_id: 'b_x', block_type: 2 }] },
+    });
+
+    await expect(
+      deleteBlock(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'docx',
+        blockId: 'b_y',
+      }),
+    ).rejects.toThrow(/找不到 block_id/);
+    expect(client.request).toHaveBeenCalledOnce(); // 只调了 read，没调 delete
+  });
+
+  it('parent_id 缺失时 fallback 用 fileToken 作为 parent（doc 根）', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [
+          // 没有 parent_id 字段（root 直系子）
+          { block_id: 'b_a', block_type: 2, text: { elements: [{ text_run: { content: 'A' } }] } },
+        ],
+      },
+    });
+    client.request.mockResolvedValueOnce({ code: 0, data: { document_revision_id: 1 } });
+
+    await deleteBlock(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+      blockId: 'b_a',
+    });
+    const call2 = client.request.mock.calls[1]![0];
+    expect(call2.url).toContain('/blocks/tok/children/batch_delete'); // parent fallback = fileToken
+  });
+
+  it('230108 抛 FeishuApiError', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [{ block_id: 'b', block_type: 2, parent_id: 'doc_root', text: { elements: [] } }],
+      },
+    });
+    client.request.mockResolvedValueOnce({ code: 230108, msg: 'expired' });
+
+    await expect(
+      deleteBlock(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'docx',
+        blockId: 'b',
+      }),
+    ).rejects.toThrow(FeishuApiError);
+  });
+
+  it('非 docx 抛错', async () => {
+    const client = makeClient();
+    await expect(
+      deleteBlock(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'sheet',
+        blockId: 'b',
+      }),
+    ).rejects.toThrow(/只支持 docx/);
+    expect(client.request).not.toHaveBeenCalled();
   });
 });

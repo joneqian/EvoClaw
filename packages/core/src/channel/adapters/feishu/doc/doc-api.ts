@@ -402,3 +402,130 @@ export async function appendTextBlock(
     revisionId: res.data?.document_revision_id ?? null,
   };
 }
+
+// ─── 块替换 / 删除（M13 Phase 5 C4） ──────────────────────────────────
+
+/**
+ * 替换块的文本内容（仅文本类块：text / heading1-9 / code / bullet / ordered /
+ * quote / todo / callout 等）
+ *
+ * - 调 PATCH /open-apis/docx/v1/documents/:doc/blocks/:block_id
+ * - 用 update_text_elements 字段（飞书在 SDK 路径走 patch.replace_text，REST 路径
+ *   则是把整个 block 的 text.elements 替换）
+ * - 230108（version 过期）/ 230109（block 不存在）走 FeishuApiError，不在 doc-api
+ *   层重试 — 由 agent 决定是否重读 + 重试
+ *
+ * 限制：v1 不支持非文本块（image / table / divider / file），调用方需先用
+ * getDocContent 获取 block_type 判定。
+ */
+export async function replaceBlockText(
+  client: Lark.Client,
+  params: {
+    fileToken: string;
+    fileType: FeishuFileType;
+    blockId: string;
+    text: string;
+    documentRevisionId?: number;
+  },
+): Promise<{ revisionId: number | null }> {
+  if (params.fileType !== 'docx') {
+    throw new Error(`replaceBlockText 当前只支持 docx，收到 ${params.fileType}`);
+  }
+  const documentId = encodeURIComponent(params.fileToken);
+  const blockId = encodeURIComponent(params.blockId);
+  const query =
+    params.documentRevisionId !== undefined
+      ? `?document_revision_id=${encodeURIComponent(String(params.documentRevisionId))}`
+      : '';
+
+  const res = (await client.request({
+    url: `/open-apis/docx/v1/documents/${documentId}/blocks/${blockId}${query}`,
+    method: 'PATCH',
+    data: {
+      update_text_elements: {
+        elements: [{ text_run: { content: params.text } }],
+      },
+    },
+  })) as {
+    code?: number;
+    msg?: string;
+    data?: { document_revision_id?: number };
+  };
+
+  if (res.code) {
+    throw new FeishuApiError('替换块文本', res.code, res.msg ?? '');
+  }
+  return { revisionId: res.data?.document_revision_id ?? null };
+}
+
+/**
+ * 删除指定 block
+ *
+ * 飞书 API 路径用 parent + index：
+ *   POST /open-apis/docx/v1/documents/:doc/blocks/:parent_block_id/children/batch_delete
+ *   body: { start_index, end_index }  // 删除 [start, end) 区间
+ *
+ * 本封装让调用方只关心 blockId：内部会读一次 doc 查 parent + index，再发 delete。
+ * 牺牲 1 次 API 调用换 agent 简单（agent 拿到 block_id 就能删）。
+ *
+ * 230108 不在层内重试（同 replace）。
+ */
+export async function deleteBlock(
+  client: Lark.Client,
+  params: {
+    fileToken: string;
+    fileType: FeishuFileType;
+    blockId: string;
+    documentRevisionId?: number;
+  },
+): Promise<{ revisionId: number | null; deletedText: string }> {
+  if (params.fileType !== 'docx') {
+    throw new Error(`deleteBlock 当前只支持 docx，收到 ${params.fileType}`);
+  }
+
+  // 1. 读 doc 查 parent + index
+  const snapshot = await getDocContent(client, {
+    fileToken: params.fileToken,
+    fileType: params.fileType,
+  });
+  const targetIdx = snapshot.blocks.findIndex((b) => b.id === params.blockId);
+  if (targetIdx < 0) {
+    throw new Error(`deleteBlock 找不到 block_id=${params.blockId}`);
+  }
+  const target = snapshot.blocks[targetIdx]!;
+  const parentBlockId = target.parentId ?? params.fileToken;
+  // siblings = 同 parent 下的所有 block，按文档顺序（API 已排序）
+  const siblings = snapshot.blocks.filter((b) => (b.parentId ?? params.fileToken) === parentBlockId);
+  const indexInParent = siblings.findIndex((b) => b.id === params.blockId);
+  if (indexInParent < 0) {
+    throw new Error(`deleteBlock 在 parent=${parentBlockId} 下找不到 block_id=${params.blockId}`);
+  }
+
+  // 2. 调 batch_delete
+  const documentId = encodeURIComponent(params.fileToken);
+  const parentEnc = encodeURIComponent(parentBlockId);
+  const query =
+    params.documentRevisionId !== undefined
+      ? `?document_revision_id=${encodeURIComponent(String(params.documentRevisionId))}`
+      : '';
+  const res = (await client.request({
+    url: `/open-apis/docx/v1/documents/${documentId}/blocks/${parentEnc}/children/batch_delete${query}`,
+    method: 'DELETE',
+    data: {
+      start_index: indexInParent,
+      end_index: indexInParent + 1,
+    },
+  })) as {
+    code?: number;
+    msg?: string;
+    data?: { document_revision_id?: number };
+  };
+
+  if (res.code) {
+    throw new FeishuApiError('删除块', res.code, res.msg ?? '');
+  }
+  return {
+    revisionId: res.data?.document_revision_id ?? null,
+    deletedText: target.text,
+  };
+}

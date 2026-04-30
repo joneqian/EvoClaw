@@ -290,6 +290,37 @@ export class FeishuTestHarness {
     await this.mock.lastDispatcher.invoke('im.message.receive_v1', event);
   }
 
+  /**
+   * 模拟飞书文档评论事件（drive.notice.comment_add_v1）
+   *
+   * 用于 M13 Phase 5 doc 闭环测试。事件经 dedupe + bot-self 过滤后会合成
+   * ChannelMessage 调 handler，与 IM 同一份 handler 共享 agent 路径。
+   */
+  async simulateDocComment(opts: {
+    fileToken: string;
+    fileType?: 'doc' | 'docx' | 'sheet' | 'file' | 'slides';
+    commentId?: string;
+    replyId?: string;
+    fromOpenId?: string;
+    isWhole?: boolean;
+    content?: string;
+  }): Promise<void> {
+    if (!this.mock.lastDispatcher) {
+      throw new Error('FeishuTestHarness: 必须先 boot() 再 simulateDocComment()');
+    }
+    await this.mock.lastDispatcher.invoke('drive.notice.comment_add_v1', {
+      file_token: opts.fileToken,
+      file_type: opts.fileType ?? 'docx',
+      comment_id: opts.commentId ?? `cmt_${Date.now()}`,
+      ...(opts.replyId !== undefined ? { reply_id: opts.replyId } : {}),
+      from_open_id: opts.fromOpenId ?? 'ou_user_doc',
+      is_whole: opts.isWhole ?? false,
+      content: opts.content ?? 'hello from doc',
+    });
+    // dispatch 是 fire-and-forget；等一个 microtask + setImmediate 让 handler 跑完
+    await new Promise((r) => setImmediate(r));
+  }
+
   // ─── 出站故障注入 ───────────────────────────────────────────────────
 
   /**

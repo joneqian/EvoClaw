@@ -275,6 +275,9 @@ export class FeishuAdapter implements ChannelAdapter {
       registerOtherEventHandlers(bundle.dispatcher, {
         getCallbacks: () => this.eventCallbacks,
         getAccountId: () => this.credentials?.appId ?? '',
+        // Phase 5 C1：drive 评论事件接入 agent dispatch
+        getDocHandler: () => this.handler,
+        getBotOpenId: () => this.botOpenId,
       });
 
       await bundle.wsClient.start({ eventDispatcher: bundle.dispatcher });

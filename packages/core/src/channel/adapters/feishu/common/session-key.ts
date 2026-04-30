@@ -65,6 +65,29 @@ export function buildFeishuGroupPeerId(params: {
 }
 
 /**
+ * 文档评论场景的 peerId 前缀
+ *
+ * `doc:<file_token>` —— 让 doc 维度独立隔离于 IM peer，BindingRouter 可以按
+ * 前缀做特化路由（M13 Phase 5 文档协作闭环）。
+ */
+export const FEISHU_DOC_PEER_PREFIX = 'doc:';
+
+/** 构造文档评论场景的 peerId */
+export function buildFeishuDocPeerId(fileToken: string): string {
+  return `${FEISHU_DOC_PEER_PREFIX}${fileToken}`;
+}
+
+/**
+ * 解析文档评论 peerId；非 doc 前缀返回 null
+ */
+export function parseFeishuDocPeerId(peerId: string): { fileToken: string } | null {
+  if (!peerId.startsWith(FEISHU_DOC_PEER_PREFIX)) return null;
+  const fileToken = peerId.slice(FEISHU_DOC_PEER_PREFIX.length);
+  if (!fileToken) return null;
+  return { fileToken };
+}
+
+/**
  * 把带后缀的 peerId 拆解回 chatId + senderOpenId + threadId
  *
  * 用于审计 / 调试。返回 null 表示非群聊格式。

@@ -39,8 +39,12 @@ interface EvolutionLogRow {
   durationMs: number | null;
   errorMessage: string | null;
   rolledBack: number;
+  /** P1-B: 'cron' | 'inline' */
+  triggerSource: string;
   previousContent: string | null;
   newContent: string | null;
+  /** P1-B: 触发本条 inline review 的用户对话原文（仅 trigger_source='inline' 可能有） */
+  conversationalFeedback?: string | null;
 }
 
 const LIST_COLUMNS = `
@@ -57,7 +61,8 @@ const LIST_COLUMNS = `
   model_used        AS modelUsed,
   duration_ms       AS durationMs,
   error_message     AS errorMessage,
-  rolled_back       AS rolledBack
+  rolled_back       AS rolledBack,
+  trigger_source    AS triggerSource
 `;
 
 const DETAIL_COLUMNS = `
@@ -104,6 +109,23 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
       id,
     );
     if (!row) return c.json({ error: 'not found' }, 404);
+
+    // P1-B: 关联 inline review 的用户对话原文（最近一条同 skill 的 conversational_feedback）
+    if (row.triggerSource === 'inline') {
+      const fb = deps.db.get<{ feedback: string | null }>(
+        `SELECT conversational_feedback AS feedback
+         FROM skill_usage
+         WHERE skill_name = ?
+           AND conversational_feedback IS NOT NULL
+           AND datetime(invoked_at) <= datetime(?)
+         ORDER BY invoked_at DESC, id DESC
+         LIMIT 1`,
+        row.skillName,
+        row.evolvedAt,
+      );
+      row.conversationalFeedback = fb?.feedback ?? null;
+    }
+
     return c.json({ entry: row });
   });
 

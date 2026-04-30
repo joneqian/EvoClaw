@@ -18,6 +18,8 @@ const log = createLogger('feishu-retry');
 export const DEFAULT_MAX_ATTEMPTS = 3;
 /** 基础退避（ms），实际 = BASE * 2^attempt */
 export const DEFAULT_BASE_DELAY_MS = 1000;
+/** 单次重试等待上限（ms）。截断离谱大的服务端 Retry-After（如 1 小时），防止阻塞 channel */
+export const DEFAULT_MAX_DELAY_MS = 60_000;
 
 /**
  * 飞书 code 分类：哪些应该重试
@@ -69,11 +71,32 @@ export function isRetryableFeishuError(err: unknown): boolean {
   return looksLikeTransientNetworkError(err);
 }
 
+/**
+ * 从错误信息中解析 Retry-After 秒数
+ *
+ * 飞书 SDK 在限流时通常把 hint 放进错误 msg（headers 在 SDK 包装时已丢失）。
+ * 支持的形式：`Retry-After: 30` / `retry after 15` / `Retry-After=60`（大小写不敏感）。
+ *
+ * @returns 秒数；找不到 / 输入非字符串非 Error 时返回 undefined（不抛）
+ */
+export function extractRetryAfterSeconds(input: unknown): number | undefined {
+  const text =
+    input instanceof Error
+      ? input.message
+      : typeof input === 'string'
+        ? input
+        : '';
+  const match = text.match(/retry.?after[\s:=]*(\d+)/i);
+  return match ? parseInt(match[1]!, 10) : undefined;
+}
+
 export interface RetryOptions {
   /** 最大尝试次数（含首次），默认 3 */
   maxAttempts?: number;
   /** 基础退避 ms，默认 1000 */
   baseDelayMs?: number;
+  /** 单次重试等待上限 ms，同时截断退避延迟与服务端 Retry-After，默认 60_000 */
+  maxDelayMs?: number;
   /** 日志前缀（出现在 warn 中） */
   label?: string;
   /** 测试注入：等待实现（默认 setTimeout） */
@@ -113,6 +136,7 @@ export async function withFeishuRetry<T>(
 ): Promise<T> {
   const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const baseDelay = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+  const maxDelay = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
   const sleep = options.sleep ?? defaultSleep;
   const random = options.random ?? Math.random;
   const label = options.label ?? 'feishu';
@@ -126,10 +150,20 @@ export async function withFeishuRetry<T>(
       if (attempt >= maxAttempts - 1 || !isRetryableFeishuError(err)) {
         throw err;
       }
-      const delay = computeBackoffDelay(attempt, baseDelay, random);
+      // 限流时优先服从服务端 Retry-After hint，没有则走 equal-jitter 退避
+      const retryAfter = extractRetryAfterSeconds(err);
+      let delay: number;
+      let reason: string;
+      if (retryAfter !== undefined && retryAfter > 0) {
+        delay = Math.min(retryAfter * 1000, maxDelay);
+        reason = `服务端 Retry-After=${retryAfter}s`;
+      } else {
+        delay = Math.min(computeBackoffDelay(attempt, baseDelay, random), maxDelay);
+        reason = '指数退避';
+      }
       const msg = err instanceof Error ? err.message : String(err);
       log.warn(
-        `[${label}] 第 ${attempt + 1}/${maxAttempts} 次失败，${delay}ms 后重试: ${msg}`,
+        `[${label}] 第 ${attempt + 1}/${maxAttempts} 次失败（${reason}），${delay}ms 后重试: ${msg}`,
       );
       await sleep(delay);
     }

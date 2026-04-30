@@ -132,6 +132,13 @@ export interface HarnessOptions {
    */
   botOpenId?: string;
   channelName?: string;
+  /**
+   * 是否启用入站文本合并器（debounce）
+   *
+   * 默认 false——大部分 journey 测试假设消息立即 deliver。要测 debounce 行为
+   * 时显式开启（journey 加 vi.useFakeTimers + 推进 timer）。
+   */
+  debounceEnabled?: boolean;
 }
 
 interface ResolvedHarnessOptions {
@@ -140,6 +147,7 @@ interface ResolvedHarnessOptions {
   groupSessionScope: FeishuGroupSessionScope;
   botOpenId: string;
   channelName: string;
+  debounceEnabled: boolean;
 }
 
 /** 入站事件载荷（飞书 SDK im.message.receive_v1 的最小子集） */
@@ -182,6 +190,7 @@ export class FeishuTestHarness {
       groupSessionScope: opts.groupSessionScope ?? 'group',
       botOpenId: opts.botOpenId ?? 'ou_bot',
       channelName: opts.channelName ?? '飞书测试',
+      debounceEnabled: opts.debounceEnabled ?? false,
     };
     this.mock = createFeishuMockSdk();
     this.adapter = new FeishuAdapter({ sdk: this.mock.sdk });
@@ -203,6 +212,7 @@ export class FeishuTestHarness {
         appId: this.opts.appId,
         appSecret: this.opts.appSecret,
         groupSessionScope: this.opts.groupSessionScope,
+        debounceEnabled: this.opts.debounceEnabled ? 'true' : 'false',
       },
     });
   }

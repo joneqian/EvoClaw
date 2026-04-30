@@ -13,6 +13,7 @@ import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { QuotedMessage } from '@evoclaw/shared';
 import type { MessageHandler } from '../../../channel-adapter.js';
 import { normalizeFeishuMessage } from '../../../message-normalizer.js';
+import type { DebounceCoalescer } from './debounce-coalescer.js';
 import { parseFeishuContent } from './parse-content.js';
 import { createLogger } from '../../../../infrastructure/logger.js';
 import {
@@ -164,6 +165,13 @@ export interface InboundContext {
   getAccountId: () => string;
   getBotOpenId: () => string | null;
   getHandler: () => MessageHandler | null;
+  /**
+   * 入站文本合并器（debounce coalescer）
+   *
+   * 提供时：handler 调用走 `coalescer.enqueue(normalized)`（fire-and-forget）。
+   * 未提供 / 返回 null 时：直接 `await handler(normalized)`（旧行为）。
+   */
+  getCoalescer?: () => DebounceCoalescer | null;
   getMediaDownloader?: () => MediaDownloader | null;
   /** 群会话隔离策略（默认 'group'） */
   getGroupSessionScope?: () => FeishuGroupSessionScope;
@@ -495,16 +503,21 @@ export async function handleReceiveMessage(
     }
   }
 
-  // handler 会触发 Agent 处理管线（可能耗时 10+ 秒）。SDK ACK 已由
-  // registerInboundHandlers 层的 fire-and-forget 保障，这里直接 await 即可。
+  // 入站消息合并：若 adapter 注入了 coalescer（默认开），文本走 debounce 路径；
+  // 否则直接 await handler（旧行为，测试 / 关合并器场景）。
   //
   // Promise.resolve() 包装：handler 可能是非 async 的 mock（测试场景返回
   // undefined），直接 `.catch` 会 NPE；先 resolve 统一包成 Promise。
-  await Promise.resolve(handler(normalized)).catch((err) => {
-    log.error(
-      `[${accountId}] agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
+  const coalescer = ctx.getCoalescer?.() ?? null;
+  if (coalescer) {
+    coalescer.enqueue(normalized);
+  } else {
+    await Promise.resolve(handler(normalized)).catch((err) => {
+      log.error(
+        `[${accountId}] agent 处理失败 messageId=${message.message_id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
 }
 
 /**

@@ -13,6 +13,8 @@ import { SkillUsageStore, sanitizeErrorSummary } from '../skill/skill-usage-stor
 const MIGRATIONS_DIR = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
 const MIGRATION_001 = fs.readFileSync(path.join(MIGRATIONS_DIR, '001_initial.sql'), 'utf-8');
 const MIGRATION_027 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_skill_usage.sql'), 'utf-8');
+const MIGRATION_028 = fs.readFileSync(path.join(MIGRATIONS_DIR, '028_skill_evolution_log.sql'), 'utf-8');
+const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
 
 const AGENT_A = 'agent-a';
 const AGENT_B = 'agent-b';
@@ -30,6 +32,8 @@ describe('SkillUsageStore', () => {
     db = new SqliteStore(path.join(tmpDir, 'test.db'));
     db.exec(MIGRATION_001);
     db.exec(MIGRATION_027);
+    db.exec(MIGRATION_028);
+    db.exec(MIGRATION_037);
     for (const id of [AGENT_A, AGENT_B]) {
       db.run(`INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`, id, id, '🤖', 'active');
     }
@@ -171,6 +175,115 @@ describe('SkillUsageStore', () => {
       }
       const summaries = usage.listSummaries('x', 2);
       expect(summaries).toHaveLength(2);
+    });
+  });
+
+  describe('P1-B Inline Review — conversational_feedback + 限速', () => {
+    function recordTwo(skillName: string): void {
+      usage.record({
+        skillName, agentId: AGENT_A, sessionKey: SESSION_1,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: true,
+      });
+      usage.record({
+        skillName, agentId: AGENT_A, sessionKey: SESSION_1,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: false,
+      });
+    }
+
+    it('recordConversationalFeedback 写入到该 session+skill 的最新一条', () => {
+      recordTwo('arxiv');
+      const ok = usage.recordConversationalFeedback({
+        skillName: 'arxiv',
+        sessionKey: SESSION_1,
+        feedback: '不要这样',
+      });
+      expect(ok).toBe(true);
+
+      const rows = usage.listBySessionAndSkill(SESSION_1, 'arxiv');
+      expect(rows).toHaveLength(2);
+      // 最新一条（最后写入）才有 conversational_feedback
+      const latest = rows[rows.length - 1];
+      const earlier = rows[0];
+      expect((latest as { conversationalFeedback?: string }).conversationalFeedback ?? null).toBe('不要这样');
+      expect((earlier as { conversationalFeedback?: string }).conversationalFeedback ?? null).toBeNull();
+    });
+
+    it('recordConversationalFeedback 截断到 200 字', () => {
+      recordTwo('arxiv');
+      const long = 'x'.repeat(500);
+      const ok = usage.recordConversationalFeedback({
+        skillName: 'arxiv',
+        sessionKey: SESSION_1,
+        feedback: long,
+      });
+      expect(ok).toBe(true);
+      const rows = usage.listBySessionAndSkill(SESSION_1, 'arxiv');
+      const latest = rows[rows.length - 1];
+      const stored = (latest as { conversationalFeedback?: string }).conversationalFeedback ?? '';
+      expect(stored.length).toBe(200);
+    });
+
+    it('recordConversationalFeedback 找不到 session+skill → false', () => {
+      const ok = usage.recordConversationalFeedback({
+        skillName: 'nonexistent',
+        sessionKey: SESSION_1,
+        feedback: '不要这样',
+      });
+      expect(ok).toBe(false);
+    });
+
+    it('markInlineReviewTriggered + getLastInlineReviewAt 配套', () => {
+      recordTwo('arxiv');
+      expect(usage.getLastInlineReviewAt('arxiv')).toBeNull();
+
+      const before = new Date().toISOString();
+      const ok = usage.markInlineReviewTriggered({
+        skillName: 'arxiv',
+        sessionKey: SESSION_1,
+      });
+      expect(ok).toBe(true);
+      const last = usage.getLastInlineReviewAt('arxiv');
+      expect(last).not.toBeNull();
+      expect(last! >= before).toBe(true);
+    });
+
+    it('markInlineReviewTriggered 找不到 → false', () => {
+      const ok = usage.markInlineReviewTriggered({
+        skillName: 'absent',
+        sessionKey: SESSION_1,
+      });
+      expect(ok).toBe(false);
+    });
+
+    it('getLastInlineReviewAt 跨 session 取最大值', () => {
+      recordTwo('arxiv');
+      // 同 skill 不同 session
+      usage.record({
+        skillName: 'arxiv', agentId: AGENT_A, sessionKey: SESSION_2,
+        triggerType: 'invoke_skill', executionMode: 'inline', success: true,
+      });
+
+      // session_1 旧标记
+      usage.markInlineReviewTriggered({ skillName: 'arxiv', sessionKey: SESSION_1 });
+      const t1 = usage.getLastInlineReviewAt('arxiv');
+      expect(t1).not.toBeNull();
+
+      // session_2 新标记 — 最新值应大于等于 t1
+      usage.markInlineReviewTriggered({ skillName: 'arxiv', sessionKey: SESSION_2 });
+      const t2 = usage.getLastInlineReviewAt('arxiv');
+      expect(t2).not.toBeNull();
+      expect(t2! >= t1!).toBe(true);
+    });
+
+    it('record 失败静默：表不存在时新方法都不抛', () => {
+      db.exec('DROP TABLE skill_usage');
+      expect(() => usage.recordConversationalFeedback({
+        skillName: 'x', sessionKey: SESSION_1, feedback: 'x',
+      })).not.toThrow();
+      expect(() => usage.markInlineReviewTriggered({
+        skillName: 'x', sessionKey: SESSION_1,
+      })).not.toThrow();
+      expect(() => usage.getLastInlineReviewAt('x')).not.toThrow();
     });
   });
 });

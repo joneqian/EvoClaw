@@ -9,8 +9,8 @@
  * 参考 Hermes `_feishu_send_with_retry` (gateway/platforms/feishu.py:3783-3840)
  */
 
-import { FeishuApiError } from './outbound.js';
-import { createLogger } from '../../../infrastructure/logger.js';
+import { FeishuApiError } from '../outbound/index.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
 
 const log = createLogger('feishu-retry');
 

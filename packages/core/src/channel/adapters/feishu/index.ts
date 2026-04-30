@@ -28,41 +28,41 @@ import {
   type MediaDownloader,
   type FeishuMessageFetcher,
   type InboundContext,
-} from './inbound.js';
-import { createFeishuMessageCache } from './message-cache.js';
-import { parseFeishuContent } from './parse-content.js';
-import { sendMediaMessage, sendSmartMessage } from './outbound.js';
+} from './inbound/index.js';
+import { createFeishuMessageCache } from './common/message-cache.js';
+import { parseFeishuContent } from './inbound/parse-content.js';
+import { sendMediaMessage, sendSmartMessage } from './outbound/index.js';
 import {
   GroupHistoryBuffer,
   buildHistoryKey,
   type GroupHistoryEntry,
-} from './group-history.js';
-import { parseFeishuGroupPeerId } from './session-key.js';
-import { downloadMessageResource } from './media.js';
+} from './inbound/group-history.js';
+import { parseFeishuGroupPeerId } from './common/session-key.js';
+import { downloadMessageResource } from './outbound/media.js';
 import {
   ApprovalRegistry,
   requestApprovalViaCard,
   type ApprovalRequestOptions,
   type ApprovalDecision,
-} from './send-approval.js';
-import { registerCardActionHandlers } from './card-action.js';
+} from './card/send-approval.js';
+import { registerCardActionHandlers } from './card/card-action.js';
 import {
   beginStreamingCard,
   type StreamingCardHandle,
   type StreamingCardOptions,
-} from './cardkit-streaming.js';
+} from './card/cardkit-streaming.js';
 import {
   registerOtherEventHandlers,
   type FeishuEventCallbacks,
-} from './event-handlers.js';
-import { withFeishuRetry } from './retry.js';
+} from './inbound/event-handlers.js';
+import { withFeishuRetry } from './common/retry.js';
 import {
   addWholeCommentReply as apiAddWholeCommentReply,
   replyToComment as apiReplyToComment,
   listCommentReplies as apiListCommentReplies,
   type FeishuFileType as DocFileType,
-} from './doc-api.js';
-import { createFeishuSdkLogger, type FeishuWsStatusEvent } from './ws-logger.js';
+} from './doc/doc-api.js';
+import { createFeishuSdkLogger, type FeishuWsStatusEvent } from './common/ws-logger.js';
 
 const log = createLogger('feishu-adapter');
 const wsLog = createLogger('feishu-ws');
@@ -87,7 +87,7 @@ export interface FeishuAdapterOptions {
 async function fetchFeishuMessageSnapshot(
   client: Lark.Client,
   messageId: string,
-): Promise<import('./message-cache.js').FeishuMessageCacheEntry | null> {
+): Promise<import('./common/message-cache.js').FeishuMessageCacheEntry | null> {
   const res = await client.request<{
     code?: number;
     msg?: string;
@@ -351,7 +351,7 @@ export class FeishuAdapter implements ChannelAdapter {
     const accountId = this.credentials?.appId;
     const senderAgentId = this.senderAgentResolver?.(accountId ?? '') ?? null;
     if (result?.messageId && senderAgentId && accountId) {
-      const { recordSentMessage } = await import('./sent-message-registry.js');
+      const { recordSentMessage } = await import('./common/sent-message-registry.js');
       recordSentMessage(result.messageId, senderAgentId, accountId);
     }
   }

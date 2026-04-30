@@ -12,7 +12,7 @@ import type { ApprovalRegistry } from './send-approval.js';
 import { decodeEnvelope, FEISHU_ENVELOPE_VERSION } from './card-envelope.js';
 import { buildResolvedApprovalCard } from './send-approval.js';
 import { updateInteractiveCard } from './send-card.js';
-import { createLogger } from '../../../infrastructure/logger.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
 
 const log = createLogger('feishu-card-action');
 

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createFeishuMessageCache,
   type FeishuMessageCacheEntry,
-} from '../../channel/adapters/feishu/message-cache.js';
+} from '../../channel/adapters/feishu/common/message-cache.js';
 
 function mkEntry(
   id: string,

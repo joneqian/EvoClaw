@@ -25,10 +25,10 @@ import type {
   TeamMessageMetadata,
 } from '../../team-mode/team-channel.js';
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import type { FeishuPeerBotRegistry } from './peer-bot-registry.js';
+import type { FeishuPeerBotRegistry } from './common/peer-bot-registry.js';
 import type { BindingRouter } from '../../../routing/binding-router.js';
-import { ChatHistoryProberCache } from './chat-history-prober.js';
-import { renderTaskBoardCard, renderTaskBoardCardJson } from './task-board-card.js';
+import { ChatHistoryProberCache } from './inbound/chat-history-prober.js';
+import { renderTaskBoardCard, renderTaskBoardCardJson } from './card/task-board-card.js';
 
 const logger = createLogger('feishu/team-channel');
 

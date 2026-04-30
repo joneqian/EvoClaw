@@ -3,12 +3,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { beginStreamingCard } from '../../channel/adapters/feishu/cardkit-streaming.js';
+import { beginStreamingCard } from '../../channel/adapters/feishu/card/cardkit-streaming.js';
 import {
   registerOtherEventHandlers,
   type FeishuEventCallbacks,
-} from '../../channel/adapters/feishu/event-handlers.js';
-import { FeishuApiError } from '../../channel/adapters/feishu/outbound.js';
+} from '../../channel/adapters/feishu/inbound/event-handlers.js';
+import { FeishuApiError } from '../../channel/adapters/feishu/outbound/index.js';
 
 // ─── 流式卡片 ────────────────────────────────────────────────────────
 

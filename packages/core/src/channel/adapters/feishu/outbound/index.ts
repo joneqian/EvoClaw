@@ -11,7 +11,7 @@
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import { buildPostPayload, looksLikeMarkdown, serializePostContent } from './markdown-to-post.js';
 import { isImageFile, uploadFile, uploadImage } from './media.js';
-import { parseFeishuGroupPeerId } from './session-key.js';
+import { parseFeishuGroupPeerId } from '../common/session-key.js';
 
 /** 飞书发送 API 返回（部分字段） */
 interface FeishuSendResponse {

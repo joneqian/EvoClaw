@@ -16,7 +16,7 @@ import {
   __clearInboundDedupe,
   type FeishuReceiveEvent,
   type InboundContext,
-} from '../../channel/adapters/feishu/inbound.js';
+} from '../../channel/adapters/feishu/inbound/index.js';
 
 // 全局去重重置（见 group-history-integration.test.ts 说明）
 beforeEach(() => {
@@ -25,11 +25,11 @@ beforeEach(() => {
 import {
   DEFAULT_BROADCAST_CONFIG,
   type BroadcastConfig,
-} from '../../channel/adapters/feishu/broadcast.js';
+} from '../../channel/adapters/feishu/outbound/broadcast.js';
 import {
   GroupHistoryBuffer,
   DEFAULT_GROUP_HISTORY_CONFIG,
-} from '../../channel/adapters/feishu/group-history.js';
+} from '../../channel/adapters/feishu/inbound/group-history.js';
 
 function buildCtx(overrides: {
   broadcast?: Partial<BroadcastConfig>;

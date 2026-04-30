@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ChatPrebakeService, buildPrebakeText } from '../../channel/adapters/feishu/chat-prebake.js';
+import { ChatPrebakeService, buildPrebakeText } from '../../channel/adapters/feishu/inbound/chat-prebake.js';
 import { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from '../../infrastructure/db/migration-runner.js';
 

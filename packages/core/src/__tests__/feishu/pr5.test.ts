@@ -7,20 +7,20 @@ import {
   registerOtherEventHandlers,
   type FeishuDriveCommentEvent,
   type FeishuEventCallbacks,
-} from '../../channel/adapters/feishu/event-handlers.js';
+} from '../../channel/adapters/feishu/inbound/event-handlers.js';
 import {
   addWholeCommentReply,
   replyToComment,
   listCommentReplies,
   toTextElements,
-} from '../../channel/adapters/feishu/doc-api.js';
+} from '../../channel/adapters/feishu/doc/doc-api.js';
 import {
   withFeishuRetry,
   isRetryableFeishuError,
   DEFAULT_BASE_DELAY_MS,
   DEFAULT_MAX_ATTEMPTS,
-} from '../../channel/adapters/feishu/retry.js';
-import { FeishuApiError } from '../../channel/adapters/feishu/outbound.js';
+} from '../../channel/adapters/feishu/common/retry.js';
+import { FeishuApiError } from '../../channel/adapters/feishu/outbound/index.js';
 
 // ─── Phase I-1: drive 评论事件 ──────────────────────────────────────
 

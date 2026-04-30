@@ -16,8 +16,8 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from './outbound.js';
-import { createLogger } from '../../../infrastructure/logger.js';
+import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from '../outbound/index.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
 
 const log = createLogger('feishu-streaming');
 

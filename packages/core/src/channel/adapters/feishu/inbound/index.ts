@@ -11,14 +11,14 @@
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import type { QuotedMessage } from '@evoclaw/shared';
-import type { MessageHandler } from '../../channel-adapter.js';
-import { normalizeFeishuMessage } from '../../message-normalizer.js';
+import type { MessageHandler } from '../../../channel-adapter.js';
+import { normalizeFeishuMessage } from '../../../message-normalizer.js';
 import { parseFeishuContent } from './parse-content.js';
-import { createLogger } from '../../../infrastructure/logger.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
 import {
   buildFeishuGroupPeerId,
   type FeishuGroupSessionScope,
-} from './session-key.js';
+} from '../common/session-key.js';
 import {
   GroupHistoryBuffer,
   buildHistoryKey,
@@ -28,11 +28,11 @@ import {
 import {
   resolveBroadcastTargets,
   type BroadcastConfig,
-} from './broadcast.js';
+} from '../outbound/broadcast.js';
 import type {
   FeishuMessageCache,
   FeishuMessageCacheEntry,
-} from './message-cache.js';
+} from '../common/message-cache.js';
 
 const log = createLogger('feishu-inbound');
 
@@ -283,7 +283,7 @@ export async function handleReceiveMessage(
     // M13 cross-app 修复：sender_type='bot' 事件没 app_id，用 message_id 反查全局
     // 发送注册表（sendMessage 完成后写入）。所有 5 个 bot 在同一进程共享内存。
     if (!senderAppId && data.message?.message_id) {
-      const { lookupSentMessage } = await import('./sent-message-registry.js');
+      const { lookupSentMessage } = await import('../common/sent-message-registry.js');
       const sent = lookupSentMessage(data.message.message_id);
       if (sent) {
         senderAppId = sent.senderAccountId;

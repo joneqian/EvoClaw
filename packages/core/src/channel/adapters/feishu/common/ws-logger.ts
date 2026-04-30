@@ -25,7 +25,7 @@
  * - 'ws client ready'      → 初次 start 链路完成
  */
 
-import type { createLogger } from '../../../infrastructure/logger.js';
+import type { createLogger } from '../../../../infrastructure/logger.js';
 
 type AppLogger = ReturnType<typeof createLogger>;
 

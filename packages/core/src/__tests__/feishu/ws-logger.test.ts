@@ -10,7 +10,7 @@ import {
   detectWsStatus,
   createFeishuSdkLogger,
   type FeishuWsStatusEvent,
-} from '../../channel/adapters/feishu/ws-logger.js';
+} from '../../channel/adapters/feishu/common/ws-logger.js';
 
 const makeAppLogger = () => ({
   debug: vi.fn(),

@@ -6,7 +6,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from './outbound.js';
+import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from '../outbound/index.js';
 
 /** 飞书交互卡片（零依赖，不绑死 SDK 类型便于测试） */
 export interface FeishuCard {

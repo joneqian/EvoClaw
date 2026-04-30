@@ -17,12 +17,12 @@ import {
   __clearInboundDedupe,
   type FeishuReceiveEvent,
   type InboundContext,
-} from '../../channel/adapters/feishu/inbound.js';
+} from '../../channel/adapters/feishu/inbound/index.js';
 import {
   parseFeishuCredentials,
   FeishuCredentialsSchema,
 } from '../../channel/adapters/feishu/config.js';
-import { inferReceiveIdType } from '../../channel/adapters/feishu/outbound.js';
+import { inferReceiveIdType } from '../../channel/adapters/feishu/outbound/index.js';
 
 // ─── 伪 SDK 构造器 ──────────────────────────────────────────────────────
 
@@ -648,7 +648,7 @@ describe('handleReceiveMessage', () => {
   });
 
   it('parent_id 命中 cache → normalized.quoted 填充自缓存条目', async () => {
-    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/message-cache.js');
+    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/common/message-cache.js');
     const cache = createFeishuMessageCache({ maxSize: 10, ttlMs: 60_000 });
     cache.put({
       messageId: 'om_parent',
@@ -681,7 +681,7 @@ describe('handleReceiveMessage', () => {
   });
 
   it('parent_id miss cache → 走 fetcher 并回填缓存', async () => {
-    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/message-cache.js');
+    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/common/message-cache.js');
     const cache = createFeishuMessageCache({ maxSize: 10, ttlMs: 60_000 });
     const fetcher = vi.fn().mockResolvedValue({
       messageId: 'om_parent',
@@ -740,7 +740,7 @@ describe('handleReceiveMessage', () => {
   });
 
   it('每条入站消息都写入 cache（供后续引用回查）', async () => {
-    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/message-cache.js');
+    const { createFeishuMessageCache } = await import('../../channel/adapters/feishu/common/message-cache.js');
     const cache = createFeishuMessageCache({ maxSize: 10, ttlMs: 60_000 });
     const handler = vi.fn();
     const ctx: InboundContext = {

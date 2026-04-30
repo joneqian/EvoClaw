@@ -764,7 +764,7 @@ async function triggerFeishuPrebake(args: {
   adapter: import('./channel/adapters/feishu/index.js').FeishuAdapter;
   accountId: string;
   chatId: string;
-  prebake: import('./channel/adapters/feishu/chat-prebake.js').ChatPrebakeService | null;
+  prebake: import('./channel/adapters/feishu/inbound/chat-prebake.js').ChatPrebakeService | null;
   agentManager: AgentManager;
   bindingRouter: BindingRouter;
 }): Promise<void> {
@@ -917,13 +917,13 @@ async function main() {
       // 飞书 chat.members.get 不返回机器人成员，所以用被动缓存模式：从入站消息和
       // bot.added/deleted 事件累积 (chatId, appId, openId)
       let feishuTeamChannel: import('./channel/adapters/feishu/team-channel.js').FeishuTeamChannel | null = null;
-      let feishuPeerBotRegistry: import('./channel/adapters/feishu/peer-bot-registry.js').FeishuPeerBotRegistry | null = null;
-      let feishuChatPrebake: import('./channel/adapters/feishu/chat-prebake.js').ChatPrebakeService | null = null;
+      let feishuPeerBotRegistry: import('./channel/adapters/feishu/common/peer-bot-registry.js').FeishuPeerBotRegistry | null = null;
+      let feishuChatPrebake: import('./channel/adapters/feishu/inbound/chat-prebake.js').ChatPrebakeService | null = null;
       if (Feature.FEISHU) {
         const { FeishuAdapter } = await import('./channel/adapters/feishu/index.js');
-        const { FeishuPeerBotRegistry } = await import('./channel/adapters/feishu/peer-bot-registry.js');
+        const { FeishuPeerBotRegistry } = await import('./channel/adapters/feishu/common/peer-bot-registry.js');
         const { FeishuTeamChannel } = await import('./channel/adapters/feishu/team-channel.js');
-        const { ChatPrebakeService } = await import('./channel/adapters/feishu/chat-prebake.js');
+        const { ChatPrebakeService } = await import('./channel/adapters/feishu/inbound/chat-prebake.js');
         const { teamChannelRegistry } = await import('./agent/team-mode/team-channel-registry.js');
 
         feishuPeerBotRegistry = new FeishuPeerBotRegistry({ bindingRouter });

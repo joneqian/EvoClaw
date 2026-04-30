@@ -7,19 +7,19 @@ import {
   createEnvelope,
   decodeEnvelope,
   FEISHU_ENVELOPE_VERSION,
-} from '../../channel/adapters/feishu/card-envelope.js';
+} from '../../channel/adapters/feishu/card/card-envelope.js';
 import {
   sendInteractiveCard,
   updateInteractiveCard,
-} from '../../channel/adapters/feishu/send-card.js';
+} from '../../channel/adapters/feishu/card/send-card.js';
 import {
   ApprovalRegistry,
   buildApprovalCard,
   buildResolvedApprovalCard,
   requestApprovalViaCard,
-} from '../../channel/adapters/feishu/send-approval.js';
-import { handleCardAction } from '../../channel/adapters/feishu/card-action.js';
-import { FeishuApiError } from '../../channel/adapters/feishu/outbound.js';
+} from '../../channel/adapters/feishu/card/send-approval.js';
+import { handleCardAction } from '../../channel/adapters/feishu/card/card-action.js';
+import { FeishuApiError } from '../../channel/adapters/feishu/outbound/index.js';
 
 // ─── envelope ──────────────────────────────────────────────────────────
 

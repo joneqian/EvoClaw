@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { probeChatHistory, ChatHistoryProberCache } from '../../channel/adapters/feishu/chat-history-prober.js';
-import { FeishuPeerBotRegistry } from '../../channel/adapters/feishu/peer-bot-registry.js';
+import { probeChatHistory, ChatHistoryProberCache } from '../../channel/adapters/feishu/inbound/chat-history-prober.js';
+import { FeishuPeerBotRegistry } from '../../channel/adapters/feishu/common/peer-bot-registry.js';
 import { BindingRouter } from '../../routing/binding-router.js';
 import { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from '../../infrastructure/db/migration-runner.js';

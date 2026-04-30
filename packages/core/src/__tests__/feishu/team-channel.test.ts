@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from '../../infrastructure/db/migration-runner.js';
 import { BindingRouter } from '../../routing/binding-router.js';
-import { FeishuPeerBotRegistry } from '../../channel/adapters/feishu/peer-bot-registry.js';
+import { FeishuPeerBotRegistry } from '../../channel/adapters/feishu/common/peer-bot-registry.js';
 import { FeishuTeamChannel } from '../../channel/adapters/feishu/team-channel.js';
 
 async function setupBindings(): Promise<{

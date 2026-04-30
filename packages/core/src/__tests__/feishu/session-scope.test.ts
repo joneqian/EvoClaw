@@ -8,7 +8,7 @@ import {
   parseFeishuGroupPeerId,
   FEISHU_GROUP_SESSION_SCOPES,
   FEISHU_SCOPE_LABELS,
-} from '../../channel/adapters/feishu/session-key.js';
+} from '../../channel/adapters/feishu/common/session-key.js';
 
 describe('buildFeishuGroupPeerId', () => {
   it('group: 只用 chatId', () => {

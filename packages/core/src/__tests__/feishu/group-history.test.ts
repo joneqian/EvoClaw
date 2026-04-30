@@ -10,7 +10,7 @@ import {
   formatGroupHistoryContext,
   type GroupHistoryEntry,
   type GroupHistoryConfig,
-} from '../../channel/adapters/feishu/group-history.js';
+} from '../../channel/adapters/feishu/inbound/group-history.js';
 
 function makeEntry(overrides: Partial<GroupHistoryEntry> = {}): GroupHistoryEntry {
   return {

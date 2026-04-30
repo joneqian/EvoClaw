@@ -61,7 +61,9 @@ import {
   addWholeCommentReply as apiAddWholeCommentReply,
   replyToComment as apiReplyToComment,
   listCommentReplies as apiListCommentReplies,
+  getDocContent as apiGetDocContent,
   type FeishuFileType as DocFileType,
+  type DocContentSnapshot,
 } from './doc/doc-api.js';
 import { createFeishuSdkLogger, type FeishuWsStatusEvent } from './common/ws-logger.js';
 
@@ -477,6 +479,23 @@ export class FeishuAdapter implements ChannelAdapter {
     return await withFeishuRetry(
       () => apiListCommentReplies(client, params),
       { label: 'listCommentReplies' },
+    );
+  }
+
+  /**
+   * 读取 docx 全文内容（M13 Phase 5 C2）
+   *
+   * 仅支持 docx（其它 file_type 抛错）。返回扁平化 plainText + 结构化 blocks。
+   * 读操作也套 retry，幂等代价低。
+   */
+  async readDoc(params: {
+    fileToken: string;
+    fileType: DocFileType;
+  }): Promise<DocContentSnapshot> {
+    const client = this.requireClient();
+    return await withFeishuRetry(
+      () => apiGetDocContent(client, params),
+      { label: 'readDoc' },
     );
   }
 

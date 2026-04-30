@@ -64,6 +64,15 @@ function decisionLabel(decision: Decision): string {
   }
 }
 
+interface InlineStats {
+  windowDays: number;
+  total: number;
+  errorCount: number;
+  byDecision: { refine: number; create: number; skip: number };
+  topSkills: Array<{ skillName: string; count: number }>;
+  byDate: Array<{ date: string; count: number }>;
+}
+
 export default function EvolutionLogPanel() {
   const [entries, setEntries] = useState<EvolutionLogListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -71,6 +80,7 @@ export default function EvolutionLogPanel() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<EvolutionLogDetail | null>(null);
   const [rollbackInFlight, setRollbackInFlight] = useState(false);
+  const [inlineStats, setInlineStats] = useState<InlineStats | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -89,6 +99,16 @@ export default function EvolutionLogPanel() {
   }, [selectedId]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  useEffect(() => {
+    get<InlineStats>('/skill-evolution/inline-stats?days=30')
+      .then(setInlineStats)
+      .catch(err => {
+        // 拉失败不影响列表展示
+        // eslint-disable-next-line no-console
+        console.warn('[inline-stats] failed:', err);
+      });
+  }, []);
 
   useEffect(() => {
     if (selectedId == null) {
@@ -133,27 +153,44 @@ export default function EvolutionLogPanel() {
     );
   }
 
-  // P1-B Phase 6: 自我修复（inline）统计 — 基于当前已加载的 entries
-  const inlineEntries = entries.filter(e => e.triggerSource === 'inline');
-  const inlineSuccessful = inlineEntries.filter(
-    e => (e.decision === 'refine' || e.decision === 'create') && !e.errorMessage,
-  ).length;
-  const inlineSuccessRate = inlineEntries.length > 0
-    ? Math.round((inlineSuccessful / inlineEntries.length) * 100)
+  // P1-B 触发率观测：用 server endpoint 数据替换 client 端聚合（精确，不受 100 条限制）
+  const inlineSuccessful = inlineStats
+    ? inlineStats.byDecision.refine + inlineStats.byDecision.create - inlineStats.errorCount
+    : 0;
+  const inlineSuccessRate = inlineStats && inlineStats.total > 0
+    ? Math.round((Math.max(0, inlineSuccessful) / inlineStats.total) * 100)
     : null;
 
   return (
     <div className="flex gap-4 h-full">
       {/* 左列：列表 */}
       <div className="w-[360px] shrink-0 overflow-y-auto">
-        <div className="text-xs text-slate-500 mb-2 flex items-center justify-between">
-          <span>{entries.length} 条记录（最近 100 条）</span>
-          {inlineEntries.length > 0 && (
-            <span className="text-violet-600">
-              自我修复 {inlineEntries.length} · 成功率 {inlineSuccessRate}%
-            </span>
-          )}
-        </div>
+        {inlineStats && inlineStats.total > 0 && (
+          <div className="mb-3 p-2.5 rounded-lg border border-violet-200 bg-violet-50/50">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-violet-700">
+                自我修复 · 近 {inlineStats.windowDays} 天
+              </span>
+              <span className="text-[10px] text-violet-500">
+                共 {inlineStats.total} · 成功率 {inlineSuccessRate ?? '—'}%
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[10px] text-violet-600">
+              <span>refine {inlineStats.byDecision.refine}</span>
+              <span>create {inlineStats.byDecision.create}</span>
+              <span>skip {inlineStats.byDecision.skip}</span>
+              {inlineStats.errorCount > 0 && (
+                <span className="text-rose-600">err {inlineStats.errorCount}</span>
+              )}
+            </div>
+            {inlineStats.topSkills.length > 0 && (
+              <div className="mt-1.5 text-[10px] text-violet-500 truncate">
+                热门：{inlineStats.topSkills.map(s => `${s.skillName}×${s.count}`).join('，')}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="text-xs text-slate-500 mb-2">{entries.length} 条记录（最近 100 条）</div>
         {entries.map(e => {
           const active = e.id === selectedId;
           const canRollback = e.decision === 'refine' && e.rolledBack === 0 && !e.errorMessage;

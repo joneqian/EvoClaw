@@ -151,6 +151,101 @@ describe('skill-evolution routes', () => {
     expect(body.entry.conversationalFeedback).toBe('不要这样');
   });
 
+  describe('GET /inline-stats（P1-B 触发率观测）', () => {
+    function insertInlineLog(skill: string, decision: 'refine' | 'create' | 'skip', errorMessage: string | null = null, daysAgo: number = 0): void {
+      const evolvedAt = new Date(Date.now() - daysAgo * 86400_000).toISOString();
+      deps_db().run(
+        `INSERT INTO skill_evolution_log (
+           skill_name, decision, reasoning, evidence_count,
+           trigger_source, error_message, duration_ms, evolved_at
+         ) VALUES (?, ?, ?, 1, 'inline', ?, 100, ?)`,
+        skill, decision, `${decision} for ${skill}`, errorMessage, evolvedAt,
+      );
+    }
+    function deps_db() { return db; }
+
+    it('空数据 → 返回 0 + 7 天空数组', async () => {
+      const res = await app.request('/skill-evolution/inline-stats');
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        total: number; byDecision: Record<string, number>; topSkills: unknown[]; byDate: Array<{ count: number }>;
+      };
+      expect(body.total).toBe(0);
+      expect(body.byDecision).toEqual({ refine: 0, create: 0, skip: 0 });
+      expect(body.topSkills).toEqual([]);
+      expect(body.byDate).toHaveLength(7);
+      expect(body.byDate.every(d => d.count === 0)).toBe(true);
+    });
+
+    it('多条记录 → 正确聚合 by decision + 错误率 + topSkills', async () => {
+      insertInlineLog('arxiv', 'refine');
+      insertInlineLog('arxiv', 'refine');
+      insertInlineLog('arxiv', 'skip');
+      insertInlineLog('search', 'create');
+      insertInlineLog('search', 'skip', 'LLM timeout');
+      insertInlineLog('memo', 'refine');
+      // cron 记录不应被计入
+      db.run(
+        `INSERT INTO skill_evolution_log (skill_name, decision, reasoning, evidence_count, trigger_source)
+         VALUES ('cron-only', 'refine', 'cron', 1, 'cron')`,
+      );
+
+      const res = await app.request('/skill-evolution/inline-stats');
+      const body = await res.json() as {
+        total: number; errorCount: number; byDecision: Record<string, number>; topSkills: Array<{ skillName: string; count: number }>;
+      };
+      expect(body.total).toBe(6);
+      expect(body.errorCount).toBe(1);
+      expect(body.byDecision).toEqual({ refine: 3, create: 1, skip: 2 });
+      expect(body.topSkills[0]).toEqual({ skillName: 'arxiv', count: 3 });
+      expect(body.topSkills[1]).toEqual({ skillName: 'search', count: 2 });
+      expect(body.topSkills.find(s => s.skillName === 'cron-only')).toBeUndefined();
+    });
+
+    it('days 参数过滤窗口', async () => {
+      insertInlineLog('recent', 'refine', null, 0);   // 今天
+      insertInlineLog('old', 'refine', null, 30);     // 30 天前
+
+      const res7 = await app.request('/skill-evolution/inline-stats?days=7');
+      const body7 = await res7.json() as { total: number };
+      expect(body7.total).toBe(1);
+
+      const res60 = await app.request('/skill-evolution/inline-stats?days=60');
+      const body60 = await res60.json() as { total: number };
+      expect(body60.total).toBe(2);
+    });
+
+    it('byDate 时间序列含 0 计数日子（无断点）', async () => {
+      insertInlineLog('a', 'refine', null, 0);
+      insertInlineLog('b', 'refine', null, 3);
+
+      const res = await app.request('/skill-evolution/inline-stats?days=7');
+      const body = await res.json() as { byDate: Array<{ date: string; count: number }> };
+      expect(body.byDate).toHaveLength(7);
+      // 最早 → 最近顺序
+      const counts = body.byDate.map(d => d.count);
+      expect(counts.reduce((a, b) => a + b, 0)).toBe(2);
+    });
+
+    it('days 边界：999→90 / 0+abc→默认 7 / -5→夹到 1', async () => {
+      const r1 = await app.request('/skill-evolution/inline-stats?days=999');
+      const b1 = await r1.json() as { windowDays: number; byDate: unknown[] };
+      expect(b1.windowDays).toBe(90);
+      expect(b1.byDate).toHaveLength(90);
+
+      // 0 / 非数字 → falsy → 默认 7
+      for (const v of ['0', 'abc']) {
+        const r = await app.request(`/skill-evolution/inline-stats?days=${v}`);
+        const b = await r.json() as { windowDays: number };
+        expect(b.windowDays).toBe(7);
+      }
+      // 负数 → 走 Math.max 夹到 1
+      const rNeg = await app.request('/skill-evolution/inline-stats?days=-5');
+      const bNeg = await rNeg.json() as { windowDays: number };
+      expect(bNeg.windowDays).toBe(1);
+    });
+  });
+
   it('P1-B: cron 记录详情不返回 conversationalFeedback', async () => {
     const id = insertRefineLog('cron-only', validSkill('cron-only', 'a'), validSkill('cron-only', 'b'));
     const res = await app.request(`/skill-evolution/log/${id}`);

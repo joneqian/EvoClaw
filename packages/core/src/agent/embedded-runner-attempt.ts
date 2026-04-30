@@ -328,6 +328,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     workspaceRoot,
     fsGuard,
     agentsBaseDir,
+    sessionKey: config.sessionKey,
   });
 
   // ToolSearchTool 需要完整工具列表才能搜索（包含 deferred 工具）
@@ -543,6 +544,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
           workspaceRoot,
           fsGuard,
           agentsBaseDir,
+          sessionKey: config.sessionKey,
         });
 
         await queryLoop({

@@ -393,4 +393,52 @@ describe('AgentManager', () => {
     const value = manager.getWorkspaceState(agent.id, 'test_key');
     expect(value).toBeNull();
   });
+
+  // P1-A: sessionKey 门控（subagent / cron 不能读写 BOOTSTRAP/HEARTBEAT/MEMORY 根文件）
+  describe('sessionKey 门控', () => {
+    it('主 session 读 BOOTSTRAP.md 通过', async () => {
+      const agent = await manager.createAgent({ name: '主 session' });
+      const sessionKey = `agent:${agent.id}:default:direct:`;
+      const content = manager.readWorkspaceFile(agent.id, 'BOOTSTRAP.md', sessionKey);
+      expect(content).toBeDefined();
+    });
+
+    it('subagent 读 BOOTSTRAP.md 抛 WorkspaceAccessDeniedError', async () => {
+      const agent = await manager.createAgent({ name: 'subagent 读受限' });
+      const sessionKey = `agent:${agent.id}:local:subagent:t1`;
+      expect(() => manager.readWorkspaceFile(agent.id, 'BOOTSTRAP.md', sessionKey)).toThrow(/Access denied/);
+      expect(() => manager.readWorkspaceFile(agent.id, 'HEARTBEAT.md', sessionKey)).toThrow(/Access denied/);
+      expect(() => manager.readWorkspaceFile(agent.id, 'MEMORY.md', sessionKey)).toThrow(/Access denied/);
+    });
+
+    it('subagent 读 SOUL/IDENTITY/USER 通过（非 RESTRICTED）', async () => {
+      const agent = await manager.createAgent({ name: 'subagent 读放行' });
+      const sessionKey = `agent:${agent.id}:local:subagent:t1`;
+      expect(manager.readWorkspaceFile(agent.id, 'SOUL.md', sessionKey)).toBeDefined();
+      expect(manager.readWorkspaceFile(agent.id, 'IDENTITY.md', sessionKey)).toBeDefined();
+      expect(manager.readWorkspaceFile(agent.id, 'USER.md', sessionKey)).toBeDefined();
+    });
+
+    it('cron 写 MEMORY.md 抛 WorkspaceAccessDeniedError', async () => {
+      const agent = await manager.createAgent({ name: 'cron 写受限' });
+      const sessionKey = `agent:${agent.id}:cron:job-x`;
+      expect(() => manager.writeWorkspaceFile(agent.id, 'MEMORY.md', 'pwn', sessionKey)).toThrow(/Access denied/);
+      expect(() => manager.writeWorkspaceFile(agent.id, 'BOOTSTRAP.md', 'pwn', sessionKey)).toThrow(/Access denied/);
+    });
+
+    it('不传 sessionKey → 内部调用，门控豁免（reconciler 等）', async () => {
+      const agent = await manager.createAgent({ name: '内部调用' });
+      // bootstrap-reconciler 不传 sessionKey，应能读写 BOOTSTRAP/MEMORY
+      expect(() => manager.readWorkspaceFile(agent.id, 'BOOTSTRAP.md')).not.toThrow();
+      expect(() => manager.writeWorkspaceFile(agent.id, 'BOOTSTRAP.md', '')).not.toThrow();
+      expect(() => manager.writeWorkspaceFile(agent.id, 'MEMORY.md', 'rendered')).not.toThrow();
+    });
+
+    it('heartbeat session（主 session 派生）→ 通过', async () => {
+      const agent = await manager.createAgent({ name: 'heartbeat' });
+      const sessionKey = `agent:${agent.id}:default:direct::heartbeat:p1`;
+      expect(() => manager.readWorkspaceFile(agent.id, 'HEARTBEAT.md', sessionKey)).not.toThrow();
+      expect(() => manager.readWorkspaceFile(agent.id, 'BOOTSTRAP.md', sessionKey)).not.toThrow();
+    });
+  });
 });

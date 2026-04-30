@@ -24,6 +24,9 @@ import type { KernelTool, ToolCallResult } from './types.js';
 import { FileStateCache } from './file-state-cache.js';
 import { which } from '../../infrastructure/runtime.js';
 import type { AgentFsGuard } from '../agent-fs-guard.js';
+import { RESTRICTED_FILES_FOR_SUBAGENT } from '../workspace-files-policy.js';
+import { isSubAgentSessionKey, isCronSessionKey } from '../../routing/session-key.js';
+import type { SessionKey } from '@evoclaw/shared';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -152,6 +155,45 @@ function checkWriteGuard(
   };
 }
 
+/**
+ * P1-A: workspace 受限文件门控（subagent / cron fail-closed）
+ *
+ * 触发条件（任一不满足 → 放行）：
+ * 1. sessionKey 是 subagent 或 cron
+ * 2. workspaceRoot 已注入
+ * 3. 解析后的绝对路径恰好是 workspaceRoot 根下某个 RESTRICTED 文件（BOOTSTRAP/HEARTBEAT/MEMORY.md）
+ *
+ * 子目录同名文件（如 sub/BOOTSTRAP.md）不限。这是为了让"主 Agent 的 onboarding/heartbeat/memory 视图"
+ * 不被子 Agent 读写——但保留 LLM 自由组织子目录文件的能力。
+ *
+ * 调用方语义：
+ * - 缺 sessionKey = 内部 / 管理员调用，不门控
+ * - 缺 workspaceRoot = 旧调用方，无 workspace 概念，跳过门控
+ *
+ * 返回：命中拒绝时返回 fail-closed ToolCallResult（不抛异常，给 LLM 友好提示自纠）；放行时返回 null。
+ */
+function checkWorkspaceRestrictedAccess(
+  absPath: string,
+  workspaceRoot: string | undefined,
+  sessionKey: SessionKey | string | undefined,
+): ToolCallResult | null {
+  if (!sessionKey || !workspaceRoot) return null;
+  if (!isSubAgentSessionKey(sessionKey) && !isCronSessionKey(sessionKey)) return null;
+  const wsRootResolved = path.resolve(workspaceRoot);
+  const absResolved = path.resolve(absPath);
+  if (path.dirname(absResolved) !== wsRootResolved) return null; // 仅根目录受限
+  const basename = path.basename(absResolved);
+  if (!RESTRICTED_FILES_FOR_SUBAGENT.has(basename)) return null;
+  return {
+    content:
+      `错误：受限会话（subagent / cron）不能访问 workspace 根目录的 ${basename}。\n` +
+      `这是主 Agent 的 ${basename === 'BOOTSTRAP.md' ? 'onboarding' : basename === 'HEARTBEAT.md' ? '周期清单' : '记忆视图'}，` +
+      `子 Agent / Cron 任务读写都会破坏主会话状态。\n` +
+      `如需共享信息，请用 memory_search / memory_write 工具。`,
+    isError: true,
+  };
+}
+
 /** find 最大文件数 */
 const FIND_MAX_FILES = 1000;
 
@@ -192,7 +234,7 @@ function summarizeInputArgs(input: Record<string, unknown>): string {
 // Read Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCache, workspaceRoot?: string): KernelTool {
+function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCache, workspaceRoot?: string, sessionKey?: SessionKey | string): KernelTool {
   // 自适应读取上限 (参考 adaptive-read.ts)
   const adaptiveMaxBytes = Math.min(
     Math.max(contextWindowTokens * CHARS_PER_TOKEN * CONTEXT_SHARE, 50 * 1024),
@@ -239,6 +281,10 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
       if (isBlockedReadPath(filePath)) {
         return { content: `错误：不允许读取此路径 - ${filePath}`, isError: true };
       }
+
+      // P1-A: subagent / cron 不能读 workspace 根下 RESTRICTED 文件
+      const restricted = checkWorkspaceRestrictedAccess(filePath, workspaceRoot, sessionKey);
+      if (restricted) return restricted;
 
       try {
         // 检查文件是否存在
@@ -384,7 +430,7 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
 // Write Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createWriteTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard): KernelTool {
+function createWriteTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard, sessionKey?: SessionKey | string): KernelTool {
   return {
     name: 'write',
     description: '创建或覆盖文件，自动创建父目录。路径推荐相对 workspace 或 @workspace/ 前缀',
@@ -414,6 +460,10 @@ function createWriteTool(fileStateCache: FileStateCache, workspaceRoot?: string,
       if (isDangerousWritePath(filePath)) {
         return { content: `错误：此文件受保护，不允许修改 - ${filePath}`, isError: true };
       }
+
+      // P1-A: subagent / cron 不能写 workspace 根下 RESTRICTED 文件
+      const restricted = checkWorkspaceRestrictedAccess(filePath, workspaceRoot, sessionKey);
+      if (restricted) return restricted;
 
       // Layer 2: agentsBaseDir 内边界守卫（防 LLM hallucinate UUID 写到影子目录）
       const blocked = checkWriteGuard(filePath, fsGuard);
@@ -535,7 +585,7 @@ function applyQuoteStyle(newString: string, originalContext: string): string {
   return result;
 }
 
-function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard): KernelTool {
+function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard, sessionKey?: SessionKey | string): KernelTool {
   return {
     name: 'edit',
     description: '精确替换文件中的文本片段（oldText → newText）。路径推荐相对 workspace 或 @workspace/ 前缀',
@@ -575,6 +625,10 @@ function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, 
       if (isDangerousWritePath(filePath)) {
         return { content: `错误：此文件受保护，不允许修改 - ${filePath}`, isError: true };
       }
+
+      // P1-A: subagent / cron 不能编辑 workspace 根下 RESTRICTED 文件
+      const restricted = checkWorkspaceRestrictedAccess(filePath, workspaceRoot, sessionKey);
+      if (restricted) return restricted;
 
       // Layer 2: agentsBaseDir 内边界守卫
       const blocked = checkWriteGuard(filePath, fsGuard);
@@ -1045,6 +1099,12 @@ const BUILTIN_SEARCH_HINTS: Record<string, string> = {
 export interface BuiltinToolsOpts {
   workspaceRoot?: string;
   fsGuard?: AgentFsGuard;
+  /**
+   * P1-A: 当前请求的 sessionKey
+   * 传入时启用 workspace 根目录受限文件门控（subagent/cron 不能读写 BOOTSTRAP/HEARTBEAT/MEMORY 根文件）。
+   * 缺失 = 旧调用方 / 内部调用，不门控。
+   */
+  sessionKey?: SessionKey | string;
 }
 
 export function createBuiltinTools(
@@ -1054,12 +1114,12 @@ export function createBuiltinTools(
 ): KernelTool[] {
   // 使用外部缓存（子代理 clone 的）或创建新缓存
   const fileStateCache = externalFileStateCache ?? new FileStateCache();
-  const { workspaceRoot, fsGuard } = opts;
+  const { workspaceRoot, fsGuard, sessionKey } = opts;
 
   const tools = [
-    createReadTool(contextWindowTokens, fileStateCache, workspaceRoot),
-    createWriteTool(fileStateCache, workspaceRoot, fsGuard),
-    createEditTool(fileStateCache, workspaceRoot, fsGuard),
+    createReadTool(contextWindowTokens, fileStateCache, workspaceRoot, sessionKey),
+    createWriteTool(fileStateCache, workspaceRoot, fsGuard, sessionKey),
+    createEditTool(fileStateCache, workspaceRoot, fsGuard, sessionKey),
     createGrepTool(workspaceRoot),
     createFindTool(workspaceRoot),
     createLsTool(workspaceRoot),

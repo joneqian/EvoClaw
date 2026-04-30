@@ -4,6 +4,10 @@ import {
   parseSessionKey,
   isGroupChat,
   isDirectChat,
+  isSubAgentSessionKey,
+  isCronSessionKey,
+  isHeartbeatSessionKey,
+  isPrivilegedSessionKey,
 } from '../routing/session-key.js';
 
 describe('session-key', () => {
@@ -91,6 +95,52 @@ describe('session-key', () => {
 
     it('缺失 chatType 的 Key 应返回 true（默认 direct）', () => {
       expect(isDirectChat('agent:a')).toBe(true);
+    });
+  });
+
+  // P1-A: 受限/特权会话判定 helpers
+  describe('isSubAgentSessionKey', () => {
+    it('subagent marker 命中', () => {
+      expect(isSubAgentSessionKey('agent:abc:local:subagent:task1')).toBe(true);
+    });
+    it('主 session 不命中', () => {
+      expect(isSubAgentSessionKey('agent:abc:default:direct:')).toBe(false);
+      expect(isSubAgentSessionKey('agent:abc:feishu:group:room1')).toBe(false);
+    });
+  });
+
+  describe('isCronSessionKey', () => {
+    it('cron marker 命中', () => {
+      expect(isCronSessionKey('agent:abc:cron:job-42')).toBe(true);
+    });
+    it('subagent / 主 session 不命中', () => {
+      expect(isCronSessionKey('agent:abc:local:subagent:t1')).toBe(false);
+      expect(isCronSessionKey('agent:abc:default:direct:')).toBe(false);
+    });
+  });
+
+  describe('isHeartbeatSessionKey', () => {
+    it('heartbeat marker 命中', () => {
+      expect(isHeartbeatSessionKey('agent:abc:default:direct::heartbeat:p1')).toBe(true);
+    });
+    it('其它 session 不命中', () => {
+      expect(isHeartbeatSessionKey('agent:abc:cron:job1')).toBe(false);
+      expect(isHeartbeatSessionKey('agent:abc:local:subagent:t1')).toBe(false);
+    });
+  });
+
+  describe('isPrivilegedSessionKey', () => {
+    it('主 session 是特权', () => {
+      expect(isPrivilegedSessionKey('agent:abc:default:direct:')).toBe(true);
+    });
+    it('heartbeat 仍属特权（主 session 派生）', () => {
+      expect(isPrivilegedSessionKey('agent:abc:default:direct::heartbeat:p1')).toBe(true);
+    });
+    it('subagent 不特权', () => {
+      expect(isPrivilegedSessionKey('agent:abc:local:subagent:t1')).toBe(false);
+    });
+    it('cron 不特权', () => {
+      expect(isPrivilegedSessionKey('agent:abc:cron:job1')).toBe(false);
     });
   });
 });

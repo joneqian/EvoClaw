@@ -703,3 +703,102 @@ describe('P1-7: Glob native implementation', () => {
     expect(result.content).toContain('file2.txt');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P1-A: workspace 受限文件门控（subagent / cron）
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('P1-A: workspace RESTRICTED 文件门控', () => {
+  const SUBAGENT_KEY = 'agent:abc:local:subagent:t1';
+  const CRON_KEY = 'agent:abc:cron:job1';
+  const MAIN_KEY = 'agent:abc:default:direct:';
+
+  beforeEach(() => {
+    // 在 workspace 根目录建受限文件
+    fs.writeFileSync(path.join(tmpDir, 'BOOTSTRAP.md'), '# bootstrap content');
+    fs.writeFileSync(path.join(tmpDir, 'HEARTBEAT.md'), '# heartbeat content');
+    fs.writeFileSync(path.join(tmpDir, 'MEMORY.md'), '# memory content');
+    fs.writeFileSync(path.join(tmpDir, 'SOUL.md'), '# soul content');
+    // 子目录里同名（应放行）
+    fs.mkdirSync(path.join(tmpDir, 'sub'));
+    fs.writeFileSync(path.join(tmpDir, 'sub', 'BOOTSTRAP.md'), '# sub bootstrap');
+  });
+
+  describe('read 工具', () => {
+    it('subagent 读 BOOTSTRAP.md → fail-closed 错误（不抛异常，给 LLM 提示）', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: SUBAGENT_KEY });
+      const readTool = tools.find(t => t.name === 'read')!;
+      const result = await readTool.call({ file_path: 'BOOTSTRAP.md' });
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/受限会话/);
+      expect(result.content).toMatch(/BOOTSTRAP\.md/);
+    });
+
+    it('cron 读 HEARTBEAT.md → fail-closed', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: CRON_KEY });
+      const readTool = tools.find(t => t.name === 'read')!;
+      const result = await readTool.call({ file_path: 'HEARTBEAT.md' });
+      expect(result.isError).toBe(true);
+    });
+
+    it('主 session 读 BOOTSTRAP.md → 通过', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: MAIN_KEY });
+      const readTool = tools.find(t => t.name === 'read')!;
+      const result = await readTool.call({ file_path: 'BOOTSTRAP.md' });
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toContain('bootstrap content');
+    });
+
+    it('subagent 读 SOUL.md（非 RESTRICTED）→ 通过', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: SUBAGENT_KEY });
+      const readTool = tools.find(t => t.name === 'read')!;
+      const result = await readTool.call({ file_path: 'SOUL.md' });
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toContain('soul content');
+    });
+
+    it('subagent 读 sub/BOOTSTRAP.md（子目录同名）→ 通过', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: SUBAGENT_KEY });
+      const readTool = tools.find(t => t.name === 'read')!;
+      const result = await readTool.call({ file_path: 'sub/BOOTSTRAP.md' });
+      expect(result.isError).toBeFalsy();
+      expect(result.content).toContain('sub bootstrap');
+    });
+
+    it('不传 sessionKey（旧调用方）→ 全部放行', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir });
+      const readTool = tools.find(t => t.name === 'read')!;
+      const result = await readTool.call({ file_path: 'BOOTSTRAP.md' });
+      expect(result.isError).toBeFalsy();
+    });
+  });
+
+  describe('write 工具', () => {
+    it('subagent 写 MEMORY.md → fail-closed', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: SUBAGENT_KEY });
+      const writeTool = tools.find(t => t.name === 'write')!;
+      const result = await writeTool.call({ file_path: 'MEMORY.md', content: 'pwn' });
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/受限会话/);
+    });
+
+    it('主 session 写 MEMORY.md → 通过门控（P1-A 不拒绝；P0-6 staleness 是另一层）', async () => {
+      // 删掉预置 MEMORY.md 以避开 P0-6 staleness 检查（首次写不应触发）
+      fs.rmSync(path.join(tmpDir, 'MEMORY.md'));
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: MAIN_KEY });
+      const writeTool = tools.find(t => t.name === 'write')!;
+      const result = await writeTool.call({ file_path: 'MEMORY.md', content: 'rendered' });
+      expect(result.isError).toBeFalsy();
+    });
+  });
+
+  describe('edit 工具', () => {
+    it('cron edit BOOTSTRAP.md → fail-closed', async () => {
+      const tools = createBuiltinTools(128_000, undefined, { workspaceRoot: tmpDir, sessionKey: CRON_KEY });
+      const editTool = tools.find(t => t.name === 'edit')!;
+      const result = await editTool.call({ file_path: 'BOOTSTRAP.md', old_string: 'bootstrap', new_string: 'pwn' });
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/受限会话/);
+    });
+  });
+});

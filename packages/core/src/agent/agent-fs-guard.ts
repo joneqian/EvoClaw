@@ -16,6 +16,8 @@
 
 import path from 'node:path';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import { isSubAgentSessionKey, isCronSessionKey } from '../routing/session-key.js';
+import { RESTRICTED_FILES_FOR_SUBAGENT } from './workspace-files-policy.js';
 
 /** 校验通过 */
 export interface FsGuardOk {
@@ -171,6 +173,98 @@ export function inspectBashCommand(
     const result = guard.validateWritePath(probe);
     if (!result.ok) {
       return result;
+    }
+  }
+
+  return { ok: true };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// P1-A 跟尾：bash 命令访问 workspace RESTRICTED 文件门控
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * 把 bash 命令拆成"路径候选 token"
+ *
+ * 拆分逻辑：
+ * - 按空白 / shell 分隔符（; | & < > ()）切
+ * - 剥两端引号（' "）
+ * - 空 token 跳过
+ *
+ * 不做完整 bash AST 解析（成本高、收益边际），用宽松的 token 化扫描足以覆盖
+ * 90% 攻击模式（cat / head / grep / echo > / |、& 复合命令）。
+ */
+function tokenizeBashCommand(command: string): string[] {
+  return command
+    .split(/[\s;|&<>()]+/)
+    .map(t => t.replace(/^['"]+|['"]+$/g, ''))
+    .filter(Boolean);
+}
+
+/**
+ * 判断单个 token 是否引用 workspace 根目录的 RESTRICTED 文件
+ *
+ * 命中规则：
+ *   1. token 等于 RESTRICTED 文件名本身（'BOOTSTRAP.md'）
+ *   2. token === './<RESTRICTED>'
+ *   3. token 是绝对路径，目录恰好是 workspaceRoot 且文件名 ∈ RESTRICTED
+ *
+ * 不命中（放行）：
+ *   - 子目录同名（'sub/BOOTSTRAP.md'）
+ *   - 文件名是 RESTRICTED 子串（'MYBOOTSTRAP.md' / 'HEARTBEAT.md.bak'）
+ */
+function tokenReferencesRestrictedRootFile(token: string, workspaceRoot: string): string | null {
+  // 1. 直接文件名 / ./ 前缀
+  for (const restricted of RESTRICTED_FILES_FOR_SUBAGENT) {
+    if (token === restricted) return restricted;
+    if (token === `./${restricted}`) return restricted;
+  }
+  // 2. 绝对路径，dirname 恰好是 workspaceRoot
+  if (path.isAbsolute(token)) {
+    const wsRootResolved = path.resolve(workspaceRoot);
+    const tokenResolved = path.resolve(token);
+    if (path.dirname(tokenResolved) === wsRootResolved) {
+      const basename = path.basename(tokenResolved);
+      if (RESTRICTED_FILES_FOR_SUBAGENT.has(basename)) return basename;
+    }
+  }
+  return null;
+}
+
+/**
+ * 检查 bash 命令是否在 subagent / cron 上下文里试访问 workspace RESTRICTED 文件
+ *
+ * 约束：
+ * - sessionKey / workspaceRoot 任一缺失 → 跳过门控（旧调用方 / 内部）
+ * - sessionKey 不是 subagent / cron → 跳过（heartbeat / 主 session 仍可读 HEARTBEAT.md）
+ * - 命中：返回 FsGuardReject，给 LLM 友好自纠提示
+ *
+ * 不在范围（已知绕开缺口）：
+ * - 通过 \$WORKSPACE_PATH 等 shell 变量动态拼路径
+ * - 通过 base64/eval 间接构造路径
+ * - 通过 cd workspace_root && cat BOOTSTRAP.md（cd 后相对路径会命中规则 1）
+ */
+export function inspectBashRestrictedFiles(
+  command: string,
+  sessionKey: string | undefined,
+  workspaceRoot: string | undefined,
+): FsGuardResult {
+  if (!command || !sessionKey || !workspaceRoot) return { ok: true };
+  if (!isSubAgentSessionKey(sessionKey) && !isCronSessionKey(sessionKey)) return { ok: true };
+
+  const tokens = tokenizeBashCommand(command);
+  for (const token of tokens) {
+    const hit = tokenReferencesRestrictedRootFile(token, workspaceRoot);
+    if (hit) {
+      return {
+        ok: false,
+        uuid: '',
+        reason: `受限会话（subagent / cron）不能用 bash 访问 workspace 根目录的 ${hit}`,
+        hint:
+          `这是主 Agent 的 ${hit === 'BOOTSTRAP.md' ? 'onboarding' : hit === 'HEARTBEAT.md' ? '周期清单' : '记忆视图'}，` +
+          `子 Agent / Cron 任务读写都会破坏主会话状态。\n` +
+          `如需共享信息，请用 memory_search / memory_write 工具，或者把内容放到 workspace 子目录。`,
+      };
     }
   }
 

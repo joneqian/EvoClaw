@@ -16,6 +16,7 @@ import {
   replyToComment,
   listCommentReplies,
   toTextElements,
+  getDocContent,
 } from '../../channel/adapters/feishu/doc/doc-api.js';
 import { FeishuApiError } from '../../channel/adapters/feishu/outbound/index.js';
 
@@ -312,5 +313,172 @@ describe('listCommentReplies', () => {
     });
 
     expect(result.replies[0]!.text).toBe('hi  end');
+  });
+});
+
+describe('getDocContent', () => {
+  it('单页响应：扁平化 text/heading/code/list 各类 block', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [
+          {
+            block_id: 'b1',
+            block_type: 3,
+            heading1: { elements: [{ text_run: { content: '标题一' } }] },
+          },
+          {
+            block_id: 'b2',
+            block_type: 2,
+            text: { elements: [{ text_run: { content: '正文段 ' } }, { text_run: { content: 'cont' } }] },
+          },
+          {
+            block_id: 'b3',
+            block_type: 14,
+            code: { elements: [{ text_run: { content: 'console.log(1)' } }] },
+          },
+          {
+            block_id: 'b4',
+            block_type: 12,
+            bullet: { elements: [{ text_run: { content: 'item 1' } }] },
+            parent_id: 'doc_root',
+          },
+        ],
+      },
+    });
+
+    const snap = await getDocContent(client as unknown as Lark.Client, {
+      fileToken: 'docx_token_a',
+      fileType: 'docx',
+    });
+
+    expect(snap.documentId).toBe('docx_token_a');
+    expect(snap.blocks).toHaveLength(4);
+    expect(snap.blocks[0]).toMatchObject({ id: 'b1', type: 3, text: '标题一' });
+    expect(snap.blocks[1]!.text).toBe('正文段 cont');
+    expect(snap.blocks[2]!.text).toBe('console.log(1)');
+    expect(snap.blocks[3]).toMatchObject({ id: 'b4', text: 'item 1', parentId: 'doc_root' });
+    expect(snap.plainText).toBe('标题一\n正文段 cont\nconsole.log(1)\nitem 1');
+  });
+
+  it('mention_user / mention_doc element：扁平为 <user:id> / url', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [
+          {
+            block_id: 'b1',
+            block_type: 2,
+            text: {
+              elements: [
+                { text_run: { content: 'cc ' } },
+                { mention_user: { user_id: 'u_alice' } },
+                { text_run: { content: ' 看下 ' } },
+                { mention_doc: { url: 'https://x.feishu.cn/doc/abc' } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const snap = await getDocContent(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+    });
+    expect(snap.blocks[0]!.text).toBe('cc <user:u_alice> 看下 https://x.feishu.cn/doc/abc');
+  });
+
+  it('多页：has_more=true 时持续抓 page_token，扁平合并', async () => {
+    const client = makeClient();
+    client.request
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          has_more: true,
+          page_token: 'p2',
+          items: [
+            { block_id: 'b1', block_type: 2, text: { elements: [{ text_run: { content: 'page1 a' } }] } },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          has_more: false,
+          items: [
+            { block_id: 'b2', block_type: 2, text: { elements: [{ text_run: { content: 'page2 b' } }] } },
+          ],
+        },
+      });
+
+    const snap = await getDocContent(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+    });
+    expect(snap.blocks).toHaveLength(2);
+    expect(snap.plainText).toBe('page1 a\npage2 b');
+    expect(client.request).toHaveBeenCalledTimes(2);
+    // 第二次 URL 应带 page_token=p2
+    expect(client.request.mock.calls[1]![0].url).toContain('page_token=p2');
+  });
+
+  it('空文本块（如分割线 / 图片）跳过 plainText 拼接', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        has_more: false,
+        items: [
+          { block_id: 'b1', block_type: 2, text: { elements: [{ text_run: { content: 'real text' } }] } },
+          { block_id: 'b2', block_type: 99 }, // 未知类型
+          { block_id: 'b3', block_type: 2, text: { elements: [{ text_run: { content: 'next' } }] } },
+        ],
+      },
+    });
+
+    const snap = await getDocContent(client as unknown as Lark.Client, {
+      fileToken: 'tok',
+      fileType: 'docx',
+    });
+    expect(snap.blocks).toHaveLength(3);
+    expect(snap.blocks[1]!.text).toBe(''); // 未知类型空文本
+    expect(snap.plainText).toBe('real text\nnext'); // 但 plainText 跳过空块
+  });
+
+  it('非 docx file_type 直接抛错', async () => {
+    const client = makeClient();
+    await expect(
+      getDocContent(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'sheet',
+      }),
+    ).rejects.toThrow(/只支持 docx/);
+    expect(client.request).not.toHaveBeenCalled();
+  });
+
+  it('非零业务 code 抛 FeishuApiError', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 230003, msg: 'no permission' });
+    await expect(
+      getDocContent(client as unknown as Lark.Client, {
+        fileToken: 'tok',
+        fileType: 'docx',
+      }),
+    ).rejects.toThrow(FeishuApiError);
+  });
+
+  it('URL 含 file_token 编码（防特殊字符注入）', async () => {
+    const client = makeClient();
+    client.request.mockResolvedValueOnce({ code: 0, data: { has_more: false, items: [] } });
+    await getDocContent(client as unknown as Lark.Client, {
+      fileToken: 'tok with/space',
+      fileType: 'docx',
+    });
+    expect(client.request.mock.calls[0]![0].url).toContain('tok%20with%2Fspace');
   });
 });

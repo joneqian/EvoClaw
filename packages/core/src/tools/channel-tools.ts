@@ -391,6 +391,56 @@ export function createChannelTools(
     });
 
     tools.push({
+      name: 'feishu_read_doc',
+      description:
+        '读取飞书 docx 全文（用于 agent 在 drive 评论触发后获取上下文，再决定如何回复/编辑）',
+      channel: 'feishu',
+      parameters: {
+        type: 'object',
+        properties: {
+          fileToken: {
+            type: 'string',
+            description: '文档唯一标识（drive 事件 file_token / ChannelMessage.feishuDoc.fileToken）',
+          },
+          fileType: {
+            type: 'string',
+            description: '文档类型（v1 仅支持 docx）',
+            enum: ['docx'],
+          },
+          maxChars: {
+            type: 'number',
+            description: 'plainText 最大字符数（默认 10000，超出截断并附 ...[truncated] 提示）',
+          },
+        },
+        required: ['fileToken', 'fileType'],
+      },
+      execute: async (params) => {
+        const fileToken = params['fileToken'] as string;
+        const fileType = params['fileType'] as DocFileTypeParam;
+        const maxChars = (params['maxChars'] as number | undefined) ?? 10000;
+        if (!fileToken || !fileType) {
+          return '错误：缺少 fileToken / fileType';
+        }
+        if (fileType !== 'docx') {
+          return `错误：feishu_read_doc 当前仅支持 docx，收到 ${fileType}`;
+        }
+        const agentId = params['agentId'] as string | undefined;
+        const { adapter } = resolveFeishuAccount(channelManager, bindingRouter, agentId);
+        const snapshot = await adapter.readDoc({ fileToken, fileType });
+        const truncated = snapshot.plainText.length > maxChars;
+        const text = truncated
+          ? snapshot.plainText.slice(0, maxChars) + '\n...[truncated]'
+          : snapshot.plainText;
+        return JSON.stringify({
+          document_id: snapshot.documentId,
+          block_count: snapshot.blocks.length,
+          text,
+          truncated,
+        });
+      },
+    });
+
+    tools.push({
       name: 'feishu_list_comment_replies',
       description: '列出飞书文档某条评论下的所有回复（用于 agent 看评论 timeline）',
       channel: 'feishu',
@@ -521,6 +571,7 @@ export function getChannelToolNames(channel: ChannelType): string[] {
         'feishu_reply_comment',
         'feishu_add_whole_comment',
         'feishu_list_comment_replies',
+        'feishu_read_doc',
       ];
     case 'wecom':
       return [...base, 'wecom_send'];

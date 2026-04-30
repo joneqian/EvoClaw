@@ -1,14 +1,15 @@
 /**
  * 飞书文档 / 云盘 API 薄封装
  *
- * 用于文档评论协作（drive.notice.comment_add_v1 触发后，由上层调度 agent 生成
- * 回复，再通过这里发回飞书）。
+ * 用于文档评论协作 + agent 文档协作闭环（M13 Phase 5）。
  *
- * 只做两件事：
- * - addWholeCommentReply: 对整篇文档追加一条全文评论（fileComment.create）
- * - replyToComment:       对已有评论追加回复（SDK 未强类型，走 client.request）
+ * 当前提供：
+ * - addWholeCommentReply: 整篇文档追加全文评论（fileComment.create）
+ * - replyToComment:       已有评论追加回复（raw client.request）
+ * - listCommentReplies:   列出某条评论下所有回复
+ * - getDocContent:        读取 docx 全文 block 列表 → 扁平化 plainText（C2）
  *
- * 更丰富的读取/遍历在未来接入 agent协作闭环时再加，当前保持最小表面积。
+ * 未来扩展：block 创建/编辑/删除（C3/C4）。
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
@@ -170,4 +171,156 @@ export async function listCommentReplies(
   };
   if (res.data?.page_token) result.nextPageToken = res.data.page_token;
   return result;
+}
+
+// ─── 文档内容读取（M13 Phase 5 C2） ─────────────────────────────────────
+
+/** 文档单 block 的扁平化结构（去掉 SDK 复杂的 type-specific fields） */
+export interface DocBlock {
+  /** block_id（编辑/删除时用） */
+  id: string;
+  /**
+   * block_type 数字（飞书原生）
+   *
+   * 常见取值：1 page / 2 text / 3-11 heading 1-9 / 12 bullet / 13 ordered /
+   * 14 code / 15 quote / 17 todo。完整列表见飞书 docx 文档。
+   */
+  type: number;
+  /** block 的可读文本（已扁平化 elements，未应用 markdown 格式）*/
+  text: string;
+  /** 父 block id（构建块树用，v1 工具不暴露但保留供 C3/C4 复用）*/
+  parentId?: string;
+}
+
+/** 一份文档的内容快照 */
+export interface DocContentSnapshot {
+  /** documentId（docx 场景下等价 fileToken） */
+  documentId: string;
+  /** 块列表（按文档顺序）*/
+  blocks: DocBlock[];
+  /**
+   * 全文扁平化 plainText（每个 block 一行，跳过空文本块）
+   *
+   * agent 直接消费这个字段；如需结构化处理可遍历 blocks
+   */
+  plainText: string;
+}
+
+/** docx block 单页列表的 SDK 响应字段子集（与官方 OpenAPI 对齐） */
+interface RawDocBlock {
+  block_id?: string;
+  block_type?: number;
+  parent_id?: string;
+  text?: { elements?: RawDocTextElement[] };
+  // heading/code/quote/etc 都用同一形状的 elements，这里用 index signature 统一处理
+  [extraKey: string]: unknown;
+}
+
+interface RawDocTextElement {
+  text_run?: { content?: string };
+  mention_user?: { user_id?: string };
+  mention_doc?: { url?: string };
+}
+
+/**
+ * 从一个 raw block 中抽出可读文本
+ *
+ * 飞书 docx block 的 elements 字段名因 block_type 而异（text/heading1/code/...），
+ * 这里枚举常见 key 取首个非空，简化为 plain text。
+ */
+function extractBlockText(raw: RawDocBlock): string {
+  const candidateKeys = [
+    'text',
+    'heading1',
+    'heading2',
+    'heading3',
+    'heading4',
+    'heading5',
+    'heading6',
+    'heading7',
+    'heading8',
+    'heading9',
+    'bullet',
+    'ordered',
+    'code',
+    'quote',
+    'todo',
+    'callout',
+  ];
+  for (const key of candidateKeys) {
+    const node = raw[key] as { elements?: RawDocTextElement[] } | undefined;
+    if (!node?.elements) continue;
+    const text = node.elements
+      .map((el) => {
+        if (el.text_run?.content) return el.text_run.content;
+        if (el.mention_user?.user_id) return `<user:${el.mention_user.user_id}>`;
+        if (el.mention_doc?.url) return el.mention_doc.url;
+        return '';
+      })
+      .join('');
+    if (text) return text;
+  }
+  return '';
+}
+
+/**
+ * 读取 docx 全文内容
+ *
+ * 行为：
+ * - 当前**只支持 docx**（其它 file_type 抛错；M13 v1 范围）
+ * - 自动分页：单页 500，循环到 has_more=false
+ * - 返回扁平化 plainText（每 block 一行）+ 结构化 blocks 数组（C3/C4 编辑会用）
+ *
+ * 错误处理：飞书业务码 → FeishuApiError；网络/SDK 错误正常抛出
+ */
+export async function getDocContent(
+  client: Lark.Client,
+  params: {
+    fileToken: string;
+    fileType: FeishuFileType;
+  },
+): Promise<DocContentSnapshot> {
+  if (params.fileType !== 'docx') {
+    throw new Error(`getDocContent 当前只支持 docx，收到 ${params.fileType}`);
+  }
+  const documentId = params.fileToken;
+  const blocks: DocBlock[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url =
+      `/open-apis/docx/v1/documents/${encodeURIComponent(documentId)}/blocks?page_size=500` +
+      (pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : '');
+    const res = (await client.request({
+      url,
+      method: 'GET',
+    })) as {
+      code?: number;
+      msg?: string;
+      data?: {
+        items?: RawDocBlock[];
+        page_token?: string;
+        has_more?: boolean;
+      };
+    };
+    if (res.code) {
+      throw new FeishuApiError('读取文档内容', res.code, res.msg ?? '');
+    }
+    for (const item of res.data?.items ?? []) {
+      blocks.push({
+        id: item.block_id ?? '',
+        type: item.block_type ?? 0,
+        text: extractBlockText(item),
+        ...(item.parent_id ? { parentId: item.parent_id } : {}),
+      });
+    }
+    pageToken = res.data?.has_more ? res.data?.page_token : undefined;
+  } while (pageToken);
+
+  const plainText = blocks
+    .map((b) => b.text)
+    .filter((t) => t.length > 0)
+    .join('\n');
+
+  return { documentId, blocks, plainText };
 }

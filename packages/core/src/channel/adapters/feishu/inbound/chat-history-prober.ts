@@ -19,9 +19,9 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { createLogger } from '../../../infrastructure/logger.js';
-import type { BindingRouter } from '../../../routing/binding-router.js';
-import type { FeishuPeerBotRegistry } from './peer-bot-registry.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
+import type { BindingRouter } from '../../../../routing/binding-router.js';
+import type { FeishuPeerBotRegistry } from '../common/peer-bot-registry.js';
 
 const log = createLogger('feishu/chat-history-prober');
 

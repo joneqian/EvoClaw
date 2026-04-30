@@ -1,7 +1,7 @@
 import type { ChannelType, ChannelMessage } from '@evoclaw/shared';
 import type { WeixinMessage } from './adapters/weixin-types.js';
 import { WeixinItemType } from './adapters/weixin-types.js';
-import { parseFeishuContent } from './adapters/feishu/parse-content.js';
+import { parseFeishuContent } from './adapters/feishu/inbound/parse-content.js';
 
 /**
  * 飞书事件消息 → ChannelMessage

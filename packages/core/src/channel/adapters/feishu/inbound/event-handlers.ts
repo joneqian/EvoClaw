@@ -12,7 +12,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { createLogger } from '../../../infrastructure/logger.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
 
 const log = createLogger('feishu-events');
 

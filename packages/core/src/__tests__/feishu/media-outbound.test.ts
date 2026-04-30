@@ -14,7 +14,7 @@ import {
   uploadFile,
   downloadMessageResource,
   cleanupMediaCache,
-} from '../../channel/adapters/feishu/media.js';
+} from '../../channel/adapters/feishu/outbound/media.js';
 import {
   inferReceiveIdType,
   resolveFeishuReceiveId,
@@ -24,7 +24,7 @@ import {
   sendImageMessage,
   sendFileMessage,
   sendMediaMessage,
-} from '../../channel/adapters/feishu/outbound.js';
+} from '../../channel/adapters/feishu/outbound/index.js';
 
 // ─── MIME / 类型推断 ──────────────────────────────────────────────────────
 

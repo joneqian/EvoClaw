@@ -9,7 +9,7 @@
  * 通道，看板卡片仅在 task-plan 创建/状态变化时单发一条。
  */
 
-import type { TaskNodeSnapshot, TaskPlanSnapshot, TaskStatus } from '../../team-mode/team-channel.js';
+import type { TaskNodeSnapshot, TaskPlanSnapshot, TaskStatus } from '../../../team-mode/team-channel.js';
 
 const STATUS_ICON: Record<TaskStatus, string> = {
   pending: '⏳',

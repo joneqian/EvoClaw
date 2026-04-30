@@ -12,7 +12,7 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { FeishuApiError } from './outbound.js';
+import { FeishuApiError } from '../outbound/index.js';
 
 /** 飞书富文本评论元素 */
 export type CommentElement =

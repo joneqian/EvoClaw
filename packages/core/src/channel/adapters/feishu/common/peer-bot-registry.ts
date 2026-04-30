@@ -32,8 +32,8 @@
  *     undefined，调用方应降级为纯文本 @<name>，避免跨 app 报错。
  */
 
-import { createLogger } from '../../../infrastructure/logger.js';
-import type { BindingRouter } from '../../../routing/binding-router.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
+import type { BindingRouter } from '../../../../routing/binding-router.js';
 
 const logger = createLogger('feishu/peer-bot-registry');
 

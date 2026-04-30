@@ -10,13 +10,13 @@
  */
 
 import { z } from 'zod';
-import { FEISHU_GROUP_SESSION_SCOPES } from './session-key.js';
-import { DEFAULT_GROUP_HISTORY_CONFIG } from './group-history.js';
+import { FEISHU_GROUP_SESSION_SCOPES } from './common/session-key.js';
+import { DEFAULT_GROUP_HISTORY_CONFIG } from './inbound/group-history.js';
 import {
   BROADCAST_TRIGGER_MODES,
   DEFAULT_BROADCAST_CONFIG,
   type BroadcastTriggerMode,
-} from './broadcast.js';
+} from './outbound/broadcast.js';
 
 /** 飞书凭据 Schema（仅 credentials 子结构） */
 export const FeishuCredentialsSchema = z.object({

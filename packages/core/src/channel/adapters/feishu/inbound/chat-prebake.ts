@@ -16,8 +16,8 @@
  *   防止 dev 期间频繁重启刷屏。
  */
 
-import { createLogger } from '../../../infrastructure/logger.js';
-import type { SqliteStore } from '../../../infrastructure/db/sqlite-store.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
+import type { SqliteStore } from '../../../../infrastructure/db/sqlite-store.js';
 
 const log = createLogger('feishu/chat-prebake');
 

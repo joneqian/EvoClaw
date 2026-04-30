@@ -9,7 +9,7 @@
  * 参考：https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/im-v1/message-content
  */
 
-import { parsePostContent } from './post-to-text.js';
+import { parsePostContent } from '../outbound/post-to-text.js';
 
 /** 解析结果 */
 export interface ParsedFeishuContent {

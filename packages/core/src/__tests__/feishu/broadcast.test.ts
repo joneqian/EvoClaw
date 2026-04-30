@@ -11,8 +11,8 @@ import {
   BROADCAST_TRIGGER_MODES,
   BROADCAST_TRIGGER_LABELS,
   type BroadcastConfig,
-} from '../../channel/adapters/feishu/broadcast.js';
-import type { FeishuReceiveEvent } from '../../channel/adapters/feishu/inbound.js';
+} from '../../channel/adapters/feishu/outbound/broadcast.js';
+import type { FeishuReceiveEvent } from '../../channel/adapters/feishu/inbound/index.js';
 
 type Mentions = FeishuReceiveEvent['message']['mentions'];
 

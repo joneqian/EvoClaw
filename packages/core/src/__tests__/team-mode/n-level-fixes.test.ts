@@ -21,7 +21,7 @@ import { EscalationService } from '../../agent/team-mode/escalation-service.js';
 import { LoopGuard, PING_PONG_THRESHOLD, PING_PONG_WINDOW_MS } from '../../agent/team-mode/loop-guard.js';
 import { PeerRosterService } from '../../agent/team-mode/peer-roster-service.js';
 import { TeamChannelRegistry } from '../../agent/team-mode/team-channel-registry.js';
-import { FeishuPeerBotRegistry } from '../../channel/adapters/feishu/peer-bot-registry.js';
+import { FeishuPeerBotRegistry } from '../../channel/adapters/feishu/common/peer-bot-registry.js';
 import { resetSystemEventsForTest } from '../../infrastructure/system-events.js';
 import type { TeamChannelAdapter, PeerBotIdentity } from '../../channel/team-mode/team-channel.js';
 import type { ChannelManager } from '../../channel/channel-manager.js';

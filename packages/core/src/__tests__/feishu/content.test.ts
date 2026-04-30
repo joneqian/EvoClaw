@@ -3,16 +3,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseFeishuContent } from '../../channel/adapters/feishu/parse-content.js';
+import { parseFeishuContent } from '../../channel/adapters/feishu/inbound/parse-content.js';
 import {
   parsePostContent,
   postPayloadToText,
-} from '../../channel/adapters/feishu/post-to-text.js';
+} from '../../channel/adapters/feishu/outbound/post-to-text.js';
 import {
   buildPostPayload,
   looksLikeMarkdown,
   serializePostContent,
-} from '../../channel/adapters/feishu/markdown-to-post.js';
+} from '../../channel/adapters/feishu/outbound/markdown-to-post.js';
 
 // ─── parseFeishuContent ──────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@
 import type { ChannelManager } from '../channel/channel-manager.js';
 import type { ChannelType } from '@evoclaw/shared';
 import type { FeishuAdapter } from '../channel/adapters/feishu/index.js';
-import { isImageFile } from '../channel/adapters/feishu/media.js';
+import { isImageFile } from '../channel/adapters/feishu/outbound/media.js';
 import type { BindingRouter } from '../routing/binding-router.js';
 
 /** JSON Schema 子集（只用到的字段） */

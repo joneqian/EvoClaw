@@ -6,7 +6,7 @@
 
 import * as Lark from '@larksuiteoapi/node-sdk';
 import type { FeishuCredentials } from './config.js';
-import type { FeishuSdkLogger } from './ws-logger.js';
+import type { FeishuSdkLogger } from './common/ws-logger.js';
 
 /** SDK 客户端集合 */
 export interface FeishuSdkBundle {

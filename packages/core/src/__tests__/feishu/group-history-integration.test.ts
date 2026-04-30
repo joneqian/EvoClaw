@@ -16,12 +16,12 @@ import {
   __clearInboundDedupe,
   type FeishuReceiveEvent,
   type InboundContext,
-} from '../../channel/adapters/feishu/inbound.js';
+} from '../../channel/adapters/feishu/inbound/index.js';
 import {
   GroupHistoryBuffer,
   DEFAULT_GROUP_HISTORY_CONFIG,
   type GroupHistoryConfig,
-} from '../../channel/adapters/feishu/group-history.js';
+} from '../../channel/adapters/feishu/inbound/group-history.js';
 
 function buildCtx(overrides: {
   buffer?: GroupHistoryBuffer;

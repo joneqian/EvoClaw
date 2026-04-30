@@ -15,7 +15,7 @@
  * session key，不需要字符串替换，语义更干净。
  */
 
-import type { FeishuReceiveEvent } from './inbound.js';
+import type { FeishuReceiveEvent } from '../inbound/index.js';
 
 /** 激活策略 */
 export type BroadcastTriggerMode = 'mention-first' | 'any-mention' | 'always';

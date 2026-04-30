@@ -16,7 +16,7 @@
  * 5 分钟 TTL（足够覆盖 ws fan-out 延迟，超过就视为过期）；条目超 1000 时简单 GC。
  */
 
-import { createLogger } from '../../../infrastructure/logger.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
 
 const log = createLogger('feishu/sent-message-registry');
 

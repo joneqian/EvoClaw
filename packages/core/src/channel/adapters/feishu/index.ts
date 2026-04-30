@@ -62,6 +62,7 @@ import {
   replyToComment as apiReplyToComment,
   listCommentReplies as apiListCommentReplies,
   getDocContent as apiGetDocContent,
+  appendTextBlock as apiAppendTextBlock,
   type FeishuFileType as DocFileType,
   type DocContentSnapshot,
 } from './doc/doc-api.js';
@@ -496,6 +497,26 @@ export class FeishuAdapter implements ChannelAdapter {
     return await withFeishuRetry(
       () => apiGetDocContent(client, params),
       { label: 'readDoc' },
+    );
+  }
+
+  /**
+   * 在 docx 中追加文本块（M13 Phase 5 C3）
+   *
+   * 不重试 230108（concurrency）/ 230109（not found）—— 让 agent 决定要不要重读
+   * 文档后再试，避免覆盖人类同时的编辑。
+   */
+  async appendDocBlock(params: {
+    fileToken: string;
+    fileType: DocFileType;
+    text: string;
+    parentBlockId?: string;
+    documentRevisionId?: number;
+  }): Promise<{ blockId: string | null; revisionId: number | null }> {
+    const client = this.requireClient();
+    return await withFeishuRetry(
+      () => apiAppendTextBlock(client, params),
+      { label: 'appendDocBlock' },
     );
   }
 

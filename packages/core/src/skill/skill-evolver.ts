@@ -108,40 +108,38 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
       successRateThreshold: config.successRateThreshold,
     });
     if (!gate.proceed) {
-      logDecision(db, {
+      logEvolutionDecision(db, {
         skillName, decision: 'skip', reasoning: gate.reason,
         evidence, previousHash: evidence.currentHash, newHash: null,
         model: config.model ?? null, durationMs: Date.now() - cycleStart,
+        triggerSource: 'cron',
       });
       result.skipped++;
       continue;
     }
 
-    // 3. 调 LLM
-    let decision: EvolverDecision;
-    try {
-      const raw = await llmCall(EVOLVER_SYSTEM_PROMPT, renderEvidenceAsPrompt(evidence));
-      decision = parseEvolverResponse(raw);
-      llmConsecutiveFailures = 0;
-    } catch (err) {
+    // 3+4. 调 LLM + 执行决策（共享函数，inline review 也用同一套）
+    const decisionResult = await runEvolverDecision({
+      evidence, llmCall, userSkillsDir,
+    });
+
+    if ('error' in decisionResult) {
       llmConsecutiveFailures++;
-      log.warn(`evolver LLM 调用失败 (${skillName})`, { err: String(err) });
-      logDecision(db, {
-        skillName, decision: 'skip', reasoning: `LLM error: ${String(err).slice(0, 200)}`,
+      log.warn(`evolver LLM 调用失败 (${skillName})`, { err: decisionResult.error });
+      logEvolutionDecision(db, {
+        skillName, decision: 'skip', reasoning: `LLM error: ${decisionResult.error.slice(0, 200)}`,
         evidence, previousHash: evidence.currentHash, newHash: null,
         model: config.model ?? null, durationMs: Date.now() - cycleStart,
-        errorMessage: String(err).slice(0, 500),
+        errorMessage: decisionResult.error,
+        triggerSource: 'cron',
       });
       result.failed++;
       continue;
     }
+    llmConsecutiveFailures = 0;
 
-    // 4. 执行决策
-    const outcome = await executeDecision({
-      decision, evidence, userSkillsDir,
-    });
-
-    logDecision(db, {
+    const { decision, outcome } = decisionResult;
+    logEvolutionDecision(db, {
       skillName: outcome.targetSkillName ?? skillName,
       decision: decision.decision,
       reasoning: decision.reasoning,
@@ -154,6 +152,7 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
       errorMessage: outcome.error,
       previousContent: outcome.previousContent ?? null,
       newContent: outcome.newContent ?? null,
+      triggerSource: 'cron',
     });
 
     if (outcome.error) {
@@ -203,10 +202,46 @@ function findCandidates(db: SqliteStore, opts: FindCandidatesOpts): string[] {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Shared Decision Pipeline（cron + inline 共用）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 单次 LLM 决策 + 执行（refine/create/skip）。
+ * 调用方负责证据准备 + 日志写入 + 限速 + 熔断。
+ *
+ * 错误处理：
+ * - LLM 调用抛错 → 返回 { error }（不抛）
+ * - executeDecision 失败 → 通过 outcome.error 暴露（不抛）
+ */
+export async function runEvolverDecision(opts: {
+  evidence: EvolutionEvidence;
+  llmCall: LLMCallFn;
+  userSkillsDir: string;
+  /** Phase 5: 本 session 已用过的 skill 名单，注入 prompt 引导 refine 优先于 create */
+  currentlyUsedSkills?: string[];
+}): Promise<{ decision: EvolverDecision; outcome: DecisionOutcome } | { error: string }> {
+  let decision: EvolverDecision;
+  try {
+    const raw = await opts.llmCall(
+      EVOLVER_SYSTEM_PROMPT,
+      renderEvidenceAsPrompt(opts.evidence, { currentlyUsedSkills: opts.currentlyUsedSkills }),
+    );
+    decision = parseEvolverResponse(raw);
+  } catch (err) {
+    return { error: String(err).slice(0, 500) };
+  }
+
+  const outcome = await executeDecision({
+    decision, evidence: opts.evidence, userSkillsDir: opts.userSkillsDir,
+  });
+  return { decision, outcome };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Execute Decision
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface DecisionOutcome {
+export interface DecisionOutcome {
   newHash: string | null;
   patchesApplied?: string;   // JSON 字符串
   targetSkillName?: string;   // create 时生成的新 skill 名
@@ -354,7 +389,7 @@ async function executeCreate(
 // Audit Log
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface LogDecisionParams {
+export interface LogEvolutionDecisionParams {
   skillName: string;
   decision: 'refine' | 'create' | 'skip';
   reasoning: string;
@@ -368,9 +403,12 @@ interface LogDecisionParams {
   /** M7.1: 改动前后 SKILL.md 内容（供前端 diff + 回滚使用；skip/失败为 null） */
   previousContent?: string | null;
   newContent?: string | null;
+  /** P1-B: 触发来源 'cron'（默认）| 'inline' */
+  triggerSource: 'cron' | 'inline';
 }
 
-function logDecision(db: SqliteStore, p: LogDecisionParams): void {
+/** 写一条 skill_evolution_log（cron + inline 共用，失败静默） */
+export function logEvolutionDecision(db: SqliteStore, p: LogEvolutionDecisionParams): void {
   try {
     const evidenceSummary = JSON.stringify({
       summaries: p.evidence.summaries.length,
@@ -383,8 +421,8 @@ function logDecision(db: SqliteStore, p: LogDecisionParams): void {
         evidence_count, evidence_summary,
         patches_applied, previous_hash, new_hash,
         model_used, duration_ms, error_message,
-        previous_content, new_content
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        previous_content, new_content, trigger_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       p.skillName,
       p.decision,
       p.reasoning.slice(0, 1000),
@@ -398,6 +436,7 @@ function logDecision(db: SqliteStore, p: LogDecisionParams): void {
       p.errorMessage?.slice(0, 1000) ?? null,
       p.previousContent ?? null,
       p.newContent ?? null,
+      p.triggerSource,
     );
   } catch (err) {
     log.warn('skill_evolution_log 写入失败', { err: String(err), skill: p.skillName });

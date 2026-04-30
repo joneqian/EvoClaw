@@ -36,6 +36,8 @@ export interface EvolutionEvidence {
   recentUsages: SkillUsageRow[];
   /** 总体聚合 */
   stats: SkillAggregateStats;
+  /** Phase 5: 本 session 是否已调用过该 skill（gatherEvidence 传入 currentSessionKey 时填充） */
+  usedInCurrentSession: boolean;
 }
 
 export interface GatherEvidenceOptions {
@@ -48,6 +50,8 @@ export interface GatherEvidenceOptions {
   usagesLimit?: number;
   /** 聚合统计回看天数（默认 30） */
   statsDays?: number;
+  /** Phase 5: 当前 session key — 设置后 evidence.usedInCurrentSession 会被填充 */
+  currentSessionKey?: string;
 }
 
 export function gatherEvidence(opts: GatherEvidenceOptions): EvolutionEvidence {
@@ -85,6 +89,17 @@ export function gatherEvidence(opts: GatherEvidenceOptions): EvolutionEvidence {
   // 5. 统计
   const stats = store.aggregateStats(skillName, statsDays);
 
+  // 6. Phase 5: 本 session 是否用过该 skill
+  let usedInCurrentSession = false;
+  if (opts.currentSessionKey) {
+    try {
+      const rows = store.listBySessionAndSkill(opts.currentSessionKey, skillName);
+      usedInCurrentSession = rows.length > 0;
+    } catch {
+      // 查询失败保持 false，不影响主流程
+    }
+  }
+
   return {
     skillName,
     currentSkillMd,
@@ -95,6 +110,7 @@ export function gatherEvidence(opts: GatherEvidenceOptions): EvolutionEvidence {
     summaries,
     recentUsages,
     stats,
+    usedInCurrentSession,
   };
 }
 

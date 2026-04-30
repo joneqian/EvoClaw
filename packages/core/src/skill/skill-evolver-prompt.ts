@@ -58,13 +58,37 @@ You receive evidence about one skill:
 5. Do not embed credentials, eval(), new Function(), or shell destructive commands
 6. New skills MUST include a valid frontmatter block with name + description
 7. When unsure, output { "decision": "skip", "reasoning": "..." }
+
+## Improvement Priority (mandatory)
+
+When choosing between refine vs create:
+1. **Highest priority — refine** the skill the user is actively engaging with right now (current session)
+2. **Then — refine** other historically-used skills in the same domain
+3. **Lowest priority — create** a new skill, ONLY if (1) and (2) clearly do not address the gap
+
+Bias toward refine over create when ambiguous. Creating duplicates of existing skills is forbidden.
 `;
 
+export interface RenderEvidenceOptions {
+  /** Phase 5: 本 session 已用过的 skill 名单。注入到 Context 段告诉 LLM 优先 refine 这些 */
+  currentlyUsedSkills?: string[];
+}
+
 /** 渲染证据为 LLM 用户消息 */
-export function renderEvidenceAsPrompt(evidence: EvolutionEvidence): string {
+export function renderEvidenceAsPrompt(evidence: EvolutionEvidence, opts: RenderEvidenceOptions = {}): string {
   const lines: string[] = [];
   lines.push(`Skill: ${evidence.skillName}`);
+  if (evidence.usedInCurrentSession) {
+    lines.push('(this skill was actively used in the current user session — priority 1 for refine)');
+  }
   lines.push('');
+
+  if (opts.currentlyUsedSkills && opts.currentlyUsedSkills.length > 0) {
+    lines.push('## Context — skills used in current session');
+    lines.push(opts.currentlyUsedSkills.map(s => `- ${s}`).join('\n'));
+    lines.push('Priority 1 candidates above. Prefer refining over creating new skills.');
+    lines.push('');
+  }
 
   lines.push('## Aggregated Stats (last 30 days)');
   lines.push(`- Invocations: ${evidence.stats.invocationCount}`);

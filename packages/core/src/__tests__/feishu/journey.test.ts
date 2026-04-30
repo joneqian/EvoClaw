@@ -108,6 +108,40 @@ describe('飞书 E2E journey', () => {
     });
   });
 
+  describe('飞书文档评论 → agent dispatch (M13 Phase 5 C1)', () => {
+    it('用户在 docx 上评论 → handler 收到带 feishuDoc 的 ChannelMessage', async () => {
+      await h.boot();
+      await h.simulateDocComment({
+        fileToken: 'doc_tok_a',
+        fileType: 'docx',
+        commentId: 'cmt_1',
+        fromOpenId: 'ou_alice',
+        content: '这段写得不对',
+      });
+
+      expect(h.inboundMessages).toHaveLength(1);
+      const msg = h.inboundMessages[0]!;
+      expect(msg.peerId).toBe('doc:doc_tok_a');
+      expect(msg.content).toBe('这段写得不对');
+      expect(msg.feishuDoc).toEqual({
+        fileToken: 'doc_tok_a',
+        fileType: 'docx',
+        commentId: 'cmt_1',
+        isWhole: false,
+      });
+    });
+
+    it('bot 自己写的评论被过滤（防回灌死循环）', async () => {
+      await h.boot();
+      await h.simulateDocComment({
+        fileToken: 'tok',
+        fromOpenId: 'ou_bot', // 与 harness 默认 botOpenId 一致
+        content: 'bot self',
+      });
+      expect(h.inboundMessages).toHaveLength(0);
+    });
+  });
+
   describe('debounce coalescer 端到端', () => {
     it('启用 debounce 后连发 3 条文本：handler 只调 1 次（合并）', async () => {
       vi.useFakeTimers();

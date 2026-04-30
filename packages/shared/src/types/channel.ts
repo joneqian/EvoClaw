@@ -68,4 +68,28 @@ export interface ChannelMessage {
    */
   fromPeerAgentId?: string;
   fromPeerOpenId?: string;
+  /**
+   * 飞书文档评论上下文（drive.notice.comment_add_v1 触发时填）
+   *
+   * 由飞书 adapter 在收到文档评论事件时合成的 ChannelMessage，agent 据此知道
+   * 当前消息来自哪份文档的哪条评论，可用 feishu_reply_comment / 未来的
+   * feishu_read_doc 等工具读写。
+   *
+   * 普通 IM 消息（im.message.receive_v1）不填。
+   */
+  feishuDoc?: FeishuDocContext;
+}
+
+/** 飞书文档评论上下文 */
+export interface FeishuDocContext {
+  /** 文档唯一 token */
+  fileToken: string;
+  /** 文档类型（doc / docx / sheet / file / slides 等） */
+  fileType: string;
+  /** 评论 ID */
+  commentId: string;
+  /** 回复 ID（仅在已有评论上回复时出现） */
+  replyId?: string;
+  /** 是否为全文评论（false 表示附着在文档某处的评论） */
+  isWhole: boolean;
 }

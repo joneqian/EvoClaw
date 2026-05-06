@@ -1,4 +1,4 @@
-import cronParser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 import crypto from 'node:crypto';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { LaneQueue } from '../agent/lane-queue.js';
@@ -298,8 +298,9 @@ export class CronRunner {
 
   /** 计算下次运行时间 */
   private computeNextRun(cronExpression: string): string {
-    const interval = cronParser.parseExpression(cronExpression);
-    return interval.next().toISOString();
+    const interval = CronExpressionParser.parse(cronExpression);
+    // v5 toISOString 签名改成 string | null，作 fallback 兜底
+    return interval.next().toISOString() ?? interval.next().toDate().toISOString();
   }
 
   /** 是否正在运行 */

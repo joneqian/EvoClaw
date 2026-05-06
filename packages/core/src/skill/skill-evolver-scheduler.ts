@@ -10,7 +10,7 @@
  * 避免 Evolver 产出 skill 后立刻执行形成进化循环。
  */
 
-import cronParser from 'cron-parser';
+import { CronExpressionParser } from 'cron-parser';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { runEvolutionCycle, type LLMCallFn, type SkillEvolverConfig } from './skill-evolver.js';
@@ -65,7 +65,7 @@ export class SkillEvolverScheduler {
     // 判断当前分钟是否命中 cronSchedule（回看到上一次触发点）
     let prev: Date;
     try {
-      const iter = cronParser.parseExpression(config.cronSchedule, {
+      const iter = CronExpressionParser.parse(config.cronSchedule, {
         currentDate: new Date(now.getTime() + 1),   // +1ms 让 prev 能取到本分钟
       });
       prev = iter.prev().toDate();

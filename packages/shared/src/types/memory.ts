@@ -37,6 +37,33 @@ export interface MemoryUnit {
   archivedAt: string | null;
 }
 
+/**
+ * Peer 印象记忆 L1 结构（M13 #3 同事印象记忆）
+ * 存储位置：memory_units.l1_overview，category='entity'，merge_key='peer:{peerAgentId}'
+ */
+export interface PeerImpressionL1 {
+  /** 被记忆的同事 Agent ID */
+  peerAgentId: string;
+  /** 同事 Agent 名称（冗余存便于注入 prompt 时不再查 agents 表） */
+  peerName: string;
+  /** 协作风格摘要：直接/含蓄/资料控/口语化等自由文本 */
+  collaborationStyle: string;
+  /** 强项领域 */
+  strengths: string[];
+  /** 摩擦/困难点 */
+  frictions: string[];
+  /** 累计互动轮数（每次提取 +1，未到 3 视为不稳定印象） */
+  interactionCount: number;
+  /** 最近一次互动时间（ISO 8601） */
+  lastInteractionAt: string;
+  /** 最近一次任务结果：完成/部分完成/未完成/搁置/未知 */
+  lastTaskOutcome: string;
+  /** 最近一次任务一行总结 */
+  lastTaskSummary: string;
+  /** 最近所在群（可选，便于排障） */
+  lastSeenInGroup?: string;
+}
+
 /** 知识图谱条目 */
 export interface KnowledgeGraphEntry {
   id: string;

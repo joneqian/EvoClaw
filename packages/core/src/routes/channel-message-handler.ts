@@ -997,6 +997,44 @@ export async function handleChannelMessage(
     })();
   }
 
+  // 14. M13 #3: 同事印象记忆（异步，不阻塞 Agent 主回复）
+  // 仅在群聊且本轮入站是 peer Agent @ 时触发，对 fromPeerAgentId 提取/更新印象。
+  if (store && secondaryLLMCall && chatType === 'group' && ctx.fromPeerAgentId) {
+    void (async () => {
+      try {
+        const { triggerPeerImpressionExtraction } = await import('../memory/peer-impression-hook.js');
+        const peerAgent = agentManager.getAgent(ctx.fromPeerAgentId!);
+        const ownerAgent = agentManager.getAgent(agentId);
+        // 选取最近若干条消息作为提取上下文（同步提取器内部还会按 30 字符兜底过滤）
+        const tail: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        for (let i = Math.max(0, messages.length - 30); i < messages.length; i++) {
+          const m = messages[i];
+          if (!m) continue;
+          if (m.role === 'user' || m.role === 'assistant') {
+            tail.push({ role: m.role, content: typeof m.content === 'string' ? m.content : '' });
+          }
+        }
+        if (cleanResponse && cleanResponse !== NO_REPLY_TOKEN) {
+          tail.push({ role: 'assistant', content: cleanResponse });
+        }
+        await triggerPeerImpressionExtraction({
+          ownerAgentId: agentId,
+          ownerAgentName: ownerAgent?.name,
+          fromPeerAgentId: ctx.fromPeerAgentId,
+          fromPeerAgentName: peerAgent?.name,
+          chatType: 'group',
+          sessionKey,
+          groupSessionKey: buildGroupSessionKey(channel, peerId),
+          recentMessages: tail,
+          db: store,
+          llmCall: secondaryLLMCall,
+        });
+      } catch (err) {
+        log.warn('peer-impression hook 异常（已吞）:', err);
+      }
+    })();
+  }
+
   return cleanResponse;
 }
 

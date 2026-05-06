@@ -394,6 +394,71 @@ export function readPeerImpression(
   return { memoryUnit: unit, l1 };
 }
 
+/**
+ * 列出 owner 视角下所有 peer 印象（merge_key LIKE 'peer:%' 的 entity 记忆）
+ * 用于 prompt 注入 / REST endpoint。已自动过滤 archived。
+ */
+export function listPeerImpressions(
+  db: SqliteStore,
+  ownerAgentId: string,
+  options?: { peerAgentIds?: string[]; limit?: number },
+): Array<{ memoryUnit: MemoryUnit; l1: PeerImpressionL1 }> {
+  const limit = options?.limit ?? 50;
+  let rows: Array<Record<string, unknown>>;
+  if (options?.peerAgentIds && options.peerAgentIds.length > 0) {
+    const placeholders = options.peerAgentIds.map(() => '?').join(',');
+    const keys = options.peerAgentIds.map(id => `peer:${id}`);
+    rows = db.all<Record<string, unknown>>(
+      `SELECT * FROM memory_units
+       WHERE agent_id = ?
+         AND category = 'entity'
+         AND merge_key IN (${placeholders})
+         AND archived_at IS NULL
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+      ownerAgentId, ...keys, limit,
+    );
+  } else {
+    rows = db.all<Record<string, unknown>>(
+      `SELECT * FROM memory_units
+       WHERE agent_id = ?
+         AND category = 'entity'
+         AND merge_key LIKE 'peer:%'
+         AND archived_at IS NULL
+       ORDER BY updated_at DESC
+       LIMIT ?`,
+      ownerAgentId, limit,
+    );
+  }
+
+  const out: Array<{ memoryUnit: MemoryUnit; l1: PeerImpressionL1 }> = [];
+  for (const row of rows) {
+    // 复用 rowToUnit 映射（与 MemoryStore 一致）
+    const unit: MemoryUnit = {
+      id: row['id'] as string,
+      agentId: row['agent_id'] as string,
+      category: row['category'] as MemoryUnit['category'],
+      mergeType: row['merge_type'] as MemoryUnit['mergeType'],
+      mergeKey: (row['merge_key'] as string) ?? null,
+      l0Index: row['l0_index'] as string,
+      l1Overview: row['l1_overview'] as string,
+      l2Content: row['l2_content'] as string,
+      confidence: row['confidence'] as number,
+      activation: row['activation'] as number,
+      accessCount: row['access_count'] as number,
+      visibility: row['visibility'] as MemoryUnit['visibility'],
+      sourceConversationId: (row['source_session_key'] as string) ?? null,
+      createdAt: row['created_at'] as string,
+      updatedAt: row['updated_at'] as string,
+      archivedAt: (row['archived_at'] as string) ?? null,
+    };
+    const l1 = parseExistingL1(unit.l1Overview);
+    if (!l1) continue;
+    out.push({ memoryUnit: unit, l1 });
+  }
+  return out;
+}
+
 /** 仅为测试暴露的内部辅助（不要在生产代码引用） */
 export const _internals = {
   parseLlmOutput,

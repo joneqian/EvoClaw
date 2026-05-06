@@ -83,6 +83,25 @@ export interface TeamModePromptInput {
    * 非协调者：忽略此字段（既不渲染 bootstrap 也不渲染 template）。
    */
   myTeamWorkflow?: TeamWorkflowTemplate;
+  /**
+   * Per-peer 印象记忆（M13 #3 — 同事印象记忆）
+   *
+   * 每个 peer 一行摘要（≤80 字 l0Summary + 互动次数 + 最近时间）。
+   * 由调用方在群聊场景下基于 peerRoster 查 owner 的 entity 类记忆生成。
+   * 仅当至少 1 个 peer 有印象时渲染 `<peer_impressions>` 段；否则跳过。
+   */
+  peerImpressions?: PeerImpressionSummary[];
+}
+
+/** Per-peer 印象的精简投影（用于 prompt 注入） */
+export interface PeerImpressionSummary {
+  peerAgentId: string;
+  peerName: string;
+  /** ≤ 80 字 l0Summary（来自 PeerImpressionL1 的 l0Summary 字段） */
+  summary: string;
+  interactionCount: number;
+  /** ISO 8601 时间戳 */
+  lastInteractionAt: string;
 }
 
 /**
@@ -120,6 +139,7 @@ export function renderTeamModePrompt(input: TeamModePromptInput): string | null 
   );
   const teamCoordXml = renderTeamCoordinator(input.roster);
   const rosterXml = renderRoster(input.roster);
+  const peerImpressionsXml = renderPeerImpressions(input.peerImpressions ?? []);
   const tasksXml = renderMyOpenTasks(input.myOpenTasks);
   // M13 修复：rules 按场景条件渲染——通用协作守则始终注入；
   // task_plan 相关守则只在确实存在 active plan 或我有 open task 时才注入，
@@ -139,6 +159,7 @@ export function renderTeamModePrompt(input: TeamModePromptInput): string | null 
     workflowTemplateXml,
     teamCoordXml,
     rosterXml,
+    peerImpressionsXml,
     tasksXml,
     rules,
     `</team_mode>`,
@@ -327,6 +348,51 @@ function renderTeamCoordinator(roster: PeerBotInfo[]): string {
 本群协调中心：${names}
 跨角色对接（@ 不在你直接对话链里的同事）请通过 mention_peer @ 协调中心，由它统筹分配，不要绕过协调者直接找其他角色。
 </team_coordinator>`;
+}
+
+/**
+ * 渲染 <peer_impressions>（M13 #3 — 同事印象记忆）
+ *
+ * 每个 peer 一行：摘要 + 互动次数 + 最近相对时间。
+ * 仅当 ≥1 条印象时渲染；空数组返回空串。
+ *
+ * Token 控制：最多 5 个 peer，每行 ≤100 token；总预算 ≤500 token。
+ */
+function renderPeerImpressions(impressions: PeerImpressionSummary[]): string {
+  if (impressions.length === 0) return '';
+  const MAX_PEERS = 5;
+  const MAX_SUMMARY_LEN = 80;
+  const sorted = [...impressions]
+    .sort((a, b) => {
+      // 优先按互动次数降序，并列时按最近时间降序
+      const c = b.interactionCount - a.interactionCount;
+      if (c !== 0) return c;
+      return Date.parse(b.lastInteractionAt) - Date.parse(a.lastInteractionAt);
+    })
+    .slice(0, MAX_PEERS);
+
+  const lines = sorted.map((p) => {
+    const summary = p.summary.length > MAX_SUMMARY_LEN
+      ? p.summary.slice(0, MAX_SUMMARY_LEN) + '…'
+      : p.summary;
+    const ago = formatRelativeAgo(p.lastInteractionAt);
+    return `- [${escapeXmlText(p.peerName)}] ${escapeXmlText(summary)} (互动 ${p.interactionCount} 次, 最近 ${ago})`;
+  });
+
+  return `<peer_impressions note="基于过往群聊协作的同事印象，决策派活/求助时可参考；不可作为客观事实使用">
+${lines.join('\n')}
+</peer_impressions>`;
+}
+
+function formatRelativeAgo(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '未知';
+  const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (diffSec < 60) return `${diffSec}s 前`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m 前`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h 前`;
+  if (diffSec < 86400 * 30) return `${Math.floor(diffSec / 86400)}d 前`;
+  return `${Math.floor(diffSec / (86400 * 30))}mo 前`;
 }
 
 function renderRoster(roster: PeerBotInfo[]): string {

@@ -729,6 +729,38 @@ export async function handleChannelMessage(
         peerRoster.length > 0 || activePlans.length > 0 || myIsCoordinator;
       if (shouldInject) {
         const myOpenTasks = deps.taskPlanService.listOpenTasksForAssignee(agentId, groupSessionKey);
+
+        // M13 #3 同事印象记忆：把 owner 视角下与本群 peers 的印象注入 prompt
+        let peerImpressions: Array<{
+          peerAgentId: string;
+          peerName: string;
+          summary: string;
+          interactionCount: number;
+          lastInteractionAt: string;
+        }> = [];
+        if (store && peerRoster.length > 0) {
+          try {
+            const { listPeerImpressions } = await import('../memory/peer-impression-extractor.js');
+            const peerIds = peerRoster.map((p) => p.agentId);
+            const rows = listPeerImpressions(store, agentId, { peerAgentIds: peerIds });
+            peerImpressions = rows.map((r) => ({
+              peerAgentId: r.l1.peerAgentId,
+              peerName: r.l1.peerName || r.l1.peerAgentId,
+              summary: r.memoryUnit.l0Index,
+              interactionCount: r.l1.interactionCount,
+              lastInteractionAt: r.l1.lastInteractionAt,
+            }));
+            log.debug(
+              `[peer-impression][inject] agent=${agentId} group=${groupSessionKey} ` +
+                `peer_count=${peerImpressions.length}`,
+            );
+          } catch (err) {
+            log.warn(
+              `[peer-impression][inject][error] agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
         const { renderTeamModePrompt } = await import('../agent/team-mode/prompt-fragment.js');
         teamModeFragment = renderTeamModePrompt({
           channelType: channel,
@@ -745,11 +777,13 @@ export async function handleChannelMessage(
             status: t.status,
             dependsOn: t.dependsOn,
           })),
+          ...(peerImpressions.length > 0 ? { peerImpressions } : {}),
         });
         log.debug(
           `[team-mode] prompt 注入 agent=${agentId} group=${peerId} ` +
             `peers=${peerRoster.length} my_tasks=${myOpenTasks.length} active_plans=${activePlans.length} ` +
-            `my_is_coordinator=${myIsCoordinator} has_team_workflow=${!!agent.teamWorkflow}`,
+            `my_is_coordinator=${myIsCoordinator} has_team_workflow=${!!agent.teamWorkflow} ` +
+            `peer_impressions=${peerImpressions.length}`,
         );
       }
     } catch (err) {

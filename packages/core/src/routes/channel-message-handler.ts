@@ -729,6 +729,38 @@ export async function handleChannelMessage(
         peerRoster.length > 0 || activePlans.length > 0 || myIsCoordinator;
       if (shouldInject) {
         const myOpenTasks = deps.taskPlanService.listOpenTasksForAssignee(agentId, groupSessionKey);
+
+        // M13 #3 同事印象记忆：把 owner 视角下与本群 peers 的印象注入 prompt
+        let peerImpressions: Array<{
+          peerAgentId: string;
+          peerName: string;
+          summary: string;
+          interactionCount: number;
+          lastInteractionAt: string;
+        }> = [];
+        if (store && peerRoster.length > 0) {
+          try {
+            const { listPeerImpressions } = await import('../memory/peer-impression-extractor.js');
+            const peerIds = peerRoster.map((p) => p.agentId);
+            const rows = listPeerImpressions(store, agentId, { peerAgentIds: peerIds });
+            peerImpressions = rows.map((r) => ({
+              peerAgentId: r.l1.peerAgentId,
+              peerName: r.l1.peerName || r.l1.peerAgentId,
+              summary: r.memoryUnit.l0Index,
+              interactionCount: r.l1.interactionCount,
+              lastInteractionAt: r.l1.lastInteractionAt,
+            }));
+            log.debug(
+              `[peer-impression][inject] agent=${agentId} group=${groupSessionKey} ` +
+                `peer_count=${peerImpressions.length}`,
+            );
+          } catch (err) {
+            log.warn(
+              `[peer-impression][inject][error] agent=${agentId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+
         const { renderTeamModePrompt } = await import('../agent/team-mode/prompt-fragment.js');
         teamModeFragment = renderTeamModePrompt({
           channelType: channel,
@@ -745,11 +777,13 @@ export async function handleChannelMessage(
             status: t.status,
             dependsOn: t.dependsOn,
           })),
+          ...(peerImpressions.length > 0 ? { peerImpressions } : {}),
         });
         log.debug(
           `[team-mode] prompt 注入 agent=${agentId} group=${peerId} ` +
             `peers=${peerRoster.length} my_tasks=${myOpenTasks.length} active_plans=${activePlans.length} ` +
-            `my_is_coordinator=${myIsCoordinator} has_team_workflow=${!!agent.teamWorkflow}`,
+            `my_is_coordinator=${myIsCoordinator} has_team_workflow=${!!agent.teamWorkflow} ` +
+            `peer_impressions=${peerImpressions.length}`,
         );
       }
     } catch (err) {
@@ -993,6 +1027,44 @@ export async function handleChannelMessage(
         });
       } catch (err) {
         log.warn('inline review hook 异常（已吞）:', err);
+      }
+    })();
+  }
+
+  // 14. M13 #3: 同事印象记忆（异步，不阻塞 Agent 主回复）
+  // 仅在群聊且本轮入站是 peer Agent @ 时触发，对 fromPeerAgentId 提取/更新印象。
+  if (store && secondaryLLMCall && chatType === 'group' && ctx.fromPeerAgentId) {
+    void (async () => {
+      try {
+        const { triggerPeerImpressionExtraction } = await import('../memory/peer-impression-hook.js');
+        const peerAgent = agentManager.getAgent(ctx.fromPeerAgentId!);
+        const ownerAgent = agentManager.getAgent(agentId);
+        // 选取最近若干条消息作为提取上下文（同步提取器内部还会按 30 字符兜底过滤）
+        const tail: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        for (let i = Math.max(0, messages.length - 30); i < messages.length; i++) {
+          const m = messages[i];
+          if (!m) continue;
+          if (m.role === 'user' || m.role === 'assistant') {
+            tail.push({ role: m.role, content: typeof m.content === 'string' ? m.content : '' });
+          }
+        }
+        if (cleanResponse && cleanResponse !== NO_REPLY_TOKEN) {
+          tail.push({ role: 'assistant', content: cleanResponse });
+        }
+        await triggerPeerImpressionExtraction({
+          ownerAgentId: agentId,
+          ownerAgentName: ownerAgent?.name,
+          fromPeerAgentId: ctx.fromPeerAgentId,
+          fromPeerAgentName: peerAgent?.name,
+          chatType: 'group',
+          sessionKey,
+          groupSessionKey: buildGroupSessionKey(channel, peerId),
+          recentMessages: tail,
+          db: store,
+          llmCall: secondaryLLMCall,
+        });
+      } catch (err) {
+        log.warn('peer-impression hook 异常（已吞）:', err);
       }
     })();
   }

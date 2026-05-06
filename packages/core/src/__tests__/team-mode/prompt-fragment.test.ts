@@ -512,4 +512,111 @@ describe('renderTeamModePrompt', () => {
       expect(result).toMatch(/不要在自己任务描述\/回复里引用那个虚构产物/);
     });
   });
+
+  describe('<peer_impressions>（M13 #3 同事印象记忆）', () => {
+    it('peerImpressions 为空 / undefined → 不渲染该段', () => {
+      const r1 = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+      });
+      expect(r1).not.toMatch(/<peer_impressions/);
+
+      const r2 = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        peerImpressions: [],
+      });
+      expect(r2).not.toMatch(/<peer_impressions/);
+    });
+
+    it('单条印象 → 渲染 <peer_impressions> 段', () => {
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-bob', 'Bob')],
+        myOpenTasks: [],
+        peerImpressions: [{
+          peerAgentId: 'a-bob',
+          peerName: 'Bob',
+          summary: '擅长写代码、沟通直接',
+          interactionCount: 3,
+          lastInteractionAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        }],
+      });
+      expect(result).toMatch(/<peer_impressions/);
+      expect(result).toMatch(/\[Bob\] 擅长写代码、沟通直接 \(互动 3 次, 最近 2h 前\)/);
+      expect(result).toMatch(/<\/peer_impressions>/);
+    });
+
+    it('多条印象按 interactionCount 降序排列且 cap 5 个', () => {
+      const now = Date.now();
+      const items = Array.from({ length: 8 }).map((_, i) => ({
+        peerAgentId: `a-${i}`,
+        peerName: `Peer${i}`,
+        summary: `summary-${i}`,
+        interactionCount: i, // 0..7
+        lastInteractionAt: new Date(now - i * 1000).toISOString(),
+      }));
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        peerImpressions: items,
+      });
+      // 应渲染 7..3（cap 5），不渲染 2/1/0
+      expect(result).toMatch(/Peer7/);
+      expect(result).toMatch(/Peer6/);
+      expect(result).toMatch(/Peer5/);
+      expect(result).toMatch(/Peer4/);
+      expect(result).toMatch(/Peer3/);
+      expect(result).not.toMatch(/Peer2/);
+      expect(result).not.toMatch(/Peer1\D/); // 防止误匹配 Peer10..19
+      expect(result).not.toMatch(/Peer0\D/);
+    });
+
+    it('summary 超 80 字符自动截断带省略号', () => {
+      const longSummary = '一'.repeat(120);
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-bob', 'Bob')],
+        myOpenTasks: [],
+        peerImpressions: [{
+          peerAgentId: 'a-bob',
+          peerName: 'Bob',
+          summary: longSummary,
+          interactionCount: 1,
+          lastInteractionAt: new Date().toISOString(),
+        }],
+      });
+      // 截断到 80 字符 + "…"
+      expect(result).toMatch(new RegExp(`${'一'.repeat(80)}…`));
+    });
+
+    it('整段 token 预算受控（≤500 token 等价 ≤2000 字符）', () => {
+      const items = Array.from({ length: 5 }).map((_, i) => ({
+        peerAgentId: `a-${i}`,
+        peerName: `Peer${i}`,
+        summary: '一'.repeat(80), // 上限
+        interactionCount: 10,
+        lastInteractionAt: new Date().toISOString(),
+      }));
+      const result = renderTeamModePrompt({
+        channelType: 'feishu',
+        groupSessionKey: 'feishu:chat:oc_x',
+        roster: [makePeer('a-prod', '产品经理')],
+        myOpenTasks: [],
+        peerImpressions: items,
+      });
+      // 段内长度（粗略上界）
+      const match = result?.match(/<peer_impressions[\s\S]*?<\/peer_impressions>/);
+      expect(match).not.toBeNull();
+      expect(match![0].length).toBeLessThanOrEqual(2000);
+    });
+  });
 });

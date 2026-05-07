@@ -64,6 +64,13 @@ interface PrepareResult {
 
 type TabType = 'brand' | 'store' | 'my' | 'effectiveness' | 'evolution';
 
+/** M7-Tier1 PR2: "已归档" 区域使用的精简数据 */
+interface ArchivedSkillEntry {
+  name: string;
+  source: string;
+  pinned: boolean;
+}
+
 // ─── 品牌自有技能数据 ───
 
 interface BrandSkill {
@@ -359,6 +366,31 @@ export default function SkillPage() {
     catch (err) { setError(err instanceof Error ? err.message : '卸载失败'); }
   }, [fetchSkills]);
 
+  /** M7-Tier1 PR2: 手动归档（柔删，文件移到 .archive/，可 restore）。仅 agent-created 来源可调用。 */
+  const handleArchive = useCallback(async (name: string) => {
+    if (!window.confirm(`确定归档 "${name}" 吗？\n\n该 skill 将不再注入 <available_skills>，但文件保留在 .archive/，随时可恢复。`)) {
+      return;
+    }
+    try {
+      await post(`/curator/archive/${encodeURIComponent(name)}`, {});
+      await fetchSkills();
+      await fetchLifecycle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '归档失败');
+    }
+  }, [fetchSkills, fetchLifecycle]);
+
+  /** M7-Tier1 PR2: 从 .archive/ 恢复（不需要二次确认，可逆操作） */
+  const handleRestore = useCallback(async (name: string) => {
+    try {
+      await post(`/curator/restore/${encodeURIComponent(name)}`, {});
+      await fetchSkills();
+      await fetchLifecycle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '恢复失败');
+    }
+  }, [fetchSkills, fetchLifecycle]);
+
   /** M5 T3: 升级 ClawHub skill = 走 prepare/confirm 同一管线 */
   const handleUpgrade = useCallback(async (slug: string, latestVersion: string) => {
     setInstalling(true); setError('');
@@ -378,6 +410,12 @@ export default function SkillPage() {
 
   const installedNames = new Set(skills.map(s => s.name));
   const totalPages = Math.ceil(total / pageSize);
+
+  // M7-Tier1 PR2: 从 lifecycleMap 派生已归档 skill 列表（按 archivedAt desc 排序）
+  const archivedEntries: ArchivedSkillEntry[] = Array.from(lifecycleMap.entries())
+    .filter(([, lc]) => lc.state === 'archived')
+    .map(([name, lc]) => ({ name, source: lc.source, pinned: lc.pinned }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -750,29 +788,38 @@ export default function SkillPage() {
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading ? (
             <div className="text-center py-20 text-slate-400 text-sm">加载中...</div>
-          ) : skills.length === 0 ? (
+          ) : skills.length === 0 && archivedEntries.length === 0 ? (
             <div className="text-center py-20">
               <p className="text-3xl mb-3">📦</p>
               <p className="text-sm text-slate-500">暂无已安装技能</p>
               <button onClick={() => setTab('brand')} className="mt-3 text-sm text-brand hover:text-brand-hover">去 {BRAND_NAME} 精选 →</button>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-3">
-              {skills.map((skill) => {
-                const lifecycle = lifecycleMap.get(skill.name);
-                return (
-                  <MySkillCard
-                    key={skill.name}
-                    skill={skill}
-                    onUninstall={handleUninstall}
-                    updateInfo={updatesMap.get(skill.name)}
-                    onUpgrade={handleUpgrade}
-                    lifecycle={lifecycle}
-                    onTogglePin={handleTogglePin}
-                  />
-                );
-              })}
-            </div>
+            <>
+              {skills.length > 0 && (
+                <div className="grid grid-cols-3 gap-3">
+                  {skills.map((skill) => {
+                    const lifecycle = lifecycleMap.get(skill.name);
+                    return (
+                      <MySkillCard
+                        key={skill.name}
+                        skill={skill}
+                        onUninstall={handleUninstall}
+                        updateInfo={updatesMap.get(skill.name)}
+                        onUpgrade={handleUpgrade}
+                        lifecycle={lifecycle}
+                        onTogglePin={handleTogglePin}
+                        onArchive={handleArchive}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+              {/* M7-Tier1 PR2: 已归档区（折叠，仅有 archived 时显示） */}
+              {archivedEntries.length > 0 && (
+                <ArchivedSection entries={archivedEntries} onRestore={handleRestore} />
+              )}
+            </>
           )}
         </div>
       )}
@@ -839,13 +886,17 @@ interface MySkillCardProps {
   lifecycle?: { pinned: boolean; state: 'active' | 'stale' | 'archived'; source: string };
   /** M7-Tier1 PR1: 切换 pin 状态回调（仅 agent-created 来源会调用） */
   onTogglePin?: (name: string, nextPinned: boolean) => void;
+  /** M7-Tier1 PR2: 手动归档回调（柔删；仅 agent-created 来源会调用） */
+  onArchive?: (name: string) => void;
 }
 
-function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onTogglePin }: MySkillCardProps) {
+function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onTogglePin, onArchive }: MySkillCardProps) {
   // M7-Tier1 PR1: pin 仅 agent-created 可用（manifest source 字段判定，与后端 source-gated 一致）
   // 注：InstalledSkillItem.source 来自 discoverer（'local' 含义=用户目录），manifest 的 'agent-created'
   // 走 lifecycle.source 字段保留，所以这里看 lifecycle.source 而不是 skill.source。
   const canPin = lifecycle?.source === 'agent-created' && Boolean(onTogglePin);
+  // M7-Tier1 PR2: archive 也仅 agent-created（与后端 /curator/archive 的 source-gated 一致）
+  const canArchive = lifecycle?.source === 'agent-created' && Boolean(onArchive);
   const isPinned = lifecycle?.pinned ?? false;
   const state = lifecycle?.state ?? 'active';
 
@@ -895,8 +946,25 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onT
               </svg>
             </button>
           )}
+          {/* M7-Tier1 PR2: 归档按钮（仅 agent-created；hover 显示。pinned 时禁用：与后端 archiveSkill 的 pinned 拒绝一致） */}
+          {canArchive && (
+            <button
+              onClick={() => !isPinned && onArchive?.(skill.name)}
+              disabled={isPinned}
+              className={`shrink-0 transition-all ${
+                isPinned
+                  ? 'text-slate-200 cursor-not-allowed'
+                  : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-slate-700'
+              } ${canPin ? '' : 'ml-auto'}`}
+              title={isPinned ? '已钉住的 skill 不可归档（先取消 pin）' : '归档：移到 .archive/，从 <available_skills> 摘除（可恢复）'}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+            </button>
+          )}
           <button onClick={() => onUninstall(skill.name)}
-            className={`shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all ${canPin ? '' : 'ml-auto'}`} title="卸载">
+            className={`shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all ${(canPin || canArchive) ? '' : 'ml-auto'}`} title="卸载">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -939,6 +1007,63 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onT
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── M7-Tier1 PR2: 已归档区 ────────────────────────────────────────────────
+
+interface ArchivedSectionProps {
+  entries: ArchivedSkillEntry[];
+  onRestore: (name: string) => void;
+}
+
+/**
+ * 折叠的"已归档"区。skill 文件移到 .archive/，从 <available_skills> 摘除，
+ * 但仍可通过 restore 一键恢复。
+ */
+function ArchivedSection({ entries, onRestore }: ArchivedSectionProps) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mt-6 border-t border-slate-200 pt-4">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+      >
+        <svg
+          className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+        <span>已归档（{entries.length}）</span>
+        <span className="text-xs font-normal text-slate-400">— 文件保留在 .archive/，可恢复</span>
+      </button>
+      {expanded && (
+        <ul className="mt-3 space-y-1.5">
+          {entries.map((e) => (
+            <li
+              key={e.name}
+              className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100"
+            >
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8" />
+                </svg>
+                <span className="text-sm text-slate-700 truncate">{e.name}</span>
+                <span className="text-xs text-slate-400 shrink-0">{e.source}</span>
+              </div>
+              <button
+                onClick={() => onRestore(e.name)}
+                className="shrink-0 text-xs px-2 py-1 rounded border border-slate-200 text-slate-600 bg-white hover:bg-slate-100"
+                title="恢复：从 .archive/ 移回，重新进入 <available_skills>"
+              >
+                恢复
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

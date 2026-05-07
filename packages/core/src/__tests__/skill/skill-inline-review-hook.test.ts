@@ -104,10 +104,15 @@ describe('triggerInlineReviewIfSignaled', () => {
     expect(llmCall).not.toHaveBeenCalled();
   });
 
-  it('信号 none（无负反馈关键词） → 不触发', async () => {
+  it('信号 none（regex 不命中 + LLM 也判 negative=false） → 不触发', async () => {
     seedSkill('arxiv', 'body');
     recordRecentInvoke('arxiv');
-    const llmCall = vi.fn();
+    // LLM 兜底也判定无不满
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      negative: false,
+      skillName: '',
+      reason: '中性请求',
+    }));
     const r = await triggerInlineReviewIfSignaled({
       userMessage: '帮我下载这个',
       sessionKey: SESSION_KEY,
@@ -115,7 +120,80 @@ describe('triggerInlineReviewIfSignaled', () => {
     });
     expect(r.triggered).toBe(false);
     expect(r.reason).toBe('signal=none');
-    expect(llmCall).not.toHaveBeenCalled();
+    // LLM 被调过 1 次（兜底分类），但结果 negative=false
+    expect(llmCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('regex 漏检 + LLM 兜底命中 → 触发 review', async () => {
+    seedSkill('arxiv', 'old body');
+    recordRecentInvoke('arxiv');
+    // 第 1 次调用：LLM 分类器（detectFeedbackSignalViaLLM），返回 negative=true
+    // 第 2 次调用：runInlineReview 的 evolver LLM，返回 refine 决策
+    const llmCall = vi.fn()
+      .mockResolvedValueOnce(JSON.stringify({
+        negative: true,
+        skillName: 'arxiv',
+        reason: '反话/暗示纠正',
+      }))
+      .mockResolvedValueOnce(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'address user expectation',
+        changes: { patches: [{ old: 'old body', new: 'better body' }] },
+      }));
+
+    const r = await triggerInlineReviewIfSignaled({
+      // 这句话 regex 完全不命中（"不对" ≠ "完全不对"），但 LLM 应该看出来是抱怨
+      userMessage: '这工具不对',
+      sessionKey: SESSION_KEY,
+      db, userSkillsDir, llmCall,
+    });
+
+    expect(r.triggered).toBe(true);
+    expect(r.decision).toBe('refine');
+    expect(llmCall).toHaveBeenCalledTimes(2);
+
+    const updated = fs.readFileSync(path.join(userSkillsDir, 'arxiv', 'SKILL.md'), 'utf-8');
+    expect(updated).toContain('better body');
+  });
+
+  it('regex 漏检 + LLM 抛异常 → 静默 skip 不冒泡', async () => {
+    seedSkill('arxiv', 'body');
+    recordRecentInvoke('arxiv');
+    let callCount = 0;
+    const llmCall = vi.fn().mockImplementation(async () => {
+      callCount++;
+      throw new Error('LLM provider down');
+    });
+
+    const r = await triggerInlineReviewIfSignaled({
+      userMessage: '这工具不对',
+      sessionKey: SESSION_KEY,
+      db, userSkillsDir, llmCall,
+    });
+
+    expect(r.triggered).toBe(false);
+    expect(r.reason).toBe('signal=none');
+    expect(callCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('regex 命中时不浪费 LLM 调用（regex 优先）', async () => {
+    seedSkill('arxiv', 'old');
+    recordRecentInvoke('arxiv');
+    // 仅 1 次 LLM 调用预期：runInlineReview 的 evolver。
+    // detectFeedbackSignalViaLLM 不应被调（regex 已命中）。
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'skip',
+      reasoning: 'minor issue',
+    }));
+
+    await triggerInlineReviewIfSignaled({
+      userMessage: '完全不对', // regex 命中 completely-wrong
+      sessionKey: SESSION_KEY,
+      db, userSkillsDir, llmCall,
+    });
+
+    // LLM 调用次数：1（仅 evolver），不含分类器
+    expect(llmCall).toHaveBeenCalledTimes(1);
   });
 
   it('cron sessionKey 前置拦截：连 SQL 都不查', async () => {

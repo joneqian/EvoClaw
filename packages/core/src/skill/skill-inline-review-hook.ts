@@ -15,7 +15,7 @@
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { SkillUsageStore } from './skill-usage-store.js';
-import { detectFeedbackSignal } from './feedback-signal-detector.js';
+import { detectFeedbackSignal, detectFeedbackSignalViaLLM } from './feedback-signal-detector.js';
 import { runInlineReview, type InlineReviewResult } from './skill-evolver-inline.js';
 import type { LLMCallFn } from './skill-evolver.js';
 
@@ -38,6 +38,8 @@ export interface TriggerInlineReviewOptions {
   model?: string;
   /** 限速窗口（分钟），默认沿用 runInlineReview 的 10 */
   rateLimitMinutes?: number;
+  /** 上一条 assistant 回复（用于 LLM 二级分类时给 LLM 更多上下文，可选） */
+  lastAssistantMessage?: string;
 }
 
 /**
@@ -80,19 +82,41 @@ async function triggerInternal(opts: TriggerInlineReviewOptions): Promise<Inline
     return { triggered: false, reason: 'no recent skill in session' };
   }
 
-  // 3. 检测信号
-  const signal = detectFeedbackSignal({
+  // 3a. 信号检测：先 regex 快路径
+  const detectorInput = {
     userMessage: opts.userMessage,
     recentSkillUsages: recent,
     windowMinutes: Math.ceil(SIGNAL_WINDOW_SECONDS / 60),
-  });
+  };
+  let signal = detectFeedbackSignal(detectorInput);
+
+  // 3b. regex 漏检 → LLM 二级分类兜底（仅当 secondary LLM 可用）
+  if (signal.signal !== 'strong' && opts.llmCall) {
+    try {
+      signal = await detectFeedbackSignalViaLLM({
+        ...detectorInput,
+        llmCall: opts.llmCall,
+        ...(opts.lastAssistantMessage !== undefined ? { lastAssistantMessage: opts.lastAssistantMessage } : {}),
+      });
+      if (signal.signal === 'strong') {
+        log.info(`[inline-review-llm-hit] skill=${signal.skillName} pattern=${signal.matchedPattern}`, {
+          skillName: signal.skillName, pattern: signal.matchedPattern,
+        });
+      }
+    } catch (err) {
+      log.warn('LLM signal detector 异常（已吞）', { err: String(err) });
+    }
+  }
+
   if (signal.signal !== 'strong' || !signal.skillName) {
     return { triggered: false, reason: 'signal=none' };
   }
 
-  log.info(`[inline-review-signal-hit] skill=${signal.skillName} pattern=${signal.matchedPattern}`, {
-    skillName: signal.skillName, pattern: signal.matchedPattern,
-  });
+  if (signal.matchedPattern && !signal.matchedPattern.startsWith('llm-classifier')) {
+    log.info(`[inline-review-signal-hit] skill=${signal.skillName} pattern=${signal.matchedPattern}`, {
+      skillName: signal.skillName, pattern: signal.matchedPattern,
+    });
+  }
 
   // 4. 收集本 session 已用 skill 列表（Phase 5 优先级注入）
   const currentlyUsedSkills = store.listSkillsInSession(opts.sessionKey);

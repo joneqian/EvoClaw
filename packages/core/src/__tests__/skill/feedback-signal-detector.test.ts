@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { detectFeedbackSignal } from '../../skill/feedback-signal-detector.js';
+import { detectFeedbackSignal, detectFeedbackSignalViaLLM } from '../../skill/feedback-signal-detector.js';
 
 const NOW = new Date('2026-04-30T12:00:00Z');
 
@@ -173,5 +173,163 @@ describe('detectFeedbackSignal — 边界', () => {
     });
     expect(r.matchedPattern).toBeTruthy();
     expect(typeof r.matchedPattern).toBe('string');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// LLM 二级分类（regex 漏检兜底）
+// ════════════════════════════════════════════════════════════════════════
+
+describe('detectFeedbackSignalViaLLM — 命中场景', () => {
+  it('LLM 返回 negative=true → strong + skillName 锁定到候选 skill', async () => {
+    const llmCall = async () => JSON.stringify({
+      negative: true,
+      skillName: 'git-commit',
+      reason: '用户说太啰嗦',
+    });
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '能不能短一点',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('strong');
+    expect(r.skillName).toBe('git-commit');
+    expect(r.matchedPattern).toMatch(/^llm-classifier:/);
+    expect(r.matchedPattern).toContain('用户说太啰嗦');
+  });
+
+  it('regex 漏检的"这工具不对" 通过 LLM 命中', async () => {
+    const llmCall = async () => JSON.stringify({
+      negative: true,
+      skillName: 'git-commit',
+      reason: '直接说工具不对',
+    });
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '这工具不对',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('strong');
+  });
+
+  it('LLM 输出包含 markdown fence 也能解析', async () => {
+    const llmCall = async () => '```json\n' + JSON.stringify({
+      negative: true,
+      skillName: 'git-commit',
+      reason: '反话',
+    }) + '\n```';
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '行行行你最对',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('strong');
+  });
+
+  it('LLM 编了一个不在候选列表的 skillName → 兜底取最近一条', async () => {
+    const llmCall = async () => JSON.stringify({
+      negative: true,
+      skillName: 'hallucinated-skill',
+      reason: '幻觉',
+    });
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '完全不行',
+      recentSkillUsages: [usage('skill-a', 60), usage('skill-b', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('strong');
+    expect(r.skillName).toBe('skill-b'); // 候选列表里最后一条
+  });
+});
+
+describe('detectFeedbackSignalViaLLM — 不命中场景', () => {
+  it('LLM 返回 negative=false → none', async () => {
+    const llmCall = async () => JSON.stringify({
+      negative: false,
+      skillName: '',
+      reason: '中性提问',
+    });
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '帮我看一下天气',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('none');
+  });
+
+  it('LLM 抛异常 → 静默返回 none，不冒泡', async () => {
+    const llmCall = async (): Promise<string> => { throw new Error('boom'); };
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '完全不对',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('none');
+  });
+
+  it('LLM 返回非 JSON → 解析失败 → none', async () => {
+    const llmCall = async () => 'this is not json at all';
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '完全不对',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('none');
+  });
+
+  it('LLM 返回 negative 字段类型错 → none', async () => {
+    const llmCall = async () => JSON.stringify({
+      negative: 'maybe',  // 应该是 boolean
+      skillName: 'git-commit',
+      reason: '',
+    });
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '完全不对',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('none');
+  });
+
+  it('空消息 / 空 skill 列表 → none（不浪费 LLM 调用）', async () => {
+    let called = 0;
+    const llmCall = async () => { called++; return '{"negative":true,"skillName":"x","reason":""}'; };
+    const r1 = await detectFeedbackSignalViaLLM({
+      userMessage: '',
+      recentSkillUsages: [usage('git-commit', 30)],
+      now: NOW,
+      llmCall,
+    });
+    const r2 = await detectFeedbackSignalViaLLM({
+      userMessage: '完全不对',
+      recentSkillUsages: [],
+      now: NOW,
+      llmCall,
+    });
+    expect(r1.signal).toBe('none');
+    expect(r2.signal).toBe('none');
+    expect(called).toBe(0); // 都在窗口前预过滤掉，不消耗 LLM
+  });
+
+  it('skill 调用都超出窗口 → none（不消耗 LLM）', async () => {
+    let called = 0;
+    const llmCall = async () => { called++; return '{"negative":true,"skillName":"x","reason":""}'; };
+    const r = await detectFeedbackSignalViaLLM({
+      userMessage: '完全不对',
+      recentSkillUsages: [usage('git-commit', 600)], // 10min 前，超出 5min 窗口
+      windowMinutes: 5,
+      now: NOW,
+      llmCall,
+    });
+    expect(r.signal).toBe('none');
+    expect(called).toBe(0);
   });
 });

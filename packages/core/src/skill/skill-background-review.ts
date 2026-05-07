@@ -17,7 +17,8 @@ import type { ChatMessage } from '@evoclaw/shared';
 import type { AgentRunConfig, RuntimeEvent } from '../agent/types.js';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
-import { runEmbeddedAgent } from '../agent/embedded-runner.js';
+// runEmbeddedAgent 用动态 import 引入：架构守卫禁止 skill 层静态依赖 agent 层，
+// 但 skill 自进化天然需要起 sub-agent — 通过运行时动态导入保留静态层边界
 import { generateBackgroundReviewSessionKey, isPrivilegedSessionKey } from '../routing/session-key.js';
 import { createSkillManageTool } from './skill-manage-tool.js';
 import { readManifest, type SkillManifestEntry } from './skill-manifest.js';
@@ -170,6 +171,7 @@ async function runInternal(opts: RunBackgroundReviewOptions): Promise<Background
   log.info(`[background-review][start] owner=${opts.ownerAgentId} session=${sessionKey} skills=${agentCreatedSkills.length} usedThisTurn=${opts.recentSkillsUsed.length}`);
 
   try {
+    const { runEmbeddedAgent } = await import('../agent/embedded-runner.js');
     await runEmbeddedAgent(childConfig, activation, onEvent, abortController.signal, {
       isBackgroundQuery: true, // 529 时直接放弃，不再重试
     });

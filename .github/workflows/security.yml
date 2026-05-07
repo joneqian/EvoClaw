@@ -40,7 +40,7 @@ jobs:
         # detection-only 阶段我们依靠 GitHub Security tab + PR annotation 通知开发
         # 后续若需升级到"阻塞 critical 漏洞"，把这行删掉并配 --fail-on-vuln
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@v2
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.5
         with:
           scan-args: |-
             --format=sarif

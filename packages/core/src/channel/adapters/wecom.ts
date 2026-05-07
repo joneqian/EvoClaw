@@ -5,6 +5,7 @@ import type {
   MessageHandler,
 } from '../channel-adapter.js';
 import { normalizeWecomMessage } from '../message-normalizer.js';
+import { WecomApiError, withWecomRetry } from './wecom-retry.js';
 
 /** 企微凭证 */
 interface WecomCredentials {
@@ -113,33 +114,49 @@ export class WecomAdapter implements ChannelAdapter {
     }
   }
 
+  /**
+   * 发送消息
+   *
+   * 自动重试：
+   * - errcode=45033（接口调用频率过快）/ 45009（接口次数超限）/ -1（系统繁忙）
+   * - 网络瞬态错（ECONNRESET / 5xx 等）
+   * 其他业务错（access_token 失效 40014 等）一律不重试，由上层 refreshToken 后再调。
+   */
   async sendMessage(peerId: string, content: string, _chatType?: 'private' | 'group'): Promise<void> {
     if (!this.accessToken) {
       throw new Error('企微未连接');
     }
 
-    const res = await fetch(
-      `https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${this.accessToken}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          touser: peerId,
-          msgtype: 'text',
-          agentid: parseInt(this.credentials?.agentId ?? '0', 10),
-          text: { content },
-        }),
+    await withWecomRetry(
+      async () => {
+        const res = await fetch(
+          `https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${this.accessToken}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              touser: peerId,
+              msgtype: 'text',
+              agentid: parseInt(this.credentials?.agentId ?? '0', 10),
+              text: { content },
+            }),
+          },
+        );
+
+        if (!res.ok) {
+          // HTTP 5xx 由 looksLikeTransientNetworkError 兜底归到可重试
+          const err = new Error(`企微发送失败: HTTP ${res.status}`);
+          (err as unknown as Record<string, unknown>).status = res.status;
+          throw err;
+        }
+
+        const data = (await res.json()) as { errcode: number; errmsg: string };
+        if (data.errcode !== 0) {
+          throw new WecomApiError('sendMessage', data.errcode, data.errmsg);
+        }
       },
+      { label: 'sendMessage' },
     );
-
-    if (!res.ok) {
-      throw new Error(`企微发送失败: HTTP ${res.status}`);
-    }
-
-    const data = await res.json() as { errcode: number; errmsg: string };
-    if (data.errcode !== 0) {
-      throw new Error(`企微发送失败: ${data.errmsg}`);
-    }
   }
 
   getStatus(): ChannelStatusInfo {

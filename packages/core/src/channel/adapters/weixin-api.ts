@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import { createLogger } from '../../infrastructure/logger.js';
 
 import { redactUrl, redactBody } from './weixin-redact.js';
+import { WeixinApiError, withWeixinRetry } from './weixin-retry.js';
 import type {
   WeixinGetUpdatesResp,
   WeixinGetConfigResp,
@@ -151,12 +152,23 @@ export async function getUpdates(opts: WeixinApiOpts & {
   }
 }
 
-/** 发送消息 */
+/**
+ * 发送消息
+ *
+ * 自动重试：
+ * - iLink 业务码 ret=-1（系统/网络异常通用兜底）
+ * - 网络瞬态错（ECONNRESET / 5xx 等）
+ * 其他业务错（鉴权失败 / 参数错 / context_token 失效）一律不重试，避免雪崩。
+ *
+ * 重入安全：client_id 在 withWeixinRetry 闭包外生成一次，所有重试复用同一 id —
+ * 让服务端能识别"同一条逻辑消息"，避免因网络超时但服务端已收到造成的重复投递。
+ */
 export async function sendMessage(opts: WeixinApiOpts & {
   toUserId: string;
   contextToken?: string;
   itemList: WeixinMessageItem[];
 }): Promise<void> {
+  // client_id 在重试外层生成一次，重试复用 → 避免重复投递
   const msg: WeixinMessage = {
     from_user_id: '',
     to_user_id: opts.toUserId,
@@ -168,28 +180,36 @@ export async function sendMessage(opts: WeixinApiOpts & {
     item_list: opts.itemList,
   };
 
-  const rawText = await apiFetch({
-    baseUrl: opts.baseUrl,
-    endpoint: 'ilink/bot/sendmessage',
-    body: JSON.stringify({ msg, base_info: { channel_version: '2.0.1' } }),
-    token: opts.token,
-    timeoutMs: API_TIMEOUT_MS,
-    label: 'sendMessage',
-  });
+  await withWeixinRetry(
+    async () => {
+      const rawText = await apiFetch({
+        baseUrl: opts.baseUrl,
+        endpoint: 'ilink/bot/sendmessage',
+        body: JSON.stringify({ msg, base_info: { channel_version: '2.0.1' } }),
+        token: opts.token,
+        timeoutMs: API_TIMEOUT_MS,
+        label: 'sendMessage',
+      });
 
-  // 检查 iLink 业务错误码（HTTP 200 但 ret 非 0 表示投递失败）
-  if (rawText) {
-    try {
-      const resp = JSON.parse(rawText) as { ret?: number; errmsg?: string };
-      if (resp.ret !== undefined && resp.ret !== 0) {
-        log.warn(`sendMessage 业务错误: ret=${resp.ret} errmsg=${resp.errmsg ?? '未知'} toUserId=${opts.toUserId}`);
-        throw new Error(`iLink sendMessage 失败: ret=${resp.ret} ${resp.errmsg ?? ''}`);
+      // 检查 iLink 业务错误码（HTTP 200 但 ret 非 0 表示投递失败）
+      if (rawText) {
+        let resp: { ret?: number; errmsg?: string } | null = null;
+        try {
+          resp = JSON.parse(rawText) as { ret?: number; errmsg?: string };
+        } catch {
+          // JSON 解析失败：极少数边界（ret=0 但响应体格式异常）；保守不抛，让上层信号靠超时
+          resp = null;
+        }
+        if (resp && resp.ret !== undefined && resp.ret !== 0) {
+          log.warn(
+            `sendMessage 业务错误: ret=${resp.ret} errmsg=${resp.errmsg ?? '未知'} toUserId=${opts.toUserId}`,
+          );
+          throw new WeixinApiError('sendMessage', resp.ret, resp.errmsg ?? '');
+        }
       }
-    } catch (e) {
-      // JSON 解析失败时仅当 e 是我们自己抛的才重新抛出
-      if (e instanceof Error && e.message.startsWith('iLink sendMessage')) throw e;
-    }
-  }
+    },
+    { label: 'sendMessage' },
+  );
 }
 
 /** 发送文本消息 (便捷方法) */

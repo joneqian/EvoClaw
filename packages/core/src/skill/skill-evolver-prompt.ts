@@ -97,7 +97,7 @@ export function renderEvidenceAsPrompt(evidence: EvolutionEvidence, opts: Render
     lines.push(`- Avg duration: ${Math.round(evidence.stats.avgDurationMs)}ms`);
   }
   if (evidence.stats.positiveFeedbackCount > 0 || evidence.stats.negativeFeedbackCount > 0) {
-    lines.push(`- User feedback: 👍 ${evidence.stats.positiveFeedbackCount} / 👎 ${evidence.stats.negativeFeedbackCount}`);
+    lines.push(`- User feedback: 👍 ${evidence.stats.positiveFeedbackCount} / 👎 ${evidence.stats.negativeFeedbackCount} (含对话式抱怨)`);
   }
   lines.push('');
 

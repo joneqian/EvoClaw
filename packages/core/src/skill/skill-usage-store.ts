@@ -307,7 +307,11 @@ export class SkillUsageStore implements SkillTelemetrySink {
          AVG(duration_ms)                                    AS avgDurationMs,
          MAX(invoked_at)                                     AS lastInvokedAt,
          SUM(CASE WHEN user_feedback = 1 THEN 1 ELSE 0 END)  AS positiveFeedbackCount,
-         SUM(CASE WHEN user_feedback = -1 THEN 1 ELSE 0 END) AS negativeFeedbackCount
+         SUM(CASE
+               WHEN user_feedback = -1 THEN 1
+               WHEN conversational_feedback IS NOT NULL THEN 1
+               ELSE 0
+             END) AS negativeFeedbackCount
        FROM skill_usage
        WHERE ${where}`,
       ...params,

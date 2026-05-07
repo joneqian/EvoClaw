@@ -95,6 +95,32 @@ describe('SkillUsageStore', () => {
       expect(usage.aggregateStats('y', 7, AGENT_B).successRate).toBe(0);
     });
 
+    // M7 后修补：conversational_feedback 也算 negativeFeedbackCount（A 部分）
+    it('aggregateStats: 仅有 conversational_feedback 的记录算 1 个 negative', () => {
+      // 种 2 条 invocation，第 2 条挂上 conversational_feedback
+      usage.record({ skillName: 'cf', agentId: AGENT_A, sessionKey: SESSION_1, triggerType: 'invoke_skill', executionMode: 'inline', success: true });
+      usage.record({ skillName: 'cf', agentId: AGENT_A, sessionKey: SESSION_1, triggerType: 'invoke_skill', executionMode: 'inline', success: true });
+      usage.recordConversationalFeedback({ skillName: 'cf', sessionKey: SESSION_1, feedback: '完全不对' });
+
+      const stats = usage.aggregateStats('cf', 7, AGENT_A);
+      expect(stats.invocationCount).toBe(2);
+      expect(stats.positiveFeedbackCount).toBe(0);
+      expect(stats.negativeFeedbackCount).toBe(1);
+    });
+
+    it('aggregateStats: user_feedback=-1 + conversational_feedback 同行不重复算', () => {
+      usage.record({ skillName: 'mix', agentId: AGENT_A, sessionKey: SESSION_1, triggerType: 'invoke_skill', executionMode: 'inline', success: true });
+      // 同一行先打 conversational_feedback，再打 user_feedback=-1（应只算 1 个 negative）
+      usage.recordConversationalFeedback({ skillName: 'mix', sessionKey: SESSION_1, feedback: '不喜欢' });
+      const recent = usage.listRecent('mix', 10, AGENT_A);
+      expect(recent[0].id).toBeDefined();
+      usage.recordUserFeedback(recent[0].id, -1, '👎 同时也点了拇指向下');
+
+      const stats = usage.aggregateStats('mix', 7, AGENT_A);
+      expect(stats.invocationCount).toBe(1);
+      expect(stats.negativeFeedbackCount).toBe(1);
+    });
+
     it('listSkillsInSession 返回去重的 Skill 列表', () => {
       usage.record({ skillName: 'a', agentId: AGENT_A, sessionKey: SESSION_1, triggerType: 'invoke_skill', executionMode: 'inline', success: true });
       usage.record({ skillName: 'a', agentId: AGENT_A, sessionKey: SESSION_1, triggerType: 'invoke_skill', executionMode: 'inline', success: true });

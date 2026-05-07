@@ -29,6 +29,7 @@ import {
   type LLMCallFn,
 } from './skill-evolver.js';
 import type { SignalDetectionResult } from './feedback-signal-detector.js';
+import { getEntry as getLifecycleEntry } from './skill-curator-lifecycle.js';
 
 const log = createLogger('skill-evolver-inline');
 
@@ -94,6 +95,18 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
   }
 
   const skillName = opts.signal.skillName;
+
+  // 2.1 Pinned 短路：用户钉住的 skill 跳过 inline review，强保护用户判断
+  try {
+    const lifecycle = getLifecycleEntry(skillName, opts.userSkillsDir);
+    if (lifecycle.pinned) {
+      log.info('[inline-review-block] event=pinned', { skillName });
+      return { triggered: false, reason: 'skill pinned' };
+    }
+  } catch (err) {
+    // 读 lifecycle 失败不应阻断 inline review，记 warn 后继续
+    log.warn(`[inline-review] lifecycle read failed for ${skillName}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   // 3. 限速：同 skill 全局 10min 内最多 1 次
   const rateLimitMs = (opts.rateLimitMinutes ?? DEFAULT_RATE_LIMIT_MINUTES) * 60_000;

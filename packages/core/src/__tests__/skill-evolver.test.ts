@@ -13,6 +13,7 @@ import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { SkillUsageStore } from '../skill/skill-usage-store.js';
 import { runEvolutionCycle } from '../skill/skill-evolver.js';
 import { upsertManifestEntry, computeSkillHash } from '../skill/skill-manifest.js';
+import { setPinned } from '../skill/skill-curator-lifecycle.js';
 
 const MIGRATIONS_DIR = path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations');
 const MIGRATION_001 = fs.readFileSync(path.join(MIGRATIONS_DIR, '001_initial.sql'), 'utf-8');
@@ -305,5 +306,86 @@ describe('runEvolutionCycle', () => {
     });
     expect(result.created).toBe(1);
     expect(fs.existsSync(path.join(userSkillsDir, 'derived-skill', 'SKILL.md'))).toBe(true);
+  });
+
+  // ─── M7-Tier1 PR1: pinned 过滤 ──────────────────────────────────────
+
+  it('pinned candidate 不进入 LLM 决策', async () => {
+    writeSkill(userSkillsDir, 'pinned-target', 'old marker');
+    const content = fs.readFileSync(path.join(userSkillsDir, 'pinned-target', 'SKILL.md'), 'utf-8');
+    upsertManifestEntry(userSkillsDir, {
+      name: 'pinned-target', sha256: computeSkillHash(content),
+      source: 'agent-created', createdAt: '2026-01-01T00:00:00Z',
+    });
+    // 灌足够的失败 usage 让其本应进候选
+    feedUsages('pinned-target', 1, 5);
+    for (let i = 0; i < 3; i++) {
+      usageStore.saveSummary({
+        skillName: 'pinned-target', sessionKey: `s${i}`, agentId: AGENT,
+        summaryText: '失败', invocationCount: 2, successRate: 0.2,
+      });
+    }
+    // 钉住
+    setPinned('pinned-target', true, userSkillsDir);
+
+    const llmCall = vi.fn();
+    const result = await runEvolutionCycle({
+      db, userSkillsDir,
+      config: { enabled: true, cronSchedule: '* * * * *', minEvidenceCount: 1, successRateThreshold: 0.8, maxCandidatesPerRun: 5 },
+      llmCall,
+    });
+
+    expect(result.candidatesFound).toBe(0);
+    expect(llmCall).not.toHaveBeenCalled();
+
+    // SKILL.md 未变 + 无 evolution_log
+    const md = fs.readFileSync(path.join(userSkillsDir, 'pinned-target', 'SKILL.md'), 'utf-8');
+    expect(md).toContain('old marker');
+    const logs = db.all(
+      `SELECT id FROM skill_evolution_log WHERE skill_name = ?`,
+      'pinned-target',
+    );
+    expect(logs).toHaveLength(0);
+  });
+
+  it('混合候选只过滤 pinned 一项；其他正常进决策', async () => {
+    // 两个候选：pinned-A（钉）和 free-B（不钉）
+    for (const name of ['pinned-A', 'free-B']) {
+      writeSkill(userSkillsDir, name, `marker ${name}`);
+      const content = fs.readFileSync(path.join(userSkillsDir, name, 'SKILL.md'), 'utf-8');
+      upsertManifestEntry(userSkillsDir, {
+        name, sha256: computeSkillHash(content),
+        source: 'agent-created', createdAt: '2026-01-01T00:00:00Z',
+      });
+      feedUsages(name, 1, 5);
+      for (let i = 0; i < 3; i++) {
+        usageStore.saveSummary({
+          skillName: name, sessionKey: `${name}-s${i}`, agentId: AGENT,
+          summaryText: '失败', invocationCount: 2, successRate: 0.2,
+        });
+      }
+    }
+    setPinned('pinned-A', true, userSkillsDir);
+
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'skip',
+      reasoning: 'pass',
+    }));
+    const result = await runEvolutionCycle({
+      db, userSkillsDir,
+      config: { enabled: true, cronSchedule: '* * * * *', minEvidenceCount: 1, successRateThreshold: 0.8, maxCandidatesPerRun: 5 },
+      llmCall,
+    });
+
+    expect(result.candidatesFound).toBe(1);
+    expect(llmCall).toHaveBeenCalledTimes(1);
+
+    // 只有 free-B 进了 evolution_log
+    const allLogs = db.all<{ skillName: string }>(
+      `SELECT skill_name AS skillName FROM skill_evolution_log`,
+    );
+    const names = allLogs.map(r => r.skillName);
+    expect(names).toContain('free-B');
+    expect(names).not.toContain('pinned-A');
   });
 });

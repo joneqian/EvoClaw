@@ -31,6 +31,7 @@ import {
   type SkillLifecycleEntry,
 } from '../skill/skill-curator-lifecycle.js';
 import { readManifest } from '../skill/skill-manifest.js';
+import type { SkillCuratorScheduler } from '../skill/skill-curator-scheduler.js';
 
 const log = createLogger('curator-routes');
 
@@ -39,6 +40,8 @@ export interface CuratorRouteDeps {
   userSkillsDir?: string;
   /** 默认 interval 天数（用于 status 显示距离下次运行） */
   intervalDays?: number;
+  /** 注入的 scheduler getter（可选）— 注入后 /run endpoint 可用；用 getter 支持延迟初始化 */
+  getScheduler?: () => SkillCuratorScheduler | undefined;
 }
 
 export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
@@ -244,6 +247,40 @@ export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
       });
     } catch (err) {
       log.error(`[/prune] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  /**
+   * POST /run
+   * body: { dryRun?: boolean }
+   * 仅当注入了 scheduler 才可用（启动时 server 已配 LLM provider 才能跑）
+   */
+  const runSchema = z.object({
+    dryRun: z.coerce.boolean().optional(),
+  });
+  app.post('/run', async (c) => {
+    const scheduler = deps.getScheduler?.();
+    if (!scheduler) {
+      return c.json({ error: 'scheduler not configured (no LLM provider?)' }, 503);
+    }
+    let body: { dryRun?: boolean };
+    try {
+      const raw = await c.req.json().catch(() => ({}));
+      const parsed = runSchema.safeParse(raw);
+      if (!parsed.success) {
+        return c.json({ error: parsed.error.message }, 400);
+      }
+      body = parsed.data;
+    } catch {
+      body = {};
+    }
+
+    try {
+      const result = await scheduler.triggerNow({ dryRun: body.dryRun ?? false });
+      return c.json(result);
+    } catch (err) {
+      log.error(`[/run] error: ${err instanceof Error ? err.message : String(err)}`);
       return c.json({ error: 'internal error' }, 500);
     }
   });

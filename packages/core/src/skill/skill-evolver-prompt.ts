@@ -127,6 +127,19 @@ export function renderEvidenceAsPrompt(evidence: EvolutionEvidence, opts: Render
     lines.push('');
   }
 
+  // 对话式抱怨原文（C：来自 feedback-signal-detector 检出的 conversational_feedback）
+  // 让 LLM 看到"用户具体抱怨什么"而不仅是计数
+  if (evidence.recentConversationalFeedbacks.length > 0) {
+    lines.push('## Recent user complaints (verbatim, newest first)');
+    for (const fb of evidence.recentConversationalFeedbacks) {
+      const truncated = fb.length > 200 ? `${fb.slice(0, 200)}…` : fb;
+      lines.push(`- "${truncated}"`);
+    }
+    lines.push('');
+    lines.push('Use these complaints to inform what specific changes (if any) to make to the skill.');
+    lines.push('');
+  }
+
   lines.push('## Current SKILL.md');
   lines.push('<skill_md>');
   lines.push(evidence.currentSkillMd ?? '');

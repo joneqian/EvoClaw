@@ -275,7 +275,7 @@ export class SkillUsageStore implements SkillTelemetrySink {
          inline_review_triggered_at  AS inlineReviewTriggeredAt
        FROM skill_usage
        WHERE ${where}
-       ORDER BY invoked_at DESC
+       ORDER BY invoked_at DESC, id DESC
        LIMIT ?`,
       ...params,
     );

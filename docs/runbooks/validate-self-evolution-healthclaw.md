@@ -66,34 +66,47 @@ PORT=49152 TOKEN=<复制来的 token> ./scripts/validate-self-evolution.sh
 
 ### ② 5 分钟内回一句负反馈
 
-紧接着回一句负反馈，命中 `feedback-signal-detector` 的 ZH 模式：
+紧接着回一句**命中 `feedback-signal-detector` ZH 模式**的反馈（高精度白名单，不能随便说）：
 
-| 触发样本（任选） |
-|---|
-| 这工具不对 |
-| 这个 skill 又错了 |
-| 再来一次还是错的 |
-| 这玩意儿没用 |
-| 别用它了 |
+| Label | 命中关键词（regex） | 推荐示例 |
+|---|---|---|
+| reject-this-way | `不要这样` / `不要这么` / `别这样` / `别这么` | "别这样做" |
+| reject-repeat | `不要再` / `别再` | "不要再这样" |
+| told-you | `我说过` / `说过别` / `跟你说过` | "我说过别这样" |
+| you-again | `怎么又` / `你又` | "怎么又错了" / "你又错了" |
+| completely-wrong | `完全错` / `完全不对` / `搞砸` / `错离谱` / `不对劲` | "完全不对" / "搞砸了" |
+| dislike | `不喜欢` / `讨厌` | "不喜欢这个" |
+
+英文同理（`stop doing` / `don't do that` / `i told you` / `you keep` / `wrong again` / `i hate` / `not like that`）。
+
+⚠️  **不命中的常见错说法**（别用）：
+- "这工具不对" / "又错了" / "再来一次还是错的"（"不对" ≠ "完全不对"）
+- "这玩意儿没用" / "别用它了"（不在白名单）
 
 **关键**：不要再调用任何 skill，仅说一句反馈即可。
 
 ### ③ 等脚本观察
 
-回到脚本终端，看是否抓到：
+回到脚本终端，看是否抓到（实测耗时 ~85s，含 LLM 调用 5-6s）：
 
 ```
 ✅ 命中！抓到 inline review 记录
 📋 最新 inline review (id=...):
 {
-  "decision": "refine",
-  "reasoning": "...",
-  "previousLen": 234,
-  "newLen": 487,
-  "contentChanged": true
+  "decision": "skip",          ← 全新 fixture 无失败累计，evolver 选 skip 合理
+  "reasoning": "Success rate 100% with no failures...",
+  "durationMs": 5578,
+  ...
 }
-🎯 decision=refine，且 SKILL.md 内容真发生变化 — 自我进化通路 OK
+ℹ️  decision=skip — evolver 看历史 evidence 觉得没动手必要
 ```
+
+**decision 期望值**：
+- **skip / keep**：evolver 评估完决定不动 → 链路通了，但需要更多 evidence 才会 refine
+- **refine + contentChanged=true**：SKILL.md 真被改了，链路 + LLM 都信任
+- **空 / errorMessage 非空**：evolver 报错，看 errorMessage 排查
+
+要看 `refine` 路径，让 fixture 反复使用 + 多次失败/反馈累积 evidence 后再触发。本期演练只验证管线本身。
 
 ---
 

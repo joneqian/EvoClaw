@@ -1649,6 +1649,29 @@ async function main() {
   // 首行 JSON — Tauri sidecar.rs 解析此行获取连接信息，必须保持 console.log
   console.log(JSON.stringify({ port: actualPort, token }));
 
+  // 持久化运行时信息到 dataDir/.runtime-info.json（0600 仅当前用户可读）
+  // 给外部脚本（如 scripts/validate-self-evolution.sh）拿 port+token 用，
+  // dev:healthclaw 模式下 Tauri 吞掉首行 JSON 后用户终端看不到 token，
+  // 文件兜底解决。stop / SIGTERM 时通过 shutdown handler 删除。
+  const runtimeInfoPath = path.join(os.homedir(), DEFAULT_DATA_DIR, '.runtime-info.json');
+  try {
+    fs.mkdirSync(path.dirname(runtimeInfoPath), { recursive: true });
+    fs.writeFileSync(
+      runtimeInfoPath,
+      JSON.stringify({ port: actualPort, token, pid: process.pid, startedAt: new Date().toISOString() }, null, 2),
+      { mode: 0o600 },
+    );
+    registerShutdownHandler({
+      name: 'runtime-info-cleanup',
+      priority: 95,
+      handler: () => {
+        try { fs.unlinkSync(runtimeInfoPath); } catch { /* 忽略 */ }
+      },
+    });
+  } catch (err) {
+    log.warn(`runtime-info.json 写入失败（不影响启动）: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   profiler.checkpoint('http_listening');
   bootstrapState.transition('ready');
   bootstrapState.setServerInfo(actualPort, token);

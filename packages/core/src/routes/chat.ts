@@ -1404,6 +1404,33 @@ export function createChatRoutes(
           }
         })();
       }
+
+      // W: Background Skill Review（每 N=10 turn，跑独立 sub-agent 自主决策 patch/create skill）
+      if (store) {
+        void (async () => {
+          try {
+            const { shouldTriggerBackgroundReview } = await import('../skill/skill-background-review-trigger.js');
+            const trigger = shouldTriggerBackgroundReview({ agentId, sessionKey });
+            if (!trigger.shouldTrigger) return;
+            const { SkillUsageStore } = await import('../skill/skill-usage-store.js');
+            const usageStore = new SkillUsageStore(store);
+            const recentUsages = usageStore.listRecentInSession(sessionKey, 600);
+            const recentSkillsUsed = Array.from(new Set(recentUsages.map(u => u.skillName)));
+            const { runBackgroundReviewAgent } = await import('../skill/skill-background-review.js');
+            await runBackgroundReviewAgent({
+              parentConfig: runConfig,
+              parentSessionKey: sessionKey,
+              ownerAgentId: agentId,
+              recentMessages: messages,
+              recentSkillsUsed,
+              userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+              db: store,
+            });
+          } catch (err) {
+            log.warn('background review hook 异常（已吞）:', err);
+          }
+        })();
+      }
     };
 
     // Bun: 绕过 Hono 中间件的 Response 包装，使用原生 ReadableStream 确保逐条 flush

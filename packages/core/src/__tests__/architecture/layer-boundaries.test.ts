@@ -16,7 +16,9 @@ const LAYER_RULES: Record<string, string[]> = {
   memory: ['infrastructure', 'security'],
   provider: ['infrastructure', 'security'],
   rag: ['memory', 'infrastructure', 'security'],
-  skill: ['infrastructure', 'security'],
+  // skill 偶尔需要 routing/session-key 的纯函数工具（marker 检查、生成 sub-agent sessionKey），
+  // routing 自身只依赖 infrastructure/security，无循环依赖风险（与 agent 层规则同理）
+  skill: ['infrastructure', 'security', 'routing'],
   routing: ['infrastructure', 'security'],
   channel: ['infrastructure', 'security'],
   scheduler: ['agent', 'infrastructure', 'security'],

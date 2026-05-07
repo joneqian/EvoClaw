@@ -38,6 +38,13 @@ export interface EvolutionEvidence {
   stats: SkillAggregateStats;
   /** Phase 5: 本 session 是否已调用过该 skill（gatherEvidence 传入 currentSessionKey 时填充） */
   usedInCurrentSession: boolean;
+  /**
+   * 最近 ≤3 条用户对话式负反馈原文（去重，最新优先）。
+   * 来自 skill_usage.conversational_feedback 列，由
+   * feedback-signal-detector 命中后写入（参考 skill-evolver-inline.ts:116）。
+   * Evolver prompt 渲染成 verbatim section 让 LLM 看到"用户具体抱怨什么"。
+   */
+  recentConversationalFeedbacks: string[];
 }
 
 export interface GatherEvidenceOptions {
@@ -100,6 +107,20 @@ export function gatherEvidence(opts: GatherEvidenceOptions): EvolutionEvidence {
     }
   }
 
+  // 7. 最近 ≤3 条对话式负反馈原文（A+C：让 LLM 不只数数还能看具体抱怨）
+  // 用 `recent`（未做 success/failure 重排，按 invoked_at DESC）保证最新优先
+  // 去重 + cap 3（参考 plan 的 N=3 上限）
+  const recentConversationalFeedbacks: string[] = [];
+  const seen = new Set<string>();
+  for (const u of recent) {
+    const fb = u.conversationalFeedback;
+    if (!fb) continue;
+    if (seen.has(fb)) continue;
+    seen.add(fb);
+    recentConversationalFeedbacks.push(fb);
+    if (recentConversationalFeedbacks.length >= 3) break;
+  }
+
   return {
     skillName,
     currentSkillMd,
@@ -111,6 +132,7 @@ export function gatherEvidence(opts: GatherEvidenceOptions): EvolutionEvidence {
     recentUsages,
     stats,
     usedInCurrentSession,
+    recentConversationalFeedbacks,
   };
 }
 

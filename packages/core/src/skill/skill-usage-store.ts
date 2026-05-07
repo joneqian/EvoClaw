@@ -275,7 +275,7 @@ export class SkillUsageStore implements SkillTelemetrySink {
          inline_review_triggered_at  AS inlineReviewTriggeredAt
        FROM skill_usage
        WHERE ${where}
-       ORDER BY invoked_at DESC
+       ORDER BY invoked_at DESC, id DESC
        LIMIT ?`,
       ...params,
     );
@@ -307,7 +307,11 @@ export class SkillUsageStore implements SkillTelemetrySink {
          AVG(duration_ms)                                    AS avgDurationMs,
          MAX(invoked_at)                                     AS lastInvokedAt,
          SUM(CASE WHEN user_feedback = 1 THEN 1 ELSE 0 END)  AS positiveFeedbackCount,
-         SUM(CASE WHEN user_feedback = -1 THEN 1 ELSE 0 END) AS negativeFeedbackCount
+         SUM(CASE
+               WHEN user_feedback = -1 THEN 1
+               WHEN conversational_feedback IS NOT NULL THEN 1
+               ELSE 0
+             END) AS negativeFeedbackCount
        FROM skill_usage
        WHERE ${where}`,
       ...params,

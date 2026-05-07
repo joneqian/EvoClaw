@@ -28,6 +28,7 @@ function emptyEvidence(skillName = 'test'): EvolutionEvidence {
       negativeFeedbackCount: 0,
     },
     usedInCurrentSession: false,
+    recentConversationalFeedbacks: [],
   };
 }
 
@@ -136,5 +137,35 @@ describe('renderEvidenceAsPrompt', () => {
       inlineReviewTriggeredAt: null,
     }];
     expect(renderEvidenceAsPrompt(ev)).toContain('timeout');
+  });
+
+  // C：对话式抱怨原文渲染
+  describe('Recent user complaints section', () => {
+    it('数组空 → 不渲染该 section', () => {
+      const ev = emptyEvidence();
+      const out = renderEvidenceAsPrompt(ev);
+      expect(out).not.toContain('Recent user complaints');
+    });
+
+    it('数组非空 → 渲染 verbatim 引用 + 引导语', () => {
+      const ev = emptyEvidence();
+      ev.recentConversationalFeedbacks = ['完全不对', '搞砸了', '不喜欢这个'];
+      const out = renderEvidenceAsPrompt(ev);
+      expect(out).toContain('Recent user complaints (verbatim, newest first)');
+      expect(out).toContain('"完全不对"');
+      expect(out).toContain('"搞砸了"');
+      expect(out).toContain('"不喜欢这个"');
+      expect(out).toContain('Use these complaints to inform what specific changes');
+    });
+
+    it('单条文本 > 200 字时截断带 "…"', () => {
+      const ev = emptyEvidence();
+      const long = '不'.repeat(250);
+      ev.recentConversationalFeedbacks = [long];
+      const out = renderEvidenceAsPrompt(ev);
+      // 200 个 "不" + "…"（不应包含完整 250 个）
+      expect(out).toContain('不'.repeat(200) + '…');
+      expect(out).not.toContain('不'.repeat(250));
+    });
   });
 });

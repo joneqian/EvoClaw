@@ -31,6 +31,7 @@ import { createSkillRoutes } from './routes/skill.js';
 import { createSkillUsageRoutes } from './routes/skill-usage.js';
 import { createSkillEvolutionRoutes } from './routes/skill-evolution.js';
 import { createPeerImpressionRoutes } from './routes/peer-impression.js';
+import { createCuratorRoutes } from './routes/curator.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createProviderRoutes } from './routes/provider.js';
 import { createConfigRoutes } from './routes/config.js';
@@ -175,6 +176,8 @@ export interface CreateAppOptions {
   sessionSummarizer?: SessionSummarizer;
   /** Heartbeat 管理器（延迟获取，因 HTTP 就绪后才初始化） */
   getHeartbeatManager?: () => HeartbeatManager | undefined;
+  /** Curator 调度器（延迟获取，因 LLM provider 就绪后才初始化） */
+  getCuratorScheduler?: () => import('./skill/skill-curator-scheduler.js').SkillCuratorScheduler | undefined;
 }
 
 /** 创建 Hono 应用实例 */
@@ -420,6 +423,9 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/skill-usage', createSkillUsageRoutes({ db: store }));
     app.route('/skill-evolution', createSkillEvolutionRoutes({ db: store }));
     app.route('/peer-impressions', createPeerImpressionRoutes({ db: store }));
+    app.route('/curator', createCuratorRoutes({
+      getScheduler: options.getCuratorScheduler,
+    }));
     if (Feature.MCP && (options as any).mcpManager && (options as any).createMcpRoutes) {
       app.route('/mcp', (options as any).createMcpRoutes((options as any).mcpManager));
     }
@@ -1052,6 +1058,8 @@ async function main() {
 
   // HeartbeatManager — 延迟到 HTTP 服务就绪后初始化（需要实际 port）
   let heartbeatManager: HeartbeatManager | null = null;
+  // SkillCuratorScheduler — 延迟到 LLM provider 就绪后初始化
+  let curatorScheduler: import('./skill/skill-curator-scheduler.js').SkillCuratorScheduler | null = null;
 
   // --- 渠道命令系统 ---
   const commandRegistry = new CommandRegistry();
@@ -1569,6 +1577,7 @@ async function main() {
     channelStateRepo,
     sessionSummarizer,
     getHeartbeatManager: () => heartbeatManager ?? undefined,
+    getCuratorScheduler: () => curatorScheduler ?? undefined,
   });
 
   // 命令清单 API（M3-T3b）— 在 app 创建 + commandRegistry 就绪后挂载
@@ -1700,6 +1709,53 @@ async function main() {
     });
     skillEvolverScheduler.start();
     log.info('SkillEvolverScheduler 已启动（按 config.security.skillEvolver 触发）');
+
+    // M7 Curator: 跨 session umbrella consolidation（每 7 天 tick 一次）
+    const { SkillCuratorScheduler } = await import('./skill/skill-curator-scheduler.js');
+    curatorScheduler = new SkillCuratorScheduler({
+      db,
+      userSkillsDir: evolverUserSkillsDir,
+      intervalDays: 7,
+      // getRunConfig 运行时解析 active agent + LLM 凭据，构造最小 AgentRunConfig
+      getRunConfig: () => {
+        try {
+          const agents = agentManager.listAgents('active');
+          if (agents.length === 0) return undefined;
+          const agent = agents[0];
+          if (!agent) return undefined;
+          const provider = configManager.getDefaultProvider();
+          const modelId = configManager.getDefaultModelId();
+          const baseUrl = configManager.getDefaultBaseUrl();
+          const apiProtocol = configManager.getDefaultApi();
+          if (!provider || !modelId || !baseUrl) return undefined;
+          // resolveProviderCredential 同步取首个可用 key
+          const apiKey = configManager.resolveProviderCredential(provider).apiKey;
+          if (!apiKey) return undefined;
+          return {
+            agent,
+            systemPrompt: '',           // curator 自己 override
+            workspaceFiles: {},
+            workspacePath: agentManager.getAgentCwd(agent.id),
+            modelId,
+            provider,
+            apiKey,
+            baseUrl,
+            apiProtocol: apiProtocol as 'openai-completions' | 'anthropic-messages',
+          };
+        } catch {
+          return undefined;
+        }
+      },
+    });
+    curatorScheduler.start();
+    log.info('SkillCuratorScheduler 已启动（每 7 天 umbrella consolidation review）');
+
+    // 注册 shutdown handler — graceful stop curator scheduler
+    registerShutdownHandler({
+      name: 'curator-scheduler',
+      priority: 11,
+      handler: () => { curatorScheduler?.stop(); },
+    });
   }
 
   // 3a.1. API 预连接 — 提前建立 TCP+TLS，减少首次 LLM 调用延迟

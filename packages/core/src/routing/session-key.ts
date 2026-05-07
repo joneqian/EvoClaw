@@ -78,7 +78,20 @@ export function isBackgroundReviewSessionKey(key: SessionKey | string): boolean 
 }
 
 /**
- * 是否为受限会话（subagent / cron / background-review）
+ * 判断是否为 Skill Curator session（受限会话）
+ *
+ * marker 来源：skill-curator.ts 起跨 session 治理 sub-agent 时用
+ * `agent:curator:local:curator:<runId>` 格式。
+ *
+ * Curator 是独立于 background-review 的"跨 session"治理（每 7 天一次，识别
+ * 多 skill 重叠并合并 umbrella），跟 background-review 单 session 学习互斥。
+ */
+export function isCuratorSessionKey(key: SessionKey | string): boolean {
+  return key.includes(':curator:');
+}
+
+/**
+ * 是否为受限会话（subagent / cron / background-review / curator）
  *
  * 受限会话访问 workspace RESTRICTED 文件（BOOTSTRAP/HEARTBEAT/MEMORY 根文件）会被 fail-closed 拒绝。
  * 注意：heartbeat 不算受限——它仍是主 session 的延伸，需要读 HEARTBEAT.md 才能干活。
@@ -86,7 +99,15 @@ export function isBackgroundReviewSessionKey(key: SessionKey | string): boolean 
 export function isPrivilegedSessionKey(key: SessionKey | string): boolean {
   return !isSubAgentSessionKey(key)
     && !isCronSessionKey(key)
-    && !isBackgroundReviewSessionKey(key);
+    && !isBackgroundReviewSessionKey(key)
+    && !isCuratorSessionKey(key);
+}
+
+/** 生成 Curator 用的 sessionKey（含 marker，跨 session 治理触发） */
+export function generateCuratorSessionKey(): SessionKey {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `agent:curator:local:curator:${ts}-${rand}` as SessionKey;
 }
 
 /** 生成 Background Review 用的 sessionKey（含 marker，禁递归） */

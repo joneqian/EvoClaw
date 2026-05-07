@@ -18,6 +18,9 @@
 /** 信号强度。strong = 立即触发 inline review；none = 不触发。 */
 export type SignalStrength = 'strong' | 'none';
 
+/** LLM 信号分类调用函数（沿用现有 secondary LLM 签名）*/
+export type FeedbackLLMCallFn = (system: string, user: string) => Promise<string>;
+
 export interface SignalDetectionInput {
   /** 用户消息原文 */
   userMessage: string;
@@ -124,4 +127,139 @@ function pickMostRecentInWindow(
     }
   }
   return bestSkill;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// LLM 二级分类（regex 漏检的兜底，灵感来自 Hermes background-review LLM 路线）
+// ─────────────────────────────────────────────────────────────────────
+
+export interface LLMSignalDetectionInput extends SignalDetectionInput {
+  /** secondary LLM 调用函数（沿用 createSecondaryLLMCallFn 产物）*/
+  llmCall: FeedbackLLMCallFn;
+  /** 上一条 assistant 回复（可选，给 LLM 更多上下文判断"用户是否对这个回复不满"）*/
+  lastAssistantMessage?: string;
+  /** 单次 LLM 输出长度上限（防 prompt 超时），默认 200 char */
+  maxResponseLen?: number;
+}
+
+const LLM_SYSTEM_PROMPT = `你是一个用户反馈信号分类器。
+
+任务：判断用户当前消息**是否在表达对刚刚使用过的 skill 不满意**（包括：明确抱怨、暗示纠正、反话讽刺、要求重做、表达困惑、行为信号如重复发指令）。
+
+输出**严格 JSON**（不要 markdown 包裹）：
+{
+  "negative": true | false,
+  "skillName": "如果有不满针对哪个 skill 名（取自 recentSkills 列表），无关时填 \"\"",
+  "reason": "≤30 字解释为什么判断为是/否（中文）"
+}
+
+判断准则：
+- 用户**显式抱怨**（"完全不对" / "stop doing X" / "再来" / "不喜欢这样"）→ true
+- 用户**反话/讽刺**（"行行行你最对" / "厉害厉害"）→ true
+- 用户**要求改输出风格**（"短一点" / "别这么啰嗦" / "用列表"）→ true
+- 用户**纠正具体内容**（"这个数据错了" / "应该是 X 不是 Y"）→ true
+- 用户**重发同样指令**或换问法（一定程度暗示上次失败）→ true（标 reason 为"行为信号"）
+- 用户中性继续话题、提新问题、表达感谢 → false
+- 用户对 skill **无关的事**抱怨 → false（如抱怨网络慢、平台 bug）
+
+严格度：宁可漏检（false），不可过判（true）。当不确定，输出 false。`;
+
+/**
+ * LLM 二级负反馈检测（regex 漏检的兜底）。
+ *
+ * 流程：构造 prompt → 调 secondary LLM → JSON.parse 鲁棒解析 → 返回标准 SignalDetectionResult。
+ * 失败安全：解析失败 / LLM 抛错 → 返回 signal: 'none'，永不抛。
+ */
+export async function detectFeedbackSignalViaLLM(
+  input: LLMSignalDetectionInput,
+): Promise<SignalDetectionResult> {
+  const text = input.userMessage.trim();
+  if (!text) return { signal: 'none' };
+
+  // 时间窗约束（与 regex 版一致）
+  const now = input.now ?? new Date();
+  const windowMs = (input.windowMinutes ?? DEFAULT_WINDOW_MINUTES) * 60_000;
+  const cutoff = now.getTime() - windowMs;
+  const candidateSkills = input.recentSkillUsages
+    .filter(u => {
+      const ts = Date.parse(u.invokedAt);
+      return Number.isFinite(ts) && ts >= cutoff;
+    })
+    .map(u => u.skillName);
+  if (candidateSkills.length === 0) return { signal: 'none' };
+
+  const recentSkillsList = Array.from(new Set(candidateSkills)).join(', ');
+  const userMessage = text.slice(0, MAX_EVIDENCE_LEN);
+  const lastAssistant = input.lastAssistantMessage?.slice(0, 300) ?? '(无)';
+
+  const userPrompt = `[最近 ${input.windowMinutes ?? DEFAULT_WINDOW_MINUTES} 分钟内 invoke 过的 skill]
+${recentSkillsList}
+
+[上一条 assistant 回复（可能调用了上述某个 skill）]
+${lastAssistant}
+
+[用户当前消息]
+${userMessage}
+
+输出 JSON：`;
+
+  let llmRaw: string;
+  try {
+    llmRaw = await input.llmCall(LLM_SYSTEM_PROMPT, userPrompt);
+  } catch {
+    return { signal: 'none' };
+  }
+
+  const parsed = parseLLMOutput(llmRaw);
+  if (!parsed || !parsed.negative) return { signal: 'none' };
+
+  // skillName 必须在候选列表里（防 LLM 幻觉编一个新 skill 名）
+  const skillName = candidateSkills.find(s => s === parsed.skillName)
+    ?? candidateSkills[candidateSkills.length - 1]; // 兜底：取最近一条
+  if (!skillName) return { signal: 'none' };
+
+  return {
+    signal: 'strong',
+    skillName,
+    evidence: text.slice(0, MAX_EVIDENCE_LEN),
+    matchedPattern: `llm-classifier:${parsed.reason.slice(0, 30)}`,
+  };
+}
+
+/** 鲁棒解析 LLM JSON 输出（容忍 markdown fence + 前后 noise）*/
+function parseLLMOutput(raw: string): { negative: boolean; skillName: string; reason: string } | null {
+  if (!raw) return null;
+  // 优先匹配第一对花括号包裹的 JSON
+  const start = raw.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escaped) { escaped = false; continue; }
+    if (inString) {
+      if (ch === '\\') { escaped = true; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          const obj = JSON.parse(raw.slice(start, i + 1)) as Record<string, unknown>;
+          const negative = obj['negative'];
+          if (typeof negative !== 'boolean') return null;
+          const skillName = typeof obj['skillName'] === 'string' ? obj['skillName'] : '';
+          const reason = typeof obj['reason'] === 'string' ? obj['reason'] : '';
+          return { negative, skillName, reason };
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
 }

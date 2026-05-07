@@ -1396,6 +1396,8 @@ export function createChatRoutes(
               userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
               llmCall: llmCallForReview,
               model: configManager?.getConfig().security?.skillEvolver?.model,
+              // 把上一条 assistant 回复也带上，让 LLM 二级分类拿到更多上下文（regex 漏检兜底用）
+              ...(cleanResponse ? { lastAssistantMessage: cleanResponse.slice(0, 2000) } : {}),
             });
           } catch (err) {
             log.warn('inline review hook 异常（已吞）:', err);

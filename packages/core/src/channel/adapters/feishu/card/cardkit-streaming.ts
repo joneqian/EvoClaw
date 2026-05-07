@@ -16,7 +16,11 @@
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from '../outbound/index.js';
+import {
+  FeishuApiError,
+  resolveFeishuOutboundRoute,
+  sendByRoute,
+} from '../outbound/index.js';
 import { createLogger } from '../../../../infrastructure/logger.js';
 
 const log = createLogger('feishu-streaming');
@@ -119,19 +123,15 @@ export async function beginStreamingCard(
     throw new Error('CardKit 未返回 card_id');
   }
 
-  // 2) 发送卡片消息
-  const sendRes = (await client.im.v1.message.create({
-    params: { receive_id_type: inferReceiveIdType(chatType) },
-    data: {
-      receive_id: resolveFeishuReceiveId(peerId, chatType),
-      msg_type: 'interactive',
-      content: JSON.stringify({ type: 'card', data: { card_id: cardId } }),
-    },
-  })) as GenericSdkResponse & { data?: { message_id?: string } };
-  if (sendRes.code) {
-    throw new FeishuApiError('发送流式卡片', sendRes.code, sendRes.msg ?? '');
-  }
-  const messageId = sendRes.data?.message_id ?? null;
+  // 2) 发送卡片消息（支持 topic threading：含 thread anchor 时走 reply API）
+  const route = resolveFeishuOutboundRoute(peerId, chatType);
+  const { messageId: sentMessageId } = await sendByRoute(
+    client,
+    route,
+    'interactive',
+    JSON.stringify({ type: 'card', data: { card_id: cardId } }),
+  );
+  const messageId = sentMessageId ?? null;
 
   // 3) 返回 handle
   return createHandle(client, cardId, messageId, idleMs, placeholder, options.title);

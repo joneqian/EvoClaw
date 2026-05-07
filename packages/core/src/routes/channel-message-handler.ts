@@ -1033,6 +1033,36 @@ export async function handleChannelMessage(
     })();
   }
 
+  // 13.5 W: Background Skill Review（每 N=10 turn 触发，灵感来自 Hermes _spawn_background_review）
+  // fire-and-forget，跑独立 sub-agent 看完整对话历史 + agent-created skills，
+  // LLM 自主决策是否 patch / create skill。
+  if (store) {
+    void (async () => {
+      try {
+        const { shouldTriggerBackgroundReview } = await import('../skill/skill-background-review-trigger.js');
+        const trigger = shouldTriggerBackgroundReview({ agentId, sessionKey });
+        if (!trigger.shouldTrigger) return;
+        // 查最近本 session 用过的 skill
+        const { SkillUsageStore } = await import('../skill/skill-usage-store.js');
+        const usageStore = new SkillUsageStore(store);
+        const recentUsages = usageStore.listRecentInSession(sessionKey, 600); // 10min 窗口
+        const recentSkillsUsed = Array.from(new Set(recentUsages.map(u => u.skillName)));
+        const { runBackgroundReviewAgent } = await import('../skill/skill-background-review.js');
+        await runBackgroundReviewAgent({
+          parentConfig: runConfig,
+          parentSessionKey: sessionKey,
+          ownerAgentId: agentId,
+          recentMessages: messages,
+          recentSkillsUsed,
+          userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+          db: store,
+        });
+      } catch (err) {
+        log.warn('background review hook 异常（已吞）:', err);
+      }
+    })();
+  }
+
   // 14. M13 #3: 同事印象记忆（异步，不阻塞 Agent 主回复）
   // 仅在群聊且本轮入站是 peer Agent @ 时触发，对 fromPeerAgentId 提取/更新印象。
   if (store && secondaryLLMCall && chatType === 'group' && ctx.fromPeerAgentId) {

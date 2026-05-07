@@ -42,6 +42,7 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     name: 'Anthropic',
     defaultBaseUrl: 'https://api.anthropic.com/v1',
     api: 'anthropic-messages',
+    authStrategy: 'anthropic',
     models: [
       // 4.7 系列（最新旗舰，2026-Q2 发布；新 tokenizer，1M context，全 8 档思考）
       { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', contextWindow: 1000000, maxTokens: 32000, maxOutputLimit: 128000, input: ['text', 'image'], thinkingLevels: THINK_CLAUDE_47, defaultThinkLevel: 'adaptive', isDefault: true },
@@ -139,6 +140,7 @@ export const PROVIDER_CATALOG: readonly ProviderDefinition[] = [
     name: '智谱 GLM',
     defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     api: 'openai-completions',
+    authStrategy: 'glm-jwt',
     models: [
       // GLM-5.1 系列（最新旗舰，2026-Q2 GA，长程任务专精）
       // Source: https://z.ai/blog/glm-5.1

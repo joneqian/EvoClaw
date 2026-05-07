@@ -7,6 +7,11 @@
 
 import { createHmac } from 'node:crypto';
 import type { ModelConfig } from '@evoclaw/shared';
+import { createLogger } from '../infrastructure/logger.js';
+import { PROVIDER_CATALOG } from './extensions/catalog.js';
+import type { AuthStrategy } from './extensions/types.js';
+
+const log = createLogger('provider-auth');
 
 /** Provider API 返回的原始模型数据 */
 interface ApiModel {
@@ -198,10 +203,55 @@ function generateGlmToken(apiKey: string, expireSeconds = 300): string {
 }
 
 /**
- * 构建认证 headers
- * - Anthropic: x-api-key + anthropic-version
- * - 智谱 GLM: Bearer JWT (从 {id}.{secret} 格式 API Key 生成)
- * - 其他: Bearer apiKey
+ * 解析 provider 的认证策略
+ *
+ * 决策顺序（先显式后兜底）：
+ *   1) catalog 中显式声明 authStrategy → 直接用
+ *   2) 否则按 baseUrl 嗅探（向后兼容老配置 / 用户自填的 anthropic.com / bigmodel.cn）
+ *   3) 最终默认 → 'bearer'
+ *
+ * 嗅探规则：
+ *   - 包含 `anthropic.com` 或路径含 `/anthropic` → 'anthropic'（兼容 DeepSeek /anthropic 等）
+ *   - 包含 `bigmodel.cn` 且 apiKey 是 `{id}.{secret}` 格式 → 'glm-jwt'
+ *
+ * 暴露为 export 主要供测试与外部诊断使用，业务代码请用 buildAuthHeaders。
+ */
+export function resolveAuthStrategy(
+  apiKey: string,
+  providerId: string,
+  baseUrl: string,
+): AuthStrategy {
+  // 1) catalog 显式声明优先
+  const catalogProvider = PROVIDER_CATALOG.find((p) => p.id === providerId);
+  if (catalogProvider?.authStrategy) {
+    return catalogProvider.authStrategy;
+  }
+
+  // 2) baseUrl 兜底嗅探
+  if (
+    providerId === 'anthropic' ||
+    baseUrl.includes('anthropic.com') ||
+    /\/anthropic(\/|$)/.test(baseUrl)
+  ) {
+    return 'anthropic';
+  }
+  if ((providerId === 'glm' || baseUrl.includes('bigmodel.cn')) && isGlmApiKey(apiKey)) {
+    return 'glm-jwt';
+  }
+
+  // 3) 兜底
+  return 'bearer';
+}
+
+/**
+ * 构建认证 headers（按 catalog 声明的 AuthStrategy 分发）
+ *
+ * - 'anthropic'   : x-api-key + anthropic-version
+ * - 'bearer'      : Authorization: Bearer ${apiKey}
+ * - 'glm-jwt'     : Authorization: Bearer ${JWT(apiKey)}
+ * - { kind:'custom', customHeaders } : 函数返回的任意 header
+ *
+ * 详见 provider/extensions/types.ts AuthStrategy。
  */
 export function buildAuthHeaders(
   apiKey: string,
@@ -211,20 +261,29 @@ export function buildAuthHeaders(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  // 兼容 Anthropic 原生端点（anthropic.com）以及 Anthropic 协议兼容端点（如 DeepSeek /anthropic）
-  const isAnthropic =
-    providerId === 'anthropic' ||
-    baseUrl.includes('anthropic.com') ||
-    /\/anthropic(\/|$)/.test(baseUrl);
-  const isGlm = providerId === 'glm' || baseUrl.includes('bigmodel.cn');
 
-  if (isAnthropic) {
+  const strategy = resolveAuthStrategy(apiKey, providerId, baseUrl);
+  log.debug(
+    `[auth] resolved strategy=${typeof strategy === 'string' ? strategy : 'custom'} provider=${providerId}`,
+  );
+
+  if (strategy === 'anthropic') {
     headers['x-api-key'] = apiKey;
     headers['anthropic-version'] = '2023-06-01';
-  } else if (isGlm && isGlmApiKey(apiKey)) {
-    headers['Authorization'] = `Bearer ${generateGlmToken(apiKey)}`;
-  } else {
+  } else if (strategy === 'glm-jwt') {
+    // 防御：apiKey 不是 {id}.{secret} 格式时降级为普通 Bearer
+    // 兼容老用户配置 providerId=glm 但用了非 GLM 格式 key（自建网关代理等）
+    if (isGlmApiKey(apiKey)) {
+      headers['Authorization'] = `Bearer ${generateGlmToken(apiKey)}`;
+    } else {
+      log.warn('[auth] strategy=glm-jwt 但 apiKey 不是 {id}.{secret} 格式，降级 Bearer');
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+  } else if (strategy === 'bearer') {
     headers['Authorization'] = `Bearer ${apiKey}`;
+  } else {
+    // strategy.kind === 'custom'
+    Object.assign(headers, strategy.customHeaders(apiKey));
   }
   return headers;
 }

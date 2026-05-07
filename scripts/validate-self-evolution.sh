@@ -48,12 +48,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$PORT" || -z "$TOKEN" ]]; then
-  echo "❌ 必须提供 PORT 和 TOKEN（环境变量或 --port/--token 参数）" >&2
-  echo "    sidecar 启动后会在 stdout 首行输出 {\"port\":..,\"token\":..}" >&2
-  exit 2
-fi
-
 # 解析 brand 数据目录
 BRAND_JSON="$(dirname "$0")/../brands/$BRAND/brand.json"
 if [[ ! -f "$BRAND_JSON" ]]; then
@@ -62,6 +56,26 @@ if [[ ! -f "$BRAND_JSON" ]]; then
 fi
 DATA_DIR_NAME=$(jq -r .dataDir "$BRAND_JSON")
 DATA_DIR="$HOME/$DATA_DIR_NAME"
+
+# PORT/TOKEN 兜底：未指定时从 dataDir/.runtime-info.json 读
+# 这是 sidecar 启动时写的（含 0600 权限），dev:healthclaw 模式下 Tauri 吞了
+# stdout 首行 JSON 用户看不到 token，文件兜底解决。
+RUNTIME_INFO="$DATA_DIR/.runtime-info.json"
+if [[ -z "$PORT" || -z "$TOKEN" ]]; then
+  if [[ -f "$RUNTIME_INFO" ]]; then
+    [[ -z "$PORT" ]] && PORT=$(jq -r .port "$RUNTIME_INFO" 2>/dev/null || true)
+    [[ -z "$TOKEN" ]] && TOKEN=$(jq -r .token "$RUNTIME_INFO" 2>/dev/null || true)
+    echo "ℹ️  从 $RUNTIME_INFO 自动加载 PORT/TOKEN"
+  fi
+fi
+
+if [[ -z "$PORT" || -z "$TOKEN" ]]; then
+  echo "❌ 缺 PORT 或 TOKEN" >&2
+  echo "    优先方式 1: sidecar 启动后写入 $RUNTIME_INFO（自动读取）" >&2
+  echo "    优先方式 2: 手动指定 PORT=xxx TOKEN=yyy 或 --port/--token 参数" >&2
+  echo "    （sidecar 启动 stdout 首行会输出 {\"port\":..,\"token\":..}，仅 dev:core 模式可见）" >&2
+  exit 2
+fi
 SKILLS_DIR="$DATA_DIR/skills"
 SKILL_DIR="$SKILLS_DIR/$SKILL_NAME"
 BASE_URL="http://127.0.0.1:$PORT"

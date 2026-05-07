@@ -75,6 +75,19 @@ export interface AgentRunConfig {
    */
   graceCallEnabled?: boolean;
   /**
+   * 内层 query-loop 的 LLM 工具调用最大轮数（一次 attempt 内 LLM 多少轮 tool_call）。
+   *
+   * 默认值 50（embedded-runner-attempt.ts）。Background Skill Review / 其他需要严格控制
+   * 工具调用深度的 sub-agent 应显式设小值（参考 Hermes max_iterations=16）。
+   *
+   * 不设置 → 使用 50 默认值（保持向后兼容）。
+   *
+   * 注意：与外层 retry loop 的 `maxIterations`（embedded-runner-loop）是两个独立概念：
+   *   - 外层：provider failover / overload 退避的重试上限
+   *   - 内层（本字段）：单次 attempt 内 query-loop 的 LLM 工具循环上限
+   */
+  maxTurns?: number;
+  /**
    * 当前轮 user 消息的原生附件（IM 渠道下载到本地的图片 / 音视频等）
    *
    * 由 channel handler 在入站时填充；runner 会把 image 类附件作为

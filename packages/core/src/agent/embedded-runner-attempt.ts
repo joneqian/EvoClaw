@@ -465,7 +465,7 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     tools: kernelTools,
     systemPrompt,
     messages: kernelMessages,
-    maxTurns: 50,
+    maxTurns: config.maxTurns ?? 50,
     timeoutMs: RUNNER_WALLCLOCK_MS,
     onEvent: wrappedOnEvent,
     toolSafety,

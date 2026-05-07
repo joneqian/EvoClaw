@@ -138,6 +138,9 @@ async function runInternal(opts: RunBackgroundReviewOptions): Promise<Background
     sessionKey,
     // 后台任务无人值守：禁 grace call 避免预算耗尽时浪费 token
     graceCallEnabled: false,
+    // Hermes max_iterations=16 对应 EvoClaw 内层 maxTurns（query-loop 的 LLM 工具循环上限）
+    // 默认 50 太松，sub-agent 该严控 — 16 足够多轮 skill_view + skill_manage
+    maxTurns: opts.maxIterations ?? DEFAULT_MAX_ITERATIONS,
     // 沿用主语言（zh 默认）
     ...(opts.parentConfig.language ? { language: opts.parentConfig.language } : {}),
   };
@@ -159,10 +162,6 @@ async function runInternal(opts: RunBackgroundReviewOptions): Promise<Background
   };
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const _maxIter = opts.maxIterations ?? DEFAULT_MAX_ITERATIONS;
-  // 注：embedded-runner-loop 内部会按 providerCount 算 maxIterations，目前没暴露
-  // 直接覆盖的入口；本期靠 timeoutMs 兜底，未来再加 maxIterationsOverride 入参。
-  void _maxIter;
 
   const abortController = new AbortController();
   const timeoutHandle = setTimeout(() => abortController.abort(), timeoutMs);

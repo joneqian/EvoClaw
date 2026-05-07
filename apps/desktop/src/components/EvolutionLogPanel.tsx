@@ -6,7 +6,11 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 import { get, post } from '../lib/api';
+
+/** 大于此长度的 SKILL.md 默认折叠 diff，避免渲染卡顿（仍可点开） */
+const DIFF_LARGE_THRESHOLD = 50 * 1024; // 50KB
 
 type Decision = 'refine' | 'create' | 'skip';
 
@@ -280,25 +284,17 @@ export default function EvolutionLogPanel() {
           </div>
 
           {(detail.previousContent || detail.newContent) && (
-            <div>
-              <h4 className="text-sm font-semibold text-slate-800 mb-2">SKILL.md 变更</h4>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">改动前（previous_hash: {detail.previousHash?.slice(0, 8)}…）</div>
-                  <pre className="text-xs p-3 rounded-lg bg-rose-50 border border-rose-100 overflow-x-auto max-h-[400px] whitespace-pre-wrap">
-                    {detail.previousContent ?? '（无，create 前不存在）'}
-                  </pre>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">改动后（new_hash: {detail.newHash?.slice(0, 8)}…）</div>
-                  <pre className="text-xs p-3 rounded-lg bg-emerald-50 border border-emerald-100 overflow-x-auto max-h-[400px] whitespace-pre-wrap">
-                    {detail.newContent ?? '（无）'}
-                  </pre>
-                </div>
-              </div>
-            </div>
+            <ContentDiffSection
+              previousContent={detail.previousContent}
+              newContent={detail.newContent}
+              previousHash={detail.previousHash}
+              newHash={detail.newHash}
+              decision={detail.decision}
+            />
           )}
 
+          {/* M7-Tier1 PR1: HTML diff 区在 ContentDiffSection 里独立渲染 */}
+          {/* （raw before/after 文本已替换为 ReactDiffViewer + 大文件折叠兜底） */}
           {detail.patchesApplied && detail.decision === 'refine' && (
             <details className="p-3 rounded-lg bg-white border border-slate-200">
               <summary className="cursor-pointer text-xs text-slate-600">Patches 列表</summary>
@@ -314,6 +310,99 @@ export default function EvolutionLogPanel() {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ─── M7-Tier1 PR1: HTML diff 子组件 ─────────────────────────────────────────
+
+interface ContentDiffSectionProps {
+  previousContent: string | null;
+  newContent: string | null;
+  previousHash: string | null;
+  newHash: string | null;
+  decision: Decision;
+}
+
+/**
+ * SKILL.md 变更 diff 渲染。
+ * - decision='refine'：unified diff（带 split 切换）
+ * - decision='create'：仅显示 newContent（previous 必为 null）
+ * - 大文件（> 50KB）默认折叠 + 显示 raw before/after，避免 ReactDiffViewer 重渲染卡顿
+ */
+function ContentDiffSection({ previousContent, newContent, previousHash, newHash, decision }: ContentDiffSectionProps) {
+  const [splitView, setSplitView] = useState(false);
+  const [forceShowDiff, setForceShowDiff] = useState(false);
+
+  const oldText = previousContent ?? '';
+  const newText = newContent ?? '';
+  const isLarge = oldText.length > DIFF_LARGE_THRESHOLD || newText.length > DIFF_LARGE_THRESHOLD;
+  const showDiff = !isLarge || forceShowDiff;
+
+  // create 决策没有 previous，只展示 new 全量 + 语法高亮
+  if (decision === 'create') {
+    return (
+      <div>
+        <h4 className="text-sm font-semibold text-slate-800 mb-2">
+          新建 SKILL.md 内容（new_hash: <code className="font-mono text-xs">{newHash?.slice(0, 8) ?? '—'}</code>）
+        </h4>
+        <pre className="text-xs p-3 rounded-lg bg-emerald-50 border border-emerald-100 overflow-x-auto max-h-[480px] whitespace-pre-wrap">
+          {newContent ?? '（无）'}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-semibold text-slate-800">
+          SKILL.md 变更
+          <span className="ml-2 text-xs font-normal text-slate-400">
+            <code className="font-mono">{previousHash?.slice(0, 8) ?? '—'}</code>
+            {' → '}
+            <code className="font-mono">{newHash?.slice(0, 8) ?? '—'}</code>
+          </span>
+        </h4>
+        {showDiff && (
+          <button
+            onClick={() => setSplitView(v => !v)}
+            className="text-xs px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
+            title="切换并排 / 行内 diff 视图"
+          >
+            {splitView ? '行内 diff' : '并排 diff'}
+          </button>
+        )}
+      </div>
+
+      {showDiff ? (
+        <div className="border border-slate-200 rounded-lg overflow-hidden text-xs max-h-[480px] overflow-y-auto">
+          <ReactDiffViewer
+            oldValue={oldText}
+            newValue={newText}
+            splitView={splitView}
+            compareMethod={DiffMethod.LINES}
+            useDarkTheme={false}
+            hideLineNumbers={false}
+            showDiffOnly={true}
+            extraLinesSurroundingDiff={2}
+            leftTitle="改动前"
+            rightTitle="改动后"
+          />
+        </div>
+      ) : (
+        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+          <p className="mb-2">
+            <strong>大文件</strong>（previous {Math.round(oldText.length / 1024)} KB / new {Math.round(newText.length / 1024)} KB），diff 已折叠以避免渲染卡顿。
+          </p>
+          <button
+            onClick={() => setForceShowDiff(true)}
+            className="px-2 py-0.5 rounded bg-white border border-amber-300 text-amber-700 hover:bg-amber-100"
+          >
+            仍要展开 diff
+          </button>
+        </div>
+      )}
     </div>
   );
 }

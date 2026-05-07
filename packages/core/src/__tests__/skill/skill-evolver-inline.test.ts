@@ -18,6 +18,7 @@ import { SqliteStore } from '../../infrastructure/db/sqlite-store.js';
 import { SkillUsageStore } from '../../skill/skill-usage-store.js';
 import { upsertManifestEntry, computeSkillHash } from '../../skill/skill-manifest.js';
 import { runInlineReview } from '../../skill/skill-evolver-inline.js';
+import { setPinned } from '../../skill/skill-curator-lifecycle.js';
 import type { SignalDetectionResult } from '../../skill/feedback-signal-detector.js';
 
 const MIGRATIONS_DIR = path.join(import.meta.dirname, '..', '..', 'infrastructure', 'db', 'migrations');
@@ -292,5 +293,56 @@ describe('runInlineReview', () => {
     });
     expect(result.triggered).toBe(false);
     expect(llmCall).not.toHaveBeenCalled();
+  });
+
+  // ─── M7-Tier1 PR1: pinned 短路 ──────────────────────────────────────
+
+  it('pinned skill 强信号也不触发 inline review', async () => {
+    seedSkillWithManifest('arxiv', 'old marker');
+    seedUsage('arxiv', SESSION_KEY, false);
+    setPinned('arxiv', true, userSkillsDir);
+
+    const llmCall = vi.fn();
+    const result = await runInlineReview({
+      db, store, userSkillsDir,
+      signal: strongSignal('arxiv'),
+      sessionKey: SESSION_KEY,
+      llmCall,
+    });
+
+    expect(result.triggered).toBe(false);
+    expect(result.reason).toBe('skill pinned');
+    expect(llmCall).not.toHaveBeenCalled();
+
+    // 确认 SKILL.md 未被改动 + 没写 evolution_log
+    const md = fs.readFileSync(path.join(userSkillsDir, 'arxiv', 'SKILL.md'), 'utf-8');
+    expect(md).toContain('old marker');
+    const logs = db.all(
+      `SELECT id FROM skill_evolution_log WHERE skill_name = ?`,
+      'arxiv',
+    );
+    expect(logs).toHaveLength(0);
+  });
+
+  it('unpin 后强信号能再次触发', async () => {
+    seedSkillWithManifest('arxiv', 'old marker');
+    seedUsage('arxiv', SESSION_KEY, false);
+    setPinned('arxiv', true, userSkillsDir);
+    setPinned('arxiv', false, userSkillsDir);
+
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'skip',
+      reasoning: 'evidence weak',
+    }));
+
+    const result = await runInlineReview({
+      db, store, userSkillsDir,
+      signal: strongSignal('arxiv'),
+      sessionKey: SESSION_KEY,
+      llmCall,
+    });
+
+    expect(result.triggered).toBe(true);
+    expect(llmCall).toHaveBeenCalled();
   });
 });

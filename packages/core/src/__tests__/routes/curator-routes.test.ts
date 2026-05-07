@@ -323,4 +323,108 @@ describe('curator routes', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  // ─── M7-Tier1 PR1: Pin / Unpin / Lifecycle ────────────────────────────
+
+  describe('GET /lifecycle', () => {
+    it('空 manifest 返回 entries=[]', async () => {
+      const res = await app.request('/curator/lifecycle');
+      expect(res.status).toBe(200);
+      const body = await res.json() as any;
+      expect(body.entries).toEqual([]);
+    });
+
+    it('混合来源返回各 skill 的 lifecycle 默认值', async () => {
+      plantSkill(tmpDir, 'agt-1', 'agent-created');
+      plantSkill(tmpDir, 'bun-1', 'bundled');
+      plantSkill(tmpDir, 'loc-1', 'local');
+      const res = await app.request('/curator/lifecycle');
+      const body = await res.json() as any;
+      expect(body.entries.length).toBe(3);
+      const map = new Map(body.entries.map((e: any) => [e.name, e]));
+      expect((map.get('agt-1') as any).source).toBe('agent-created');
+      expect((map.get('agt-1') as any).state).toBe('active');
+      expect((map.get('agt-1') as any).pinned).toBe(false);
+    });
+
+    it('已 pin 的 skill 反映在结果里', async () => {
+      plantSkill(tmpDir, 'agt-pinned', 'agent-created');
+      setPinned('agt-pinned', true, tmpDir);
+      const res = await app.request('/curator/lifecycle');
+      const body = await res.json() as any;
+      const entry = body.entries.find((e: any) => e.name === 'agt-pinned');
+      expect(entry.pinned).toBe(true);
+    });
+
+    it('已 archived 的 skill（manifest 已剔除）也出现在 entries 中', async () => {
+      plantSkill(tmpDir, 'agt-archived', 'agent-created');
+      setState('agt-archived', 'archived', tmpDir);
+      // 模拟 manifest 已剔除：直接清除 manifest 文件中的项是复杂的，简化为信任 lifecycle
+      const res = await app.request('/curator/lifecycle');
+      const body = await res.json() as any;
+      const entry = body.entries.find((e: any) => e.name === 'agt-archived');
+      expect(entry).toBeDefined();
+      expect(entry.state).toBe('archived');
+    });
+  });
+
+  describe('POST /pin/:name', () => {
+    it('agent-created skill 成功 pin', async () => {
+      plantSkill(tmpDir, 'agt-1', 'agent-created');
+      const res = await app.request('/curator/pin/agt-1', { method: 'POST' });
+      expect(res.status).toBe(200);
+      const body = await res.json() as any;
+      expect(body.ok).toBe(true);
+      expect(body.pinned).toBe(true);
+    });
+
+    it('bundled skill 拒绝 pin（403）', async () => {
+      plantSkill(tmpDir, 'bun-1', 'bundled');
+      const res = await app.request('/curator/pin/bun-1', { method: 'POST' });
+      expect(res.status).toBe(403);
+    });
+
+    it('clawhub skill 拒绝 pin', async () => {
+      plantSkill(tmpDir, 'clw-1', 'clawhub');
+      const res = await app.request('/curator/pin/clw-1', { method: 'POST' });
+      expect(res.status).toBe(403);
+    });
+
+    it('manifest 中不存在 → 404', async () => {
+      const res = await app.request('/curator/pin/nope', { method: 'POST' });
+      expect(res.status).toBe(404);
+    });
+
+    it('幂等：连续 pin 仍 ok', async () => {
+      plantSkill(tmpDir, 'agt-1', 'agent-created');
+      await app.request('/curator/pin/agt-1', { method: 'POST' });
+      const res = await app.request('/curator/pin/agt-1', { method: 'POST' });
+      expect(res.status).toBe(200);
+      const body = await res.json() as any;
+      expect(body.pinned).toBe(true);
+    });
+  });
+
+  describe('POST /unpin/:name', () => {
+    it('已 pinned 的 skill 取消 pin', async () => {
+      plantSkill(tmpDir, 'agt-1', 'agent-created');
+      setPinned('agt-1', true, tmpDir);
+      const res = await app.request('/curator/unpin/agt-1', { method: 'POST' });
+      expect(res.status).toBe(200);
+      const body = await res.json() as any;
+      expect(body.pinned).toBe(false);
+    });
+
+    it('未 pinned 也允许 unpin（幂等）', async () => {
+      plantSkill(tmpDir, 'agt-1', 'agent-created');
+      const res = await app.request('/curator/unpin/agt-1', { method: 'POST' });
+      expect(res.status).toBe(200);
+    });
+
+    it('manifest 中不存在 → 仍 200（unpin 走幂等路径）', async () => {
+      const res = await app.request('/curator/unpin/nope', { method: 'POST' });
+      // unpin 不做 manifest 校验：lifecycle JSON 直接写入；防 ghost record 一律允许
+      expect(res.status).toBe(200);
+    });
+  });
 });

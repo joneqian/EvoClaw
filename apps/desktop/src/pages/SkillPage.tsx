@@ -247,6 +247,9 @@ export default function SkillPage() {
   /** M5 T3: Clawhub 来源 skill 的"有新版可用"信息，key = skill name */
   const [updatesMap, setUpdatesMap] = useState<Map<string, { slug: string; latestVersion: string }>>(new Map());
 
+  /** M7-Tier1 PR1: skill 生命周期信息（pinned + state），key = skill name */
+  const [lifecycleMap, setLifecycleMap] = useState<Map<string, { pinned: boolean; state: 'active' | 'stale' | 'archived'; source: string }>>(new Map());
+
   /** 加载已安装列表 */
   const fetchSkills = useCallback(async () => {
     setLoading(true);
@@ -256,6 +259,43 @@ export default function SkillPage() {
     } catch { setSkills([]); }
     finally { setLoading(false); }
   }, []);
+
+  /** M7-Tier1 PR1: 加载所有 skill 的 lifecycle 状态（含 pinned + state），失败静默 */
+  const fetchLifecycle = useCallback(async () => {
+    try {
+      const data = await get<{ entries: Array<{ name: string; source: string; state: 'active' | 'stale' | 'archived'; pinned: boolean; archivedAt: string | null }> }>('/curator/lifecycle');
+      const m = new Map<string, { pinned: boolean; state: 'active' | 'stale' | 'archived'; source: string }>();
+      for (const e of data.entries) {
+        m.set(e.name, { pinned: e.pinned, state: e.state, source: e.source });
+      }
+      setLifecycleMap(m);
+    } catch {
+      setLifecycleMap(new Map());
+    }
+  }, []);
+
+  /** M7-Tier1 PR1: 切换 pin 状态。仅 agent-created 来源可 pin，由后端再次校验。 */
+  const handleTogglePin = useCallback(async (name: string, nextPinned: boolean) => {
+    try {
+      const url = `/curator/${nextPinned ? 'pin' : 'unpin'}/${encodeURIComponent(name)}`;
+      await post(url, {});
+      // 乐观更新
+      setLifecycleMap((prev) => {
+        const next = new Map(prev);
+        const cur = next.get(name);
+        next.set(name, {
+          pinned: nextPinned,
+          state: cur?.state ?? 'active',
+          source: cur?.source ?? 'agent-created',
+        });
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : (nextPinned ? '钉住失败' : '取消钉住失败'));
+      // 失败时拉一次最新值兜底
+      void fetchLifecycle();
+    }
+  }, [fetchLifecycle]);
 
   /** M5 T3: 拉取 ClawHub 版本比对结果，失败静默 */
   const fetchUpdates = useCallback(async () => {
@@ -276,6 +316,8 @@ export default function SkillPage() {
   useEffect(() => { fetchStore(); }, [fetchStore]);
   // 加载我的技能后查一次更新（静默）
   useEffect(() => { if (skills.length > 0) fetchUpdates(); }, [skills, fetchUpdates]);
+  // M7-Tier1 PR1: 加载我的技能后顺带拉 lifecycle（pin + state），用于卡片渲染
+  useEffect(() => { if (skills.length > 0) fetchLifecycle(); }, [skills, fetchLifecycle]);
 
   // 切换分类/排序时重置页码
   useEffect(() => { setPage(1); }, [category, sortBy, keyword]);
@@ -716,15 +758,20 @@ export default function SkillPage() {
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3">
-              {skills.map((skill) => (
-                <MySkillCard
-                  key={skill.name}
-                  skill={skill}
-                  onUninstall={handleUninstall}
-                  updateInfo={updatesMap.get(skill.name)}
-                  onUpgrade={handleUpgrade}
-                />
-              ))}
+              {skills.map((skill) => {
+                const lifecycle = lifecycleMap.get(skill.name);
+                return (
+                  <MySkillCard
+                    key={skill.name}
+                    skill={skill}
+                    onUninstall={handleUninstall}
+                    updateInfo={updatesMap.get(skill.name)}
+                    onUpgrade={handleUpgrade}
+                    lifecycle={lifecycle}
+                    onTogglePin={handleTogglePin}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
@@ -788,11 +835,26 @@ interface MySkillCardProps {
   /** M5 T3: 有新版时的更新信息（仅 ClawHub 来源） */
   updateInfo?: { slug: string; latestVersion: string };
   onUpgrade?: (slug: string, latestVersion: string) => void;
+  /** M7-Tier1 PR1: 生命周期信息（pinned + state），undefined 时按默认 active/未 pin 渲染 */
+  lifecycle?: { pinned: boolean; state: 'active' | 'stale' | 'archived'; source: string };
+  /** M7-Tier1 PR1: 切换 pin 状态回调（仅 agent-created 来源会调用） */
+  onTogglePin?: (name: string, nextPinned: boolean) => void;
 }
 
-function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade }: MySkillCardProps) {
+function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onTogglePin }: MySkillCardProps) {
+  // M7-Tier1 PR1: pin 仅 agent-created 可用（manifest source 字段判定，与后端 source-gated 一致）
+  // 注：InstalledSkillItem.source 来自 discoverer（'local' 含义=用户目录），manifest 的 'agent-created'
+  // 走 lifecycle.source 字段保留，所以这里看 lifecycle.source 而不是 skill.source。
+  const canPin = lifecycle?.source === 'agent-created' && Boolean(onTogglePin);
+  const isPinned = lifecycle?.pinned ?? false;
+  const state = lifecycle?.state ?? 'active';
+
   return (
-    <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-all group">
+    <div className={`flex items-start gap-3 p-4 rounded-xl border transition-all group ${
+      isPinned
+        ? 'border-amber-200 bg-amber-50/30 hover:border-amber-300'
+        : 'border-slate-100 hover:border-slate-200'
+    }`}>
       <div className="w-11 h-11 rounded-xl bg-brand/5 flex items-center justify-center shrink-0">
         <svg className="w-5 h-5 text-brand-active" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -809,8 +871,32 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade }: MySkillCardP
           ) : (
             <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-medium shrink-0">需配置</span>
           )}
+          {/* M7-Tier1 PR1: 状态徽章（仅非 active 显示，减少视觉噪音） */}
+          {state === 'stale' && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700 font-medium shrink-0" title="超过 30 天未使用，下次 Curator 运行可能归档">陈旧</span>
+          )}
+          {state === 'archived' && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium shrink-0" title="已归档至 .archive/">已归档</span>
+          )}
+          {/* M7-Tier1 PR1: pin 切换按钮（仅 agent-created；pinned 时强显示，未 pinned 时 hover 显示） */}
+          {canPin && (
+            <button
+              onClick={() => onTogglePin?.(skill.name, !isPinned)}
+              className={`ml-auto shrink-0 transition-all ${
+                isPinned
+                  ? 'text-amber-600 hover:text-amber-800'
+                  : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-amber-500'
+              }`}
+              title={isPinned ? '已钉住：自动进化与归档跳过此 skill。点击取消' : '钉住：保护此 skill 不被自动进化或归档'}
+            >
+              <svg className="w-3.5 h-3.5" fill={isPinned ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 12V4M16 12l4 4-4 4M8 8h8M8 16h8M4 4h.01M4 20h.01" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 17v5M9 11l3-7 3 7H9z" />
+              </svg>
+            </button>
+          )}
           <button onClick={() => onUninstall(skill.name)}
-            className="ml-auto shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all" title="卸载">
+            className={`shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all ${canPin ? '' : 'ml-auto'}`} title="卸载">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>

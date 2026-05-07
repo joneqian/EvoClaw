@@ -15,6 +15,7 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
     "react": "^19.2.6",
+    "react-diff-viewer-continued": "^4.2.2",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.6.0",
     "zustand": "^5.0.0"

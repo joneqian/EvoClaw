@@ -9,6 +9,11 @@
  *   POST /restore/:name          从 .archive/ 恢复
  *   POST /prune                  批量归档：body { days, dryRun }
  *
+ * Endpoints（M7-Tier1 PR1）：
+ *   GET  /lifecycle              批量返回所有 lifecycle entries（前端列表渲染状态徽章 + pin 标志）
+ *   POST /pin/:name              钉住单个 skill：跳过 evolver / inline review / curator 自动归档
+ *   POST /unpin/:name            取消钉住
+ *
  * /run 留给 commit 5 跟 scheduler 一起做（需要 LLM provider 解析）
  */
 
@@ -26,6 +31,7 @@ import {
 import {
   listLifecycleEntries,
   getEntry,
+  setPinned,
   archiveSkill,
   restoreSkill,
   type SkillLifecycleEntry,
@@ -159,6 +165,100 @@ export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
       return c.json({ ok: true, archivedPath: r.archivedPath, message: r.message });
     } catch (err) {
       log.error(`[/archive] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  /**
+   * GET /lifecycle
+   * 批量返回所有 agent-created skill 的 lifecycle entries（含未持久化条目以默认 active 兜底）。
+   * 前端列表渲染 pin 按钮 + 状态徽章用一次拉齐。
+   */
+  app.get('/lifecycle', (c) => {
+    try {
+      const manifest = readManifest(userSkillsDir);
+      const persisted = listLifecycleEntries(userSkillsDir);
+      const persistedByName = new Map(persisted.map(e => [e.name, e] as const));
+
+      const out: Array<{
+        name: string;
+        source: string;
+        state: SkillLifecycleEntry['state'];
+        pinned: boolean;
+        archivedAt: string | null;
+        updatedAt: string;
+      }> = [];
+
+      for (const entry of manifest.values()) {
+        // 仅 agent-created 进 lifecycle 治理范围；其他来源默认 active 但不暴露 pin 操作
+        const lc = persistedByName.get(entry.name);
+        out.push({
+          name: entry.name,
+          source: entry.source,
+          state: lc?.state ?? 'active',
+          pinned: lc?.pinned ?? false,
+          archivedAt: lc?.archivedAt ?? null,
+          updatedAt: lc?.updatedAt ?? entry.createdAt,
+        });
+      }
+
+      // 也包含已 archived 的（manifest 里可能已被剔除，从 lifecycle JSON 里补上）
+      for (const lc of persisted) {
+        if (lc.state === 'archived' && !manifest.has(lc.name)) {
+          out.push({
+            name: lc.name,
+            source: 'agent-created',
+            state: 'archived',
+            pinned: lc.pinned,
+            archivedAt: lc.archivedAt,
+            updatedAt: lc.updatedAt,
+          });
+        }
+      }
+
+      return c.json({ entries: out });
+    } catch (err) {
+      log.error(`[/lifecycle] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  /**
+   * POST /pin/:name
+   * 钉住单个 skill：evolver/inline review/curator 自动归档全部跳过该 skill。
+   * 仅 agent-created 来源可 pin（其他来源由用户/系统直接管理，不需要 pin 保护）。
+   */
+  app.post('/pin/:name', (c) => {
+    const name = c.req.param('name');
+    try {
+      const manifest = readManifest(userSkillsDir);
+      const entry = manifest.get(name);
+      if (!entry) {
+        return c.json({ error: `skill '${name}' not found in manifest` }, 404);
+      }
+      if (entry.source !== 'agent-created') {
+        return c.json({
+          error: `refuse to pin: source=${entry.source} (only agent-created allowed)`,
+        }, 403);
+      }
+      const next = setPinned(name, true, userSkillsDir);
+      log.info(`[/pin] ${name} pinned=true`);
+      return c.json({ ok: true, name, pinned: next.pinned, state: next.state });
+    } catch (err) {
+      log.error(`[/pin] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  /** POST /unpin/:name — 反向操作；非 pinned 也允许（幂等） */
+  app.post('/unpin/:name', (c) => {
+    const name = c.req.param('name');
+    try {
+      const next = setPinned(name, false, userSkillsDir);
+      log.info(`[/unpin] ${name} pinned=false`);
+      return c.json({ ok: true, name, pinned: next.pinned, state: next.state });
+    } catch (err) {
+      log.error(`[/unpin] error: ${err instanceof Error ? err.message : String(err)}`);
       return c.json({ error: 'internal error' }, 500);
     }
   });

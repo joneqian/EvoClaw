@@ -28,6 +28,7 @@ import { EVOLVER_SYSTEM_PROMPT, parseEvolverResponse, renderEvidenceAsPrompt, ty
 import { scanSkillMd, SKILL_NAME_REGEX } from './skill-content-scanner.js';
 import { createSkillInternal, editSkillInternal } from './skill-manage-tool.js';
 import { computeSkillHash, upsertManifestEntry } from './skill-manifest.js';
+import { listLifecycleEntries } from './skill-curator-lifecycle.js';
 
 const log = createLogger('skill-evolver');
 
@@ -81,14 +82,22 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
   const store = new SkillUsageStore(db);
 
   // 1. 查候选
-  const candidates = findCandidates(db, {
+  const rawCandidates = findCandidates(db, {
     lookbackDays,
     minInvocationsForCandidate,
     successRateThreshold: config.successRateThreshold,
     limit: config.maxCandidatesPerRun,
   });
+
+  // 1.1 过滤掉 pinned skill（用户钉住的 skill 跳过自动进化，由 SkillCurator + 手动操作管理）
+  const pinnedSet = collectPinnedSkillNames(userSkillsDir);
+  const candidates = rawCandidates.filter(name => !pinnedSet.has(name));
+  const skippedPinnedCount = rawCandidates.length - candidates.length;
+  if (skippedPinnedCount > 0) {
+    log.info(`evolver skipped ${skippedPinnedCount} pinned skill(s)`);
+  }
   result.candidatesFound = candidates.length;
-  log.info(`evolution cycle start: ${candidates.length} candidates`);
+  log.info(`evolution cycle start: ${candidates.length} candidates (raw=${rawCandidates.length}, pinnedSkipped=${skippedPinnedCount})`);
 
   // 2. 熔断器
   let llmConsecutiveFailures = 0;
@@ -173,6 +182,23 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
 // ═══════════════════════════════════════════════════════════════════════════
 // Candidates
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 读 lifecycle JSON sidecar，返回所有 pinned 的 skill 名（Set 利于 O(1) 过滤）。
+ * 文件不存在或解析失败均返回空集（永不抛异常）。
+ */
+function collectPinnedSkillNames(userSkillsDir: string): Set<string> {
+  try {
+    return new Set(
+      listLifecycleEntries(userSkillsDir)
+        .filter(e => e.pinned)
+        .map(e => e.name),
+    );
+  } catch (err) {
+    log.warn(`collectPinnedSkillNames failed: ${err instanceof Error ? err.message : String(err)}`);
+    return new Set();
+  }
+}
 
 interface FindCandidatesOpts {
   lookbackDays: number;

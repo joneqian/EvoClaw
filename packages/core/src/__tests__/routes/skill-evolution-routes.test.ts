@@ -345,4 +345,170 @@ describe('skill-evolution routes', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // ─── M7-Tier1 PR3: /config + /run-now ─────────────────────────────
+
+  describe('GET /config', () => {
+    it('未注入 ConfigManager 时返回 schema 默认值', async () => {
+      const res = await app.request('/skill-evolution/config');
+      expect(res.status).toBe(200);
+      const body = await res.json() as { evolver: Record<string, unknown> };
+      expect(body.evolver).toEqual({
+        enabled: false,
+        cronSchedule: '0 3 * * *',
+        minEvidenceCount: 2,
+        successRateThreshold: 0.8,
+        maxCandidatesPerRun: 5,
+      });
+    });
+
+    it('注入 ConfigManager 时返回当前值（部分缺失字段用 schema 默认填充）', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: { skillEvolver: { enabled: true, cronSchedule: '*/5 * * * *' } } }),
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/skill-evolution/config');
+      const body = await res.json() as { evolver: { enabled: boolean; cronSchedule: string; minEvidenceCount: number } };
+      expect(body.evolver.enabled).toBe(true);
+      expect(body.evolver.cronSchedule).toBe('*/5 * * * *');
+      // 缺失字段保留 schema 默认
+      expect(body.evolver.minEvidenceCount).toBe(2);
+    });
+  });
+
+  describe('POST /config', () => {
+    it('未注入 ConfigManager → 503', async () => {
+      const res = await app.request('/skill-evolution/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evolver: { enabled: true } }),
+      });
+      expect(res.status).toBe(503);
+    });
+
+    it('合法配置写入并触发 updateConfig', async () => {
+      let updated: unknown = null;
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: (next: unknown) => { updated = next; },
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/skill-evolution/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evolver: { enabled: true, cronSchedule: '0 4 * * *' } }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { ok: boolean; evolver: { cronSchedule: string } };
+      expect(body.ok).toBe(true);
+      expect(body.evolver.cronSchedule).toBe('0 4 * * *');
+      expect((updated as { security: { skillEvolver: { enabled: boolean } } }).security.skillEvolver.enabled).toBe(true);
+    });
+
+    it('非法 cronSchedule → 400', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: () => { /* noop */ },
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/skill-evolution/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evolver: { enabled: true, cronSchedule: 'not a cron' } }),
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error: string };
+      expect(body.error).toContain('cronSchedule');
+    });
+
+    it('阈值越界 → 400（schema 校验）', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: () => { /* noop */ },
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/skill-evolution/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ evolver: { successRateThreshold: 1.5 } }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('空 body → 400', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: () => { /* noop */ },
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/skill-evolution/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json',
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('POST /run-now', () => {
+    it('无 scheduler 注入 → 503', async () => {
+      const res = await app.request('/skill-evolution/run-now', { method: 'POST' });
+      expect(res.status).toBe(503);
+    });
+
+    it('有 scheduler 注入 → 调 triggerNow + 200', async () => {
+      let triggerCount = 0;
+      const fakeScheduler = {
+        triggerNow: async () => { triggerCount++; },
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        getScheduler: () => fakeScheduler as any,
+      }));
+      const res = await app2.request('/skill-evolution/run-now', { method: 'POST' });
+      expect(res.status).toBe(200);
+      expect(triggerCount).toBe(1);
+    });
+
+    it('triggerNow 抛错 → 500', async () => {
+      const fakeScheduler = {
+        triggerNow: async () => { throw new Error('boom'); },
+      };
+      const app2 = new Hono();
+      app2.route('/skill-evolution', createSkillEvolutionRoutes({
+        db, userSkillsDir: skillsDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        getScheduler: () => fakeScheduler as any,
+      }));
+      const res = await app2.request('/skill-evolution/run-now', { method: 'POST' });
+      expect(res.status).toBe(500);
+    });
+  });
 });

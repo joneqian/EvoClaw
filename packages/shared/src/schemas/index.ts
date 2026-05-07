@@ -22,6 +22,7 @@ export {
   extensionSecurityPolicySchema,
   nameSecurityPolicySchema,
   safeParseSecurityPolicy,
+  skillEvolverSchema,
 } from './security.schema.js';
 
 export {

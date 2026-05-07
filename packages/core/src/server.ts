@@ -180,6 +180,8 @@ export interface CreateAppOptions {
   getHeartbeatManager?: () => HeartbeatManager | undefined;
   /** Curator 调度器（延迟获取，因 LLM provider 就绪后才初始化） */
   getCuratorScheduler?: () => import('./skill/skill-curator-scheduler.js').SkillCuratorScheduler | undefined;
+  /** Evolver 调度器（延迟获取，POST /skill-evolution/run-now 用） */
+  getSkillEvolverScheduler?: () => import('./skill/skill-evolver-scheduler.js').SkillEvolverScheduler | undefined;
 }
 
 /** 创建 Hono 应用实例 */
@@ -423,7 +425,11 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       getPolicyOverride: () => configManager?.getConfig()?.security?.skillInstallPolicy,
     }));
     app.route('/skill-usage', createSkillUsageRoutes({ db: store }));
-    app.route('/skill-evolution', createSkillEvolutionRoutes({ db: store }));
+    app.route('/skill-evolution', createSkillEvolutionRoutes({
+      db: store,
+      ...(configManager ? { configManager } : {}),
+      ...(options.getSkillEvolverScheduler ? { getScheduler: options.getSkillEvolverScheduler } : {}),
+    }));
     app.route('/peer-impressions', createPeerImpressionRoutes({ db: store }));
     app.route('/curator', createCuratorRoutes({
       getScheduler: options.getCuratorScheduler,
@@ -1600,6 +1606,7 @@ async function main() {
     sessionSummarizer,
     getHeartbeatManager: () => heartbeatManager ?? undefined,
     getCuratorScheduler: () => curatorScheduler ?? undefined,
+    getSkillEvolverScheduler: () => skillEvolverScheduler ?? undefined,
   });
 
   // 命令清单 API（M3-T3b）— 在 app 创建 + commandRegistry 就绪后挂载

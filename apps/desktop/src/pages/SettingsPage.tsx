@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BRAND_NAME } from '@evoclaw/shared';
-import { get, put } from '../lib/api';
+import { get, post, put } from '../lib/api';
 import Select from '../components/Select';
 import MCPServersPanel from '../components/MCPServersPanel';
 import ApiDocsPanel from '../components/ApiDocsPanel';
@@ -8,12 +8,13 @@ import ProfileManager from '../components/ProfileManager';
 
 // ─── Tab 定义 ───
 
-type SettingsTab = 'general' | 'env' | 'mcp' | 'api-docs' | 'about';
+type SettingsTab = 'general' | 'env' | 'mcp' | 'skill-evolver' | 'api-docs' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: '通用' },
   { key: 'env', label: '环境变量' },
   { key: 'mcp', label: 'MCP 服务器' },
+  { key: 'skill-evolver', label: 'Skill 自进化' },
   { key: 'api-docs', label: 'API 文档' },
   { key: 'about', label: '关于' },
 ];
@@ -428,6 +429,311 @@ function EnvVarsTab() {
 
 // ─── 关于 Tab ───
 
+// ─── M7-Tier1 PR3: Skill 自进化 Tab ────────────────────────────────────
+
+interface EvolverConfig {
+  enabled: boolean;
+  cronSchedule: string;
+  minEvidenceCount: number;
+  successRateThreshold: number;
+  maxCandidatesPerRun: number;
+  model?: string;
+}
+
+interface CuratorStatus {
+  state: { paused: boolean; lastRunAt: string | null; lastRunSummary: string | null; runCount: number };
+  nextRun: { shouldRun: boolean; reason: string };
+  agentCreatedStateCounts: { active: number; stale: number; archived: number };
+  pinnedCount: number;
+  intervalDays: number;
+}
+
+function SkillEvolverTab() {
+  const [original, setOriginal] = useState<EvolverConfig | null>(null);
+  const [draft, setDraft] = useState<EvolverConfig | null>(null);
+  const [curator, setCurator] = useState<CuratorStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState<'evolver' | 'curator' | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [evRes, curRes] = await Promise.all([
+        get<{ evolver: EvolverConfig }>('/skill-evolution/config'),
+        get<CuratorStatus>('/curator/status'),
+      ]);
+      setOriginal(evRes.evolver);
+      setDraft(evRes.evolver);
+      setCurator(curRes);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '加载配置失败', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { void loadAll(); }, [loadAll]);
+
+  const isDirty = original !== null && draft !== null
+    && JSON.stringify(original) !== JSON.stringify(draft);
+
+  const handleSave = useCallback(async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const res = await post<{ ok: boolean; evolver: EvolverConfig }>(
+        '/skill-evolution/config',
+        { evolver: draft },
+      );
+      setOriginal(res.evolver);
+      setDraft(res.evolver);
+      showToast('已保存（scheduler 自动热重载）', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, showToast]);
+
+  const handleRunEvolver = useCallback(async () => {
+    setRunning('evolver');
+    try {
+      await post('/skill-evolution/run-now', {});
+      showToast('Evolver 已触发（异步运行，请查看进化历史）', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '触发失败', 'error');
+    } finally {
+      setRunning(null);
+    }
+  }, [showToast]);
+
+  const handleRunCurator = useCallback(async () => {
+    setRunning('curator');
+    try {
+      await post('/curator/run', {});
+      showToast('Curator 已触发（后台运行，可能需 30s+）', 'success');
+      await loadAll();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '触发失败', 'error');
+    } finally {
+      setRunning(null);
+    }
+  }, [showToast, loadAll]);
+
+  const handleToggleCuratorPause = useCallback(async () => {
+    if (!curator) return;
+    const target = curator.state.paused ? 'resume' : 'pause';
+    try {
+      await post(`/curator/${target}`, {});
+      await loadAll();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '切换失败', 'error');
+    }
+  }, [curator, loadAll, showToast]);
+
+  if (loading || !draft || !original) {
+    return <div className="text-center py-20 text-slate-400 text-sm">加载中…</div>;
+  }
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      {toast && (
+        <div className={`px-4 py-2 rounded-lg text-sm ${
+          toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+        }`}>{toast.message}</div>
+      )}
+
+      {/* ─── Evolver 子区 ─── */}
+      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+        <header className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Cron Evolver</h3>
+            <p className="text-xs text-slate-500 mt-0.5">按定时调度对失败率高的 skill 自动微调（可审计 + 可回滚）</p>
+          </div>
+          <button
+            onClick={handleRunEvolver}
+            disabled={running !== null}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {running === 'evolver' ? '触发中…' : '立即触发'}
+          </button>
+        </header>
+
+        <div className="space-y-3">
+          <Field label="启用" hint="关闭后 cron 不会触发任何决策（inline review 走另一通道，独立开关）">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.enabled}
+                onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
+                className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+              />
+              <span className="text-sm text-slate-700">{draft.enabled ? '已启用' : '已禁用'}</span>
+            </label>
+          </Field>
+
+          <Field label="Cron 调度" hint="标准 5 段 cron 表达式，每分钟检查一次。例：0 3 * * * = 每日 03:00">
+            <input
+              type="text"
+              value={draft.cronSchedule}
+              onChange={(e) => setDraft({ ...draft, cronSchedule: e.target.value })}
+              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              placeholder="0 3 * * *"
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="最少证据数" hint="单 skill 至少积累多少条 usage 才进入 LLM 决策（1~50）">
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={draft.minEvidenceCount}
+                onChange={(e) => setDraft({ ...draft, minEvidenceCount: Number(e.target.value) || 1 })}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              />
+            </Field>
+
+            <Field label="成功率阈值" hint="低于此值才进候选（0~1）。例 0.8 = 失败率 > 20% 触发">
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={draft.successRateThreshold}
+                onChange={(e) => setDraft({ ...draft, successRateThreshold: Number(e.target.value) })}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              />
+            </Field>
+          </div>
+
+          <Field label="单次最多进化数" hint="每次 cycle 最多动几个 skill，硬上限 20">
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={draft.maxCandidatesPerRun}
+              onChange={(e) => setDraft({ ...draft, maxCandidatesPerRun: Number(e.target.value) || 1 })}
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+            />
+          </Field>
+
+          <Field label="辅助模型 ID（可选）" hint="留空走 ModelRouter 默认辅助模型。格式：provider/modelId">
+            <input
+              type="text"
+              value={draft.model ?? ''}
+              onChange={(e) => setDraft({ ...draft, model: e.target.value || undefined })}
+              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              placeholder="例：openai/gpt-4o-mini"
+            />
+          </Field>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+          {isDirty && (
+            <button
+              onClick={() => setDraft(original)}
+              disabled={saving}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+            >放弃改动</button>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              isDirty && !saving
+                ? 'bg-brand text-white hover:bg-brand-hover'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+            }`}
+          >{saving ? '保存中…' : isDirty ? '保存改动' : '已保存'}</button>
+        </div>
+      </section>
+
+      {/* ─── Curator 子区 ─── */}
+      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+        <header className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Skill Curator</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              每 {curator?.intervalDays ?? 7} 天跨 session umbrella consolidation + 自动 stale/archive 治理
+            </p>
+          </div>
+          <button
+            onClick={handleRunCurator}
+            disabled={running !== null}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {running === 'curator' ? '触发中…' : '立即触发'}
+          </button>
+        </header>
+
+        {curator && (
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-3 gap-3">
+              <CuratorStat label="active" value={curator.agentCreatedStateCounts.active} color="text-emerald-600" />
+              <CuratorStat label="stale" value={curator.agentCreatedStateCounts.stale} color="text-amber-600" />
+              <CuratorStat label="archived" value={curator.agentCreatedStateCounts.archived} color="text-slate-500" />
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50">
+              <div>
+                <p className="text-sm text-slate-700">{curator.state.paused ? '已暂停' : '正常调度'}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{curator.nextRun.reason}</p>
+              </div>
+              <button
+                onClick={handleToggleCuratorPause}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+              >
+                {curator.state.paused ? '恢复调度' : '暂停调度'}
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-500 space-y-0.5">
+              <p>已钉住：<strong className="text-slate-700">{curator.pinnedCount}</strong> 个 skill（不会被自动归档）</p>
+              <p>累计运行：<strong className="text-slate-700">{curator.state.runCount}</strong> 次</p>
+              {curator.state.lastRunAt && (
+                <p>最近一次：<span className="text-slate-700">{new Date(curator.state.lastRunAt).toLocaleString('zh-CN')}</span> — {curator.state.lastRunSummary ?? '—'}</p>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+interface FieldProps {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}
+
+function Field({ label, hint, children }: FieldProps) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      {children}
+      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+function CuratorStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="p-3 rounded-lg bg-slate-50 text-center">
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
 function AboutTab() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -476,6 +782,7 @@ export default function SettingsPage() {
         {activeTab === 'general' && <GeneralTab />}
         {activeTab === 'env' && <EnvVarsTab />}
         {activeTab === 'mcp' && <MCPServersPanel />}
+        {activeTab === 'skill-evolver' && <SkillEvolverTab />}
         {activeTab === 'api-docs' && <ApiDocsPanel />}
         {activeTab === 'about' && <AboutTab />}
       </div>

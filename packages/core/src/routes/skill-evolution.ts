@@ -5,14 +5,22 @@
  * - GET  /log?skill=X&limit=50     列表（支持按 skill 过滤）
  * - GET  /log/:id                  单条详情（含 previous/new content）
  * - POST /log/:id/rollback         一键回滚（refine 决策才能回滚）
+ *
+ * M7-Tier1 PR3 — 配置 + 手动触发：
+ * - GET  /config                   读 evolver 配置（与 security.skillEvolver schema 对齐）
+ * - POST /config                   写配置（zod validate + cron-parser 校验 + 热重载）
+ * - POST /run-now                  立即触发一次 evolver cycle（不影响 cron 周期）
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Hono } from 'hono';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { CronExpressionParser } from 'cron-parser';
+import { DEFAULT_DATA_DIR, skillEvolverSchema } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
+import type { ConfigManager } from '../infrastructure/config-manager.js';
+import type { SkillEvolverScheduler } from '../skill/skill-evolver-scheduler.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { editSkillInternal } from '../skill/skill-manage-tool.js';
 
@@ -22,6 +30,10 @@ export interface SkillEvolutionRouteDeps {
   db: SqliteStore;
   /** 覆盖默认 Skills 目录（测试 / 自定义部署用） */
   userSkillsDir?: string;
+  /** ConfigManager — 读写 security.skillEvolver；未注入时 GET /config 返回 schema 默认值，POST 拒 */
+  configManager?: ConfigManager;
+  /** SkillEvolverScheduler getter — 注入后 /run-now 可用；用 getter 支持延迟初始化 */
+  getScheduler?: () => SkillEvolverScheduler | undefined;
 }
 
 interface EvolutionLogRow {
@@ -274,6 +286,103 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
       topSkills,
       byDate,
     });
+  });
+
+  // ─── M7-Tier1 PR3: 配置 + 手动触发 ───────────────────────────────────
+
+  /**
+   * GET /config
+   *
+   * 返回当前 evolver 配置（与 security.skillEvolver schema 对齐）。
+   * 未注入 ConfigManager 时返回 schema 默认值（运行环境异常时的降级）。
+   */
+  app.get('/config', (c) => {
+    try {
+      const stored = deps.configManager?.getConfig()?.security?.skillEvolver;
+      // skillEvolverSchema.parse({}) 用 schema 默认值填充缺失字段
+      const merged = skillEvolverSchema.parse(stored ?? {});
+      return c.json({ evolver: merged });
+    } catch (err) {
+      log.warn(`[/config GET] error: ${err instanceof Error ? err.message : String(err)}`);
+      // 配置层损坏时也给一份 schema 默认（保 UI 可用）
+      return c.json({ evolver: skillEvolverSchema.parse({}) });
+    }
+  });
+
+  /**
+   * POST /config
+   *
+   * Body: { evolver: SkillEvolverConfig }
+   * 写流程：zod validate → cron-parser 校验 cronSchedule → 合并到 user 配置层 → saveToDisk
+   * Scheduler 通过 getConfig() 自动热重载，无需重启 sidecar。
+   */
+  app.post('/config', async (c) => {
+    if (!deps.configManager) {
+      return c.json({ error: 'ConfigManager not available' }, 503);
+    }
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const evolverInput = body['evolver'] ?? body;
+
+    const parsed = skillEvolverSchema.safeParse(evolverInput);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid evolver config', issues: parsed.error.issues }, 400);
+    }
+
+    // 双重校验 cron 表达式（schema 只能校验是 string，CronExpressionParser 才能验语法）
+    try {
+      CronExpressionParser.parse(parsed.data.cronSchedule);
+    } catch (err) {
+      return c.json({
+        error: `invalid cronSchedule: ${err instanceof Error ? err.message : String(err)}`,
+      }, 400);
+    }
+
+    try {
+      const cur = deps.configManager.getConfig();
+      const next = {
+        ...cur,
+        security: {
+          ...cur.security,
+          skillEvolver: parsed.data,
+        },
+      };
+      deps.configManager.updateConfig(next);
+      log.info('[/config POST] skillEvolver updated', {
+        enabled: parsed.data.enabled,
+        cronSchedule: parsed.data.cronSchedule,
+      });
+      return c.json({ ok: true, evolver: parsed.data });
+    } catch (err) {
+      log.error(`[/config POST] write failed: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'write config failed' }, 500);
+    }
+  });
+
+  /**
+   * POST /run-now
+   *
+   * 立即触发一次 evolution cycle（不影响 cron 周期）。
+   * 仅当注入了 SkillEvolverScheduler 才可用（启动时 server 已配 LLM provider 才能跑）。
+   */
+  app.post('/run-now', async (c) => {
+    const scheduler = deps.getScheduler?.();
+    if (!scheduler) {
+      return c.json({ error: 'scheduler not configured (no LLM provider?)' }, 503);
+    }
+    try {
+      await scheduler.triggerNow();
+      log.info('[/run-now] manual trigger ok');
+      return c.json({ ok: true });
+    } catch (err) {
+      log.error(`[/run-now] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'trigger failed' }, 500);
+    }
   });
 
   return app;

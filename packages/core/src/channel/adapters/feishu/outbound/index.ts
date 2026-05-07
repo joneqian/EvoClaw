@@ -6,12 +6,23 @@
  * - sendPostMessage  Post 富文本（payload 已构造完成）
  * - sendSmartMessage Markdown → Post（识别特征自动渲染，内容错降级纯文本）
  * - sendImageMessage / sendFileMessage / sendMediaMessage 媒体上传后发送
+ *
+ * Topic threading：当 peerId 由 buildFeishuGroupPeerId 编入 threadId 时
+ * （`<chatId>:topic:<threadId>` 等），通过 thread-anchor 注册表查最近一条话题
+ * 内消息的 message_id 作锚点，走 `im.v1.message.reply` + `reply_in_thread: true`
+ * 让回复留在话题线程内（飞书 API 不接受 receive_id_type='thread_id'）。
+ *
+ * 锚点缺失时降级为 chat_id create（消息会掉出话题，但比抛错好），log.warn 提醒。
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
 import { buildPostPayload, looksLikeMarkdown, serializePostContent } from './markdown-to-post.js';
 import { isImageFile, uploadFile, uploadImage } from './media.js';
 import { parseFeishuGroupPeerId } from '../common/session-key.js';
+import { getThreadAnchor } from './thread-anchor.js';
+import { createLogger } from '../../../../infrastructure/logger.js';
+
+const log = createLogger('feishu-outbound');
 
 /** 飞书发送 API 返回（部分字段） */
 interface FeishuSendResponse {
@@ -44,7 +55,66 @@ export class FeishuApiError extends Error {
  */
 const POST_FALLBACK_CODES = new Set([230001, 230002, 230003, 230011, 230012]);
 
-/** 根据 chatType 推断 receive_id_type */
+/**
+ * 出站路由：决定调用哪个 Feishu API。
+ *
+ * - `create` 走 `im.v1.message.create`（标准发送）
+ * - `reply` 走 `im.v1.message.reply` + reply_in_thread=true（topic 内才能保线程）
+ */
+export type FeishuOutboundRoute =
+  | { kind: 'create'; receiveId: string; receiveIdType: 'open_id' | 'chat_id' }
+  | { kind: 'reply'; parentMessageId: string };
+
+/**
+ * 根据 peerId + chatType 决定出站路由。
+ *
+ * 决策树：
+ * 1. private / 未指定 → create + open_id
+ * 2. group 无 ':' 后缀 → create + chat_id（直接是 chatId）
+ * 3. group 含 ':topic:' → 查 thread-anchor
+ *    - 命中 → reply（让消息留在话题）
+ *    - 未命中 → 降级 create + chat_id（消息掉出话题，log.warn）
+ * 4. group 含 ':sender:' 但无 topic → create + chat_id（剥离 sender）
+ * 5. 解析失败 → create + chat_id 兜底
+ */
+export function resolveFeishuOutboundRoute(
+  peerId: string,
+  chatType?: 'private' | 'group',
+): FeishuOutboundRoute {
+  if (chatType !== 'group') {
+    return { kind: 'create', receiveId: peerId, receiveIdType: 'open_id' };
+  }
+
+  if (!peerId.includes(':')) {
+    return { kind: 'create', receiveId: peerId, receiveIdType: 'chat_id' };
+  }
+
+  const parsed = parseFeishuGroupPeerId(peerId);
+  if (!parsed) {
+    return { kind: 'create', receiveId: peerId, receiveIdType: 'chat_id' };
+  }
+
+  if (parsed.threadId) {
+    const anchor = getThreadAnchor(parsed.chatId, parsed.threadId);
+    if (anchor) {
+      return { kind: 'reply', parentMessageId: anchor };
+    }
+    // 锚点缺失：可能是 sidecar 重启后 inbound 还没收到此话题的消息。
+    // 降级为 chat_id create，回复会掉到群主流——比抛错让用户白等好。
+    log.warn(
+      `[outbound] topic peerId 但 thread anchor 未注册，降级为 chat_id 路径（消息可能掉出话题） chatId=${parsed.chatId} threadId=${parsed.threadId}`,
+    );
+  }
+
+  return { kind: 'create', receiveId: parsed.chatId, receiveIdType: 'chat_id' };
+}
+
+/**
+ * 旧 API：根据 chatType 推断 receive_id_type
+ *
+ * @deprecated 内部 outbound 路径已用 resolveFeishuOutboundRoute 替代。
+ *   保留导出仅为向后兼容（外部调用方 / 老测试）。
+ */
 export function inferReceiveIdType(
   chatType?: 'private' | 'group',
 ): 'open_id' | 'chat_id' {
@@ -52,11 +122,11 @@ export function inferReceiveIdType(
 }
 
 /**
- * 把业务层 peerId（可能被 session scope 重写为 `oc_x:sender:ou_u` 等）
- * 还原为飞书 API 能识别的原始 receive_id。
+ * 旧 API：把 session scope 后缀剥离回原始 receive_id
  *
- * - chatType='private'：peerId 直接是 open_id
- * - chatType='group'：去掉 :sender:/:topic: 后缀，只取 chatId
+ * @deprecated 内部 outbound 路径已用 resolveFeishuOutboundRoute 替代。
+ *   注意：本函数对 topic peerId 仅返回 chatId（旧的 buggy 行为），不识别话题线程。
+ *   保留导出仅为向后兼容。
  */
 export function resolveFeishuReceiveId(
   peerId: string,
@@ -74,6 +144,45 @@ function throwIfError(res: FeishuSendResponse, action: string): void {
   }
 }
 
+/**
+ * 按路由执行实际发送（dispatch 到 create 或 reply API）。
+ *
+ * 暴露为 export 给 send-card / cardkit-streaming 等同样需要 thread-aware 发送的
+ * 上层调用方使用，避免他们各自重复 dispatch 逻辑。
+ */
+export async function sendByRoute(
+  client: Lark.Client,
+  route: FeishuOutboundRoute,
+  msgType: string,
+  content: string,
+): Promise<{ messageId?: string }> {
+  log.debug(`[outbound] dispatching route=${route.kind} msgType=${msgType}`);
+
+  if (route.kind === 'reply') {
+    const res = (await client.im.v1.message.reply({
+      path: { message_id: route.parentMessageId },
+      data: {
+        content,
+        msg_type: msgType,
+        reply_in_thread: true,
+      },
+    })) as FeishuSendResponse;
+    throwIfError(res, `回复 ${msgType}（topic）`);
+    return { messageId: res.data?.message_id };
+  }
+
+  const res = (await client.im.v1.message.create({
+    params: { receive_id_type: route.receiveIdType },
+    data: {
+      receive_id: route.receiveId,
+      msg_type: msgType,
+      content,
+    },
+  })) as FeishuSendResponse;
+  throwIfError(res, `发送 ${msgType}`);
+  return { messageId: res.data?.message_id };
+}
+
 async function createMessage(
   client: Lark.Client,
   args: {
@@ -83,16 +192,8 @@ async function createMessage(
     content: string;
   },
 ): Promise<{ messageId?: string }> {
-  const res = (await client.im.v1.message.create({
-    params: { receive_id_type: inferReceiveIdType(args.chatType) },
-    data: {
-      receive_id: resolveFeishuReceiveId(args.peerId, args.chatType),
-      msg_type: args.msgType,
-      content: args.content,
-    },
-  })) as FeishuSendResponse;
-  throwIfError(res, `发送 ${args.msgType}`);
-  return { messageId: res.data?.message_id };
+  const route = resolveFeishuOutboundRoute(args.peerId, args.chatType);
+  return sendByRoute(client, route, args.msgType, args.content);
 }
 
 /** 发送纯文本消息（返回 messageId 给 cross-sidecar 注册表用） */

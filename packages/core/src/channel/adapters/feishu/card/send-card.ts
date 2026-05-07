@@ -2,11 +2,18 @@
  * 交互卡片发送 / 更新
  *
  * 飞书 interactive 消息 content 直接是卡片 JSON 字符串（顶层不再裹 text/post 外壳）。
+ * Topic threading：同 outbound/index.ts，通过 resolveFeishuOutboundRoute + sendByRoute
+ * 让卡片在话题内也能保持线程。
+ *
  * 参考 https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create
  */
 
 import type * as Lark from '@larksuiteoapi/node-sdk';
-import { FeishuApiError, inferReceiveIdType, resolveFeishuReceiveId } from '../outbound/index.js';
+import {
+  FeishuApiError,
+  resolveFeishuOutboundRoute,
+  sendByRoute,
+} from '../outbound/index.js';
 
 /** 飞书交互卡片（零依赖，不绑死 SDK 类型便于测试） */
 export interface FeishuCard {
@@ -39,18 +46,9 @@ export async function sendInteractiveCard(
   card: FeishuCard,
   chatType?: 'private' | 'group',
 ): Promise<string | null> {
-  const res = (await client.im.v1.message.create({
-    params: { receive_id_type: inferReceiveIdType(chatType) },
-    data: {
-      receive_id: resolveFeishuReceiveId(peerId, chatType),
-      msg_type: 'interactive',
-      content: JSON.stringify(card),
-    },
-  })) as FeishuSendResponse;
-  if (res.code) {
-    throw new FeishuApiError('发送卡片', res.code, res.msg ?? '');
-  }
-  return res.data?.message_id ?? null;
+  const route = resolveFeishuOutboundRoute(peerId, chatType);
+  const { messageId } = await sendByRoute(client, route, 'interactive', JSON.stringify(card));
+  return messageId ?? null;
 }
 
 /**

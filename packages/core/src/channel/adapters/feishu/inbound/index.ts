@@ -30,6 +30,7 @@ import {
   resolveBroadcastTargets,
   type BroadcastConfig,
 } from '../outbound/broadcast.js';
+import { recordThreadAnchor } from '../outbound/thread-anchor.js';
 import type {
   FeishuMessageCache,
   FeishuMessageCacheEntry,
@@ -350,6 +351,16 @@ export async function handleReceiveMessage(
   const senderName = data.sender.sender_id?.user_id;
   const isGroup = message.chat_type === 'group';
 
+  // Topic threading 锚点：群聊话题消息一律注册 message_id。
+  //
+  // 放在 @-mention 过滤之前，是为了让"未被 @ 的话题消息"也能注册——这样 bot 之后
+  // 通过 cron / heartbeat / 主动 channel-tool 调用往话题里发消息时也有锚点可用。
+  // outbound 在 group_topic / group_topic_sender 模式下查锚点走 reply API + reply_in_thread
+  // 让回复留在话题线程内（飞书 message.create 不接受 receive_id_type='thread_id'）。
+  if (isGroup && message.thread_id) {
+    recordThreadAnchor(message.chat_id, message.thread_id, message.message_id);
+  }
+
   // 预解析正文供 buffer / downloader 复用
   const parsed = parseFeishuContent(message.message_type, message.content);
 
@@ -435,6 +446,7 @@ export async function handleReceiveMessage(
       ...(senderOpenId ? { senderOpenId } : {}),
       ...(message.thread_id ? { threadId: message.thread_id } : {}),
     });
+
   }
 
   // 媒体下载（如果有 key + downloader）

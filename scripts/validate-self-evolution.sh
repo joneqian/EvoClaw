@@ -154,8 +154,13 @@ echo
 echo "  ① 在前端找一个 active agent，让它调用 \"$SKILL_NAME\":"
 echo "     例：\"用 $SKILL_NAME skill 帮我处理：你好\""
 echo
-echo "  ② 紧接着（5 分钟内）回一句负反馈，例如："
-echo "     \"这个 skill 不对\" / \"工具又错了\" / \"再来一次还是错的\""
+echo "  ② 紧接着（5 分钟内）回一句**命中 ZH 模式的**负反馈，任选一句："
+echo "     \"完全不对\" / \"完全错\" / \"搞砸了\" / \"不对劲\""
+echo "     \"怎么又错了\" / \"你又错了\""
+echo "     \"我说过别这样\" / \"不要这样\" / \"别这么做\""
+echo "     \"不要再这样\" / \"别再\""
+echo "     \"不喜欢这个\" / \"讨厌\""
+echo "     ⚠️  注意：\"这工具不对\"/\"又错了\"等不命中 — 模式高精度白名单"
 echo
 echo "  ③ 信号检测命中 → 异步触发 inline evolver（10min 限速窗）"
 echo
@@ -194,35 +199,41 @@ while :; do
     echo
     echo
     echo "✅ 命中！抓到 inline review 记录"
-    LATEST_ID=$(echo "$ENTRIES" | jq '[.[] | select(.triggerSource == "inline")] | .[0].id')
-    echo
-    echo "📋 最新 inline review (id=$LATEST_ID):"
-    DETAIL=$(curl -sf -H "$AUTH_HEADER" "$BASE_URL/skill-evolution/log/$LATEST_ID")
-    echo "$DETAIL" | jq '{
-      id, decision, reasoning, evolvedAt,
-      modelUsed, durationMs, errorMessage,
-      previousLen: (.previousContent | length),
-      newLen: (.newContent | length),
-      contentChanged: (.previousContent != .newContent)
-    }'
+    LATEST_ID=$(echo "$ENTRIES" | jq -r '[.[] | select(.triggerSource == "inline")] | .[0].id // empty')
+    if [[ -z "$LATEST_ID" || "$LATEST_ID" == "null" ]]; then
+      echo "⚠️  无法解析 LATEST_ID，列出列表项做 fallback："
+      echo "$ENTRIES" | jq '[.[] | select(.triggerSource == "inline")] | .[0]'
+    else
+      echo
+      echo "📋 最新 inline review (id=$LATEST_ID):"
+      DETAIL=$(curl -sf -H "$AUTH_HEADER" "$BASE_URL/skill-evolution/log/$LATEST_ID" || echo '{}')
+      echo "$DETAIL" | jq '{
+        id, decision, reasoning, evolvedAt,
+        modelUsed, durationMs, errorMessage,
+        previousLen: ((.previousContent // "") | length),
+        newLen: ((.newContent // "") | length),
+        contentChanged: ((.previousContent // "") != (.newContent // ""))
+      }'
 
-    # 进一步断言决策类型
-    DECISION=$(echo "$DETAIL" | jq -r .decision)
-    echo
-    case "$DECISION" in
-      refine)
-        CHANGED=$(echo "$DETAIL" | jq -r '.previousContent != .newContent')
-        if [[ "$CHANGED" == "true" ]]; then
-          echo "🎯 decision=refine，且 SKILL.md 内容真发生变化 — 自我进化通路 OK"
-        else
-          echo "⚠️  decision=refine 但内容未变（异常情况）"
-        fi
-        ;;
-      keep)    echo "ℹ️  decision=keep — evolver 评估后认为无需改动" ;;
-      disable) echo "ℹ️  decision=disable — evolver 决定禁用 skill" ;;
-      "")      echo "❌ decision 为空 — 可能 evolver 报错（看 errorMessage）" ;;
-      *)       echo "ℹ️  decision=$DECISION" ;;
-    esac
+      # 进一步断言决策类型
+      DECISION=$(echo "$DETAIL" | jq -r '.decision // empty')
+      echo
+      case "$DECISION" in
+        refine)
+          CHANGED=$(echo "$DETAIL" | jq -r '(.previousContent // "") != (.newContent // "")')
+          if [[ "$CHANGED" == "true" ]]; then
+            echo "🎯 decision=refine，且 SKILL.md 内容真发生变化 — 自我进化通路 OK"
+          else
+            echo "⚠️  decision=refine 但内容未变（异常情况）"
+          fi
+          ;;
+        keep)    echo "ℹ️  decision=keep — evolver 评估后认为无需改动" ;;
+        skip)    echo "ℹ️  decision=skip — evolver 看历史 evidence 觉得没动手必要（fixture 全新无失败累计 → 合理）" ;;
+        disable) echo "ℹ️  decision=disable — evolver 决定禁用 skill" ;;
+        "")      echo "❌ decision 为空 — 可能 evolver 报错（看 errorMessage）" ;;
+        *)       echo "ℹ️  decision=$DECISION" ;;
+      esac
+    fi
 
     echo
     echo "📊 7 天 inline 统计："

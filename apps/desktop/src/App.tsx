@@ -18,6 +18,7 @@ import AgentEditPage from './pages/AgentEditPage';
 import TasksPage from './pages/TasksPage';
 import SopTagsPage from './pages/SopTagsPage';
 import PlansPage from './pages/PlansPage';
+import CheckpointPage from './pages/CheckpointPage';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
@@ -592,6 +593,7 @@ export default function App() {
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/plans" element={<PlansPage />} />
               <Route path="/sop-tags" element={<SopTagsPage />} />
+              <Route path="/checkpoints" element={<CheckpointPage />} />
               <Route path="/alert" element={<AlertPage />} />
               <Route path="/channel" element={<ChannelPage />} />
               <Route path="/security" element={<SecurityPage />} />

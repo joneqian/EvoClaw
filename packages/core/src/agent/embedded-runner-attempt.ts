@@ -316,6 +316,12 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     ? new AgentFsGuard(store, agentsBaseDir)
     : undefined;
 
+  // M1.1 Checkpoint Manager — 用 store 单例创建（builtin write/edit 改文件前自动快照）
+  // 仅当 store 可用时启用：内存测试场景 / 无 DB 场景退化为旧行为
+  const checkpointManager = store
+    ? new (await import('./checkpoint/checkpoint-manager.js')).CheckpointManager(store)
+    : undefined;
+
   // 先构建基础工具池（不含 ToolSearch，因为 ToolSearch 需要完整工具列表）
   const baseTools = buildKernelTools({
     builtinContextWindow: contextWindow,
@@ -329,6 +335,8 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     fsGuard,
     agentsBaseDir,
     sessionKey: config.sessionKey,
+    ...(checkpointManager ? { checkpointManager } : {}),
+    ...(config.agent?.id ? { agentId: config.agent.id } : {}),
   });
 
   // ToolSearchTool 需要完整工具列表才能搜索（包含 deferred 工具）

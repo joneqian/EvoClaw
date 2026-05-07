@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { execSync } from 'node:child_process';
 import type { KernelTool, ToolCallResult } from './types.js';
 import { FileStateCache } from './file-state-cache.js';
@@ -27,6 +28,7 @@ import type { AgentFsGuard } from '../agent-fs-guard.js';
 import { RESTRICTED_FILES_FOR_SUBAGENT } from '../workspace-files-policy.js';
 import { isSubAgentSessionKey, isCronSessionKey } from '../../routing/session-key.js';
 import type { SessionKey } from '@evoclaw/shared';
+import type { CheckpointManager } from '../checkpoint/checkpoint-manager.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -430,7 +432,73 @@ function createReadTool(contextWindowTokens: number, fileStateCache: FileStateCa
 // Write Tool
 // ═══════════════════════════════════════════════════════════════════════════
 
-function createWriteTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard, sessionKey?: SessionKey | string): KernelTool {
+/**
+ * Checkpoint Manager 包装：在工具调用前对将被改的文件做 snapshot，
+ * 工具失败时自动 revert（让 agent 改坏文件后用户能撤回）。
+ *
+ * 失败保护：checkpoint 自身抛错时只 log.warn 不阻塞工具调用——
+ * 让"备份失败"不变成"工具不可用"。
+ */
+async function withCheckpointGuard<T extends ToolCallResult>(
+  manager: CheckpointManager | undefined,
+  toolName: string,
+  filePath: string,
+  agentId: string | undefined,
+  sessionKey: SessionKey | string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!manager) return fn();
+
+  const toolInvocationId = `${toolName}-${crypto.randomUUID()}`;
+  try {
+    await manager.create({
+      toolInvocationId,
+      toolName,
+      filePaths: [filePath],
+      ...(agentId ? { agentId } : {}),
+      ...(sessionKey ? { sessionKey: typeof sessionKey === 'string' ? sessionKey : String(sessionKey) } : {}),
+    });
+  } catch (err) {
+    // 备份失败不阻塞工具：log + 继续
+    // (用户改坏文件后撤回不了是回归，但工具能用）
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[checkpoint] create 失败 tool=${toolName} path=${filePath}: ${(err as Error).message}`,
+    );
+    return fn();
+  }
+
+  const result = await fn();
+
+  // 失败自动 revert（让"工具改坏文件"不需要用户手动救火）
+  if (result.isError) {
+    try {
+      await manager.revert(toolInvocationId);
+    } catch (err) {
+      // 撤回失败：保留备份让用户走 /checkpoint/revert 手动重试
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[checkpoint] auto-revert 失败 invocation=${toolInvocationId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  return result;
+}
+
+interface DestructiveToolOpts {
+  workspaceRoot?: string;
+  fsGuard?: AgentFsGuard;
+  sessionKey?: SessionKey | string;
+  checkpointManager?: CheckpointManager;
+  agentId?: string;
+}
+
+function createWriteTool(
+  fileStateCache: FileStateCache,
+  opts: DestructiveToolOpts = {},
+): KernelTool {
+  const { workspaceRoot, fsGuard, sessionKey, checkpointManager, agentId } = opts;
   return {
     name: 'write',
     description: '创建或覆盖文件，自动创建父目录。路径推荐相对 workspace 或 @workspace/ 前缀',
@@ -469,32 +537,42 @@ function createWriteTool(fileStateCache: FileStateCache, workspaceRoot?: string,
       const blocked = checkWriteGuard(filePath, fsGuard);
       if (blocked) return blocked;
 
-      try {
-        const dir = path.dirname(filePath);
-        fs.mkdirSync(dir, { recursive: true });
+      // M1.1 Checkpoint：写入前快照（失败自动 revert）
+      return withCheckpointGuard(
+        checkpointManager,
+        'write',
+        filePath,
+        agentId,
+        sessionKey,
+        async () => {
+          try {
+            const dir = path.dirname(filePath);
+            fs.mkdirSync(dir, { recursive: true });
 
-        const existed = fs.existsSync(filePath);
+            const existed = fs.existsSync(filePath);
 
-        // P0-6: 覆盖已存在文件时检查 staleness
-        if (existed) {
-          const stale = fileStateCache.checkStaleness(filePath);
-          if (stale) {
-            return { content: `错误：${stale} - ${filePath}`, isError: true };
+            // P0-6: 覆盖已存在文件时检查 staleness
+            if (existed) {
+              const stale = fileStateCache.checkStaleness(filePath);
+              if (stale) {
+                return { content: `错误：${stale} - ${filePath}`, isError: true };
+              }
+            }
+
+            fs.writeFileSync(filePath, content, 'utf-8');
+
+            const lineCount = content.split('\n').length;
+            return {
+              content: existed
+                ? `已更新文件 ${filePath} (${lineCount} 行)`
+                : `已创建文件 ${filePath} (${lineCount} 行)`,
+            };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { content: `错误：写入文件失败 - ${msg}`, isError: true };
           }
-        }
-
-        fs.writeFileSync(filePath, content, 'utf-8');
-
-        const lineCount = content.split('\n').length;
-        return {
-          content: existed
-            ? `已更新文件 ${filePath} (${lineCount} 行)`
-            : `已创建文件 ${filePath} (${lineCount} 行)`,
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { content: `错误：写入文件失败 - ${msg}`, isError: true };
-      }
+        },
+      );
     },
 
     isReadOnly: () => false,
@@ -585,7 +663,11 @@ function applyQuoteStyle(newString: string, originalContext: string): string {
   return result;
 }
 
-function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, fsGuard?: AgentFsGuard, sessionKey?: SessionKey | string): KernelTool {
+function createEditTool(
+  fileStateCache: FileStateCache,
+  opts: DestructiveToolOpts = {},
+): KernelTool {
+  const { workspaceRoot, fsGuard, sessionKey, checkpointManager, agentId } = opts;
   return {
     name: 'edit',
     description: '精确替换文件中的文本片段（oldText → newText）。路径推荐相对 workspace 或 @workspace/ 前缀',
@@ -634,6 +716,14 @@ function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, 
       const blocked = checkWriteGuard(filePath, fsGuard);
       if (blocked) return blocked;
 
+      // M1.1 Checkpoint：写入前快照（失败自动 revert）
+      return withCheckpointGuard(
+        checkpointManager,
+        'edit',
+        filePath,
+        agentId,
+        sessionKey,
+        async () => {
       try {
         if (!fs.existsSync(filePath)) {
           // 空 old_string + 文件不存在 → 创建新文件
@@ -724,6 +814,8 @@ function createEditTool(fileStateCache: FileStateCache, workspaceRoot?: string, 
         const msg = err instanceof Error ? err.message : String(err);
         return { content: `错误：编辑文件失败 - ${msg}`, isError: true };
       }
+        },
+      );
     },
 
     isReadOnly: () => false,
@@ -1105,6 +1197,14 @@ export interface BuiltinToolsOpts {
    * 缺失 = 旧调用方 / 内部调用，不门控。
    */
   sessionKey?: SessionKey | string;
+  /**
+   * M1.1 Checkpoint Manager（可选）：传入后 write/edit 工具会在改动文件前自动做
+   * 内容寻址快照；工具失败时自动 revert（让 agent 改坏文件后用户能撤回）。
+   * 缺失时退化为旧行为（无 checkpoint）。
+   */
+  checkpointManager?: CheckpointManager;
+  /** 当前 Agent ID（仅供 checkpoint 元数据，便于 UI 按 agent 维度筛选） */
+  agentId?: string;
 }
 
 export function createBuiltinTools(
@@ -1114,12 +1214,19 @@ export function createBuiltinTools(
 ): KernelTool[] {
   // 使用外部缓存（子代理 clone 的）或创建新缓存
   const fileStateCache = externalFileStateCache ?? new FileStateCache();
-  const { workspaceRoot, fsGuard, sessionKey } = opts;
+  const { workspaceRoot, fsGuard, sessionKey, checkpointManager, agentId } = opts;
+  const destructiveOpts: DestructiveToolOpts = {
+    ...(workspaceRoot !== undefined ? { workspaceRoot } : {}),
+    ...(fsGuard !== undefined ? { fsGuard } : {}),
+    ...(sessionKey !== undefined ? { sessionKey } : {}),
+    ...(checkpointManager !== undefined ? { checkpointManager } : {}),
+    ...(agentId !== undefined ? { agentId } : {}),
+  };
 
   const tools = [
     createReadTool(contextWindowTokens, fileStateCache, workspaceRoot, sessionKey),
-    createWriteTool(fileStateCache, workspaceRoot, fsGuard, sessionKey),
-    createEditTool(fileStateCache, workspaceRoot, fsGuard, sessionKey),
+    createWriteTool(fileStateCache, destructiveOpts),
+    createEditTool(fileStateCache, destructiveOpts),
     createGrepTool(workspaceRoot),
     createFindTool(workspaceRoot),
     createLsTool(workspaceRoot),

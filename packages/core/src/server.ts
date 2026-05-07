@@ -32,6 +32,8 @@ import { createSkillUsageRoutes } from './routes/skill-usage.js';
 import { createSkillEvolutionRoutes } from './routes/skill-evolution.js';
 import { createPeerImpressionRoutes } from './routes/peer-impression.js';
 import { createCuratorRoutes } from './routes/curator.js';
+import { createCheckpointRoutes } from './routes/checkpoint.js';
+import { CheckpointManager } from './agent/checkpoint/checkpoint-manager.js';
 import { createEvolutionRoutes } from './routes/evolution.js';
 import { createProviderRoutes } from './routes/provider.js';
 import { createConfigRoutes } from './routes/config.js';
@@ -426,6 +428,26 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/curator', createCuratorRoutes({
       getScheduler: options.getCuratorScheduler,
     }));
+    // M1.1 Checkpoint Manager — 内容寻址快照让 agent 改坏文件后能撤回
+    const checkpointManager = new CheckpointManager(store);
+    app.route('/checkpoint', createCheckpointRoutes({ manager: checkpointManager }));
+    // 每 24h 跑一次 GC：删 7 天前已 reverted 的 ref + 孤儿 object
+    // 启动延迟 60s 让 sidecar 先稳态运行
+    const checkpointGcDelay = setTimeout(() => {
+      checkpointManager.gc().catch((err) => {
+        // 启动 GC 失败不影响 sidecar 运行
+        // eslint-disable-next-line no-console
+        console.warn(`[checkpoint] startup gc failed: ${err instanceof Error ? err.message : err}`);
+      });
+    }, 60_000);
+    checkpointGcDelay.unref?.();
+    const checkpointGcTimer = setInterval(() => {
+      checkpointManager.gc().catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn(`[checkpoint] daily gc failed: ${err instanceof Error ? err.message : err}`);
+      });
+    }, 24 * 60 * 60 * 1000);
+    checkpointGcTimer.unref?.();
     if (Feature.MCP && (options as any).mcpManager && (options as any).createMcpRoutes) {
       app.route('/mcp', (options as any).createMcpRoutes((options as any).mcpManager));
     }

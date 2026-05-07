@@ -9,7 +9,11 @@
  * 唯一差异是 pragma() — better-sqlite3 有此方法，bun:sqlite 没有。
  */
 
+import { createRequire } from 'node:module';
 import { isBun } from '../runtime.js';
+
+// ESM 下没有 require — 用 createRequire 兜底，Bun 自带 require 也能 fallback 到这条路径
+const requireFn = createRequire(import.meta.url);
 
 /** 统一的 Database 实例类型（取两者交集） */
 export interface DatabaseInstance {
@@ -26,14 +30,13 @@ export interface DatabaseInstance {
 /** 创建数据库实例 */
 export function createDatabase(dbPath: string): DatabaseInstance {
   if (isBun) {
-    // Bun 内置 SQLite — 动态 require 避免 Node 环境报错
-    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
-    const { Database } = (globalThis as any).Bun.SQLite ?? require('bun:sqlite');
+    // Bun 内置 SQLite — 用 createRequire 在 ESM 下取
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { Database } = (globalThis as any).Bun.SQLite ?? requireFn('bun:sqlite');
     return new Database(dbPath) as unknown as DatabaseInstance;
   }
-  // Node.js — 使用 better-sqlite3
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Database = require('better-sqlite3');
+  // Node.js — 使用 better-sqlite3（ESM 下 bare require 不可用，需 createRequire）
+  const Database = requireFn('better-sqlite3');
   return new Database(dbPath) as unknown as DatabaseInstance;
 }
 

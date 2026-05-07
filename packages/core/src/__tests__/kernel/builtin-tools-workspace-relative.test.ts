@@ -67,7 +67,7 @@ describe('write tool with workspaceRoot', () => {
   });
 
   it('writes relative path into workspace', async () => {
-    const tool = createWriteTool(cache, workspaceRoot);
+    const tool = createWriteTool(cache, { workspaceRoot });
     const result = await tool.call({ file_path: 'foo.md', content: 'hello' });
     expect(result.isError).toBeFalsy();
     const expected = path.join(workspaceRoot, 'foo.md');
@@ -76,7 +76,7 @@ describe('write tool with workspaceRoot', () => {
   });
 
   it('writes @workspace/sub path', async () => {
-    const tool = createWriteTool(cache, workspaceRoot);
+    const tool = createWriteTool(cache, { workspaceRoot });
     const result = await tool.call({ file_path: '@workspace/sub/bar.md', content: 'world' });
     expect(result.isError).toBeFalsy();
     const expected = path.join(workspaceRoot, 'sub', 'bar.md');
@@ -84,7 +84,7 @@ describe('write tool with workspaceRoot', () => {
   });
 
   it('absolute path outside agentsBaseDir is allowed without fsGuard', async () => {
-    const tool = createWriteTool(cache, workspaceRoot);
+    const tool = createWriteTool(cache, { workspaceRoot });
     const target = path.join(tmpDir, 'outside.md');
     const result = await tool.call({ file_path: target, content: 'ok' });
     expect(result.isError).toBeFalsy();
@@ -125,7 +125,7 @@ describe('write tool with fsGuard (Layer 2)', () => {
   });
 
   it('allows writes to the real agent workspace via absolute path', async () => {
-    const tool = createWriteTool(cache, workspaceRoot, guard);
+    const tool = createWriteTool(cache, { workspaceRoot, fsGuard: guard });
     const target = path.join(agentsBaseDir, realUuid, 'workspace', 'foo.md');
     const result = await tool.call({ file_path: target, content: 'ok' });
     expect(result.isError).toBeFalsy();
@@ -133,7 +133,7 @@ describe('write tool with fsGuard (Layer 2)', () => {
   });
 
   it('rejects writes to a hallucinated UUID and gives a self-correction hint', async () => {
-    const tool = createWriteTool(cache, workspaceRoot, guard);
+    const tool = createWriteTool(cache, { workspaceRoot, fsGuard: guard });
     // 模拟 b↔d hallucinate
     const fakeUuid = realUuid.replace(/[0-9a-f]/, (c) => (c === '0' ? '1' : '0'));
     const target = path.join(agentsBaseDir, fakeUuid, 'workspace', 'foo.md');
@@ -146,7 +146,7 @@ describe('write tool with fsGuard (Layer 2)', () => {
   });
 
   it('still routes relative paths into the correct workspace under guard', async () => {
-    const tool = createWriteTool(cache, workspaceRoot, guard);
+    const tool = createWriteTool(cache, { workspaceRoot, fsGuard: guard });
     const result = await tool.call({ file_path: 'note.md', content: 'hello' });
     expect(result.isError).toBeFalsy();
     expect(fs.existsSync(path.join(workspaceRoot, 'note.md'))).toBe(true);

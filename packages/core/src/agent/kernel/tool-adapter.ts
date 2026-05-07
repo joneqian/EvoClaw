@@ -147,6 +147,14 @@ export interface BuildToolsConfig {
    * 与 fsGuard 同时提供时才启用 bash 命令预检
    */
   agentsBaseDir?: string;
+  /**
+   * M1.1 Checkpoint Manager（可选）
+   * 注入后 builtin write/edit 工具会在改动文件前自动做内容寻址快照，
+   * 工具失败时自动 revert（让用户能从 UI 撤回 agent 改坏的文件）。
+   */
+  checkpointManager?: import('../checkpoint/checkpoint-manager.js').CheckpointManager;
+  /** 当前 agent ID（仅作为 checkpoint 元数据，UI 按 agent 维度筛选用） */
+  agentId?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -549,7 +557,13 @@ export function buildKernelTools(config: BuildToolsConfig): KernelTool[] {
   const builtinTools = createBuiltinTools(
     config.builtinContextWindow,
     undefined,
-    { workspaceRoot: config.workspaceRoot, fsGuard: config.fsGuard, sessionKey: config.sessionKey },
+    {
+      workspaceRoot: config.workspaceRoot,
+      fsGuard: config.fsGuard,
+      sessionKey: config.sessionKey,
+      ...(config.checkpointManager ? { checkpointManager: config.checkpointManager } : {}),
+      ...(config.agentId ? { agentId: config.agentId } : {}),
+    },
   ).map(tool => wrapBuiltinTool(tool, deps));
 
   // 2. 增强 bash (适配为 KernelTool)

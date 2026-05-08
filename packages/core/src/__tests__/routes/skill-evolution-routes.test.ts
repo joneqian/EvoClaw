@@ -353,12 +353,17 @@ describe('skill-evolution routes', () => {
       const res = await app.request('/skill-evolution/config');
       expect(res.status).toBe(200);
       const body = await res.json() as { evolver: Record<string, unknown> };
-      expect(body.evolver).toEqual({
+      // PR-T3-1a/b 起 evolver schema 增加 abTest* 字段；用 toMatchObject 子集断言
+      expect(body.evolver).toMatchObject({
         enabled: false,
         cronSchedule: '0 3 * * *',
         minEvidenceCount: 2,
         successRateThreshold: 0.8,
         maxCandidatesPerRun: 5,
+        abTestEnabled: true,
+        abMinCallsPerVariant: 30,
+        abMaxTestDays: 7,
+        abEvaluatorCron: '30 4 * * *',
       });
     });
 

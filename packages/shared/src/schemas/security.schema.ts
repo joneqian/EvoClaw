@@ -31,6 +31,23 @@ export const skillEvolverSchema = z.object({
   maxCandidatesPerRun: z.number().int().min(1).max(20).default(5),
   /** 辅助模型标识（未配置则走 ModelRouter 默认辅助模型） */
   model: z.string().optional(),
+  // ─── M7-Tier3 PR-T3-1a/b: A-B 对照实验配置 ───
+  /** refine 决策后是否启动 A-B（默认 true） */
+  abTestEnabled: z.boolean().default(true),
+  /** 每变体最少调用次数才检验（默认 30） */
+  abMinCallsPerVariant: z.number().int().min(5).max(1000).default(30),
+  /** 测试期上限（天）（默认 7） */
+  abMaxTestDays: z.number().int().min(1).max(365).default(7),
+  /** 评估器 cron（默认 '30 4 * * *'，错峰 evolver 03:00） */
+  abEvaluatorCron: z.string().default('30 4 * * *'),
+  /** B success 提升阈值（≥ 此值且 p<0.05 → promote），默认 0.05 */
+  abPromoteSuccessDeltaMin: z.number().min(0).max(1).default(0.05),
+  /** B success 退化阈值（≥ 此值且 p<0.05 → rollback），默认 0.10 */
+  abRollbackSuccessDeltaMin: z.number().min(0).max(1).default(0.10),
+  /** p 值阈值，默认 0.05 */
+  abPValueThreshold: z.number().min(0).max(1).default(0.05),
+  /** B duration ratio rollback 阈值（B 慢 50%+ 触发），默认 1.5 */
+  abDurationRatioRollback: z.number().min(1).max(10).default(1.5),
 });
 
 /** M7-Tier1 PR6 Skill Curator 子代理配置（跨 session umbrella consolidation + 三态生命周期） */

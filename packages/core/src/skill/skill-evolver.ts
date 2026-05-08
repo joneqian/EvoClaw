@@ -44,6 +44,10 @@ export interface SkillEvolverConfig {
   successRateThreshold: number;
   maxCandidatesPerRun: number;
   model?: string;
+  /** M7-Tier3: refine 后是否启动 A-B（默认 true，与 schema 对齐） */
+  abTestEnabled?: boolean;
+  abMinCallsPerVariant?: number;
+  abMaxTestDays?: number;
 }
 
 export interface RunEvolutionCycleOptions {
@@ -166,8 +170,13 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
       triggerSource: 'cron',
     });
 
-    // M7-Tier3 PR-T3-1a: refine 成功 → 启动 A-B 测试
-    if (!outcome.error && decision.decision === 'refine' && evolutionLogId !== null) {
+    // M7-Tier3 PR-T3-1a/b: refine 成功 → 启动 A-B 测试（abTestEnabled=false 时跳过）
+    if (
+      !outcome.error
+      && decision.decision === 'refine'
+      && evolutionLogId !== null
+      && config.abTestEnabled !== false
+    ) {
       maybeStartAbTest({
         db,
         evolutionLogId,
@@ -176,6 +185,8 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
         newHash: outcome.newHash,
         previousContent: outcome.previousContent,
         userSkillsDir,
+        ...(config.abMinCallsPerVariant !== undefined ? { minCallsPerVariant: config.abMinCallsPerVariant } : {}),
+        ...(config.abMaxTestDays !== undefined ? { maxTestDays: config.abMaxTestDays } : {}),
       });
     }
 
@@ -438,6 +449,9 @@ interface MaybeStartAbTestOpts {
   newHash: string | null;
   previousContent: string | null | undefined;
   userSkillsDir: string;
+  /** 覆盖默认 30 / 7（与 SkillEvolverConfig.abMinCallsPerVariant / abMaxTestDays 对齐） */
+  minCallsPerVariant?: number;
+  maxTestDays?: number;
 }
 
 /**
@@ -486,6 +500,8 @@ function maybeStartAbTest(opts: MaybeStartAbTestOpts): void {
     evolutionLogId: opts.evolutionLogId,
     variantAHash: opts.previousHash,
     variantBHash: opts.newHash,
+    ...(opts.minCallsPerVariant !== undefined ? { minCallsPerVariant: opts.minCallsPerVariant } : {}),
+    ...(opts.maxTestDays !== undefined ? { maxTestDays: opts.maxTestDays } : {}),
   });
   if (!id) {
     log.warn(`[ab][skip] startTest returned null`, { skillName: opts.skillName });

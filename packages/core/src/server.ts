@@ -182,6 +182,8 @@ export interface CreateAppOptions {
   getCuratorScheduler?: () => import('./skill/skill-curator-scheduler.js').SkillCuratorScheduler | undefined;
   /** Evolver 调度器（延迟获取，POST /skill-evolution/run-now 用） */
   getSkillEvolverScheduler?: () => import('./skill/skill-evolver-scheduler.js').SkillEvolverScheduler | undefined;
+  /** M7-Tier3: A-B 评估器调度器（POST /skill-evolution/ab-evaluate-now 用） */
+  getAbEvaluatorScheduler?: () => import('./skill/skill-ab-scheduler.js').SkillAbEvaluatorScheduler | undefined;
 }
 
 /** 创建 Hono 应用实例 */
@@ -430,6 +432,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
       db: store,
       ...(configManager ? { configManager } : {}),
       ...(options.getSkillEvolverScheduler ? { getScheduler: options.getSkillEvolverScheduler } : {}),
+      ...(options.getAbEvaluatorScheduler ? { getAbEvaluatorScheduler: options.getAbEvaluatorScheduler } : {}),
     }));
     app.route('/peer-impressions', createPeerImpressionRoutes({ db: store }));
     app.route('/curator', createCuratorRoutes({
@@ -1609,6 +1612,7 @@ async function main() {
     getHeartbeatManager: () => heartbeatManager ?? undefined,
     getCuratorScheduler: () => curatorScheduler ?? undefined,
     getSkillEvolverScheduler: () => skillEvolverScheduler ?? undefined,
+    getAbEvaluatorScheduler: () => abEvaluatorScheduler ?? undefined,
   });
 
   // 命令清单 API（M3-T3b）— 在 app 创建 + commandRegistry 就绪后挂载
@@ -1624,11 +1628,13 @@ async function main() {
 
   // M7 Phase 3: Skill Evolver 调度器（延迟初始化，Phase 3 延迟启动）
   let skillEvolverScheduler: import('./skill/skill-evolver-scheduler.js').SkillEvolverScheduler | null = null;
+  let abEvaluatorScheduler: import('./skill/skill-ab-scheduler.js').SkillAbEvaluatorScheduler | null = null;
 
   registerShutdownHandler({ name: '调度器', priority: 10, handler: () => {
     cronRunner.stop();
     heartbeatManager?.stopAll();
     decayScheduler?.stop();
+    abEvaluatorScheduler?.stop();
     consolidator?.stop();
     memoryMonitor.stop();
     skillEvolverScheduler?.stop();
@@ -1740,6 +1746,28 @@ async function main() {
     });
     skillEvolverScheduler.start();
     log.info('SkillEvolverScheduler 已启动（按 config.security.skillEvolver 触发）');
+
+    // M7-Tier3 PR-T3-1b: A-B 评估器调度器（默认 04:30，错峰 evolver）
+    const { SkillAbEvaluatorScheduler } = await import('./skill/skill-ab-scheduler.js');
+    abEvaluatorScheduler = new SkillAbEvaluatorScheduler({
+      db,
+      userSkillsDir: evolverUserSkillsDir,
+      getCronSchedule: () => configManager?.getConfig()?.security?.skillEvolver?.abEvaluatorCron,
+      getConfig: () => {
+        const ev = configManager?.getConfig()?.security?.skillEvolver;
+        if (!ev) return undefined;
+        const partial: Partial<import('./skill/skill-ab-evaluator.js').AbEvaluatorConfig> = {};
+        if (ev.abMinCallsPerVariant !== undefined) partial.minCallsPerVariant = ev.abMinCallsPerVariant;
+        if (ev.abMaxTestDays !== undefined) partial.maxTestDays = ev.abMaxTestDays;
+        if (ev.abPromoteSuccessDeltaMin !== undefined) partial.promoteSuccessDeltaMin = ev.abPromoteSuccessDeltaMin;
+        if (ev.abRollbackSuccessDeltaMin !== undefined) partial.rollbackSuccessDeltaMin = ev.abRollbackSuccessDeltaMin;
+        if (ev.abPValueThreshold !== undefined) partial.pValueThreshold = ev.abPValueThreshold;
+        if (ev.abDurationRatioRollback !== undefined) partial.durationRatioRollback = ev.abDurationRatioRollback;
+        return partial;
+      },
+    });
+    abEvaluatorScheduler.start();
+    log.info('SkillAbEvaluatorScheduler 已启动');
 
     // M7 Curator: 跨 session umbrella consolidation（PR6 改用 getConfig 热重载，
     // intervalDays / staleDays / archivedDays / protectBundled 通过 SettingsPage 改即时生效）

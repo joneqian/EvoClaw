@@ -21,6 +21,7 @@ import { DEFAULT_DATA_DIR, skillEvolverSchema } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { SkillEvolverScheduler } from '../skill/skill-evolver-scheduler.js';
+import type { SkillAbEvaluatorScheduler } from '../skill/skill-ab-scheduler.js';
 import { createLogger } from '../infrastructure/logger.js';
 import { editSkillInternal } from '../skill/skill-manage-tool.js';
 
@@ -34,6 +35,8 @@ export interface SkillEvolutionRouteDeps {
   configManager?: ConfigManager;
   /** SkillEvolverScheduler getter — 注入后 /run-now 可用；用 getter 支持延迟初始化 */
   getScheduler?: () => SkillEvolverScheduler | undefined;
+  /** M7-Tier3 PR-T3-1b: A-B 评估器调度器 getter — 注入后 /ab-evaluate-now 可用 */
+  getAbEvaluatorScheduler?: () => SkillAbEvaluatorScheduler | undefined;
 }
 
 interface EvolutionLogRow {
@@ -381,6 +384,102 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
       return c.json({ ok: true });
     } catch (err) {
       log.error(`[/run-now] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'trigger failed' }, 500);
+    }
+  });
+
+  // ─── M7-Tier3 PR-T3-1b: A-B 测试状态 + 手动触发评估 ─────────────────
+
+  /**
+   * GET /ab-status?skillName=X
+   *
+   * skillName 可选：传入时返回该 skill 的 active 测试详情 + outcome 计数；
+   * 不传时返回所有 active 测试 + 历史 5 条决策摘要。
+   */
+  app.get('/ab-status', (c) => {
+    const skillName = c.req.query('skill') ?? c.req.query('skillName');
+    try {
+      if (skillName) {
+        const active = deps.db.get<{
+          id: number; skillName: string; status: string;
+          variantAHash: string; variantBHash: string; startedAt: string;
+          minCallsPerVariant: number; maxTestDays: number;
+        }>(
+          `SELECT id, skill_name AS skillName, status,
+                  variant_a_hash AS variantAHash, variant_b_hash AS variantBHash,
+                  started_at AS startedAt,
+                  min_calls_per_variant AS minCallsPerVariant,
+                  max_test_days AS maxTestDays
+           FROM skill_ab_test
+           WHERE skill_name = ? AND status = 'active'
+           ORDER BY started_at DESC LIMIT 1`,
+          skillName,
+        );
+        if (!active) {
+          return c.json({ active: null, history: [] });
+        }
+        const counts = deps.db.all<{ variant: string; cnt: number }>(
+          `SELECT variant, COUNT(*) AS cnt FROM skill_ab_outcome
+           WHERE ab_test_id = ? GROUP BY variant`,
+          active.id,
+        );
+        const aCount = counts.find(r => r.variant === 'A')?.cnt ?? 0;
+        const bCount = counts.find(r => r.variant === 'B')?.cnt ?? 0;
+        return c.json({
+          active: {
+            ...active,
+            outcomeCounts: { A: aCount, B: bCount },
+            progress: Math.min(1, Math.min(aCount, bCount) / active.minCallsPerVariant),
+          },
+          history: [],
+        });
+      }
+
+      // 不带 skillName：列全部 active + 最近 5 条历史
+      const active = deps.db.all<{
+        id: number; skillName: string; status: string;
+        variantAHash: string; variantBHash: string; startedAt: string;
+      }>(
+        `SELECT id, skill_name AS skillName, status,
+                variant_a_hash AS variantAHash, variant_b_hash AS variantBHash,
+                started_at AS startedAt
+         FROM skill_ab_test
+         WHERE status = 'active' ORDER BY started_at ASC`,
+      );
+      const history = deps.db.all<{
+        id: number; skillName: string; status: string;
+        startedAt: string; endedAt: string | null;
+        decisionReason: string | null; pValue: number | null;
+      }>(
+        `SELECT id, skill_name AS skillName, status,
+                started_at AS startedAt, ended_at AS endedAt,
+                decision_reason AS decisionReason, p_value AS pValue
+         FROM skill_ab_test
+         WHERE status != 'active'
+         ORDER BY ended_at DESC LIMIT 5`,
+      );
+      return c.json({ active, history });
+    } catch (err) {
+      log.warn(`[/ab-status] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  /**
+   * POST /ab-evaluate-now
+   * 立即跑一次评估器（不影响 cron）。返回本次 cycle 的统计摘要。
+   */
+  app.post('/ab-evaluate-now', async (c) => {
+    const scheduler = deps.getAbEvaluatorScheduler?.();
+    if (!scheduler) {
+      return c.json({ error: 'ab-evaluator scheduler not configured' }, 503);
+    }
+    try {
+      const result = await scheduler.triggerNow();
+      log.info('[/ab-evaluate-now] manual trigger', { ...result });
+      return c.json(result);
+    } catch (err) {
+      log.error(`[/ab-evaluate-now] error: ${err instanceof Error ? err.message : String(err)}`);
       return c.json({ error: 'trigger failed' }, 500);
     }
   });

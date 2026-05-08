@@ -14,7 +14,9 @@ const DIFF_LARGE_THRESHOLD = 50 * 1024; // 50KB
 
 type Decision = 'refine' | 'create' | 'skip';
 
-type TriggerSource = 'cron' | 'inline';
+/** M7-Tier3 PR-T3-1b: trigger_source 增 ab-promote / ab-rollback / curator-* 系列；
+ *  保持向前兼容 — 后端可能写未知 source，前端都按"其他"渲染 */
+type TriggerSource = 'cron' | 'inline' | 'ab-promote' | 'ab-rollback' | 'ab-inconclusive' | string;
 
 interface EvolutionLogListItem {
   id: number;
@@ -42,13 +44,25 @@ interface EvolutionLogDetail extends EvolutionLogListItem {
 }
 
 function triggerLabel(source: TriggerSource): string {
-  return source === 'inline' ? '自我修复' : '定时';
+  switch (source) {
+    case 'inline': return '自我修复';
+    case 'cron': return '定时';
+    case 'ab-promote': return 'A-B 升级';
+    case 'ab-rollback': return 'A-B 回滚';
+    case 'ab-inconclusive': return 'A-B 不显著';
+    default: return source.startsWith('curator-') ? 'Curator' : source;
+  }
 }
 
 function triggerBadgeClass(source: TriggerSource): string {
-  return source === 'inline'
-    ? 'bg-violet-100 text-violet-700'
-    : 'bg-slate-100 text-slate-600';
+  switch (source) {
+    case 'inline': return 'bg-violet-100 text-violet-700';
+    case 'cron': return 'bg-slate-100 text-slate-600';
+    case 'ab-promote': return 'bg-emerald-100 text-emerald-700';
+    case 'ab-rollback': return 'bg-rose-100 text-rose-700';
+    case 'ab-inconclusive': return 'bg-amber-100 text-amber-700';
+    default: return 'bg-slate-100 text-slate-600';
+  }
 }
 
 function decisionColor(decision: Decision, rolledBack: boolean): string {

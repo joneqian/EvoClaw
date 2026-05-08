@@ -23,6 +23,7 @@ export {
   nameSecurityPolicySchema,
   safeParseSecurityPolicy,
   skillEvolverSchema,
+  skillCuratorSchema,
 } from './security.schema.js';
 
 export {

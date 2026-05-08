@@ -427,4 +427,149 @@ describe('curator routes', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  // ─── M7-Tier1 PR6: GET/POST /config ────────────────────────────────
+
+  describe('GET /config', () => {
+    it('未注入 ConfigManager 时返回 schema 默认值', async () => {
+      const res = await app.request('/curator/config');
+      expect(res.status).toBe(200);
+      const body = await res.json() as { curator: Record<string, unknown> };
+      expect(body.curator).toEqual({
+        enabled: false,
+        intervalDays: 7,
+        staleDays: 30,
+        archivedDays: 90,
+        protectBundled: true,
+      });
+    });
+
+    it('注入 ConfigManager 时返回当前值（缺失字段用 schema 默认填充）', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: { skillCurator: { enabled: true, intervalDays: 14 } } }),
+      };
+      const app2 = new Hono();
+      app2.route('/curator', createCuratorRoutes({
+        userSkillsDir: tmpDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/curator/config');
+      const body = await res.json() as { curator: { enabled: boolean; intervalDays: number; staleDays: number } };
+      expect(body.curator.enabled).toBe(true);
+      expect(body.curator.intervalDays).toBe(14);
+      expect(body.curator.staleDays).toBe(30); // 默认
+    });
+  });
+
+  describe('POST /config', () => {
+    it('未注入 ConfigManager → 503', async () => {
+      const res = await app.request('/curator/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curator: { enabled: true } }),
+      });
+      expect(res.status).toBe(503);
+    });
+
+    it('合法配置写入并触发 updateConfig', async () => {
+      let updated: unknown = null;
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: (next: unknown) => { updated = next; },
+      };
+      const app2 = new Hono();
+      app2.route('/curator', createCuratorRoutes({
+        userSkillsDir: tmpDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/curator/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curator: { enabled: true, intervalDays: 14, staleDays: 60, archivedDays: 180 } }),
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json() as { ok: boolean; curator: { intervalDays: number; staleDays: number } };
+      expect(body.ok).toBe(true);
+      expect(body.curator.intervalDays).toBe(14);
+      expect(body.curator.staleDays).toBe(60);
+      expect((updated as { security: { skillCurator: { archivedDays: number } } }).security.skillCurator.archivedDays).toBe(180);
+    });
+
+    it('archivedDays <= staleDays → 400（refine 校验）', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: () => { /* noop */ },
+      };
+      const app2 = new Hono();
+      app2.route('/curator', createCuratorRoutes({
+        userSkillsDir: tmpDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/curator/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curator: { staleDays: 90, archivedDays: 30 } }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('intervalDays 越界 → 400', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: () => { /* noop */ },
+      };
+      const app2 = new Hono();
+      app2.route('/curator', createCuratorRoutes({
+        userSkillsDir: tmpDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/curator/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curator: { intervalDays: 0 } }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('空 body → 400', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: {} }),
+        updateConfig: () => { /* noop */ },
+      };
+      const app2 = new Hono();
+      app2.route('/curator', createCuratorRoutes({
+        userSkillsDir: tmpDir,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/curator/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: 'not json',
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /status with ConfigManager', () => {
+    it('intervalDays 从 ConfigManager 读取（替代构造时硬编码）', async () => {
+      const fakeCm = {
+        getConfig: () => ({ security: { skillCurator: { intervalDays: 21 } } }),
+      };
+      const app2 = new Hono();
+      app2.route('/curator', createCuratorRoutes({
+        userSkillsDir: tmpDir,
+        intervalDays: 7, // 旧的硬编码兜底应被 ConfigManager 优先级覆盖
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        configManager: fakeCm as any,
+      }));
+      const res = await app2.request('/curator/status');
+      const body = await res.json() as { intervalDays: number };
+      expect(body.intervalDays).toBe(21);
+    });
+  });
 });

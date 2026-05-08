@@ -93,26 +93,98 @@ export interface SkillSecurityReport {
 
 /** 安全分析发现项 */
 export interface SkillSecurityFinding {
-  type:
-    | 'eval'
-    | 'function_constructor'
-    | 'fetch'
-    | 'fs_write'
-    | 'shell_exec'
-    | 'env_access'
-    /** 访问系统级凭据存储（macOS Keychain / Windows Credential Vault / Linux libsecret 等） */
-    | 'keystore'
-    /** 疑似隐蔽外传（base64/hex 编码拼 URL、图片 beacon、模板字面量注入查询串等） */
-    | 'exfiltration'
-    /** 疑似 DNS 隧道（变量插值的 dns.resolve / nslookup / dig） */
-    | 'dns_tunnel'
-    /** 疑似持久化（写入 shell rc / crontab / launchd / systemd user unit） */
-    | 'persistence';
+  type: SkillThreatType;
   file: string;
   line: number;
   snippet: string;
   severity: 'low' | 'medium' | 'high';
 }
+
+/** 威胁类型枚举（M7-Tier2 PR4 显式导出，UI 用作分类聚合 key） */
+export type SkillThreatType =
+  | 'eval'
+  | 'function_constructor'
+  | 'fetch'
+  | 'fs_write'
+  | 'shell_exec'
+  | 'env_access'
+  /** 访问系统级凭据存储（macOS Keychain / Windows Credential Vault / Linux libsecret 等） */
+  | 'keystore'
+  /** 疑似隐蔽外传（base64/hex 编码拼 URL、图片 beacon、模板字面量注入查询串等） */
+  | 'exfiltration'
+  /** 疑似 DNS 隧道（变量插值的 dns.resolve / nslookup / dig） */
+  | 'dns_tunnel'
+  /** 疑似持久化（写入 shell rc / crontab / launchd / systemd user unit） */
+  | 'persistence';
+
+/** 威胁类型展示信息（中文标签 + 解释 + emoji，用户可读） */
+export interface SkillThreatLabel {
+  /** 用户可读中文短标签（≤6 字） */
+  label: string;
+  /** 一句话解释（≤30 字） */
+  description: string;
+  /** UI 标识 emoji */
+  icon: string;
+}
+
+/**
+ * M7-Tier2 PR4: 威胁类型 → 中文标签映射。
+ *
+ * UI 渲染 findings 时按 type 聚合并展示中文标签，让非技术用户也能看懂"这个 skill
+ * 在尝试做什么危险的事"，不只是一个 medium/high 的总分。
+ */
+export const SKILL_THREAT_LABELS: Readonly<Record<SkillThreatType, SkillThreatLabel>> = {
+  eval: {
+    label: '动态执行',
+    description: '运行字符串形式的代码（eval）— 可执行任意逻辑',
+    icon: '⚡',
+  },
+  function_constructor: {
+    label: '动态构造函数',
+    description: '通过 new Function 构造可执行代码 — 等同 eval',
+    icon: '⚡',
+  },
+  fetch: {
+    label: '网络请求',
+    description: '向外部 HTTP 端点发起请求 — 注意数据流向',
+    icon: '🌐',
+  },
+  fs_write: {
+    label: '文件写入',
+    description: '写入或追加本地文件 — 可能改动用户数据',
+    icon: '✍️',
+  },
+  shell_exec: {
+    label: '执行命令',
+    description: '调用 shell 进程（exec/spawn）— 可执行任意系统命令',
+    icon: '🖥️',
+  },
+  env_access: {
+    label: '环境变量',
+    description: '读取 process.env — 可能含 API 密钥等敏感信息',
+    icon: '🔑',
+  },
+  keystore: {
+    label: '凭据访问',
+    description: '访问系统密钥库（Keychain/凭据保管器）— 高敏感',
+    icon: '🔐',
+  },
+  exfiltration: {
+    label: '隐蔽外传',
+    description: '把数据编码后拼 URL 外发 — 疑似数据泄露',
+    icon: '🚨',
+  },
+  dns_tunnel: {
+    label: 'DNS 隧道',
+    description: '通过 DNS 查询夹带数据 — 经典隐蔽通道',
+    icon: '🚨',
+  },
+  persistence: {
+    label: '持久化',
+    description: '写入 shell 启动脚本/定时任务 — 重启后仍生效',
+    icon: '⏳',
+  },
+};
 
 /** 安装策略决策
  * - auto: 直接允许（bundled/local 或 clawhub+low 等可信场景）

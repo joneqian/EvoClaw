@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { get, post, del } from '../lib/api';
-import { BRAND_NAME } from '@evoclaw/shared';
+import { BRAND_NAME, SKILL_THREAT_LABELS } from '@evoclaw/shared';
+import type { SkillThreatType } from '@evoclaw/shared';
 import SkillSourceBadge from '../components/SkillSourceBadge';
 import SkillEffectivenessPanel from '../components/SkillEffectivenessPanel';
 import EvolutionLogPanel from '../components/EvolutionLogPanel';
@@ -194,7 +195,7 @@ const RISK_STYLES: Record<string, { label: string; color: string }> = {
   high: { label: '高风险', color: 'text-red-600 bg-red-50' },
 };
 
-/** M5 T1: 威胁发现项中文 label 映射 */
+/** M5 T1: 威胁发现项中文 label 映射（保留为兼容兜底；优先用 SKILL_THREAT_LABELS） */
 const FINDING_TYPE_LABELS: Record<string, string> = {
   eval: 'eval 动态执行',
   function_constructor: 'new Function 动态执行',
@@ -480,33 +481,13 @@ export default function SkillPage() {
               <SkillSourceBadge source={prepareResult.source} />
             </div>
 
-            {/* M5 T1: 威胁扫描 findings 折叠详情 */}
+            {/* M7-Tier2 PR4: 威胁扫描 findings — 按 type 聚合卡片组 + 折叠详情 */}
             {findings.length > 0 && (
-              <div className="mb-3 border border-slate-200 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setFindingsExpanded(!findingsExpanded)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  <span>威胁扫描详情（{findings.length} 项）</span>
-                  <span className="text-slate-400">{findingsExpanded ? '▾' : '▸'}</span>
-                </button>
-                {findingsExpanded && (
-                  <div className="px-3 pb-2 space-y-1.5 max-h-[180px] overflow-y-auto">
-                    {findings.map((f, i) => (
-                      <div key={i} className="text-[11px] font-mono text-slate-700">
-                        <div className="flex items-start gap-1.5">
-                          <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] ${f.severity === 'high' ? 'bg-red-50 text-red-600' : f.severity === 'medium' ? 'bg-yellow-50 text-yellow-700' : 'bg-slate-100 text-slate-600'}`}>
-                            {FINDING_TYPE_LABELS[f.type] ?? f.type}
-                          </span>
-                          <span className="text-slate-400">{f.file}:{f.line}</span>
-                        </div>
-                        <div className="pl-1 mt-0.5 text-slate-500 break-all">{f.snippet.slice(0, 80)}{f.snippet.length > 80 && '…'}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ThreatFindingsSection
+                findings={findings}
+                expanded={findingsExpanded}
+                onToggle={() => setFindingsExpanded(!findingsExpanded)}
+              />
             )}
 
             {/* M5 T2: 安装策略原因（require-confirm / block 时显式展示） */}
@@ -869,6 +850,122 @@ function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem
           {skill.stars !== undefined && <span>★ {formatCount(skill.stars)}</span>}
           {skill.author && <span className="truncate">{skill.author}</span>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── M7-Tier2 PR4: 威胁扫描分类聚合 ────────────────────────────────────
+
+interface ThreatFinding {
+  type: string;
+  file: string;
+  line: number;
+  snippet: string;
+  severity: string;
+}
+
+interface ThreatFindingsSectionProps {
+  findings: ThreatFinding[];
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+/** severity 排序 weight：high=2 / medium=1 / low=0 */
+function severityWeight(s: string): number {
+  return s === 'high' ? 2 : s === 'medium' ? 1 : 0;
+}
+
+/** severity 颜色 class */
+function severityChipClass(severity: string): string {
+  if (severity === 'high') return 'bg-red-50 text-red-700 border-red-200';
+  if (severity === 'medium') return 'bg-yellow-50 text-yellow-800 border-yellow-200';
+  return 'bg-slate-50 text-slate-600 border-slate-200';
+}
+
+/**
+ * 威胁扫描详情 — 按 type 聚合 + 中文标签 + 折叠平铺。
+ *
+ * 上方：分类徽章（icon + 中文标签 + 计数 + 该类最高 severity）
+ * 下方：折叠详情（按 type 分组的 findings list）
+ */
+function ThreatFindingsSection({ findings, expanded, onToggle }: ThreatFindingsSectionProps) {
+  // 按 type 聚合
+  const groups = new Map<string, ThreatFinding[]>();
+  for (const f of findings) {
+    const arr = groups.get(f.type) ?? [];
+    arr.push(f);
+    groups.set(f.type, arr);
+  }
+  // 排序：每类最高 severity 优先；同 severity 按 type 字母序
+  const orderedGroups = Array.from(groups.entries())
+    .map(([type, items]) => {
+      const maxSev = items.reduce((m, x) => Math.max(m, severityWeight(x.severity)), 0);
+      return { type, items, maxSev };
+    })
+    .sort((a, b) => (b.maxSev - a.maxSev) || a.type.localeCompare(b.type));
+
+  return (
+    <div className="mb-3">
+      {/* 分类徽章组 */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {orderedGroups.map(({ type, items, maxSev }) => {
+          const meta = SKILL_THREAT_LABELS[type as SkillThreatType];
+          const sev = maxSev === 2 ? 'high' : maxSev === 1 ? 'medium' : 'low';
+          return (
+            <div
+              key={type}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs ${severityChipClass(sev)}`}
+              title={meta?.description ?? type}
+            >
+              <span aria-hidden>{meta?.icon ?? '⚠️'}</span>
+              <span className="font-medium">{meta?.label ?? FINDING_TYPE_LABELS[type] ?? type}</span>
+              <span className="opacity-70">×{items.length}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 折叠详情：按 type 分组渲染 */}
+      <div className="border border-slate-200 rounded-lg">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          <span>详情({findings.length} 项)</span>
+          <span className="text-slate-400">{expanded ? '▾' : '▸'}</span>
+        </button>
+        {expanded && (
+          <div className="px-3 pb-2 space-y-2 max-h-[220px] overflow-y-auto">
+            {orderedGroups.map(({ type, items }) => {
+              const meta = SKILL_THREAT_LABELS[type as SkillThreatType];
+              return (
+                <div key={type}>
+                  <div className="text-[11px] font-medium text-slate-500 mb-0.5">
+                    {meta?.icon} {meta?.label ?? type}
+                    {meta?.description && <span className="text-slate-400 font-normal"> — {meta.description}</span>}
+                  </div>
+                  <div className="space-y-1 pl-3">
+                    {items.map((f, i) => (
+                      <div key={i} className="text-[11px] font-mono text-slate-700">
+                        <div className="flex items-start gap-1.5">
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[10px] ${severityChipClass(f.severity)}`}>
+                            {f.severity}
+                          </span>
+                          <span className="text-slate-400">{f.file}:{f.line}</span>
+                        </div>
+                        <div className="pl-1 mt-0.5 text-slate-500 break-all">
+                          {f.snippet.slice(0, 80)}{f.snippet.length > 80 && '…'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

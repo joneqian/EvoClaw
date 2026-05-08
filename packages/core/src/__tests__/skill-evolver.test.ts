@@ -21,6 +21,8 @@ const MIGRATION_027 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_skill_usage
 const MIGRATION_028 = fs.readFileSync(path.join(MIGRATIONS_DIR, '028_skill_evolution_log.sql'), 'utf-8');
 const MIGRATION_029 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_skill_evolution_content.sql'), 'utf-8');
 const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
+const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
+const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
 
 const AGENT = 'agent-1';
 
@@ -56,6 +58,8 @@ describe('runEvolutionCycle', () => {
     db.exec(MIGRATION_028);
     db.exec(MIGRATION_029);
     db.exec(MIGRATION_037);
+    db.exec(MIGRATION_040);
+    db.exec(MIGRATION_041);
     db.run(`INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`, AGENT, AGENT, '🤖', 'active');
     usageStore = new SkillUsageStore(db);
   });
@@ -387,5 +391,131 @@ describe('runEvolutionCycle', () => {
     const names = allLogs.map(r => r.skillName);
     expect(names).toContain('free-B');
     expect(names).not.toContain('pinned-A');
+  });
+
+  // ─── M7-Tier3 PR-T3-1a: refine 成功后启动 A-B 测试 ──────────────────
+
+  it('refine 成功 → 启动 A-B 测试 + 物化 .ab-cache/', async () => {
+    writeSkill(userSkillsDir, 'target', 'old marker');
+    const original = fs.readFileSync(path.join(userSkillsDir, 'target', 'SKILL.md'), 'utf-8');
+    upsertManifestEntry(userSkillsDir, {
+      name: 'target', sha256: computeSkillHash(original),
+      source: 'bundled', createdAt: '2026-01-01T00:00:00Z',
+    });
+    feedUsages('target', 1, 5);
+    for (let i = 0; i < 3; i++) {
+      usageStore.saveSummary({
+        skillName: 'target', sessionKey: `s${i}`, agentId: AGENT,
+        summaryText: '失败', invocationCount: 2, successRate: 0.2,
+      });
+    }
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'refine', reasoning: 'fix marker',
+      changes: { patches: [{ old: 'old marker', new: 'new marker' }] },
+    }));
+    const result = await runEvolutionCycle({
+      db, userSkillsDir,
+      config: { enabled: true, cronSchedule: '* * * * *', minEvidenceCount: 1, successRateThreshold: 0.8, maxCandidatesPerRun: 5 },
+      llmCall,
+    });
+    expect(result.refined).toBe(1);
+
+    // ab_test 表有新 active 行
+    const abRow = db.get<{ id: number; status: string; variantAHash: string; variantBHash: string }>(
+      `SELECT id, status, variant_a_hash AS variantAHash, variant_b_hash AS variantBHash
+       FROM skill_ab_test WHERE skill_name = ?`,
+      'target',
+    );
+    expect(abRow).toBeDefined();
+    expect(abRow!.status).toBe('active');
+    expect(abRow!.variantAHash).toBeTruthy();
+    expect(abRow!.variantBHash).toBeTruthy();
+    expect(abRow!.variantAHash).not.toBe(abRow!.variantBHash);
+
+    // .ab-cache/ 中物化了 A 版本
+    const cacheDir = path.join(userSkillsDir, '.ab-cache');
+    expect(fs.existsSync(cacheDir)).toBe(true);
+    const cacheFiles = fs.readdirSync(cacheDir).filter(f => f.startsWith('target-'));
+    expect(cacheFiles).toHaveLength(1);
+    const cacheContent = fs.readFileSync(path.join(cacheDir, cacheFiles[0]!), 'utf-8');
+    expect(cacheContent).toContain('old marker');  // A 是旧版本
+  });
+
+  it('decision=skip → 不启动 A-B', async () => {
+    writeSkill(userSkillsDir, 'target', 'body');
+    const c = fs.readFileSync(path.join(userSkillsDir, 'target', 'SKILL.md'), 'utf-8');
+    upsertManifestEntry(userSkillsDir, {
+      name: 'target', sha256: computeSkillHash(c),
+      source: 'bundled', createdAt: '2026-01-01T00:00:00Z',
+    });
+    feedUsages('target', 1, 5);
+    for (let i = 0; i < 3; i++) {
+      usageStore.saveSummary({
+        skillName: 'target', sessionKey: `s${i}`, agentId: AGENT,
+        summaryText: '失败', invocationCount: 2, successRate: 0.2,
+      });
+    }
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'skip', reasoning: 'no clear cause',
+    }));
+    await runEvolutionCycle({
+      db, userSkillsDir,
+      config: { enabled: true, cronSchedule: '* * * * *', minEvidenceCount: 1, successRateThreshold: 0.8, maxCandidatesPerRun: 5 },
+      llmCall,
+    });
+    const abRow = db.get(`SELECT id FROM skill_ab_test WHERE skill_name = 'target'`);
+    expect(abRow).toBeUndefined();
+  });
+
+  it('decision=create → 不启动 A-B（无 baseline）', async () => {
+    writeSkill(userSkillsDir, 'source', 'body');
+    upsertManifestEntry(userSkillsDir, {
+      name: 'source', sha256: computeSkillHash(skillContent('source', 'body')),
+      source: 'bundled', createdAt: '2026-01-01T00:00:00Z',
+    });
+    for (let i = 0; i < 3; i++) {
+      usageStore.saveSummary({ skillName: 'source', sessionKey: `s${i}`, agentId: AGENT, summaryText: 'x', invocationCount: 2, successRate: 0.5 });
+    }
+    feedUsages('source', 2, 5);
+    const newSkillMd = '---\nname: derived\ndescription: new\n---\n\nstep\n';
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'create', reasoning: 'derived',
+      changes: { suggestedName: 'derived', new_skill_md: newSkillMd },
+    }));
+    await runEvolutionCycle({
+      db, userSkillsDir,
+      config: { enabled: true, cronSchedule: '* * * * *', minEvidenceCount: 1, successRateThreshold: 0.8, maxCandidatesPerRun: 5 },
+      llmCall,
+    });
+    // create 不进 A-B
+    const abRows = db.all(`SELECT id FROM skill_ab_test`);
+    expect(abRows).toHaveLength(0);
+  });
+
+  it('refine 失败（patch 不匹配）→ 不启动 A-B', async () => {
+    writeSkill(userSkillsDir, 'target', 'body');
+    const c = fs.readFileSync(path.join(userSkillsDir, 'target', 'SKILL.md'), 'utf-8');
+    upsertManifestEntry(userSkillsDir, {
+      name: 'target', sha256: computeSkillHash(c),
+      source: 'bundled', createdAt: '2026-01-01T00:00:00Z',
+    });
+    feedUsages('target', 1, 5);
+    for (let i = 0; i < 3; i++) {
+      usageStore.saveSummary({
+        skillName: 'target', sessionKey: `s${i}`, agentId: AGENT,
+        summaryText: 'x', invocationCount: 2, successRate: 0.2,
+      });
+    }
+    const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+      decision: 'refine', reasoning: 'fix',
+      changes: { patches: [{ old: 'NONEXISTENT', new: 'whatever' }] },
+    }));
+    await runEvolutionCycle({
+      db, userSkillsDir,
+      config: { enabled: true, cronSchedule: '* * * * *', minEvidenceCount: 1, successRateThreshold: 0.8, maxCandidatesPerRun: 5 },
+      llmCall,
+    });
+    const abRow = db.get(`SELECT id FROM skill_ab_test WHERE skill_name = 'target'`);
+    expect(abRow).toBeUndefined();
   });
 });

@@ -29,6 +29,8 @@ import { scanSkillMd, SKILL_NAME_REGEX } from './skill-content-scanner.js';
 import { createSkillInternal, editSkillInternal } from './skill-manage-tool.js';
 import { computeSkillHash, upsertManifestEntry } from './skill-manifest.js';
 import { listLifecycleEntries } from './skill-curator-lifecycle.js';
+import { findActiveTest, startTest } from './skill-ab-store.js';
+import { writeVariantToCache } from './skill-ab-cache.js';
 
 const log = createLogger('skill-evolver');
 
@@ -148,7 +150,7 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
     llmConsecutiveFailures = 0;
 
     const { decision, outcome } = decisionResult;
-    logEvolutionDecision(db, {
+    const evolutionLogId = logEvolutionDecision(db, {
       skillName: outcome.targetSkillName ?? skillName,
       decision: decision.decision,
       reasoning: decision.reasoning,
@@ -163,6 +165,19 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
       newContent: outcome.newContent ?? null,
       triggerSource: 'cron',
     });
+
+    // M7-Tier3 PR-T3-1a: refine 成功 → 启动 A-B 测试
+    if (!outcome.error && decision.decision === 'refine' && evolutionLogId !== null) {
+      maybeStartAbTest({
+        db,
+        evolutionLogId,
+        skillName: outcome.targetSkillName ?? skillName,
+        previousHash: evidence.currentHash,
+        newHash: outcome.newHash,
+        previousContent: outcome.previousContent,
+        userSkillsDir,
+      });
+    }
 
     if (outcome.error) {
       result.failed++;
@@ -412,6 +427,75 @@ async function executeCreate(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// A-B Test Launcher (M7-Tier3 PR-T3-1a)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface MaybeStartAbTestOpts {
+  db: SqliteStore;
+  evolutionLogId: number;
+  skillName: string;
+  previousHash: string | null;
+  newHash: string | null;
+  previousContent: string | null | undefined;
+  userSkillsDir: string;
+}
+
+/**
+ * Refine 成功后启动 A-B 测试。
+ *
+ * 前置条件（任一不满足 → silent skip）：
+ *   - previousHash + newHash 都非空
+ *   - previousContent 非空（用于物化到 .ab-cache/）
+ *   - 同 skill 当前没有 active 测试（startTest 内部再次校验防 race）
+ *
+ * 失败 silent log（A-B 是辅助通路，refine 已落地不能 rollback）。
+ */
+function maybeStartAbTest(opts: MaybeStartAbTestOpts): void {
+  if (!opts.previousHash || !opts.newHash) {
+    log.debug(`[ab][skip] missing hash`, { skillName: opts.skillName });
+    return;
+  }
+  if (!opts.previousContent) {
+    log.debug(`[ab][skip] no previousContent`, { skillName: opts.skillName });
+    return;
+  }
+
+  const existing = findActiveTest(opts.db, opts.skillName);
+  if (existing) {
+    log.warn(`[ab][skip] active test already exists`, {
+      skillName: opts.skillName,
+      existingId: existing.id,
+    });
+    return;
+  }
+
+  // 物化 A 版本（previous_content）到 .ab-cache/
+  const cacheOk = writeVariantToCache(
+    opts.userSkillsDir,
+    opts.skillName,
+    opts.previousHash,
+    opts.previousContent,
+  );
+  if (!cacheOk) {
+    log.warn(`[ab][skip] cache write failed`, { skillName: opts.skillName });
+    return;
+  }
+
+  const id = startTest(opts.db, {
+    skillName: opts.skillName,
+    evolutionLogId: opts.evolutionLogId,
+    variantAHash: opts.previousHash,
+    variantBHash: opts.newHash,
+  });
+  if (!id) {
+    log.warn(`[ab][skip] startTest returned null`, { skillName: opts.skillName });
+  }
+}
+
+// 暴露给 inline review（不导出意味着只 cron 能用，但 inline 也需要 — 见 skill-evolver-inline.ts）
+export { maybeStartAbTest };
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Audit Log
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -433,8 +517,13 @@ export interface LogEvolutionDecisionParams {
   triggerSource: 'cron' | 'inline';
 }
 
-/** 写一条 skill_evolution_log（cron + inline 共用，失败静默） */
-export function logEvolutionDecision(db: SqliteStore, p: LogEvolutionDecisionParams): void {
+/**
+ * 写一条 skill_evolution_log（cron + inline 共用，失败静默）。
+ *
+ * M7-Tier3 PR-T3-1a：返回 inserted id（或 null on failure），供调用方启动 A-B 测试。
+ * 注意：旧调用方忽略返回值即可，行为向后兼容。
+ */
+export function logEvolutionDecision(db: SqliteStore, p: LogEvolutionDecisionParams): number | null {
   try {
     const evidenceSummary = JSON.stringify({
       summaries: p.evidence.summaries.length,
@@ -464,7 +553,10 @@ export function logEvolutionDecision(db: SqliteStore, p: LogEvolutionDecisionPar
       p.newContent ?? null,
       p.triggerSource,
     );
+    const idRow = db.get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
+    return idRow?.id ?? null;
   } catch (err) {
     log.warn('skill_evolution_log 写入失败', { err: String(err), skill: p.skillName });
+    return null;
   }
 }

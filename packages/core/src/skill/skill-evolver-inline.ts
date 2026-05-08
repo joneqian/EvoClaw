@@ -26,6 +26,7 @@ import { gatherEvidence } from './skill-evidence-gatherer.js';
 import {
   runEvolverDecision,
   logEvolutionDecision,
+  maybeStartAbTest,
   type LLMCallFn,
 } from './skill-evolver.js';
 import type { SignalDetectionResult } from './feedback-signal-detector.js';
@@ -188,7 +189,7 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
 
   // 9. 写决策日志
   const { decision, outcome } = result;
-  logEvolutionDecision(opts.db, {
+  const evolutionLogId = logEvolutionDecision(opts.db, {
     skillName: outcome.targetSkillName ?? skillName,
     decision: decision.decision,
     reasoning: decision.reasoning,
@@ -203,6 +204,19 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
     newContent: outcome.newContent ?? null,
     triggerSource: 'inline',
   });
+
+  // M7-Tier3 PR-T3-1a: refine 成功 → 启动 A-B（cron / inline 双通道一致）
+  if (!outcome.error && decision.decision === 'refine' && evolutionLogId !== null) {
+    maybeStartAbTest({
+      db: opts.db,
+      evolutionLogId,
+      skillName: outcome.targetSkillName ?? skillName,
+      previousHash: evidence.currentHash,
+      newHash: outcome.newHash,
+      previousContent: outcome.previousContent,
+      userSkillsDir: opts.userSkillsDir,
+    });
+  }
 
   log.info(`[inline-review-done] skill=${skillName} decision=${decision.decision} duration=${durationMs}ms`, {
     skillName, decision: decision.decision, durationMs, hadError: Boolean(outcome.error),

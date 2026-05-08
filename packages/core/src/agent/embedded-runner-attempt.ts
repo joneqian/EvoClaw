@@ -299,6 +299,9 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     skillTelemetry = new SkillUsageStore(store);
   }
 
+  // M7-Tier3 PR-T3-1a: A-B 测试需要 db + userSkillsDir 才能查 active 测试 + 读 cache
+  // skillSearchPaths[0] 是用户级目录（约定：用户 skills 第一优先），cache 物化到那里
+  const userSkillsDir = skillSearchPaths[0];
   const skillTool = createSkillTool(skillSearchPaths, {
     forkConfig,
     mcpPromptExecutor,
@@ -306,6 +309,8 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
     telemetry: skillTelemetry,
     agentId: config.agent?.id,
     sessionKey: config.sessionKey,
+    ...(store ? { db: store } : {}),
+    ...(userSkillsDir ? { userSkillsDir } : {}),
   }) as import('./kernel/types.js').KernelTool;
 
   // Layer 1+2: workspace 边界注入 + agentsBaseDir hallucinate 防护

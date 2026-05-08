@@ -8,13 +8,14 @@ import ProfileManager from '../components/ProfileManager';
 
 // ─── Tab 定义 ───
 
-type SettingsTab = 'general' | 'env' | 'mcp' | 'skill-evolver' | 'api-docs' | 'about';
+type SettingsTab = 'general' | 'env' | 'mcp' | 'skill-evolver' | 'security-policy' | 'api-docs' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: '通用' },
   { key: 'env', label: '环境变量' },
   { key: 'mcp', label: 'MCP 服务器' },
   { key: 'skill-evolver', label: 'Skill 自进化' },
+  { key: 'security-policy', label: '安全策略' },
   { key: 'api-docs', label: 'API 文档' },
   { key: 'about', label: '关于' },
 ];
@@ -734,6 +735,221 @@ function CuratorStat({ label, value, color }: { label: string; value: number; co
   );
 }
 
+// ─── M7-Tier2 PR5: 安全策略 Tab（5×3 矩阵） ───────────────────────────────
+
+type SkillSourceKey = 'bundled' | 'local' | 'clawhub' | 'github' | 'mcp';
+type RiskKey = 'low' | 'medium' | 'high';
+type PolicyValue = 'auto' | 'require-confirm' | 'block';
+
+const SOURCE_LABELS: Record<SkillSourceKey, string> = {
+  bundled: '内置',
+  local: '本地',
+  clawhub: 'ClawHub',
+  github: 'GitHub',
+  mcp: 'MCP',
+};
+
+const RISK_LABELS: Record<RiskKey, string> = {
+  low: '低风险',
+  medium: '中风险',
+  high: '高风险',
+};
+
+const POLICY_LABELS: Record<PolicyValue, { label: string; bg: string; text: string }> = {
+  auto: { label: '直接安装', bg: 'bg-emerald-50', text: 'text-emerald-700' },
+  'require-confirm': { label: '需确认', bg: 'bg-amber-50', text: 'text-amber-800' },
+  block: { label: '阻止', bg: 'bg-rose-50', text: 'text-rose-700' },
+};
+
+const POLICY_CYCLE: PolicyValue[] = ['auto', 'require-confirm', 'block'];
+
+const SOURCES: SkillSourceKey[] = ['bundled', 'local', 'clawhub', 'github', 'mcp'];
+const RISKS: RiskKey[] = ['low', 'medium', 'high'];
+
+interface PolicyMatrix {
+  default: Record<string, PolicyValue>;
+  override: Record<string, PolicyValue>;
+}
+
+function SecurityPolicyTab() {
+  const [matrix, setMatrix] = useState<PolicyMatrix | null>(null);
+  const [draft, setDraft] = useState<Record<string, PolicyValue>>({});
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await get<PolicyMatrix>('/skill/policy');
+      setMatrix(res);
+      setDraft(res.override);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '加载失败', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  /** 当前生效值 = override 优先，缺省 default */
+  const effective = useCallback((source: SkillSourceKey, risk: RiskKey): PolicyValue => {
+    const key = `${source}:${risk}`;
+    return draft[key] ?? matrix?.default[key] ?? 'require-confirm';
+  }, [draft, matrix]);
+
+  /** 单元格点击：在 auto → require-confirm → block 三态间循环 */
+  const handleCellCycle = useCallback((source: SkillSourceKey, risk: RiskKey) => {
+    const key = `${source}:${risk}`;
+    const cur = effective(source, risk);
+    const next = POLICY_CYCLE[(POLICY_CYCLE.indexOf(cur) + 1) % POLICY_CYCLE.length]!;
+    const defaultVal = matrix?.default[key];
+    setDraft((prev) => {
+      const out = { ...prev };
+      if (next === defaultVal) {
+        delete out[key];           // 与默认一致 → 去除覆盖
+      } else {
+        out[key] = next;
+      }
+      return out;
+    });
+  }, [effective, matrix]);
+
+  const isDirty = matrix !== null
+    && JSON.stringify(matrix.override) !== JSON.stringify(draft);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await post<{ ok: boolean; override: Record<string, PolicyValue> }>(
+        '/skill/policy',
+        { override: draft },
+      );
+      setMatrix((m) => m ? { ...m, override: res.override } : m);
+      setDraft(res.override);
+      showToast('已保存', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, showToast]);
+
+  const handleResetAll = useCallback(() => {
+    if (!matrix) return;
+    if (!window.confirm('确定清空所有覆盖，恢复默认矩阵？')) return;
+    setDraft({});
+  }, [matrix]);
+
+  if (loading || !matrix) {
+    return <div className="text-center py-20 text-slate-400 text-sm">加载中…</div>;
+  }
+
+  const overrideCount = Object.keys(draft).length;
+
+  return (
+    <div className="max-w-3xl space-y-4">
+      {toast && (
+        <div className={`px-4 py-2 rounded-lg text-sm ${
+          toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+        }`}>{toast.message}</div>
+      )}
+
+      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+        <header className="mb-4">
+          <h3 className="text-base font-semibold text-slate-900">Skill 安装策略矩阵</h3>
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            按"来源 × 风险等级"决定 Skill 安装时的处理：
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-medium">直接安装</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-medium">需确认</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-medium">阻止</span>。
+            点击单元格在三态间切换。覆盖项以蓝框标记，与默认相同时自动清除（节省存储 + 避免误判)。
+          </p>
+        </header>
+
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 border-b border-slate-200">来源 \ 风险</th>
+                {RISKS.map((r) => (
+                  <th key={r} className="px-3 py-2 text-center text-xs font-medium text-slate-500 border-b border-slate-200">
+                    {RISK_LABELS[r]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {SOURCES.map((src) => (
+                <tr key={src} className="border-b border-slate-100">
+                  <td className="px-3 py-2 text-sm font-medium text-slate-700">{SOURCE_LABELS[src]}</td>
+                  {RISKS.map((r) => {
+                    const key = `${src}:${r}`;
+                    const value = effective(src, r);
+                    const isOverridden = draft[key] !== undefined;
+                    const meta = POLICY_LABELS[value];
+                    return (
+                      <td key={r} className="px-2 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleCellCycle(src, r)}
+                          className={`w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${meta.bg} ${meta.text} ${
+                            isOverridden ? 'ring-2 ring-blue-400' : 'hover:ring-1 hover:ring-slate-300'
+                          }`}
+                          title={isOverridden ? `已覆盖（默认：${POLICY_LABELS[matrix.default[key] ?? 'require-confirm'].label}）` : '点击修改'}
+                        >
+                          {meta.label}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
+          <div className="text-xs text-slate-500">
+            当前覆盖：<strong className="text-slate-700">{overrideCount}</strong> 个单元格（共 15 个）
+          </div>
+          <div className="flex items-center gap-2">
+            {overrideCount > 0 && (
+              <button
+                onClick={handleResetAll}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+              >全部恢复默认</button>
+            )}
+            {isDirty && (
+              <button
+                onClick={() => setDraft(matrix.override)}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+              >放弃改动</button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={!isDirty || saving}
+              className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                isDirty && !saving
+                  ? 'bg-brand text-white hover:bg-brand-hover'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >{saving ? '保存中…' : isDirty ? '保存改动' : '已保存'}</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function AboutTab() {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -783,6 +999,7 @@ export default function SettingsPage() {
         {activeTab === 'env' && <EnvVarsTab />}
         {activeTab === 'mcp' && <MCPServersPanel />}
         {activeTab === 'skill-evolver' && <SkillEvolverTab />}
+        {activeTab === 'security-policy' && <SecurityPolicyTab />}
         {activeTab === 'api-docs' && <ApiDocsPanel />}
         {activeTab === 'about' && <AboutTab />}
       </div>

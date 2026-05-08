@@ -12,7 +12,12 @@ import { getLoadedSkills, refreshSkillCache } from '../context/plugins/tool-regi
 import type { SkillSource } from '@evoclaw/shared';
 import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { SkillInstallPolicyOverride } from '../skill/install-policy.js';
+import { DEFAULT_INSTALL_POLICY_MATRIX } from '../skill/install-policy.js';
+import type { ConfigManager } from '../infrastructure/config-manager.js';
 import { listManifestsBySource } from '../skill/install-manifest.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const skillRoutesLog = createLogger('skill-routes');
 
 /** 简易 semver-like 版本比较：返回负数 = a < b，0 = 相等，正数 = a > b */
 function compareVersions(a: string, b: string): number {
@@ -33,6 +38,8 @@ export interface SkillRoutesOptions {
   skillsBaseDir?: string;
   /** M5 T2: Skill 安装策略矩阵覆盖提供者（企业 IT 配置） */
   getPolicyOverride?: () => SkillInstallPolicyOverride | undefined;
+  /** M7-Tier2 PR5: ConfigManager — POST /policy 写入用 */
+  configManager?: ConfigManager;
 }
 
 /** 创建 Skill 管理路由 */
@@ -212,6 +219,90 @@ export function createSkillRoutes(
     }
     // 无 agentId 时清除所有缓存
     return c.json({ refreshed: true, agentId: null });
+  });
+
+  // ─── M7-Tier2 PR5: 安装策略矩阵 ──────────────────────────────────────
+
+  /**
+   * GET /policy
+   *
+   * 返回当前安装策略矩阵的"默认 + 覆盖"两层数据，前端按 source × risk
+   * 渲染 5×3 表格，覆盖单元格高亮显示。
+   */
+  app.get('/policy', (c) => {
+    const override = opts.getPolicyOverride?.() ?? {};
+    return c.json({
+      default: DEFAULT_INSTALL_POLICY_MATRIX,
+      override,
+    });
+  });
+
+  /**
+   * POST /policy
+   *
+   * Body: { override: SkillInstallPolicyOverride } —— 部分单元格覆盖（key 形如 `clawhub:low`）。
+   * 校验：每个 key 必须形如 `<source>:<risk>`，每个 value ∈ {auto, require-confirm, block}。
+   * 通过后写入 ConfigManager.security.skillInstallPolicy。
+   */
+  app.post('/policy', async (c) => {
+    if (!opts.configManager) {
+      return c.json({ error: 'ConfigManager not available' }, 503);
+    }
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const overrideInput = body['override'] ?? body;
+    if (!overrideInput || typeof overrideInput !== 'object' || Array.isArray(overrideInput)) {
+      return c.json({ error: 'override must be an object' }, 400);
+    }
+
+    const VALID_SOURCES: SkillSource[] = ['bundled', 'local', 'clawhub', 'github', 'mcp'];
+    const VALID_RISKS = ['low', 'medium', 'high'] as const;
+    const VALID_POLICIES = ['auto', 'require-confirm', 'block'] as const;
+
+    const sanitized: SkillInstallPolicyOverride = {};
+    for (const [key, value] of Object.entries(overrideInput as Record<string, unknown>)) {
+      const m = key.match(/^([a-z-]+):(low|medium|high)$/);
+      if (!m) {
+        return c.json({ error: `invalid key '${key}' (expected '<source>:<risk>')` }, 400);
+      }
+      const [, src, risk] = m;
+      if (!VALID_SOURCES.includes(src as SkillSource)) {
+        return c.json({ error: `invalid source '${src}' in '${key}'` }, 400);
+      }
+      if (!VALID_RISKS.includes(risk as typeof VALID_RISKS[number])) {
+        return c.json({ error: `invalid risk '${risk}' in '${key}'` }, 400);
+      }
+      if (!VALID_POLICIES.includes(value as typeof VALID_POLICIES[number])) {
+        return c.json({ error: `invalid policy '${String(value)}' for key '${key}'` }, 400);
+      }
+      // 不存默认值（节省存储 + UI 区分"覆盖"vs"默认"）
+      const defaultPolicy = DEFAULT_INSTALL_POLICY_MATRIX[`${src}:${risk}` as keyof typeof DEFAULT_INSTALL_POLICY_MATRIX];
+      if (value !== defaultPolicy) {
+        sanitized[`${src}:${risk}` as keyof typeof DEFAULT_INSTALL_POLICY_MATRIX] = value as 'auto' | 'require-confirm' | 'block';
+      }
+    }
+
+    try {
+      const cur = opts.configManager.getConfig();
+      const next = {
+        ...cur,
+        security: {
+          ...cur.security,
+          skillInstallPolicy: sanitized,
+        },
+      };
+      opts.configManager.updateConfig(next);
+      skillRoutesLog.info('[/policy POST] override updated', { cells: Object.keys(sanitized).length });
+      return c.json({ ok: true, override: sanitized });
+    } catch (err) {
+      skillRoutesLog.error(`[/policy POST] write failed: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'write config failed' }, 500);
+    }
   });
 
   return app;

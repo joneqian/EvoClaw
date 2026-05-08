@@ -423,6 +423,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     }
     app.route('/skill', createSkillRoutes({
       getPolicyOverride: () => configManager?.getConfig()?.security?.skillInstallPolicy,
+      ...(configManager ? { configManager } : {}),
     }));
     app.route('/skill-usage', createSkillUsageRoutes({ db: store }));
     app.route('/skill-evolution', createSkillEvolutionRoutes({

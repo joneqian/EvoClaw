@@ -22,7 +22,9 @@ import type {
 
 type RiskLevel = SkillSecurityReport['riskLevel'];
 
-type MatrixKey = `${SkillSource}:${RiskLevel}`;
+/** 矩阵单元格 key，形如 `clawhub:low`（5 来源 × 3 风险等级 = 15 单元格） */
+export type SkillInstallPolicyMatrixKey = `${SkillSource}:${RiskLevel}`;
+type MatrixKey = SkillInstallPolicyMatrixKey;
 
 /**
  * 单元格覆盖（部分）。key 形如 `clawhub:low` → 'auto' | 'require-confirm' | 'block'。
@@ -30,8 +32,8 @@ type MatrixKey = `${SkillSource}:${RiskLevel}`;
  */
 export type SkillInstallPolicyOverride = Partial<Record<MatrixKey, SkillInstallPolicy>>;
 
-/** 默认矩阵（渐进式） */
-const DEFAULT_MATRIX: Record<MatrixKey, SkillInstallPolicy> = {
+/** 默认矩阵（渐进式）— 暴露给路由 GET /skill/policy 返回 */
+export const DEFAULT_INSTALL_POLICY_MATRIX: Record<MatrixKey, SkillInstallPolicy> = {
   'bundled:low': 'auto',
   'bundled:medium': 'auto',
   'bundled:high': 'auto',
@@ -79,6 +81,6 @@ export function decideInstallPolicy(
   override?: SkillInstallPolicyOverride,
 ): SkillInstallPolicyDecision {
   const key = `${source}:${riskLevel}` as MatrixKey;
-  const policy = override?.[key] ?? DEFAULT_MATRIX[key] ?? 'require-confirm';
+  const policy = override?.[key] ?? DEFAULT_INSTALL_POLICY_MATRIX[key] ?? 'require-confirm';
   return { policy, reason: reasonFor(source, riskLevel, policy) };
 }

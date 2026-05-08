@@ -434,6 +434,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     app.route('/peer-impressions', createPeerImpressionRoutes({ db: store }));
     app.route('/curator', createCuratorRoutes({
       getScheduler: options.getCuratorScheduler,
+      ...(configManager ? { configManager } : {}),
     }));
     // M1.1 Checkpoint Manager — 内容寻址快照让 agent 改坏文件后能撤回
     const checkpointManager = new CheckpointManager(store);
@@ -1740,12 +1741,13 @@ async function main() {
     skillEvolverScheduler.start();
     log.info('SkillEvolverScheduler 已启动（按 config.security.skillEvolver 触发）');
 
-    // M7 Curator: 跨 session umbrella consolidation（每 7 天 tick 一次）
+    // M7 Curator: 跨 session umbrella consolidation（PR6 改用 getConfig 热重载，
+    // intervalDays / staleDays / archivedDays / protectBundled 通过 SettingsPage 改即时生效）
     const { SkillCuratorScheduler } = await import('./skill/skill-curator-scheduler.js');
     curatorScheduler = new SkillCuratorScheduler({
       db,
       userSkillsDir: evolverUserSkillsDir,
-      intervalDays: 7,
+      getConfig: () => configManager?.getConfig()?.security?.skillCurator,
       // getRunConfig 运行时解析 active agent + LLM 凭据，构造最小 AgentRunConfig
       getRunConfig: () => {
         try {

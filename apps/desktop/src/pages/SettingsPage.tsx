@@ -441,6 +441,15 @@ interface EvolverConfig {
   model?: string;
 }
 
+/** M7-Tier1 PR6: Curator 完整配置（与 security.skillCurator schema 对齐） */
+interface CuratorConfig {
+  enabled: boolean;
+  intervalDays: number;
+  staleDays: number;
+  archivedDays: number;
+  protectBundled: boolean;
+}
+
 interface CuratorStatus {
   state: { paused: boolean; lastRunAt: string | null; lastRunSummary: string | null; runCount: number };
   nextRun: { shouldRun: boolean; reason: string };
@@ -452,9 +461,13 @@ interface CuratorStatus {
 function SkillEvolverTab() {
   const [original, setOriginal] = useState<EvolverConfig | null>(null);
   const [draft, setDraft] = useState<EvolverConfig | null>(null);
+  /** PR6: Curator 配置 */
+  const [curatorOriginal, setCuratorOriginal] = useState<CuratorConfig | null>(null);
+  const [curatorDraft, setCuratorDraft] = useState<CuratorConfig | null>(null);
   const [curator, setCurator] = useState<CuratorStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingCurator, setSavingCurator] = useState(false);
   const [running, setRunning] = useState<'evolver' | 'curator' | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -466,12 +479,15 @@ function SkillEvolverTab() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [evRes, curRes] = await Promise.all([
+      const [evRes, curCfgRes, curRes] = await Promise.all([
         get<{ evolver: EvolverConfig }>('/skill-evolution/config'),
+        get<{ curator: CuratorConfig }>('/curator/config'),
         get<CuratorStatus>('/curator/status'),
       ]);
       setOriginal(evRes.evolver);
       setDraft(evRes.evolver);
+      setCuratorOriginal(curCfgRes.curator);
+      setCuratorDraft(curCfgRes.curator);
       setCurator(curRes);
     } catch (err) {
       showToast(err instanceof Error ? err.message : '加载配置失败', 'error');
@@ -539,7 +555,29 @@ function SkillEvolverTab() {
     }
   }, [curator, loadAll, showToast]);
 
-  if (loading || !draft || !original) {
+  /** PR6: Curator 配置保存 */
+  const handleCuratorSave = useCallback(async () => {
+    if (!curatorDraft) return;
+    setSavingCurator(true);
+    try {
+      const res = await post<{ ok: boolean; curator: CuratorConfig }>(
+        '/curator/config',
+        { curator: curatorDraft },
+      );
+      setCuratorOriginal(res.curator);
+      setCuratorDraft(res.curator);
+      showToast('Curator 配置已保存（自动热重载）', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+    } finally {
+      setSavingCurator(false);
+    }
+  }, [curatorDraft, showToast]);
+
+  const isCuratorDirty = curatorOriginal !== null && curatorDraft !== null
+    && JSON.stringify(curatorOriginal) !== JSON.stringify(curatorDraft);
+
+  if (loading || !draft || !original || !curatorDraft || !curatorOriginal) {
     return <div className="text-center py-20 text-slate-400 text-sm">加载中…</div>;
   }
 
@@ -657,13 +695,13 @@ function SkillEvolverTab() {
         </div>
       </section>
 
-      {/* ─── Curator 子区 ─── */}
+      {/* ─── Curator 子区（PR6: 完整配置 + 状态合一） ─── */}
       <section className="rounded-xl border border-slate-200 p-5 bg-white">
         <header className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Skill Curator</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              每 {curator?.intervalDays ?? 7} 天跨 session umbrella consolidation + 自动 stale/archive 治理
+              跨 session umbrella consolidation + 自动 stale/archive 治理
             </p>
           </div>
           <button
@@ -675,8 +713,92 @@ function SkillEvolverTab() {
           </button>
         </header>
 
+        {/* 配置区 */}
+        <div className="space-y-3">
+          <Field label="启用" hint="关闭后调度器不会自动触发；立即触发按钮仍然可用">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={curatorDraft.enabled}
+                onChange={(e) => setCuratorDraft({ ...curatorDraft, enabled: e.target.checked })}
+                className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+              />
+              <span className="text-sm text-slate-700">{curatorDraft.enabled ? '已启用' : '已禁用'}</span>
+            </label>
+          </Field>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="触发间隔（天）" hint="跨 session 治理周期，默认 7">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={curatorDraft.intervalDays}
+                onChange={(e) => setCuratorDraft({ ...curatorDraft, intervalDays: Number(e.target.value) || 1 })}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              />
+            </Field>
+
+            <Field label="陈旧阈值（天）" hint="N 天未用 → stale 状态">
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={curatorDraft.staleDays}
+                onChange={(e) => setCuratorDraft({ ...curatorDraft, staleDays: Number(e.target.value) || 1 })}
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              />
+            </Field>
+
+            <Field label="归档阈值（天）" hint="N 天未用 → 物理归档（须 > 陈旧阈值）">
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={curatorDraft.archivedDays}
+                onChange={(e) => setCuratorDraft({ ...curatorDraft, archivedDays: Number(e.target.value) || 1 })}
+                className={`w-full px-3 py-1.5 text-sm rounded-lg border focus:ring-2 focus:ring-brand/40 focus:border-brand ${
+                  curatorDraft.archivedDays <= curatorDraft.staleDays ? 'border-rose-300 bg-rose-50' : 'border-slate-200'
+                }`}
+              />
+            </Field>
+          </div>
+
+          <Field label="保护 bundled" hint="开启时内置 skill 永远不被自动归档（推荐保持开启）">
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={curatorDraft.protectBundled}
+                onChange={(e) => setCuratorDraft({ ...curatorDraft, protectBundled: e.target.checked })}
+                className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+              />
+              <span className="text-sm text-slate-700">{curatorDraft.protectBundled ? '已保护' : '未保护（不推荐）'}</span>
+            </label>
+          </Field>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+          {isCuratorDirty && (
+            <button
+              onClick={() => setCuratorDraft(curatorOriginal)}
+              disabled={savingCurator}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+            >放弃改动</button>
+          )}
+          <button
+            onClick={handleCuratorSave}
+            disabled={!isCuratorDirty || savingCurator}
+            className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              isCuratorDirty && !savingCurator
+                ? 'bg-brand text-white hover:bg-brand-hover'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+            }`}
+          >{savingCurator ? '保存中…' : isCuratorDirty ? '保存改动' : '已保存'}</button>
+        </div>
+
+        {/* 状态区 */}
         {curator && (
-          <div className="space-y-3 text-sm">
+          <div className="mt-5 pt-4 border-t border-slate-100 space-y-3 text-sm">
             <div className="grid grid-cols-3 gap-3">
               <CuratorStat label="active" value={curator.agentCreatedStateCounts.active} color="text-emerald-600" />
               <CuratorStat label="stale" value={curator.agentCreatedStateCounts.stale} color="text-amber-600" />

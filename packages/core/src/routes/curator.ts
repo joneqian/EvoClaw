@@ -21,7 +21,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { DEFAULT_DATA_DIR, skillCuratorSchema } from '@evoclaw/shared';
+import type { ConfigManager } from '../infrastructure/config-manager.js';
 import { createLogger } from '../infrastructure/logger.js';
 import {
   readCuratorState,
@@ -44,16 +45,24 @@ const log = createLogger('curator-routes');
 export interface CuratorRouteDeps {
   /** 自定义 skills 根目录（测试 / 自定义部署用） */
   userSkillsDir?: string;
-  /** 默认 interval 天数（用于 status 显示距离下次运行） */
+  /** 默认 interval 天数（用于 status 显示距离下次运行；PR6 起优先从 ConfigManager 读，未注入时兜底） */
   intervalDays?: number;
   /** 注入的 scheduler getter（可选）— 注入后 /run endpoint 可用；用 getter 支持延迟初始化 */
   getScheduler?: () => SkillCuratorScheduler | undefined;
+  /** PR6: ConfigManager — GET/POST /config + /status 读 intervalDays 用 */
+  configManager?: ConfigManager;
 }
 
 export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
   const app = new Hono();
   const userSkillsDir = deps.userSkillsDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
-  const intervalDays = deps.intervalDays ?? 7;
+
+  /** PR6: 优先从 ConfigManager 读，回退到构造时 deps.intervalDays，最后默认 7 */
+  function resolveIntervalDays(): number {
+    return deps.configManager?.getConfig()?.security?.skillCurator?.intervalDays
+      ?? deps.intervalDays
+      ?? 7;
+  }
 
   /**
    * GET /status
@@ -93,6 +102,7 @@ export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
         if (!knownLifecycleNames.has(name)) stateCounts.active++;
       }
 
+      const intervalDays = resolveIntervalDays();
       const sched = shouldRunCurator({ intervalDays, skillsBaseDir: userSkillsDir });
 
       return c.json({
@@ -382,6 +392,72 @@ export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
     } catch (err) {
       log.error(`[/run] error: ${err instanceof Error ? err.message : String(err)}`);
       return c.json({ error: 'internal error' }, 500);
+    }
+  });
+
+  // ─── M7-Tier1 PR6: Curator 完整配置 ────────────────────────────────
+
+  /**
+   * GET /config
+   * 返回当前 Curator 配置（与 security.skillCurator schema 对齐）。
+   * ConfigManager 未注入时返回 schema 默认值（保 UI 降级可用）。
+   */
+  app.get('/config', (c) => {
+    try {
+      const stored = deps.configManager?.getConfig()?.security?.skillCurator;
+      const merged = skillCuratorSchema.parse(stored ?? {});
+      return c.json({ curator: merged });
+    } catch (err) {
+      log.warn(`[/config GET] error: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ curator: skillCuratorSchema.parse({}) });
+    }
+  });
+
+  /**
+   * POST /config
+   *
+   * Body: { curator: SkillCuratorConfig }
+   * 写流程：zod validate（含 archivedDays > staleDays refine）→ 合并到 user 配置层 →
+   * saveToDisk。Scheduler 通过 getConfig() 自动热重载，无需重启 sidecar。
+   */
+  app.post('/config', async (c) => {
+    if (!deps.configManager) {
+      return c.json({ error: 'ConfigManager not available' }, 503);
+    }
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const body = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const curatorInput = body['curator'] ?? body;
+
+    const parsed = skillCuratorSchema.safeParse(curatorInput);
+    if (!parsed.success) {
+      return c.json({ error: 'invalid curator config', issues: parsed.error.issues }, 400);
+    }
+
+    try {
+      const cur = deps.configManager.getConfig();
+      const next = {
+        ...cur,
+        security: {
+          ...cur.security,
+          skillCurator: parsed.data,
+        },
+      };
+      deps.configManager.updateConfig(next);
+      log.info('[/config POST] skillCurator updated', {
+        enabled: parsed.data.enabled,
+        intervalDays: parsed.data.intervalDays,
+        staleDays: parsed.data.staleDays,
+        archivedDays: parsed.data.archivedDays,
+      });
+      return c.json({ ok: true, curator: parsed.data });
+    } catch (err) {
+      log.error(`[/config POST] write failed: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'write config failed' }, 500);
     }
   });
 

@@ -33,6 +33,23 @@ export const skillEvolverSchema = z.object({
   model: z.string().optional(),
 });
 
+/** M7-Tier1 PR6 Skill Curator 子代理配置（跨 session umbrella consolidation + 三态生命周期） */
+export const skillCuratorSchema = z.object({
+  /** 是否启用（默认 false，需显式开启；与 paused 区分：enabled=false 完全关，paused=true 只是临时停） */
+  enabled: z.boolean().default(false),
+  /** Curator 触发间隔（天），默认 7 */
+  intervalDays: z.number().int().min(1).max(365).default(7),
+  /** N 天未用 → stale，默认 30 */
+  staleDays: z.number().int().min(1).max(3650).default(30),
+  /** N 天未用 → 物理归档（移到 .archive/），默认 90 */
+  archivedDays: z.number().int().min(1).max(3650).default(90),
+  /** bundled 来源是否豁免自动归档，默认 true（始终保护内置 skill） */
+  protectBundled: z.boolean().default(true),
+}).refine(
+  (cfg) => cfg.archivedDays > cfg.staleDays,
+  { message: 'archivedDays 必须大于 staleDays（先 stale 后 archive）', path: ['archivedDays'] },
+);
+
 /** M8 env 沙箱策略 */
 export const envSandboxPolicySchema = z.object({
   /** 额外敏感变量名正则（字符串形式，和默认 SENSITIVE_PATTERNS 取并集） */
@@ -56,6 +73,8 @@ export const extensionSecurityPolicySchema = z.object({
   domainDenylist: z.array(z.string()).optional(),
   /** M7 Phase 3: Skill 自动进化配置 */
   skillEvolver: skillEvolverSchema.optional(),
+  /** M7-Tier1 PR6: Skill Curator 子代理配置 */
+  skillCurator: skillCuratorSchema.optional(),
 });
 
 /** 安全解析安全策略 */

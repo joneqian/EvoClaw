@@ -85,7 +85,11 @@ export function createMemoryExtractPlugin(extractor: MemoryExtractor): ContextPl
       inProgress = true;
       const startTime = Date.now();
       try {
-        const result = await extractor.extractAndPersist(ctx.messages, ctx.agentId, ctx.sessionKey);
+        // M13 Phase 1 PR-1B: 把 canonicalUserId 传给 extractor，让 memory_units.canonical_user_id
+        // 锚定到员工逻辑身份（跨渠道偏好/角色记忆按员工维度聚合）
+        const result = await extractor.extractAndPersist(
+          ctx.messages, ctx.agentId, ctx.sessionKey, ctx.canonicalUserId,
+        );
         const elapsed = Date.now() - startTime;
 
         if (result.skipped) {

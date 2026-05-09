@@ -23,6 +23,18 @@ export type DmScope = 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-ch
 /** generateSessionKey 默认 DmScope（D3：DM 默认跨渠道连贯） */
 export const DEFAULT_DM_SCOPE: DmScope = 'main';
 
+/**
+ * M13 Phase 1 PR-1B: identityLinks lookup 接口
+ *
+ * 解耦 generateSessionKey 与 IdentityLinksStore — store 实例化在 server 层，
+ * generateSessionKey 通过此接口注入。`(channel, peerId) → canonicalId | null`。
+ *
+ * 命中时 generateSessionKey 把 peerId 替换为 canonicalId，让跨渠道同员工
+ * sessionKey 合并（'agent:X:feishu:direct:ou_xxx' 和 'agent:X:wecom:direct:userid_yyy'
+ * 都合并到 'agent:X:direct:self'）。
+ */
+export type IdentityLinkLookup = (channel: string, peerId: string) => string | null;
+
 /** 解析后的 Session 信息 */
 export interface ParsedSession {
   agentId: string;
@@ -39,13 +51,24 @@ export function generateSessionKey(
   peerId: string = '',
   /**
    * M13 Phase 1 PR-1A: dmScope / accountId 可选；仅 chatType='direct' 时生效。
+   * PR-1B: identityLookup 可选；命中时把 peerId 替换为 canonicalId 让跨渠道
+   * 同员工 sessionKey 合并。
    * 不传时回退到 'per-channel-peer'（PR-1A 之前的等价行为，保旧调用兼容）。
    */
-  options?: { dmScope?: DmScope; accountId?: string },
+  options?: { dmScope?: DmScope; accountId?: string; identityLookup?: IdentityLinkLookup },
 ): SessionKey {
   // 群聊 / 非 direct 不受 dmScope 影响
   if (chatType !== 'direct') {
     return `agent:${agentId}:${channel}:${chatType}:${peerId}` as SessionKey;
+  }
+
+  // PR-1B: identityLinks 命中时把 peerId 替换为 canonicalId
+  let effectivePeerId = peerId;
+  if (options?.identityLookup && peerId) {
+    const canonical = options.identityLookup(channel, peerId);
+    if (canonical) {
+      effectivePeerId = canonical;
+    }
   }
 
   // DM：按 dmScope 分支
@@ -54,14 +77,14 @@ export function generateSessionKey(
     case 'main':
       return generateMainSessionKey(agentId);
     case 'per-peer':
-      return `agent:${agentId}:direct:${peerId}` as SessionKey;
+      return `agent:${agentId}:direct:${effectivePeerId}` as SessionKey;
     case 'per-account-channel-peer': {
       const acc = options?.accountId ?? '';
-      return `agent:${agentId}:${channel}:${acc}:direct:${peerId}` as SessionKey;
+      return `agent:${agentId}:${channel}:${acc}:direct:${effectivePeerId}` as SessionKey;
     }
     case 'per-channel-peer':
     default:
-      return `agent:${agentId}:${channel}:direct:${peerId}` as SessionKey;
+      return `agent:${agentId}:${channel}:direct:${effectivePeerId}` as SessionKey;
   }
 }
 

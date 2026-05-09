@@ -75,6 +75,70 @@ describe('isMainSessionKey', () => {
   });
 });
 
+// ─── M13 Phase 1 PR-1B: identityLookup 集成 ───
+describe('generateSessionKey - identityLookup 替换 peerId', () => {
+  const lookup = (channel: string, peerId: string): string | null => {
+    if (channel === 'feishu' && peerId === 'ou_xxx') return 'self';
+    if (channel === 'wecom' && peerId === 'userid_yyy') return 'self';
+    return null;
+  };
+
+  it('per-peer + identityLookup 命中 → peerId 替换为 canonicalId', () => {
+    const k1 = generateSessionKey('alice', 'feishu', 'direct', 'ou_xxx', {
+      dmScope: 'per-peer', identityLookup: lookup,
+    });
+    const k2 = generateSessionKey('alice', 'wecom', 'direct', 'userid_yyy', {
+      dmScope: 'per-peer', identityLookup: lookup,
+    });
+    expect(k1).toBe('agent:alice:direct:self');
+    expect(k2).toBe('agent:alice:direct:self');
+    // 跨渠道同员工合并到同一 sessionKey
+    expect(k1).toBe(k2);
+  });
+
+  it('per-channel-peer + identityLookup 命中 → peerId 替换但 channel 仍区分', () => {
+    const k1 = generateSessionKey('alice', 'feishu', 'direct', 'ou_xxx', {
+      dmScope: 'per-channel-peer', identityLookup: lookup,
+    });
+    const k2 = generateSessionKey('alice', 'wecom', 'direct', 'userid_yyy', {
+      dmScope: 'per-channel-peer', identityLookup: lookup,
+    });
+    expect(k1).toBe('agent:alice:feishu:direct:self');
+    expect(k2).toBe('agent:alice:wecom:direct:self');
+    expect(k1).not.toBe(k2);  // channel 还分开
+  });
+
+  it('lookup 不命中 → peerId 不变', () => {
+    const k = generateSessionKey('alice', 'feishu', 'direct', 'ou_unknown', {
+      dmScope: 'per-peer', identityLookup: lookup,
+    });
+    expect(k).toBe('agent:alice:direct:ou_unknown');
+  });
+
+  it('main 模式 identityLookup 不影响（main 不含 peerId）', () => {
+    const k = generateSessionKey('alice', 'feishu', 'direct', 'ou_xxx', {
+      dmScope: 'main', identityLookup: lookup,
+    });
+    expect(k).toBe('agent:alice:main');
+  });
+
+  it('群聊不受 identityLookup 影响', () => {
+    const k = generateSessionKey('alice', 'feishu', 'group', 'oc_xxx', {
+      identityLookup: lookup,
+    });
+    expect(k).toBe('agent:alice:feishu:group:oc_xxx');
+  });
+
+  it('lookup 抛错 → 不影响（防御性，但当前实现不 catch）', () => {
+    // lookup 抛错时按上层 try/catch 决定，本测试仅文档预期：lookup 应该永不抛
+    const safeLookup = () => null;
+    const k = generateSessionKey('alice', 'feishu', 'direct', 'ou_xxx', {
+      dmScope: 'per-peer', identityLookup: safeLookup,
+    });
+    expect(k).toBe('agent:alice:direct:ou_xxx');
+  });
+});
+
 describe('parseSessionKey - main 格式特殊处理', () => {
   it('main 格式 → chatType="main" channel="main"', () => {
     const parsed = parseSessionKey('agent:alice:main');

@@ -133,6 +133,11 @@ export interface ChannelMessageDeps {
   knowledgeGraph?: KnowledgeGraphStore;
   /** 用于多账号渠道工具按 agentId 反查正确的 accountId + adapter */
   bindingRouter?: import('../routing/binding-router.js').BindingRouter;
+  /**
+   * M13 Phase 1 PR-1B: identityLinks lookup（跨渠道员工身份聚合）
+   * dispatch / handler 用此把 peerId 替换为 canonicalId，让跨渠道同员工合并 sessionKey。
+   */
+  identityLookup?: import('../routing/session-key.js').IdentityLinkLookup;
   // M13 team-mode 依赖（可选；缺省则 team mode 工具不注入，旧单 Agent 行为保留）
   taskPlanService?: import('../agent/team-mode/task-plan/service.js').TaskPlanService;
   artifactService?: import('../agent/team-mode/artifacts/service.js').ArtifactService;
@@ -539,6 +544,13 @@ export async function handleChannelMessage(
     }
   }
 
+  // M13 Phase 1 PR-1B: 反查 canonicalUserId（identityLinks 命中时填）
+  // 让 memory-extract plugin 把它持久化到 memory_units.canonical_user_id，
+  // 实现跨渠道员工偏好/角色记忆的逻辑身份合并。
+  const canonicalUserId = deps.identityLookup && peerId
+    ? deps.identityLookup(channel, peerId)
+    : null;
+
   // beforeTurn
   const turnCtx = {
     agentId,
@@ -549,6 +561,7 @@ export async function handleChannelMessage(
     estimatedTokens: 0,
     tokenLimit: 128_000,
     warnings: [] as string[],
+    canonicalUserId,
   };
   await contextEngine.beforeTurn(turnCtx);
 

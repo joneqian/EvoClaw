@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { BRAND_NAME } from '@evoclaw/shared';
-import { get, post, put } from '../lib/api';
+import { get, post, put, del } from '../lib/api';
 import Select from '../components/Select';
 import MCPServersPanel from '../components/MCPServersPanel';
 import ApiDocsPanel from '../components/ApiDocsPanel';
@@ -8,7 +8,7 @@ import ProfileManager from '../components/ProfileManager';
 
 // ─── Tab 定义 ───
 
-type SettingsTab = 'general' | 'env' | 'mcp' | 'skill-evolver' | 'security-policy' | 'api-docs' | 'about';
+type SettingsTab = 'general' | 'env' | 'mcp' | 'skill-evolver' | 'security-policy' | 'identity-links' | 'api-docs' | 'about';
 
 const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: '通用' },
@@ -16,6 +16,7 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'mcp', label: 'MCP 服务器' },
   { key: 'skill-evolver', label: 'Skill 自进化' },
   { key: 'security-policy', label: '安全策略' },
+  { key: 'identity-links', label: '我的多渠道身份' },
   { key: 'api-docs', label: 'API 文档' },
   { key: 'about', label: '关于' },
 ];
@@ -1313,6 +1314,188 @@ function AboutTab() {
   );
 }
 
+// ─── M13 Phase 1 PR-1B: 我的多渠道身份 Tab ─────────────────────────
+
+interface IdentityLink {
+  id: number;
+  canonicalId: string;
+  channel: string;
+  peerId: string;
+  createdAt: string;
+}
+
+const CHANNEL_OPTIONS = [
+  { value: 'feishu', label: '飞书' },
+  { value: 'wecom', label: '企业微信' },
+  { value: 'weixin', label: '微信' },
+];
+
+function IdentityLinksTab() {
+  const [links, setLinks] = useState<IdentityLink[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [draft, setDraft] = useState({ canonicalId: 'self', channel: 'feishu', peerId: '' });
+  const [saving, setSaving] = useState(false);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const loadLinks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await get<{ links: IdentityLink[] }>('/identity-links');
+      setLinks(res.links);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '加载失败', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { void loadLinks(); }, [loadLinks]);
+
+  const handleAdd = async () => {
+    if (!draft.canonicalId || !draft.channel || !draft.peerId.trim()) {
+      showToast('请填写完整：身份名 + 渠道 + ID', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      await post('/identity-links', {
+        canonicalId: draft.canonicalId,
+        channel: draft.channel,
+        peerId: draft.peerId.trim(),
+      });
+      showToast(`已绑定 ${draft.channel}:${draft.peerId.trim()} 到 ${draft.canonicalId}`, 'success');
+      setDraft({ ...draft, peerId: '' });
+      await loadLinks();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '绑定失败', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async (channel: string, peerId: string) => {
+    if (!window.confirm(`确认解除 ${channel}:${peerId} 的身份绑定？\n相关记忆会重新按渠道隔离。`)) return;
+    try {
+      await del(`/identity-links?channel=${encodeURIComponent(channel)}&peer=${encodeURIComponent(peerId)}`);
+      showToast(`已解绑 ${channel}:${peerId}`, 'success');
+      await loadLinks();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '解绑失败', 'error');
+    }
+  };
+
+  // 按 canonical 分组
+  const grouped: Array<[string, IdentityLink[]]> = useMemo(() => {
+    const map = new Map<string, IdentityLink[]>();
+    for (const link of links) {
+      const arr = map.get(link.canonicalId) ?? [];
+      arr.push(link);
+      map.set(link.canonicalId, arr);
+    }
+    return Array.from(map.entries());
+  }, [links]);
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      {toast && (
+        <div className={`px-4 py-2 rounded-lg text-sm ${
+          toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+        }`}>{toast.message}</div>
+      )}
+
+      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+        <header className="mb-4">
+          <h3 className="text-base font-semibold text-slate-900">我的多渠道身份</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            把同一员工在飞书 / 企微 / 微信的不同 ID 绑定到同一逻辑身份（如 'self'），
+            让 Agent 在跨渠道时识别员工是同一个人 + 跨渠道偏好/角色记忆按员工合并。
+          </p>
+        </header>
+
+        {/* 添加表单 */}
+        <div className="bg-slate-50 rounded-lg p-3 mb-4 grid grid-cols-12 gap-2 items-end">
+          <div className="col-span-3">
+            <label className="text-xs text-slate-600 block mb-1">身份名（canonical）</label>
+            <input
+              type="text"
+              value={draft.canonicalId}
+              onChange={(e) => setDraft({ ...draft, canonicalId: e.target.value })}
+              className="w-full px-2 py-1 text-sm rounded border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              placeholder="self"
+            />
+          </div>
+          <div className="col-span-3">
+            <label className="text-xs text-slate-600 block mb-1">渠道</label>
+            <select
+              value={draft.channel}
+              onChange={(e) => setDraft({ ...draft, channel: e.target.value })}
+              className="w-full px-2 py-1 text-sm rounded border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+            >
+              {CHANNEL_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+          <div className="col-span-4">
+            <label className="text-xs text-slate-600 block mb-1">渠道 ID（如飞书 ou_xxx）</label>
+            <input
+              type="text"
+              value={draft.peerId}
+              onChange={(e) => setDraft({ ...draft, peerId: e.target.value })}
+              className="w-full px-2 py-1 text-sm font-mono rounded border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              placeholder="ou_xxx / userid_yyy / wxid_zzz"
+            />
+          </div>
+          <div className="col-span-2">
+            <button
+              onClick={handleAdd}
+              disabled={saving}
+              className="w-full px-3 py-1.5 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40"
+            >{saving ? '绑定中…' : '绑定'}</button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-8 text-slate-400 text-sm">加载中…</div>
+        ) : links.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            暂无身份绑定。Agent 当前按渠道独立识别员工。
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {grouped.map(([canonical, items]) => (
+              <div key={canonical} className="rounded-lg border border-slate-200 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-800">
+                    {canonical} <span className="text-xs text-slate-400">（{items.length} 个渠道身份）</span>
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {items.map(link => (
+                    <div key={link.id} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-700">
+                        <span className="text-slate-500">{CHANNEL_OPTIONS.find(c => c.value === link.channel)?.label ?? link.channel}：</span>
+                        <code className="ml-1 font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">{link.peerId}</code>
+                      </span>
+                      <button
+                        onClick={() => handleRemove(link.channel, link.peerId)}
+                        className="text-xs px-2 py-0.5 text-rose-600 hover:bg-rose-50 rounded"
+                      >解绑</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 // ─── 主页面 ───
 
 export default function SettingsPage() {
@@ -1346,6 +1529,7 @@ export default function SettingsPage() {
         {activeTab === 'mcp' && <MCPServersPanel />}
         {activeTab === 'skill-evolver' && <SkillEvolverTab />}
         {activeTab === 'security-policy' && <SecurityPolicyTab />}
+        {activeTab === 'identity-links' && <IdentityLinksTab />}
         {activeTab === 'api-docs' && <ApiDocsPanel />}
         {activeTab === 'about' && <AboutTab />}
       </div>

@@ -42,6 +42,15 @@ export interface TurnContext {
     l0Indexes: string[];
     categories: string[];
   };
+  /**
+   * M13 Phase 1 PR-1B: 跨渠道员工身份锚点（identityLinks 命中时填）
+   *
+   * 由 channel-message-handler 在调 contextEngine.run 前用 ctx.peerId + channel
+   * 调 identityLookup 得到。memory-extract plugin 把它传给 extractor.extractAndPersist
+   * 持久化到 memory_units.canonical_user_id，让记忆按"员工"维度跨渠道聚合。
+   * NULL 表示未关联（系统级 / 未配 identityLinks）。
+   */
+  canonicalUserId?: string | null;
 }
 
 /** 压缩阶段上下文 */

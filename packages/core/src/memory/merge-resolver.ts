@@ -12,8 +12,12 @@ export class MergeResolver {
   /**
    * Resolve a parsed memory: either merge with existing or insert new.
    * Returns the memory unit ID (new or existing).
+   *
+   * M13 Phase 1 PR-1B: canonicalUserId 在新插入记录时填充，让员工跨渠道偏好/角色
+   * 可按 (agentId, canonicalUserId) 维度合并查询。命中已有记录走 update 路径不动
+   * canonicalUserId（旧记录可能 NULL，避免破坏既有锚点）。
    */
-  resolve(agentId: string, parsed: ParsedMemory): string {
+  resolve(agentId: string, parsed: ParsedMemory, canonicalUserId?: string | null): string {
     if (parsed.mergeType === 'merge' && parsed.mergeKey) {
       const existing = this.store.findByMergeKey(agentId, parsed.mergeKey);
       if (existing) {
@@ -45,6 +49,7 @@ export class MergeResolver {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       archivedAt: null,
+      canonicalUserId: canonicalUserId ?? null,
     };
     this.store.insert(unit);
     return unit.id;
@@ -54,7 +59,7 @@ export class MergeResolver {
    * 批量解析记忆列表
    * Returns array of memory unit IDs.
    */
-  resolveAll(agentId: string, parsed: ParsedMemory[]): string[] {
-    return parsed.map(p => this.resolve(agentId, p));
+  resolveAll(agentId: string, parsed: ParsedMemory[], canonicalUserId?: string | null): string[] {
+    return parsed.map(p => this.resolve(agentId, p, canonicalUserId));
   }
 }

@@ -50,6 +50,8 @@ import { ChannelStateRepo } from './channel/channel-state-repo.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { BindingRouter } from './routing/binding-router.js';
+import { IdentityLinksStore } from './routing/identity-links-store.js';
+import { createIdentityLinksRoutes } from './routes/identity-links.js';
 import { generateSessionKey, DEFAULT_DM_SCOPE } from './routing/session-key.js';
 import { buildGroupSessionKey } from './agent/team-mode/group-key-utils.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
@@ -172,6 +174,8 @@ export interface CreateAppOptions {
   memoryMonitor?: MemoryMonitor;
   /** Binding 路由器 — Channel → Agent 绑定匹配 */
   bindingRouter?: BindingRouter;
+  /** M13 Phase 1 PR-1B: identityLinks store（跨渠道员工身份聚合 + UI 配置） */
+  identityLinksStore?: IdentityLinksStore;
   /** Channel 状态持久化 */
   channelStateRepo?: ChannelStateRepo;
   /** 会话摘要器 */
@@ -210,6 +214,7 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     skillDiscoverer,
     memoryMonitor,
     bindingRouter,
+    identityLinksStore,
     channelStateRepo,
     sessionSummarizer,
   } = options;
@@ -489,6 +494,11 @@ export function createApp(tokenOrOptions: string | CreateAppOptions) {
     }));
     if (channelManager) {
       app.route('/channel', createChannelRoutes(channelManager, bindingRouter, channelStateRepo));
+    }
+
+    // M13 Phase 1 PR-1B: identityLinks 跨渠道员工身份聚合 REST endpoints
+    if (identityLinksStore) {
+      app.route('/identity-links', createIdentityLinksRoutes({ store: identityLinksStore }));
     }
   }
 
@@ -777,6 +787,7 @@ async function dispatchBroadcastMessage(
     const sessionKey = generateSessionKey(agentId, msg.channel, chatTypeForKey, msg.peerId, {
       dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
       ...(msg.accountId ? { accountId: msg.accountId } : {}),
+      ...(channelMsgDeps.identityLookup ? { identityLookup: channelMsgDeps.identityLookup } : {}),
     });
     try {
       await handleChannelMessage(
@@ -964,6 +975,13 @@ async function main() {
 
       const bindingRouter = new BindingRouter(db);
 
+      // M13 Phase 1 PR-1B: identityLinks 跨渠道员工身份聚合
+      // 让 generateSessionKey 在拼 sessionKey 前查 identity_links 命中替换
+      // peerId 为 canonicalId（跨渠道同员工合并）
+      const identityLinksStore = new IdentityLinksStore(db);
+      const identityLookup: import('./routing/session-key.js').IdentityLinkLookup =
+        (channel, peerId) => identityLinksStore.lookupCanonical(channel, peerId);
+
       // M13 team-mode: 跨渠道 adapter registry + 飞书实现
       // 飞书 chat.members.get 不返回机器人成员，所以用被动缓存模式：从入站消息和
       // bot.added/deleted 事件累积 (chatId, appId, openId)
@@ -1083,6 +1101,9 @@ async function main() {
         channelManager,
         channelStateRepo,
         bindingRouter,
+        // M13 Phase 1 PR-1B: identityLinks store + lookup（跨渠道员工身份聚合）
+        identityLinksStore,
+        identityLookup,
         feishuTeamChannel,
         feishuPeerBotRegistry,
         feishuChatPrebake,
@@ -1093,7 +1114,7 @@ async function main() {
   // 解构并行结果
   const { vectorStore, memoryStore, ftsStore, knowledgeGraph, hybridSearcher, memoryExtractor, sessionSummarizer, userMdRenderer, skillDiscoverer } = memorySys;
   const { agentManager, laneQueue, cronRunner } = agentSys;
-  const { channelManager, channelStateRepo, bindingRouter, feishuTeamChannel, feishuPeerBotRegistry, feishuChatPrebake } = channelSys;
+  const { channelManager, channelStateRepo, bindingRouter, identityLinksStore, identityLookup, feishuTeamChannel, feishuPeerBotRegistry, feishuChatPrebake } = channelSys;
 
   profiler.checkpoint('systems_ready');
 
@@ -1431,6 +1452,8 @@ async function main() {
     ftsStore,
     knowledgeGraph,
     bindingRouter,
+    // M13 Phase 1 PR-1B: identityLinks lookup（跨渠道员工身份聚合）
+    identityLookup,
     ...(teamModeServices
       ? {
           taskPlanService: teamModeServices.taskPlanService,
@@ -1576,6 +1599,7 @@ async function main() {
     const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId, {
       dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
       ...(msg.accountId ? { accountId: msg.accountId } : {}),
+      ...(channelMsgDeps.identityLookup ? { identityLookup: channelMsgDeps.identityLookup } : {}),
     });
 
     try {
@@ -1628,6 +1652,7 @@ async function main() {
     skillDiscoverer,
     memoryMonitor,
     bindingRouter,
+    identityLinksStore,
     channelStateRepo,
     sessionSummarizer,
     getHeartbeatManager: () => heartbeatManager ?? undefined,

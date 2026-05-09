@@ -19,6 +19,7 @@ const MIGRATION_FILES = [
   '021_conversation_log_hierarchy.sql',
   '005_capability_graph.sql',
   '006_tool_audit_log.sql',
+  '046_memory_canonical_user_id.sql',
 ];
 const MIGRATION_SQLS = MIGRATION_FILES.map(f =>
   fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf-8')
@@ -233,5 +234,49 @@ describe('MemoryExtractor（集成测试）', () => {
     // 验证 activation 被提升
     const updatedUnit = memoryStore.getById(firstId)!;
     expect(updatedUnit.activation).toBeGreaterThan(firstUnit.activation);
+  });
+
+  // ─── M13 Phase 1 PR-1B: canonicalUserId 锚定 ───
+  describe('canonicalUserId 持久化（D7）', () => {
+    it('extractAndPersist 传 canonicalUserId → memory_units.canonical_user_id 填值', async () => {
+      const agentId = `agent-${crypto.randomUUID()}`;
+      insertTestAgent(store, agentId);
+      const llmCall = makeMockLLM('user_profile');
+      const extractor = new MemoryExtractor(store, llmCall);
+
+      const messages = makeMessages([
+        { role: 'user', text: '我喜欢简洁的回复，不要寒暄' },
+        { role: 'assistant', text: '好的，已记住偏好' },
+      ]);
+
+      const result = await extractor.extractAndPersist(
+        messages, agentId, 'agent:X:feishu:direct:ou_xxx', 'self',
+      );
+      expect(result.skipped).toBe(false);
+      expect(result.memoryIds.length).toBeGreaterThan(0);
+
+      // 直接查 DB 验证 canonical_user_id 落地
+      const memStore = new MemoryStore(store);
+      const units = memStore.listByAgent(agentId);
+      expect(units.length).toBeGreaterThan(0);
+      expect(units[0].canonicalUserId).toBe('self');
+    });
+
+    it('extractAndPersist 不传 canonicalUserId → memory_units.canonical_user_id NULL（向后兼容）', async () => {
+      const agentId = `agent-${crypto.randomUUID()}`;
+      insertTestAgent(store, agentId);
+      const llmCall = makeMockLLM('user_profile_2');
+      const extractor = new MemoryExtractor(store, llmCall);
+      const messages = makeMessages([
+        { role: 'user', text: '随便聊聊' },
+        { role: 'assistant', text: '好' },
+      ]);
+      await extractor.extractAndPersist(messages, agentId);
+
+      const memStore = new MemoryStore(store);
+      const units = memStore.listByAgent(agentId);
+      expect(units.length).toBeGreaterThan(0);
+      expect(units[0].canonicalUserId).toBeNull();
+    });
   });
 });

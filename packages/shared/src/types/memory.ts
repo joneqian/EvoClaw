@@ -35,6 +35,16 @@ export interface MemoryUnit {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  /**
+   * M13 Phase 1 PR-1B: 跨渠道员工身份锚点
+   *
+   * 由 memory_extractor 在 LLM extract 后基于当前 sessionKey 的 peerId 反查
+   * identity_links 填充。null 表示未关联到 canonical（系统级记忆 / 旧记忆）。
+   *
+   * 用途：跨渠道员工偏好/角色等记忆的锚定合并 — 即使 LLM 在飞书/企微 extract
+   * 出不同 mergeKey，也可按 (agentId, canonicalUserId) 维度检索/聚合。
+   */
+  canonicalUserId?: string | null;
 }
 
 /**

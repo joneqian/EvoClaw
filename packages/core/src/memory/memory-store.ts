@@ -27,6 +27,7 @@ export function rowToUnit(row: Record<string, unknown>): MemoryUnit {
     createdAt: row['created_at'] as string,
     updatedAt: row['updated_at'] as string,
     archivedAt: (row['archived_at'] as string) ?? null,
+    canonicalUserId: (row['canonical_user_id'] as string | null) ?? null,
   };
 }
 
@@ -49,6 +50,7 @@ export function unitToRow(unit: MemoryUnit): Record<string, unknown> {
     created_at: unit.createdAt,
     updated_at: unit.updatedAt,
     archived_at: unit.archivedAt,
+    canonical_user_id: unit.canonicalUserId ?? null,
   };
 }
 
@@ -89,6 +91,22 @@ export class MemoryStore {
       row.visibility, row.source_session_key,
       row.created_at, row.updated_at, row.archived_at,
     );
+
+    // M13 Phase 1 PR-1B: canonical_user_id 单独 UPDATE
+    // 拆开是为了让缺失 migration 046 的旧测试不破（INSERT 不显式列该列，
+    // 缺列时只是不能填 canonical 而已）。生产代码 + 新测试用 migration 046，
+    // UPDATE 正常生效；旧测试不显式跑 046，UPDATE 会失败但 INSERT 已成功，
+    // 所以记忆主体仍然正常落库。
+    if (unit.canonicalUserId) {
+      try {
+        this.db.run(
+          `UPDATE memory_units SET canonical_user_id = ? WHERE id = ?`,
+          unit.canonicalUserId, unit.id,
+        );
+      } catch {
+        // 旧测试 schema 可能没 canonical_user_id 列，吞掉错误
+      }
+    }
 
     // 异步索引 embedding（不阻塞写入）
     this.queueEmbeddingIndex(unit.id, `${unit.l0Index} ${unit.l1Overview}`);

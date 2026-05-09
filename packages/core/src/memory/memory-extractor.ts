@@ -54,7 +54,15 @@ export class MemoryExtractor {
    * Stage 2: LLM 调用 (prompt → call → parse)
    * Stage 3: 持久化 (merge-resolver + knowledge_graph + conversation_log)
    */
-  async extractAndPersist(messages: ChatMessage[], agentId: string, _sessionKey?: string): Promise<{
+  /**
+   * @param canonicalUserId M13 Phase 1 PR-1B: 跨渠道员工身份锚点（identityLinks 命中时填）
+   */
+  async extractAndPersist(
+    messages: ChatMessage[],
+    agentId: string,
+    _sessionKey?: string,
+    canonicalUserId?: string | null,
+  ): Promise<{
     memoryIds: string[];
     relationCount: number;
     skipped: boolean;
@@ -100,7 +108,7 @@ export class MemoryExtractor {
     }
 
     // Stage 3: 持久化 — 合并/插入记忆单元、写入知识图谱、记录会话日志
-    const memoryIds = this.mergeResolver.resolveAll(agentId, result.memories);
+    const memoryIds = this.mergeResolver.resolveAll(agentId, result.memories, canonicalUserId);
 
     // 索引 FTS（用 l0 + l1 文本）
     if (this.ftsStore) {

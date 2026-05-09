@@ -17,6 +17,8 @@ const MIGRATION_027 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_skill_usage
 const MIGRATION_028 = fs.readFileSync(path.join(MIGRATIONS_DIR, '028_skill_evolution_log.sql'), 'utf-8');
 const MIGRATION_029 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_skill_evolution_content.sql'), 'utf-8');
 const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
+const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
+const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
 
 function mkTmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -48,6 +50,8 @@ describe('skill-evolution routes', () => {
     db.exec(MIGRATION_028);
     db.exec(MIGRATION_029);
     db.exec(MIGRATION_037);
+    db.exec(MIGRATION_040);
+    db.exec(MIGRATION_041);
     app = new Hono();
     app.route('/skill-evolution', createSkillEvolutionRoutes({ db, userSkillsDir: skillsDir }));
   });
@@ -514,6 +518,121 @@ describe('skill-evolution routes', () => {
       }));
       const res = await app2.request('/skill-evolution/run-now', { method: 'POST' });
       expect(res.status).toBe(500);
+    });
+  });
+
+  // ─── M7-Tier3 PR-T3-1c: /ab-status ───────────────────────────────────────
+
+  describe('/ab-status', () => {
+    function seedRefineLog(skill: string, prev: string, next: string): number {
+      return insertRefineLog(skill, prev, next);
+    }
+
+    function seedAbTest(skill: string, evolutionLogId: number, status = 'active', overrides: Partial<{
+      pValue: number; effectSize: number; decisionReason: string; endedAt: string; minCalls: number;
+    }> = {}): number {
+      const result = db.run(
+        `INSERT INTO skill_ab_test (
+           skill_name, evolution_log_id, status,
+           variant_a_hash, variant_b_hash,
+           min_calls_per_variant, max_test_days,
+           ended_at, decision_reason, p_value, effect_size
+         ) VALUES (?, ?, ?, 'hashA', 'hashB', ?, 7, ?, ?, ?, ?)`,
+        skill, evolutionLogId, status,
+        overrides.minCalls ?? 30,
+        overrides.endedAt ?? null,
+        overrides.decisionReason ?? null,
+        overrides.pValue ?? null,
+        overrides.effectSize ?? null,
+      );
+      return Number(result.lastInsertRowid);
+    }
+
+    function seedOutcome(abTestId: number, variant: 'A' | 'B', success = 1, durationMs = 100): void {
+      db.run(
+        `INSERT INTO skill_ab_outcome (ab_test_id, variant, success, duration_ms)
+         VALUES (?, ?, ?, ?)`,
+        abTestId, variant, success, durationMs,
+      );
+    }
+
+    it('list 模式（无 skill）返回 active 数组带 outcomeCounts/progress + history 带 effectSize', async () => {
+      const logId = seedRefineLog('alpha', validSkill('alpha', 'old'), validSkill('alpha', 'new'));
+      const abId = seedAbTest('alpha', logId, 'active', { minCalls: 10 });
+      seedOutcome(abId, 'A');
+      seedOutcome(abId, 'A');
+      seedOutcome(abId, 'B');
+
+      const histLogId = seedRefineLog('beta', validSkill('beta', 'a'), validSkill('beta', 'b'));
+      seedAbTest('beta', histLogId, 'promoted', {
+        endedAt: new Date().toISOString(),
+        decisionReason: 'B success +12% p=0.02',
+        pValue: 0.02,
+        effectSize: 0.12,
+      });
+
+      const res = await app.request('/skill-evolution/ab-status');
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        active: Array<{ skillName: string; outcomeCounts: { A: number; B: number }; progress: number; minCallsPerVariant: number; maxTestDays: number }>;
+        history: Array<{ skillName: string; status: string; effectSize: number | null; pValue: number | null }>;
+      };
+      expect(body.active).toHaveLength(1);
+      expect(body.active[0].skillName).toBe('alpha');
+      expect(body.active[0].outcomeCounts).toEqual({ A: 2, B: 1 });
+      expect(body.active[0].minCallsPerVariant).toBe(10);
+      expect(body.active[0].maxTestDays).toBe(7);
+      // min(2, 1) / 10 = 0.1
+      expect(body.active[0].progress).toBeCloseTo(0.1, 2);
+
+      expect(body.history).toHaveLength(1);
+      expect(body.history[0].skillName).toBe('beta');
+      expect(body.history[0].status).toBe('promoted');
+      expect(body.history[0].pValue).toBe(0.02);
+      expect(body.history[0].effectSize).toBeCloseTo(0.12, 5);
+    });
+
+    it('单 skill 模式返回 active 详情 + 该 skill 的 history', async () => {
+      const logId = seedRefineLog('alpha', validSkill('alpha', 'old'), validSkill('alpha', 'new'));
+      const abId = seedAbTest('alpha', logId, 'active');
+      seedOutcome(abId, 'A');
+
+      // 同 skill 的历史
+      const histLogId = seedRefineLog('alpha', validSkill('alpha', 'older'), validSkill('alpha', 'old'));
+      seedAbTest('alpha', histLogId, 'rolled_back', {
+        endedAt: new Date().toISOString(),
+        decisionReason: 'B success -15% p=0.01',
+        pValue: 0.01,
+        effectSize: -0.15,
+      });
+      // 其他 skill 历史不应混入
+      const otherLogId = seedRefineLog('zeta', validSkill('zeta', 'a'), validSkill('zeta', 'b'));
+      seedAbTest('zeta', otherLogId, 'inconclusive', { endedAt: new Date().toISOString() });
+
+      const res = await app.request('/skill-evolution/ab-status?skill=alpha');
+      expect(res.status).toBe(200);
+      const body = await res.json() as {
+        active: { skillName: string; outcomeCounts: { A: number; B: number } } | null;
+        history: Array<{ skillName: string; status: string; effectSize: number | null }>;
+      };
+      expect(body.active?.skillName).toBe('alpha');
+      expect(body.active?.outcomeCounts).toEqual({ A: 1, B: 0 });
+      expect(body.history).toHaveLength(1);
+      expect(body.history[0].skillName).toBe('alpha');
+      expect(body.history[0].status).toBe('rolled_back');
+      expect(body.history[0].effectSize).toBeCloseTo(-0.15, 5);
+    });
+
+    it('单 skill 无 active 测试时 active=null + 仍返回 history', async () => {
+      const logId = seedRefineLog('orphan', validSkill('orphan', 'a'), validSkill('orphan', 'b'));
+      seedAbTest('orphan', logId, 'inconclusive', {
+        endedAt: new Date().toISOString(),
+        decisionReason: 'samples insufficient',
+      });
+      const res = await app.request('/skill-evolution/ab-status?skill=orphan');
+      const body = await res.json() as { active: unknown; history: Array<{ skillName: string }> };
+      expect(body.active).toBeNull();
+      expect(body.history).toHaveLength(1);
     });
   });
 });

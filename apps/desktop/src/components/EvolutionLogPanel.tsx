@@ -91,6 +91,51 @@ interface InlineStats {
   byDate: Array<{ date: string; count: number }>;
 }
 
+/** M7-Tier3 PR-T3-1c: A-B 测试进度 */
+interface AbActiveTest {
+  id: number;
+  skillName: string;
+  status: string;
+  variantAHash: string;
+  variantBHash: string;
+  startedAt: string;
+  minCallsPerVariant: number;
+  maxTestDays: number;
+  outcomeCounts: { A: number; B: number };
+  progress: number;
+}
+
+interface AbHistoryEntry {
+  id: number;
+  skillName: string;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+  decisionReason: string | null;
+  pValue: number | null;
+  effectSize: number | null;
+}
+
+interface AbStatusResponse {
+  active: AbActiveTest[];
+  history: AbHistoryEntry[];
+}
+
+function abStatusBadge(status: string): { label: string; cls: string } {
+  switch (status) {
+    case 'promoted':     return { label: '✅ 升级', cls: 'bg-emerald-100 text-emerald-700' };
+    case 'rolled_back':  return { label: '↩ 回滚', cls: 'bg-rose-100 text-rose-700' };
+    case 'inconclusive': return { label: '— 不显著', cls: 'bg-amber-100 text-amber-700' };
+    default:             return { label: status, cls: 'bg-slate-100 text-slate-600' };
+  }
+}
+
+function daysRemaining(startedAt: string, maxTestDays: number): number {
+  const elapsedMs = Date.now() - new Date(startedAt).getTime();
+  const remainingMs = maxTestDays * 86400_000 - elapsedMs;
+  return Math.max(0, Math.ceil(remainingMs / 86400_000));
+}
+
 export default function EvolutionLogPanel() {
   const [entries, setEntries] = useState<EvolutionLogListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +144,7 @@ export default function EvolutionLogPanel() {
   const [detail, setDetail] = useState<EvolutionLogDetail | null>(null);
   const [rollbackInFlight, setRollbackInFlight] = useState(false);
   const [inlineStats, setInlineStats] = useState<InlineStats | null>(null);
+  const [abStatus, setAbStatus] = useState<AbStatusResponse | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -128,6 +174,17 @@ export default function EvolutionLogPanel() {
       });
   }, []);
 
+  // M7-Tier3 PR-T3-1c: 拉 A-B 状态
+  const loadAbStatus = useCallback(() => {
+    get<AbStatusResponse>('/skill-evolution/ab-status')
+      .then(setAbStatus)
+      .catch(err => {
+        // eslint-disable-next-line no-console
+        console.warn('[ab-status] failed:', err);
+      });
+  }, []);
+  useEffect(() => { loadAbStatus(); }, [loadAbStatus]);
+
   useEffect(() => {
     if (selectedId == null) {
       setDetail(null);
@@ -147,6 +204,7 @@ export default function EvolutionLogPanel() {
     try {
       await post(`/skill-evolution/log/${detail.id}/rollback`);
       await loadList();
+      loadAbStatus();
       // 重新拉取详情（会看到 rolledBack=1）
       const d = await get<{ entry: EvolutionLogDetail }>(`/skill-evolution/log/${detail.id}`);
       setDetail(d.entry);
@@ -208,6 +266,7 @@ export default function EvolutionLogPanel() {
             )}
           </div>
         )}
+        <AbStatusCard status={abStatus} />
         <div className="text-xs text-slate-500 mb-2">{entries.length} 条记录（最近 100 条）</div>
         {entries.map(e => {
           const active = e.id === selectedId;
@@ -324,6 +383,81 @@ export default function EvolutionLogPanel() {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ─── M7-Tier3 PR-T3-1c: A-B 测试状态卡片 ────────────────────────────────────
+
+function AbStatusCard({ status }: { status: AbStatusResponse | null }) {
+  if (!status) return null;
+  const hasContent = status.active.length > 0 || status.history.length > 0;
+  if (!hasContent) return null;
+
+  return (
+    <div className="mb-3 p-2.5 rounded-lg border border-sky-200 bg-sky-50/50 space-y-2">
+      <div className="text-xs font-semibold text-sky-700">A-B 对照实验</div>
+
+      {status.active.length > 0 && (
+        <div className="space-y-1.5">
+          {status.active.map(test => (
+            <div key={test.id} className="text-[11px]">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-700 truncate">{test.skillName}</span>
+                <span className="text-sky-600 shrink-0 ml-2">
+                  剩 {daysRemaining(test.startedAt, test.maxTestDays)} 天
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                  <div
+                    className="h-full bg-sky-500 transition-all"
+                    style={{ width: `${Math.round(test.progress * 100)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500 shrink-0 tabular-nums">
+                  A {test.outcomeCounts.A} / B {test.outcomeCounts.B}
+                  <span className="text-slate-400"> · 目标 {test.minCallsPerVariant}</span>
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {status.history.length > 0 && (
+        <details className="text-[11px]">
+          <summary className="cursor-pointer text-sky-600 hover:text-sky-700">
+            最近 {status.history.length} 次决策
+          </summary>
+          <div className="mt-1.5 space-y-1">
+            {status.history.map(h => {
+              const badge = abStatusBadge(h.status);
+              return (
+                <div key={h.id} className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                      <span className="text-slate-700 truncate">{h.skillName}</span>
+                    </div>
+                    {h.decisionReason && (
+                      <div className="text-slate-500 truncate mt-0.5" title={h.decisionReason}>
+                        {h.decisionReason}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-400 shrink-0 text-right tabular-nums">
+                    {h.pValue != null && <div>p={h.pValue.toFixed(3)}</div>}
+                    {h.effectSize != null && <div>Δ={(h.effectSize * 100).toFixed(0)}%</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -439,6 +439,15 @@ interface EvolverConfig {
   successRateThreshold: number;
   maxCandidatesPerRun: number;
   model?: string;
+  // M7-Tier3 PR-T3-1c: A-B 对照配置（schema 在 packages/shared 已定义）
+  abTestEnabled: boolean;
+  abMinCallsPerVariant: number;
+  abMaxTestDays: number;
+  abEvaluatorCron: string;
+  abPromoteSuccessDeltaMin: number;
+  abRollbackSuccessDeltaMin: number;
+  abPValueThreshold: number;
+  abDurationRatioRollback: number;
 }
 
 /** M7-Tier1 PR6: Curator 完整配置（与 security.skillCurator schema 对齐） */
@@ -468,7 +477,7 @@ function SkillEvolverTab() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingCurator, setSavingCurator] = useState(false);
-  const [running, setRunning] = useState<'evolver' | 'curator' | null>(null);
+  const [running, setRunning] = useState<'evolver' | 'curator' | 'ab-evaluator' | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
@@ -524,6 +533,25 @@ function SkillEvolverTab() {
     try {
       await post('/skill-evolution/run-now', {});
       showToast('Evolver 已触发（异步运行，请查看进化历史）', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '触发失败', 'error');
+    } finally {
+      setRunning(null);
+    }
+  }, [showToast]);
+
+  // M7-Tier3 PR-T3-1c: 立即跑一次 A-B 评估器
+  const handleRunAbEvaluator = useCallback(async () => {
+    setRunning('ab-evaluator');
+    try {
+      const res = await post<{ scanned: number; promoted: number; rolledBack: number; inconclusive: number; continued: number; errors: number }>(
+        '/skill-evolution/ab-evaluate-now',
+        {},
+      );
+      showToast(
+        `已评估：扫描 ${res.scanned} · 升级 ${res.promoted} · 回滚 ${res.rolledBack} · 不显著 ${res.inconclusive} · 继续 ${res.continued}`,
+        'success',
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : '触发失败', 'error');
     } finally {
@@ -674,6 +702,124 @@ function SkillEvolverTab() {
             />
           </Field>
         </div>
+
+        {/* ─── A-B 对照实验子分组 ─── */}
+        <details className="mt-4 pt-4 border-t border-slate-100" open={draft.abTestEnabled}>
+          <summary className="cursor-pointer flex items-center justify-between -mx-1 px-1 py-1 rounded hover:bg-slate-50">
+            <div>
+              <span className="text-sm font-semibold text-slate-800">A-B 对照实验</span>
+              <span className="ml-2 text-xs text-slate-500">refine 后启动 A/B 桶位 + 统计学验证</span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); void handleRunAbEvaluator(); }}
+              disabled={running !== null}
+              className="px-3 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {running === 'ab-evaluator' ? '评估中…' : '立即评估'}
+            </button>
+          </summary>
+
+          <div className="mt-3 space-y-3">
+            <Field label="启用 A-B" hint="关闭后 refine 直接落地，不进入桶位对照">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={draft.abTestEnabled}
+                  onChange={(e) => setDraft({ ...draft, abTestEnabled: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+                />
+                <span className="text-sm text-slate-700">{draft.abTestEnabled ? '已启用' : '已禁用'}</span>
+              </label>
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="每变体最少调用数" hint="A/B 各跑满此数才进入统计检验（5~1000，默认 30）">
+                <input
+                  type="number"
+                  min={5}
+                  max={1000}
+                  value={draft.abMinCallsPerVariant}
+                  onChange={(e) => setDraft({ ...draft, abMinCallsPerVariant: Number(e.target.value) || 5 })}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+              </Field>
+
+              <Field label="测试期上限（天）" hint="超过即按现有数据强制评估（1~365，默认 7）">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={draft.abMaxTestDays}
+                  onChange={(e) => setDraft({ ...draft, abMaxTestDays: Number(e.target.value) || 1 })}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+              </Field>
+            </div>
+
+            <Field label="评估器 Cron" hint="独立调度，建议错峰 evolver。例 30 4 * * * = 每日 04:30">
+              <input
+                type="text"
+                value={draft.abEvaluatorCron}
+                onChange={(e) => setDraft({ ...draft, abEvaluatorCron: e.target.value })}
+                className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                placeholder="30 4 * * *"
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="升级 success Δ ≥" hint="B 比 A 成功率至少高多少（且 p<阈值）才升级（0~1，默认 0.05）">
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={draft.abPromoteSuccessDeltaMin}
+                  onChange={(e) => setDraft({ ...draft, abPromoteSuccessDeltaMin: Number(e.target.value) })}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+              </Field>
+
+              <Field label="回滚 success Δ ≥" hint="B 比 A 成功率至少低多少（且 p<阈值）才回滚（0~1，默认 0.10）">
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={draft.abRollbackSuccessDeltaMin}
+                  onChange={(e) => setDraft({ ...draft, abRollbackSuccessDeltaMin: Number(e.target.value) })}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="p 值阈值" hint="Mann-Whitney U 检验显著性阈值（0~1，默认 0.05）">
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={draft.abPValueThreshold}
+                  onChange={(e) => setDraft({ ...draft, abPValueThreshold: Number(e.target.value) })}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+              </Field>
+
+              <Field label="耗时倍数回滚阈值" hint="B 平均耗时 ≥ A × 此倍数则强制回滚（1~10，默认 1.5）">
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={0.1}
+                  value={draft.abDurationRatioRollback}
+                  onChange={(e) => setDraft({ ...draft, abDurationRatioRollback: Number(e.target.value) })}
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+              </Field>
+            </div>
+          </div>
+        </details>
 
         <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
           {isDirty && (

@@ -439,7 +439,8 @@ export async function handleReceiveMessage(
 
   // 群聊：按 session scope 重写 peerId
   if (normalized.chatType === 'group') {
-    const scope = ctx.getGroupSessionScope?.() ?? 'group';
+    // M13 Phase 1 PR-1A: 默认 group_topic（D2 决策）
+    const scope = ctx.getGroupSessionScope?.() ?? 'group_topic';
     normalized.peerId = buildFeishuGroupPeerId({
       scope,
       chatId: message.chat_id,

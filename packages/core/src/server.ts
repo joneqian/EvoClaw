@@ -50,7 +50,7 @@ import { ChannelStateRepo } from './channel/channel-state-repo.js';
 import { createChannelRoutes } from './routes/channel.js';
 import { createBindingRoutes } from './routes/binding.js';
 import { BindingRouter } from './routing/binding-router.js';
-import { generateSessionKey } from './routing/session-key.js';
+import { generateSessionKey, DEFAULT_DM_SCOPE } from './routing/session-key.js';
 import { buildGroupSessionKey } from './agent/team-mode/group-key-utils.js';
 import { handleChannelMessage } from './routes/channel-message-handler.js';
 import type { ChannelMessageDeps } from './routes/channel-message-handler.js';
@@ -771,7 +771,13 @@ async function dispatchBroadcastMessage(
   const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
   // 并发度有限：每个 agent 串行等待，避免一条大消息同时占用 LLM 并发配额导致限流
   for (const agentId of targets) {
-    const sessionKey = generateSessionKey(agentId, msg.channel, chatTypeForKey, msg.peerId);
+    // M13 Phase 1 PR-1A: 按 (agentId, channel) 查 binding 拿 dmScope
+    // broadcast 场景多 agent 共享一条消息，每 agent 的 dmScope 可能不同
+    const binding = channelMsgDeps.bindingRouter?.findByAgentAndChannel(agentId, msg.channel);
+    const sessionKey = generateSessionKey(agentId, msg.channel, chatTypeForKey, msg.peerId, {
+      dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
+      ...(msg.accountId ? { accountId: msg.accountId } : {}),
+    });
     try {
       await handleChannelMessage(
         {
@@ -1520,7 +1526,12 @@ async function main() {
             : `请执行技能 ${result.skillName}`;
 
           const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
-          const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId);
+          // M13 Phase 1 PR-1A: 接 binding.dmScope（DM 走 main / per-peer / etc）
+          const binding = channelMsgDeps.bindingRouter?.findByAgentAndChannel(targetAgentId, msg.channel);
+          const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId, {
+            dmScope: binding?.dmScope ?? undefined,
+            ...(msg.accountId ? { accountId: msg.accountId } : {}),
+          });
 
           try {
             await handleChannelMessage(
@@ -1559,7 +1570,13 @@ async function main() {
 
     // --- 正常 AI 管线 ---
     const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
-    const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId);
+    // M13 Phase 1 PR-1A: 接 binding.dmScope（D3：DM 默认 main 跨渠道连贯）
+    const binding = channelMsgDeps.bindingRouter?.findByAgentAndChannel(targetAgentId, msg.channel);
+    // D3 决策（2026-05-09）：binding 未配置 dm_scope 时走 DEFAULT_DM_SCOPE='main'（DM 跨渠道连贯）
+    const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId, {
+      dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
+      ...(msg.accountId ? { accountId: msg.accountId } : {}),
+    });
 
     try {
       await handleChannelMessage(

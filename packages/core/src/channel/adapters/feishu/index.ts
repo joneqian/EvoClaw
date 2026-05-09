@@ -268,7 +268,8 @@ export class FeishuAdapter implements ChannelAdapter {
         getHandler: () => this.handler,
         getCoalescer: () => this.coalescer,
         getMediaDownloader: () => this.mediaDownloader,
-        getGroupSessionScope: () => this.credentials?.groupSessionScope ?? 'group',
+        // M13 Phase 1 PR-1A: 默认 group_topic（D2 决策）
+        getGroupSessionScope: () => this.credentials?.groupSessionScope ?? 'group_topic',
         getGroupHistory: () => this.groupHistory,
         getGroupHistoryConfig: () => this.credentials?.groupHistory ?? null,
         getBroadcastConfig: () => this.credentials?.broadcast ?? null,

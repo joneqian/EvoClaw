@@ -1,5 +1,6 @@
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import { createLogger } from '../infrastructure/logger.js';
+import type { DmScope } from './session-key.js';
 
 const log = createLogger('binding-router');
 
@@ -21,6 +22,14 @@ export interface Binding {
    * 其它渠道按需扩展（slack→user_id、企微→userid）。
    */
   botOpenId: string | null;
+  /**
+   * M13 Phase 1 PR-1A: DM 跨渠道隔离粒度（仅 chatType='direct' 生效）
+   *
+   * NULL → 走全局默认 DEFAULT_DM_SCOPE='main'（跨渠道连贯）
+   * 'per-peer' / 'per-channel-peer' / 'per-account-channel-peer' → 显式隔离
+   * 详见 routing/session-key.ts 的 DmScope。
+   */
+  dmScope: DmScope | null;
 }
 
 /** 渠道消息（用于匹配） */
@@ -38,16 +47,35 @@ export class BindingRouter {
   constructor(private db: SqliteStore) {}
 
   /** 添加 Binding */
-  addBinding(binding: Omit<Binding, 'id' | 'createdAt' | 'botOpenId'> & { botOpenId?: string | null }): string {
+  addBinding(
+    binding: Omit<Binding, 'id' | 'createdAt' | 'botOpenId' | 'dmScope'> & {
+      botOpenId?: string | null;
+      dmScope?: DmScope | null;
+    },
+  ): string {
     const id = crypto.randomUUID();
     this.db.run(
-      `INSERT INTO bindings (id, agent_id, channel, account_id, peer_id, priority, is_default, bot_open_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO bindings (id, agent_id, channel, account_id, peer_id, priority, is_default, bot_open_id, dm_scope, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       id, binding.agentId, binding.channel, binding.accountId ?? null,
       binding.peerId ?? null, binding.priority, binding.isDefault ? 1 : 0,
       binding.botOpenId ?? null,
+      binding.dmScope ?? null,
     );
     return id;
+  }
+
+  /**
+   * M13 Phase 1 PR-1A: 更新 binding 的 dm_scope（员工 BindingsPage UI 用）
+   */
+  setDmScope(id: string, dmScope: DmScope | null): number {
+    const result = this.db.run(
+      `UPDATE bindings SET dm_scope = ? WHERE id = ?`,
+      dmScope, id,
+    );
+    const changes = result.changes ?? 0;
+    log.info(`dm_scope updated id=${id} dmScope=${dmScope ?? '(null)'} affected=${changes}`);
+    return changes;
   }
 
   /** 移除 Binding */
@@ -100,13 +128,39 @@ export class BindingRouter {
    * 优先级：peerId 精确 > accountId + channel > channel > 默认
    */
   resolveAgent(message: ChannelMessage): string | null {
+    const binding = this.resolveBinding(message);
+    return binding?.agentId ?? null;
+  }
+
+  /**
+   * M13 Phase 1 PR-1A: 按 (agentId, channel) 找该 agent 在该渠道的 binding
+   *
+   * broadcast 场景（dispatchBroadcastMessage）下不能用 resolveBinding（resolveBinding 按
+   * peerId/accountId 全局匹配，不按目标 agent 过滤）。本方法专为"已知 agent 求 dmScope"
+   * 场景设计。返回最高 priority 的 binding，未匹配返回 null。
+   */
+  findByAgentAndChannel(agentId: string, channel: string): Binding | null {
+    const row = this.db.get<Record<string, unknown>>(
+      `SELECT * FROM bindings WHERE agent_id = ? AND channel = ? ORDER BY priority DESC LIMIT 1`,
+      agentId, channel,
+    );
+    return row ? rowToBinding(row) : null;
+  }
+
+  /**
+   * M13 Phase 1 PR-1A: 解析消息 → 匹配最合适的 Binding（含 dmScope）
+   *
+   * 与 resolveAgent 共享匹配优先级，但返回完整 Binding 让调用方拿到 dmScope。
+   * channel-message-handler 用 binding.dmScope 决定 sessionKey 隔离粒度。
+   */
+  resolveBinding(message: ChannelMessage): Binding | null {
     // 1. peerId 精确匹配
     if (message.peerId) {
       const exact = this.db.get<Record<string, unknown>>(
         'SELECT * FROM bindings WHERE channel = ? AND peer_id = ? ORDER BY priority DESC LIMIT 1',
         message.channel, message.peerId,
       );
-      if (exact) return exact['agent_id'] as string;
+      if (exact) return rowToBinding(exact);
     }
 
     // 2. accountId + channel 匹配
@@ -115,7 +169,7 @@ export class BindingRouter {
         'SELECT * FROM bindings WHERE channel = ? AND account_id = ? AND peer_id IS NULL ORDER BY priority DESC LIMIT 1',
         message.channel, message.accountId,
       );
-      if (account) return account['agent_id'] as string;
+      if (account) return rowToBinding(account);
     }
 
     // 3. channel 匹配
@@ -123,13 +177,13 @@ export class BindingRouter {
       'SELECT * FROM bindings WHERE channel = ? AND account_id IS NULL AND peer_id IS NULL AND is_default = 0 ORDER BY priority DESC LIMIT 1',
       message.channel,
     );
-    if (channelMatch) return channelMatch['agent_id'] as string;
+    if (channelMatch) return rowToBinding(channelMatch);
 
     // 4. 默认 Agent
     const defaultAgent = this.db.get<Record<string, unknown>>(
       'SELECT * FROM bindings WHERE is_default = 1 ORDER BY priority DESC LIMIT 1',
     );
-    return defaultAgent ? (defaultAgent['agent_id'] as string) : null;
+    return defaultAgent ? rowToBinding(defaultAgent) : null;
   }
 }
 
@@ -145,5 +199,7 @@ function rowToBinding(row: Record<string, unknown>): Binding {
     isDefault: (row['is_default'] as number) === 1,
     createdAt: row['created_at'] as string,
     botOpenId: (row['bot_open_id'] as string | null) ?? null,
+    // M13 Phase 1 PR-1A: dm_scope 列（NULL 时回退到 DEFAULT_DM_SCOPE）
+    dmScope: ((row['dm_scope'] as string | null) ?? null) as DmScope | null,
   };
 }

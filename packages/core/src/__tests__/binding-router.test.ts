@@ -24,6 +24,12 @@ const MIGRATION_032 = fs.readFileSync(
   'utf-8',
 );
 
+/** 044: bindings 加 dm_scope 列（M13 Phase 1 PR-1A） */
+const MIGRATION_044 = fs.readFileSync(
+  path.join(import.meta.dirname, '..', 'infrastructure', 'db', 'migrations', '044_binding_dm_scope.sql'),
+  'utf-8',
+);
+
 /** 测试用 Agent ID */
 const AGENT_A = 'agent-aaa';
 const AGENT_B = 'agent-bbb';
@@ -44,6 +50,7 @@ describe('BindingRouter', () => {
     store.exec(MIGRATION_001);
     store.exec(MIGRATION_007);
     store.exec(MIGRATION_032);
+    store.exec(MIGRATION_044);
 
     // 插入测试 Agent
     for (const id of [AGENT_A, AGENT_B, AGENT_C, AGENT_D]) {
@@ -195,6 +202,90 @@ describe('BindingRouter', () => {
 
       // Binding 应被级联删除
       expect(router.listBindings(AGENT_A)).toHaveLength(0);
+    });
+  });
+
+  // ─── M13 Phase 1 PR-1A: dmScope + findByAgentAndChannel ───
+  describe('dmScope (PR-1A)', () => {
+    it('addBinding 不传 dmScope → 默认 NULL（fallback 到 DEFAULT_DM_SCOPE）', () => {
+      const id = router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot1', peerId: null,
+        priority: 10, isDefault: false,
+      });
+      const bindings = router.listBindings(AGENT_A);
+      expect(bindings[0].id).toBe(id);
+      expect(bindings[0].dmScope).toBeNull();
+    });
+
+    it('addBinding 显式传 dmScope → 持久化', () => {
+      router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot1', peerId: null,
+        priority: 10, isDefault: false,
+        dmScope: 'per-peer',
+      });
+      const bindings = router.listBindings(AGENT_A);
+      expect(bindings[0].dmScope).toBe('per-peer');
+    });
+
+    it('setDmScope 更新已有 binding', () => {
+      const id = router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot1', peerId: null,
+        priority: 10, isDefault: false,
+      });
+      const changes = router.setDmScope(id, 'main');
+      expect(changes).toBe(1);
+      const bindings = router.listBindings(AGENT_A);
+      expect(bindings[0].dmScope).toBe('main');
+
+      // 改回 null
+      router.setDmScope(id, null);
+      const after = router.listBindings(AGENT_A);
+      expect(after[0].dmScope).toBeNull();
+    });
+
+    it('findByAgentAndChannel → 拿到 dmScope 给 generateSessionKey 用', () => {
+      router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot1', peerId: null,
+        priority: 10, isDefault: false,
+        dmScope: 'main',
+      });
+      router.addBinding({
+        agentId: AGENT_A, channel: 'wecom', accountId: 'bot2', peerId: null,
+        priority: 10, isDefault: false,
+        dmScope: 'per-peer',
+      });
+
+      const feishu = router.findByAgentAndChannel(AGENT_A, 'feishu');
+      expect(feishu?.dmScope).toBe('main');
+      const wecom = router.findByAgentAndChannel(AGENT_A, 'wecom');
+      expect(wecom?.dmScope).toBe('per-peer');
+      // 不存在
+      expect(router.findByAgentAndChannel(AGENT_A, 'telegram')).toBeNull();
+    });
+
+    it('findByAgentAndChannel 取最高 priority', () => {
+      router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot1', peerId: null,
+        priority: 5, isDefault: false, dmScope: 'per-peer',
+      });
+      router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot2', peerId: null,
+        priority: 20, isDefault: false, dmScope: 'main',
+      });
+      const found = router.findByAgentAndChannel(AGENT_A, 'feishu');
+      expect(found?.dmScope).toBe('main');  // 高 priority 胜出
+    });
+
+    it('resolveBinding 返回完整 binding（含 dmScope）', () => {
+      router.addBinding({
+        agentId: AGENT_A, channel: 'feishu', accountId: 'bot1', peerId: 'ou_test',
+        priority: 10, isDefault: false, dmScope: 'main',
+      });
+      const binding = router.resolveBinding({
+        channel: 'feishu', peerId: 'ou_test',
+      });
+      expect(binding?.agentId).toBe(AGENT_A);
+      expect(binding?.dmScope).toBe('main');
     });
   });
 });

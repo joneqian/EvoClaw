@@ -1,26 +1,104 @@
 import type { SessionKey } from '@evoclaw/shared';
 
+/**
+ * M13 Phase 1 PR-1A: DM 跨渠道连贯
+ *
+ * dmScope 决定 DM (chatType='direct') 场景下 sessionKey 的隔离粒度：
+ *   - 'main'                       → agent:{id}:main
+ *     全局视角，跨渠道跨 peer 共享。员工"飞书 DM lead 又在企微 DM lead"想要连贯时用此默认值
+ *   - 'per-peer'                   → agent:{id}:direct:{peer}
+ *     每对话独立（不区分 channel/account）— 多渠道同 peerId 时合并
+ *   - 'per-channel-peer'           → agent:{id}:{ch}:direct:{peer}
+ *     每渠道每对话独立（PR-1A 之前 EvoClaw 行为）
+ *   - 'per-account-channel-peer'   → agent:{id}:{ch}:{acc}:direct:{peer}
+ *     最细粒度（账号+渠道+对话）
+ *
+ * 群聊（chatType='group'）不受 dmScope 影响，固定 `agent:{id}:{ch}:{kind}:{peer}` 格式。
+ *
+ * D3 用户决策（2026-05-09）：DM 默认 dmScope='main'（跨渠道连贯），员工可在 BindingsPage
+ * 改 'per-peer' 显式隔离。NULL 在 binding 中表示未配置，channel-message-handler 用全局默认。
+ */
+export type DmScope = 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-channel-peer';
+
+/** generateSessionKey 默认 DmScope（D3：DM 默认跨渠道连贯） */
+export const DEFAULT_DM_SCOPE: DmScope = 'main';
+
 /** 解析后的 Session 信息 */
 export interface ParsedSession {
   agentId: string;
   channel: string;
-  chatType: string;   // 'direct' | 'group'
+  chatType: string;   // 'direct' | 'group' | 'main'（PR-1A 加 'main'）
   peerId: string;
 }
 
-/** 生成 Session Key */
+/** 生成 Session Key — 旧位置参数签名向后兼容 */
 export function generateSessionKey(
   agentId: string,
   channel: string = 'default',
   chatType: string = 'direct',
   peerId: string = '',
+  /**
+   * M13 Phase 1 PR-1A: dmScope / accountId 可选；仅 chatType='direct' 时生效。
+   * 不传时回退到 'per-channel-peer'（PR-1A 之前的等价行为，保旧调用兼容）。
+   */
+  options?: { dmScope?: DmScope; accountId?: string },
 ): SessionKey {
-  return `agent:${agentId}:${channel}:${chatType}:${peerId}` as SessionKey;
+  // 群聊 / 非 direct 不受 dmScope 影响
+  if (chatType !== 'direct') {
+    return `agent:${agentId}:${channel}:${chatType}:${peerId}` as SessionKey;
+  }
+
+  // DM：按 dmScope 分支
+  const dmScope: DmScope = options?.dmScope ?? 'per-channel-peer';
+  switch (dmScope) {
+    case 'main':
+      return generateMainSessionKey(agentId);
+    case 'per-peer':
+      return `agent:${agentId}:direct:${peerId}` as SessionKey;
+    case 'per-account-channel-peer': {
+      const acc = options?.accountId ?? '';
+      return `agent:${agentId}:${channel}:${acc}:direct:${peerId}` as SessionKey;
+    }
+    case 'per-channel-peer':
+    default:
+      return `agent:${agentId}:${channel}:direct:${peerId}` as SessionKey;
+  }
+}
+
+/**
+ * M13 Phase 1 PR-1A: 生成 mainSessionKey（Agent 全局视角会话）
+ *
+ * 格式：agent:{agentId}:main
+ *
+ * 用法：当 binding.dmScope='main'（默认）时，DM 消息走此 key，跨渠道跨 peer 共享上下文。
+ * 与 'agent:X:feishu:direct:ou_xxx' 等 per-peer key 完全不同的命名空间。
+ */
+export function generateMainSessionKey(agentId: string): SessionKey {
+  return `agent:${agentId}:main` as SessionKey;
+}
+
+/**
+ * M13 Phase 1 PR-1A: 判断是否为 main session
+ *
+ * main 格式严格 3 段（agent:id:main），与多段 sessionKey 区分。
+ */
+export function isMainSessionKey(key: SessionKey | string): boolean {
+  const parts = key.split(':');
+  return parts.length === 3 && parts[0] === 'agent' && parts[2] === 'main';
 }
 
 /** 解析 Session Key */
 export function parseSessionKey(key: SessionKey | string): ParsedSession {
   const parts = key.split(':');
+  // M13 Phase 1: main session 特殊处理（agent:X:main 3 段）
+  if (parts.length === 3 && parts[2] === 'main') {
+    return {
+      agentId: parts[1] ?? '',
+      channel: 'main',
+      chatType: 'main',
+      peerId: '',
+    };
+  }
   return {
     agentId: parts[1] ?? '',
     channel: parts[2] ?? 'default',

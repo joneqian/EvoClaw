@@ -156,8 +156,30 @@ export class ConversationLogger {
 
   /**
    * 按会话获取日志，支持限制条数
+   *
+   * M13 Phase 1 PR-1A (D8 决策)：当 sessionKey 是 main 格式（agent:X:main）且查询为空时，
+   * fallback 查询同 agent 的历史 per-channel-peer DM 记录（保历史无损 — 员工切到 main
+   * 后能看到旧的飞书/企微 DM 历史，新对话从 main 开始累积）。
+   *
+   * fallback 严格限定 agent_id 同一 + session_key 含 ':direct:' 子串（DM）+ 不含 ':main'，
+   * 避免跨 agent 串数据或重复加载已合并到 main 的数据。
    */
   getBySession(
+    agentId: string,
+    sessionKey: string,
+    limit?: number,
+  ): ConversationLogEntry[] {
+    const primary = this.queryBySessionKey(agentId, sessionKey, limit);
+    if (primary.length > 0) return primary;
+
+    // PR-1A fallback: main session 第一次加载 → 查同 agent 历史 DM 记录
+    if (isMainSessionKeyString(sessionKey)) {
+      return this.queryFallbackPerPeerHistory(agentId, limit);
+    }
+    return [];
+  }
+
+  private queryBySessionKey(
     agentId: string,
     sessionKey: string,
     limit?: number,
@@ -168,20 +190,47 @@ export class ConversationLogger {
          WHERE agent_id = ? AND session_key = ?
          ORDER BY created_at ASC
          LIMIT ?`,
-        agentId,
-        sessionKey,
-        limit,
+        agentId, sessionKey, limit,
       );
       return rows.map(rowToEntry);
     }
-
     const rows = this.db.all<ConversationLogRow>(
       `SELECT * FROM conversation_log
        WHERE agent_id = ? AND session_key = ?
        ORDER BY created_at ASC`,
-      agentId,
-      sessionKey,
+      agentId, sessionKey,
     );
     return rows.map(rowToEntry);
   }
+
+  /**
+   * PR-1A: main session fallback — 同 agent 同员工历史 DM 记录联合查询
+   *
+   * 匹配 session_key 含 ':direct:' 但不含 ':main'（即 per-peer / per-channel-peer /
+   * per-account-channel-peer 三种 DM 格式），不跨 agent。
+   */
+  private queryFallbackPerPeerHistory(
+    agentId: string,
+    limit?: number,
+  ): ConversationLogEntry[] {
+    const limitClause = limit !== undefined ? 'LIMIT ?' : '';
+    const params: unknown[] = [agentId];
+    if (limit !== undefined) params.push(limit);
+    const rows = this.db.all<ConversationLogRow>(
+      `SELECT * FROM conversation_log
+       WHERE agent_id = ?
+         AND session_key LIKE '%:direct:%'
+         AND session_key NOT LIKE '%:main'
+       ORDER BY created_at ASC
+       ${limitClause}`,
+      ...params,
+    );
+    return rows.map(rowToEntry);
+  }
+}
+
+/** M13 Phase 1 PR-1A: 判断 sessionKey 是否为 main 格式（避免循环 import session-key.ts） */
+function isMainSessionKeyString(key: string): boolean {
+  const parts = key.split(':');
+  return parts.length === 3 && parts[0] === 'agent' && parts[2] === 'main';
 }

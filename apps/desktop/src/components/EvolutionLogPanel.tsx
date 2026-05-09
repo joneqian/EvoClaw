@@ -33,6 +33,10 @@ interface EvolutionLogListItem {
   errorMessage: string | null;
   rolledBack: number;
   triggerSource: TriggerSource;
+  /** M7-Tier3 PR-T3-2a: dryRun 模式产物 */
+  pendingApproval: number;
+  approvalDecidedAt: string | null;
+  approvalDecidedBy: string | null;
 }
 
 interface EvolutionLogDetail extends EvolutionLogListItem {
@@ -42,6 +46,8 @@ interface EvolutionLogDetail extends EvolutionLogListItem {
   /** P1-B: 仅 trigger_source='inline' 可能填充 */
   conversationalFeedback?: string | null;
 }
+
+type ListFilter = 'all' | 'pending';
 
 function triggerLabel(source: TriggerSource): string {
   switch (source) {
@@ -145,12 +151,19 @@ export default function EvolutionLogPanel() {
   const [rollbackInFlight, setRollbackInFlight] = useState(false);
   const [inlineStats, setInlineStats] = useState<InlineStats | null>(null);
   const [abStatus, setAbStatus] = useState<AbStatusResponse | null>(null);
+  /** M7-Tier3 PR-T3-2a: 列表过滤 + 待审计数 + 应用/拒绝行内态 */
+  const [filter, setFilter] = useState<ListFilter>('all');
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [approvalInFlight, setApprovalInFlight] = useState<'apply' | 'reject' | null>(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await get<{ entries: EvolutionLogListItem[] }>('/skill-evolution/log?limit=100');
+      const url = filter === 'pending'
+        ? '/skill-evolution/log?limit=100&pending=1'
+        : '/skill-evolution/log?limit=100';
+      const data = await get<{ entries: EvolutionLogListItem[] }>(url);
       setEntries(data.entries);
       if (data.entries.length > 0 && selectedId == null) {
         setSelectedId(data.entries[0].id);
@@ -160,9 +173,20 @@ export default function EvolutionLogPanel() {
     } finally {
       setLoading(false);
     }
-  }, [selectedId]);
+  }, [filter, selectedId]);
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  // M7-Tier3 PR-T3-2a: 拉待审数量（用于过滤 chip 上的徽章数字）
+  const loadPendingCount = useCallback(() => {
+    get<{ count: number }>('/skill-evolution/log/pending-count')
+      .then(d => setPendingCount(d.count))
+      .catch(err => {
+        // eslint-disable-next-line no-console
+        console.warn('[pending-count] failed:', err);
+      });
+  }, []);
+  useEffect(() => { loadPendingCount(); }, [loadPendingCount]);
 
   useEffect(() => {
     get<InlineStats>('/skill-evolution/inline-stats?days=30')
@@ -194,6 +218,52 @@ export default function EvolutionLogPanel() {
       .then(d => setDetail(d.entry))
       .catch(err => setError(err instanceof Error ? err.message : String(err)));
   }, [selectedId]);
+
+  /** M7-Tier3 PR-T3-2a: 应用一条 dryRun 待审决策 */
+  const handleApply = async () => {
+    if (!detail) return;
+    if (!window.confirm(`确认应用 ${detail.skillName} 的这次 ${detail.decision === 'create' ? '新建' : '改进'}？SKILL.md 将被写入。`)) {
+      return;
+    }
+    setApprovalInFlight('apply');
+    try {
+      await post(`/skill-evolution/log/${detail.id}/apply`);
+      await loadList();
+      loadPendingCount();
+      const d = await get<{ entry: EvolutionLogDetail }>(`/skill-evolution/log/${detail.id}`);
+      setDetail(d.entry);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 409 防覆盖错误友好提示
+      if (msg.includes('SKILL.md changed since')) {
+        setError('应用失败：SKILL.md 在 dryRun 期间被手动修改过。请先拒绝此决策，然后让 evolver 基于最新内容重新决策。');
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setApprovalInFlight(null);
+    }
+  };
+
+  /** M7-Tier3 PR-T3-2a: 拒绝一条 dryRun 待审决策 */
+  const handleReject = async () => {
+    if (!detail) return;
+    if (!window.confirm(`确认拒绝 ${detail.skillName} 的这次决策？SKILL.md 不会被改动。`)) {
+      return;
+    }
+    setApprovalInFlight('reject');
+    try {
+      await post(`/skill-evolution/log/${detail.id}/reject`);
+      await loadList();
+      loadPendingCount();
+      const d = await get<{ entry: EvolutionLogDetail }>(`/skill-evolution/log/${detail.id}`);
+      setDetail(d.entry);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApprovalInFlight(null);
+    }
+  };
 
   const handleRollback = async () => {
     if (!detail) return;
@@ -267,6 +337,32 @@ export default function EvolutionLogPanel() {
           </div>
         )}
         <AbStatusCard status={abStatus} />
+        {/* M7-Tier3 PR-T3-2a: 过滤 chip — 全部 / 待审核（带徽章） */}
+        <div className="flex items-center gap-1 mb-2">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-2 py-0.5 text-xs rounded-full border ${
+              filter === 'all'
+                ? 'bg-brand text-white border-brand'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >全部</button>
+          <button
+            onClick={() => setFilter('pending')}
+            className={`px-2 py-0.5 text-xs rounded-full border inline-flex items-center gap-1 ${
+              filter === 'pending'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            待审核
+            {pendingCount > 0 && (
+              <span className={`px-1.5 py-0 text-[10px] rounded-full ${
+                filter === 'pending' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+              }`}>{pendingCount}</span>
+            )}
+          </button>
+        </div>
         <div className="text-xs text-slate-500 mb-2">{entries.length} 条记录（最近 100 条）</div>
         {entries.map(e => {
           const active = e.id === selectedId;
@@ -295,8 +391,11 @@ export default function EvolutionLogPanel() {
                 <div className="text-xs text-slate-500 mt-1 line-clamp-2">{e.reasoning}</div>
               )}
               <div className="flex items-center gap-2 mt-2 text-xs">
+                {e.pendingApproval === 1 && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">待审核</span>}
+                {e.approvalDecidedBy === 'manual-apply' && <span className="text-emerald-600">✅ 已应用</span>}
+                {e.approvalDecidedBy === 'manual-reject' && <span className="text-slate-500">⊘ 已拒绝</span>}
                 {e.errorMessage && <span className="text-rose-600">❌ 失败</span>}
-                {e.rolledBack === 1 && <span className="text-amber-600">↩ 已回滚</span>}
+                {e.rolledBack === 1 && e.approvalDecidedBy !== 'manual-reject' && <span className="text-amber-600">↩ 已回滚</span>}
                 {canRollback && <span className="text-slate-400">可回滚</span>}
                 <span className="text-slate-400">证据 {e.evidenceCount} 条</span>
               </div>
@@ -323,7 +422,36 @@ export default function EvolutionLogPanel() {
                   {detail.durationMs != null && <span>· {Math.round(detail.durationMs)}ms</span>}
                 </div>
               </div>
-              {detail.decision === 'refine' && detail.rolledBack === 0 && !detail.errorMessage && (
+              {/* M7-Tier3 PR-T3-2a: dryRun 待审决策的应用/拒绝按钮（优先于回滚 UI） */}
+              {detail.pendingApproval === 1 && !detail.errorMessage && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleApply}
+                    disabled={approvalInFlight !== null}
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    {approvalInFlight === 'apply' ? '应用中…' : '✅ 应用'}
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={approvalInFlight !== null}
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+                  >
+                    {approvalInFlight === 'reject' ? '拒绝中…' : '⊘ 拒绝'}
+                  </button>
+                </div>
+              )}
+              {detail.approvalDecidedBy === 'manual-apply' && (
+                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-100 text-emerald-700">
+                  ✅ 已应用 {detail.approvalDecidedAt ? `· ${new Date(detail.approvalDecidedAt).toLocaleString()}` : ''}
+                </span>
+              )}
+              {detail.approvalDecidedBy === 'manual-reject' && (
+                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600">
+                  ⊘ 已拒绝 {detail.approvalDecidedAt ? `· ${new Date(detail.approvalDecidedAt).toLocaleString()}` : ''}
+                </span>
+              )}
+              {detail.pendingApproval === 0 && detail.approvalDecidedBy !== 'manual-apply' && detail.approvalDecidedBy !== 'manual-reject' && detail.decision === 'refine' && detail.rolledBack === 0 && !detail.errorMessage && (
                 <button
                   onClick={handleRollback}
                   disabled={rollbackInFlight}
@@ -332,7 +460,7 @@ export default function EvolutionLogPanel() {
                   {rollbackInFlight ? '回滚中...' : '↩ 回滚此改动'}
                 </button>
               )}
-              {detail.rolledBack === 1 && (
+              {detail.rolledBack === 1 && detail.approvalDecidedBy !== 'manual-reject' && (
                 <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-amber-100 text-amber-700">
                   ↩ 已回滚
                 </span>

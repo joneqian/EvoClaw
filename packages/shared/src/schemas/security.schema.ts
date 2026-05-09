@@ -31,6 +31,13 @@ export const skillEvolverSchema = z.object({
   maxCandidatesPerRun: z.number().int().min(1).max(20).default(5),
   /** 辅助模型标识（未配置则走 ModelRouter 默认辅助模型） */
   model: z.string().optional(),
+  /**
+   * M7-Tier3 PR-T3-2a: 进化执行模式
+   *   - apply（默认）：LLM 决策直接生效，行为与 PR-T3-1c 之前一致
+   *   - dryRun：决策落 evolution_log 但不写 SKILL.md，需用户在 UI 应用/拒绝
+   *   - PR-T3-2b 将扩 'canary'（灰度推送 N% 流量到新版本）
+   */
+  mode: z.enum(['apply', 'dryRun']).default('apply'),
   // ─── M7-Tier3 PR-T3-1a/b: A-B 对照实验配置 ───
   /** refine 决策后是否启动 A-B（默认 true） */
   abTestEnabled: z.boolean().default(true),
@@ -48,7 +55,13 @@ export const skillEvolverSchema = z.object({
   abPValueThreshold: z.number().min(0).max(1).default(0.05),
   /** B duration ratio rollback 阈值（B 慢 50%+ 触发），默认 1.5 */
   abDurationRatioRollback: z.number().min(1).max(10).default(1.5),
-});
+}).refine(
+  (cfg) => !(cfg.mode === 'dryRun' && cfg.abTestEnabled),
+  {
+    message: 'mode=dryRun 与 abTestEnabled=true 互斥（dryRun 不写 SKILL.md → 没法启动 A-B 对照）',
+    path: ['abTestEnabled'],
+  },
+);
 
 /** M7-Tier1 PR6 Skill Curator 子代理配置（跨 session umbrella consolidation + 三态生命周期） */
 export const skillCuratorSchema = z.object({

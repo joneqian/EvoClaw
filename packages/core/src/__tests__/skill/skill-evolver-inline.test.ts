@@ -27,6 +27,7 @@ const MIGRATION_027 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_skill_usage
 const MIGRATION_028 = fs.readFileSync(path.join(MIGRATIONS_DIR, '028_skill_evolution_log.sql'), 'utf-8');
 const MIGRATION_029 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_skill_evolution_content.sql'), 'utf-8');
 const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
+const MIGRATION_042 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_skill_evolver_pending.sql'), 'utf-8');
 
 const AGENT_ID = 'agent-x';
 const SESSION_KEY = 'agent:agent-x:wechat:dm:peer-1';
@@ -64,6 +65,7 @@ describe('runInlineReview', () => {
     db.exec(MIGRATION_028);
     db.exec(MIGRATION_029);
     db.exec(MIGRATION_037);
+    db.exec(MIGRATION_042);
     db.run(`INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`, AGENT_ID, AGENT_ID, '🤖', 'active');
     store = new SkillUsageStore(db);
   });

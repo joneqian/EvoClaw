@@ -767,6 +767,30 @@ function initVectorStore(
 }
 
 /**
+ * M13 Phase 1 PR-1D: per-task sessionKey 派生 helper
+ *
+ * 当 binding.dmScope='per-task' 且 chat 是 group + 当前群存在 agent 的 active task 时，
+ * 返回 taskId 用于 sessionKey 拼成 `agent:{id}:{ch}:group:{chatId}:task:{taskId}`。
+ * 无 active task 或 dmScope 不是 per-task 返回 null（generateSessionKey fallback 到默认）。
+ */
+function deriveTaskIdForSessionKey(
+  agentId: string,
+  msg: ChannelMessage,
+  binding: { dmScope?: string | null } | null | undefined,
+  taskPlanService?: import('./agent/team-mode/task-plan/service.js').TaskPlanService,
+): string | null {
+  if (!taskPlanService) return null;
+  if (binding?.dmScope !== 'per-task') return null;
+  if (msg.chatType !== 'group') return null;
+  try {
+    const groupSessionKey = buildGroupSessionKey(msg.channel, msg.peerId);
+    return taskPlanService.findActiveTaskForAgentInGroup(agentId, groupSessionKey);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Phase B: 广播 fanout —— 把一条渠道消息派发到多个 agent 的独立 session
  *
  * 每个 agent 用 generateSessionKey 构造独立的 `agent:<id>:<channel>:<peerKind>:<peerId>`
@@ -784,10 +808,13 @@ async function dispatchBroadcastMessage(
     // M13 Phase 1 PR-1A: 按 (agentId, channel) 查 binding 拿 dmScope
     // broadcast 场景多 agent 共享一条消息，每 agent 的 dmScope 可能不同
     const binding = channelMsgDeps.bindingRouter?.findByAgentAndChannel(agentId, msg.channel);
+    // PR-1D: per-task scope 时查 active task 拿 taskId
+    const taskId = deriveTaskIdForSessionKey(agentId, msg, binding, channelMsgDeps.taskPlanService);
     const sessionKey = generateSessionKey(agentId, msg.channel, chatTypeForKey, msg.peerId, {
       dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
       ...(msg.accountId ? { accountId: msg.accountId } : {}),
       ...(channelMsgDeps.identityLookup ? { identityLookup: channelMsgDeps.identityLookup } : {}),
+      ...(taskId ? { taskId } : {}),
     });
     try {
       await handleChannelMessage(
@@ -1551,9 +1578,13 @@ async function main() {
           const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
           // M13 Phase 1 PR-1A: 接 binding.dmScope（DM 走 main / per-peer / etc）
           const binding = channelMsgDeps.bindingRouter?.findByAgentAndChannel(targetAgentId, msg.channel);
+          // PR-1D: per-task scope 时查 active task 拿 taskId
+          const taskId = deriveTaskIdForSessionKey(targetAgentId, msg, binding, channelMsgDeps.taskPlanService);
           const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId, {
-            dmScope: binding?.dmScope ?? undefined,
+            dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
             ...(msg.accountId ? { accountId: msg.accountId } : {}),
+            ...(channelMsgDeps.identityLookup ? { identityLookup: channelMsgDeps.identityLookup } : {}),
+            ...(taskId ? { taskId } : {}),
           });
 
           try {
@@ -1595,11 +1626,14 @@ async function main() {
     const chatTypeForKey = msg.chatType === 'group' ? 'group' : 'direct';
     // M13 Phase 1 PR-1A: 接 binding.dmScope（D3：DM 默认 main 跨渠道连贯）
     const binding = channelMsgDeps.bindingRouter?.findByAgentAndChannel(targetAgentId, msg.channel);
+    // PR-1D: per-task scope 时查 active task 拿 taskId
+    const taskId = deriveTaskIdForSessionKey(targetAgentId, msg, binding, channelMsgDeps.taskPlanService);
     // D3 决策（2026-05-09）：binding 未配置 dm_scope 时走 DEFAULT_DM_SCOPE='main'（DM 跨渠道连贯）
     const sessionKey = generateSessionKey(targetAgentId, msg.channel, chatTypeForKey, msg.peerId, {
       dmScope: binding?.dmScope ?? DEFAULT_DM_SCOPE,
       ...(msg.accountId ? { accountId: msg.accountId } : {}),
       ...(channelMsgDeps.identityLookup ? { identityLookup: channelMsgDeps.identityLookup } : {}),
+      ...(taskId ? { taskId } : {}),
     });
 
     try {

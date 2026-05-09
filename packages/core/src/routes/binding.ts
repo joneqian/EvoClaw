@@ -20,6 +20,9 @@ export function createBindingRoutes(db: SqliteStore): Hono {
       peerId?: string;
       priority?: number;
       isDefault?: boolean;
+      // M13 Phase 1 PR-1A/1D: DM 隔离粒度（main/per-peer/per-channel-peer/
+      // per-account-channel-peer）+ per-task 群消息任务级隔离
+      dmScope?: 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-channel-peer' | 'per-task' | null;
     }>();
 
     try {
@@ -30,12 +33,29 @@ export function createBindingRoutes(db: SqliteStore): Hono {
         peerId: body.peerId ?? null,
         priority: body.priority ?? 0,
         isDefault: body.isDefault ?? false,
+        ...(body.dmScope !== undefined ? { dmScope: body.dmScope } : {}),
       });
       return c.json({ id }, 201);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 400);
     }
+  });
+
+  /**
+   * M13 Phase 1 PR-1A/1D: PATCH /:id 更新 binding（当前仅支持 dm_scope）
+   * 让员工在 UI 切换 DM 跨渠道连贯 vs 隔离 / 群消息按任务隔离。
+   */
+  app.patch('/:id', async (c) => {
+    const id = c.req.param('id');
+    const body = await c.req.json<{
+      dmScope?: 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-channel-peer' | 'per-task' | null;
+    }>();
+    if (body.dmScope === undefined) {
+      return c.json({ error: 'no field to update' }, 400);
+    }
+    const changes = router.setDmScope(id, body.dmScope);
+    return c.json({ ok: changes > 0, affected: changes });
   });
 
   /** GET / — 列表 */

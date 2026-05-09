@@ -139,6 +139,51 @@ describe('generateSessionKey - identityLookup 替换 peerId', () => {
   });
 });
 
+// ─── M13 Phase 1 PR-1D: per-task sessionKey ───
+describe('generateSessionKey - per-task 群消息任务级隔离', () => {
+  it('chatType=group + dmScope=per-task + taskId 给值 → 含 :task: 后缀', () => {
+    const k = generateSessionKey('lead', 'feishu', 'group', 'oc_xxx', {
+      dmScope: 'per-task',
+      taskId: 'task-001',
+    });
+    expect(k).toBe('agent:lead:feishu:group:oc_xxx:task:task-001');
+  });
+
+  it('chatType=group + dmScope=per-task + 无 taskId → fallback 默认群格式', () => {
+    const k = generateSessionKey('lead', 'feishu', 'group', 'oc_xxx', {
+      dmScope: 'per-task',
+    });
+    expect(k).toBe('agent:lead:feishu:group:oc_xxx');
+  });
+
+  it('chatType=direct + dmScope=per-task → 不应用 task（DM 无 task 概念）→ 回退 per-channel-peer', () => {
+    const k = generateSessionKey('lead', 'feishu', 'direct', 'ou_xxx', {
+      dmScope: 'per-task',
+      taskId: 'task-001',
+    });
+    expect(k).toBe('agent:lead:feishu:direct:ou_xxx');
+  });
+
+  it('chatType=group + 无 dmScope → 默认群格式（不带 task）', () => {
+    const k = generateSessionKey('lead', 'feishu', 'group', 'oc_xxx', {
+      taskId: 'task-001',
+    });
+    expect(k).toBe('agent:lead:feishu:group:oc_xxx');
+  });
+
+  it('per-task 不同 task ID → 不同 sessionKey（多任务并行隔离）', () => {
+    const k1 = generateSessionKey('文案', 'feishu', 'group', 'oc_xxx', {
+      dmScope: 'per-task', taskId: 'task-write',
+    });
+    const k2 = generateSessionKey('文案', 'feishu', 'group', 'oc_xxx', {
+      dmScope: 'per-task', taskId: 'task-edit',
+    });
+    expect(k1).not.toBe(k2);
+    expect(k1).toContain(':task:task-write');
+    expect(k2).toContain(':task:task-edit');
+  });
+});
+
 describe('parseSessionKey - main 格式特殊处理', () => {
   it('main 格式 → chatType="main" channel="main"', () => {
     const parsed = parseSessionKey('agent:alice:main');

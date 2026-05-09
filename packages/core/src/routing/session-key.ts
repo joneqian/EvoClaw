@@ -2,8 +2,11 @@ import type { SessionKey } from '@evoclaw/shared';
 
 /**
  * M13 Phase 1 PR-1A: DM 跨渠道连贯
+ * M13 Phase 1 PR-1D: 加 'per-task' 群消息任务级隔离
  *
- * dmScope 决定 DM (chatType='direct') 场景下 sessionKey 的隔离粒度：
+ * dmScope 决定 sessionKey 的隔离粒度：
+ *
+ * **DM (chatType='direct')**：
  *   - 'main'                       → agent:{id}:main
  *     全局视角，跨渠道跨 peer 共享。员工"飞书 DM lead 又在企微 DM lead"想要连贯时用此默认值
  *   - 'per-peer'                   → agent:{id}:direct:{peer}
@@ -13,12 +16,17 @@ import type { SessionKey } from '@evoclaw/shared';
  *   - 'per-account-channel-peer'   → agent:{id}:{ch}:{acc}:direct:{peer}
  *     最细粒度（账号+渠道+对话）
  *
- * 群聊（chatType='group'）不受 dmScope 影响，固定 `agent:{id}:{ch}:{kind}:{peer}` 格式。
+ * **群聊 (chatType='group')**：
+ *   - 默认（dmScope 不传 / 不识别）：固定 `agent:{id}:{ch}:group:{peer}`
+ *   - 'per-task'                   → agent:{id}:{ch}:group:{chatId}:task:{taskId}
+ *     PR-1D 新增。当 binding.dmScope='per-task' 且当前群存在 agent 的 active task 时，
+ *     按 task 维度隔离 sessionKey，让群内并行多任务（"@文案 写公关稿"+"@文案 改月报"）
+ *     走不同 sessionKey 不互相串扰。无 active task 时 fallback 到默认群 sessionKey。
  *
- * D3 用户决策（2026-05-09）：DM 默认 dmScope='main'（跨渠道连贯），员工可在 BindingsPage
- * 改 'per-peer' 显式隔离。NULL 在 binding 中表示未配置，channel-message-handler 用全局默认。
+ * D3 用户决策（2026-05-09）：DM 默认 dmScope='main'（跨渠道连贯）。
+ * D6 用户决策（2026-05-09）：完整集成 per-task sessionKey（复用 PR #74 task_plans 表）。
  */
-export type DmScope = 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-channel-peer';
+export type DmScope = 'main' | 'per-peer' | 'per-channel-peer' | 'per-account-channel-peer' | 'per-task';
 
 /** generateSessionKey 默认 DmScope（D3：DM 默认跨渠道连贯） */
 export const DEFAULT_DM_SCOPE: DmScope = 'main';
@@ -53,12 +61,24 @@ export function generateSessionKey(
    * M13 Phase 1 PR-1A: dmScope / accountId 可选；仅 chatType='direct' 时生效。
    * PR-1B: identityLookup 可选；命中时把 peerId 替换为 canonicalId 让跨渠道
    * 同员工 sessionKey 合并。
+   * PR-1D: taskId 可选；dmScope='per-task' + chatType='group' + taskId 给值时
+   * 群消息按 task 维度隔离。
    * 不传时回退到 'per-channel-peer'（PR-1A 之前的等价行为，保旧调用兼容）。
    */
-  options?: { dmScope?: DmScope; accountId?: string; identityLookup?: IdentityLinkLookup },
+  options?: {
+    dmScope?: DmScope;
+    accountId?: string;
+    identityLookup?: IdentityLinkLookup;
+    taskId?: string | null;
+  },
 ): SessionKey {
-  // 群聊 / 非 direct 不受 dmScope 影响
+  // 群聊 / 非 direct
   if (chatType !== 'direct') {
+    // PR-1D: per-task 仅对群聊生效，taskId 给值时按 task 维度隔离
+    if (chatType === 'group' && options?.dmScope === 'per-task' && options.taskId) {
+      return `agent:${agentId}:${channel}:group:${peerId}:task:${options.taskId}` as SessionKey;
+    }
+    // 默认群聊格式（含 dmScope='per-task' 但无 active task 时 fallback）
     return `agent:${agentId}:${channel}:${chatType}:${peerId}` as SessionKey;
   }
 
@@ -72,7 +92,10 @@ export function generateSessionKey(
   }
 
   // DM：按 dmScope 分支
-  const dmScope: DmScope = options?.dmScope ?? 'per-channel-peer';
+  // PR-1D: per-task 仅对群聊生效，DM 收到 per-task 时回退到 per-channel-peer
+  const dmScope: DmScope = options?.dmScope === 'per-task'
+    ? 'per-channel-peer'
+    : (options?.dmScope ?? 'per-channel-peer');
   switch (dmScope) {
     case 'main':
       return generateMainSessionKey(agentId);

@@ -849,6 +849,74 @@ describe('TaskPlanService', () => {
       if (fs.existsSync(tmpDir2)) fs.rmSync(tmpDir2, { recursive: true, force: true });
     });
   });
+
+  // ─── M13 Phase 1 PR-1D: findActiveTaskForAgentInGroup ───
+  describe('findActiveTaskForAgentInGroup (PR-1D)', () => {
+    it('agent 在群有 active task → 返回 task ID', async () => {
+      const snap = await svc.createPlan(
+        {
+          goal: '协作任务',
+          tasks: [{ localId: 't1', title: '后端接口', assigneeAgentId: B }],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A, initiatorUserId: 'user-1' },
+      );
+
+      const taskId = svc.findActiveTaskForAgentInGroup(B, groupKey);
+      expect(taskId).toBeTruthy();
+      // 应该是该 task 的 id
+      expect(taskId).toBe(snap.tasks.find(t => t.localId === 't1')?.id);
+    });
+
+    it('agent 无 active task → 返回 null', () => {
+      const taskId = svc.findActiveTaskForAgentInGroup(B, groupKey);
+      expect(taskId).toBeNull();
+    });
+
+    it('agent 跨群不串扰（不同 group_session_key）', async () => {
+      await svc.createPlan(
+        {
+          goal: '群 A 任务',
+          tasks: [{ localId: 't1', title: '后端', assigneeAgentId: B }],
+        },
+        { groupSessionKey: 'feishu:chat:oc_a', createdByAgentId: A, initiatorUserId: 'user-1' },
+      );
+      // 查询群 B → null
+      const taskId = svc.findActiveTaskForAgentInGroup(B, 'feishu:chat:oc_b');
+      expect(taskId).toBeNull();
+    });
+
+    it('已完成/取消的 task 不命中', async () => {
+      const snap = await svc.createPlan(
+        {
+          goal: '完成测试',
+          tasks: [{ localId: 't1', title: '后端', assigneeAgentId: B }],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A, initiatorUserId: 'user-1' },
+      );
+      const taskId = snap.tasks[0]!.id;
+      // 直接 SQL 标完成
+      store.run(`UPDATE tasks SET status = 'done' WHERE id = ?`, taskId);
+      expect(svc.findActiveTaskForAgentInGroup(B, groupKey)).toBeNull();
+    });
+
+    it('多个 active task → 返回其中之一（同毫秒时由 SQL ORDER BY 决定）', async () => {
+      const snap = await svc.createPlan(
+        {
+          goal: '并行多任务',
+          tasks: [
+            { localId: 't1', title: '写公关稿', assigneeAgentId: B },
+            { localId: 't2', title: '改月报', assigneeAgentId: B },
+          ],
+        },
+        { groupSessionKey: groupKey, createdByAgentId: A, initiatorUserId: 'user-1' },
+      );
+      const taskIds = new Set(snap.tasks.map(t => t.id));
+      const found = svc.findActiveTaskForAgentInGroup(B, groupKey);
+      // 必须是这两个 task 之一（不约束哪一个，避免 created_at 同毫秒时的不确定性）
+      expect(found).toBeTruthy();
+      expect(taskIds.has(found!)).toBe(true);
+    });
+  });
 });
 
 // (afterEach 已在文件顶部 import)

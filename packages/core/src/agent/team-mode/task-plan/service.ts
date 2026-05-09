@@ -458,6 +458,35 @@ export class TaskPlanService {
   }
 
   /**
+   * M13 Phase 1 PR-1D: 找 agent 在某群的最近活跃 task ID（per-task sessionKey 用）
+   *
+   * 当 binding.dmScope='per-task' 时，channel-message-handler 在群消息入站时
+   * 调本方法拿到当前 active task → 拼 `agent:{id}:{ch}:group:{chatId}:task:{taskId}`，
+   * 让群内并行多任务（"@文案 写公关稿"+"@文案 改月报"）走不同 sessionKey 不互相串扰。
+   *
+   * 选最近 created（同时有多 active task 时取最新启动的）。
+   * 无 active 任务返回 null，调用方应 fallback 到 group/group_topic 等 scope。
+   */
+  findActiveTaskForAgentInGroup(
+    assigneeAgentId: string,
+    groupSessionKey: GroupSessionKey,
+  ): string | null {
+    const row = this.store.get<{ id: string }>(
+      `SELECT t.id AS id
+       FROM tasks t JOIN task_plans p ON p.id = t.plan_id
+       WHERE t.assignee_agent_id = ?
+         AND p.group_session_key = ?
+         AND p.status = 'active'
+         AND t.status NOT IN ('done', 'cancelled', 'paused', 'stalled')
+       ORDER BY t.created_at DESC
+       LIMIT 1`,
+      assigneeAgentId,
+      groupSessionKey,
+    );
+    return row?.id ?? null;
+  }
+
+  /**
    * 列出 assignee 名下未完成任务（不分群，给 prompt-fragment 用）
    */
   listOpenTasksForAssignee(assigneeAgentId: string, groupSessionKey: GroupSessionKey): TaskNodeSnapshot[] {

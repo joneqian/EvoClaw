@@ -27,12 +27,16 @@ export const FeishuCredentialsSchema = z.object({
   verificationToken: z.string().optional(),
   /**
    * 群聊会话隔离策略
-   * - group (默认)           整群共享一个会话
+   * - group                  整群共享一个会话
    * - group_sender           群内按成员分离
-   * - group_topic            群内按话题分离
+   * - group_topic (默认)     群内按话题分离 — M13 Phase 1 PR-1A D2 决策
    * - group_topic_sender     群内按「话题 × 成员」分离（最细）
+   *
+   * D2（2026-05-09）：默认从 'group' 升级为 'group_topic'，让员工在飞书群里用话题功能时
+   * 多任务自动按话题隔离（"@文案 写公关稿"+"@文案 改月报"两个并行任务不串扰）。
+   * 普通群消息无话题时 group_topic 自动 fallback 为 group（buildFeishuGroupPeerId 内置）。
    */
-  groupSessionScope: z.enum(FEISHU_GROUP_SESSION_SCOPES).default('group'),
+  groupSessionScope: z.enum(FEISHU_GROUP_SESSION_SCOPES).default('group_topic'),
   /**
    * 群聊旁听缓冲（多机器人协作默认能力）
    * - enabled           未 @ 消息记入 buffer，被 @ 时注入最近 N 条前情提要
@@ -173,7 +177,8 @@ export function parseFeishuCredentials(raw: Record<string, string>): FeishuCrede
     appSecret: raw['appSecret'] ?? '',
     encryptKey: raw['encryptKey'] || undefined,
     verificationToken: raw['verificationToken'] || undefined,
-    groupSessionScope: raw['groupSessionScope'] ?? 'group',
+    // M13 Phase 1 PR-1A: 默认升级为 group_topic（与 schema default 对齐）
+    groupSessionScope: raw['groupSessionScope'] ?? 'group_topic',
     groupHistory: {
       enabled: parseBool(
         raw['groupHistoryEnabled'],

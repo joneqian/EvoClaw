@@ -121,7 +121,8 @@ describe('FeishuCredentialsSchema', () => {
       appSecret: 'secret_xxx',
     });
     expect(parsed.appId).toBe('cli_123');
-    expect(parsed.groupSessionScope).toBe('group'); // 默认值
+    // M13 Phase 1 PR-1A D2 决策：默认从 'group' 升级为 'group_topic'
+    expect(parsed.groupSessionScope).toBe('group_topic');
   });
 
   it('缺少 appId 应拒绝', () => {

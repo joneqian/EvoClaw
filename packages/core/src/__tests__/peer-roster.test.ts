@@ -32,6 +32,7 @@ function makeBinding(agentId: string, channel: string, accountId: string | null 
     isDefault: false,
     createdAt: new Date().toISOString(),
     botOpenId: null,
+    dmScope: null,
   };
 }
 

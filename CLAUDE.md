@@ -117,11 +117,32 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: M11.1 飞书 Channel 完整复刻 ✅ 收官（2026-04-21，PR #46 + #47 + #48 + #49 + #50 + #52）— 4 周 **6 PR** 交付 ~3500 行飞书实现 + 3033 测试。SDK 用 `@larksuiteoapi/node-sdk`，只做 WebSocket 长连接（桌面 sidecar 无公网 IP），覆盖：基础 text/post/image/file/audio/video 全消息类型 + Markdown→Post 智能渲染 + ocf1 envelope 审批卡（Promise+TTL+cancel 生命周期）+ CardKit 流式卡片 + 4 档群会话隔离（group/sender/topic/topic_sender）+ reactions/入群离群/p2p_entered 事件 + drive.notice.comment_add_v1 文档评论事件 + doc-api 薄封装 + withFeishuRetry 指数退避 equal jitter（限流/网络错重试 3 次，不可重试 code 直接上抛）+ **PR6 Phase K** 9 个 Agent-facing channel tools（send/card/image/file/request_approval/reply_comment/add_whole_comment/list_comment_replies），sessionKey 与 peerId 统一由 handler 自动注入（防跨会话伪造）。Review 打分 8.2/10，code-reviewer 总评"作为首个非原生渠道复刻为后续 channel adapter 建立了高水位基线"。推迟项明确归属：**Phase J-2 文本 debounce**（按需立项，非必做）+ **Agent 飞书文档协作闭环** → M13 Phase 5（1-1.5w，在 PR5 事件 hook + doc-api + PR6 工具集基础上拼装）。详见 `docs/iteration-plans/M11.1-FeishuChannel-Plan.md`
-- **上一冲刺**: M7.1 进化日志 UI + Phase 4 永废（2026-04-21，PR #43 + #44）— migration 029 扩 previous/new content 列；新增 3 REST endpoints（/skill-evolution/log + /:id + /:id/rollback）；前端 SkillPage 第 5 Tab "进化历史"（列表 + before/after diff + 一键回滚）
-- **上上冲刺**: M7 Skill 自进化 Phase 1-3 ✅（2026-04-21，PR #39 + #40 + #41 + #42）— Agent skill_manage + invoke_skill telemetry + Agentic Evolver Cron + "效能" Tab
-- **更早**: 依赖升级 + 计划同步（2026-04-20，PR #36/#37）；M8 会话隔离 ✅（PR #30）；M9 Phase 1 T1/T2 ✅（PR #26 + #28）；M6 Provider 增强 ✅（PR #20）；M5 Skills 生态增强 ✅（PR #18）
-- **下一冲刺候选**（推荐序，M11.1 完成后）: **M13 Phase 1 路由扩容（2w，含飞书文档 agent 协作闭环归并到 Phase 5）** → M12 运营可观测 / M1.1 Checkpoint / M3.1 全局预算 / M11.1 收官 followup（E2E 集成 harness / feishu/ 子目录重组 / 重试提升到 channel/common/ / withFeishuRetry 消费 Retry-After header）。Sprint 16 企微推迟到 M9 部署架构 + 中转层就绪后（桌面 sidecar 无公网 IP 无法直接对接企微 webhook）
+- **当前冲刺**: M7-Tier3 自进化能力收官 ✅（2026-05-09）+ M13 Phase 5 飞书文档协作收尾 ✅ — 5 PR 完整闭环
+  - **3.1 A-B 对照实验**：PR #131（plan）+ #132（数据基础+SHA-1 桶位+outcome 表）+ #133（Mann-Whitney U + 自动 promote/rollback）+ #139（A-B 进度 UI + 8 字段配置 + active/history 视图）
+  - **3.2 dryRun + canary**：PR #140（dryRun + apply/reject + 409 防覆盖检查 + 11 测试）+ PR #141（canary + 桶位偏置 90/10 + AbStatusCard 🐤 标识 + 10 测试）
+  - **M13 Phase 5 收尾**：PR #142 — 补 M11.1 PR6 留下的最后 1 个 gap（feishuDoc 字段 0 消费点 → 注入 `<feishu_doc_context>` + `<comment_timeline>` + 10 unit test）
+  - **3.3 跨 skill 依赖图 + 3.4 安全联邦同步**：plan 已写明不做（前者 skill 量未到 50+，后者与 local-only 卖点矛盾）
+  - 实际能力对比 Hermes：完整审计 + 一键回滚 + Mann-Whitney 统计学决策 + dryRun 待审 + canary 灰度 — Hermes 全无
+  - 详见 `docs/iteration-plans/M7-Tier3-Plan.md` + `M7-Tier3.2-Plan.md` + `M13-Phase5-Plan.md`
+- **上一冲刺**: M11.1 followup + M13 主线扩张（2026-04~05）
+  - **M11.1 followup 4 项 ✅**：PR #82（withFeishuRetry 优先服从 Retry-After）+ #83（28 文件按职责拆 5 子目录）+ #84（mock-based E2E harness + 7 journey 测试）+ #85（withFeishuRetry 抽到通用 channel/common/retry.ts）
+  - **Phase J-2 文本 debounce ✅**：PR #86（入站合并器默认开启）
+  - **M7 Curator 子代理 + 三态生命周期 ✅**：PR #116（active/stale/archived 自动转换 + bundled 保护）
+  - **M7 P1-B Inline Review 信号驱动 ✅**：PR #97-100（信号检测 + turn-end hook + inline-stats endpoint）+ PR #112-114（conversational_feedback 进 evidence + LLM 二级分类兜底 + Background Skill Review）
+  - **M13 Phase 5 飞书文档 agent 协作 ✅**：PR #87（doc-api 单测）+ #88（drive 评论事件 → agent dispatch）+ #89（read_doc）+ #90（append_block）+ #91（replace/delete + audit log）+ #92（系统提示 + journey 测试）
+  - **M13 #3 同事印象记忆 ✅**：PR #108（peer:* merge_key + afterTurn 提取 + system prompt 注入闭环）
+  - **M1.1 Checkpoint Manager ✅**：PR #122（内容寻址快照 + 自动回滚）+ #124（撤销改动 UI）
+  - **provider 重构 + thinking 升级 ✅**：PR #79（thinkingLevels 数组 + defaultThinkLevel）+ #80（Kimi K2.6 + GLM 5.1 + Qwen 3.6）+ #81（27 处 high → low 默认值）+ #121（buildAuthHeaders → AuthStrategy 分发）
+- **上上冲刺**: M11.1 飞书 Channel 完整复刻 ✅（2026-04-21，PR #46 + #47 + #48 + #49 + #50 + #52）— 4 周 6 PR 交付 ~3500 行飞书实现 + 3033 测试。WebSocket 长连接（桌面 sidecar 无公网 IP）。覆盖：基础 text/post/image/file/audio/video 全消息类型 + Markdown→Post 智能渲染 + ocf1 envelope 审批卡（Promise+TTL+cancel 生命周期）+ CardKit 流式卡片 + 4 档群会话隔离（group/sender/topic/topic_sender）+ reactions/入群离群/p2p_entered 事件 + drive.notice.comment_add_v1 文档评论事件 + doc-api 薄封装 + withFeishuRetry 指数退避 equal jitter + **PR6 Phase K** 9 个 Agent-facing channel tools。Review 8.2/10
+- **更早**: M7.1 进化日志 UI ✅（PR #43 + #44，2026-04-21）；M7 Skill 自进化 Phase 1-3 ✅（PR #39 + #40 + #41 + #42，2026-04-21）；M8 会话隔离 ✅（PR #30）；M9 Phase 1 T1/T2 ✅（PR #26 + #28）；M6 Provider 增强 ✅（PR #20，OAuth 推迟到 A3）；M5 Skills 生态增强 ✅（PR #18）
+- **下一冲刺候选**（推荐序，2026-05-09 重排）:
+  1. **M13 Phase 1 路由扩容**（2w）— cross-app 路由表 + binding scope 升级，解锁多 Agent 真实部署（Phase 5 已 ✅，Phase 1 仍是首选）
+  2. **M3.1 全局预算 token 上限**（~1w）— 跨渠道通用，企业刚需
+  3. **M13 Phase 2 task-plan service + PlansPage 实装**（4-5d）— 前端空壳已待落地（`apps/desktop/src/pages/PlansPage.tsx:13` 占位）
+  4. **M12 运营可观测**（3-4d）— SkillPage 已覆盖 60-70%，剩 cost/调用/限流看板
+  5. **A3 OAuth Provider 接入**（1-2w）
+  - **外部阻塞**：M9 Windows 打包链 T3-T7（等 Apple Developer 证书 / 阿里云账号 / Windows 环境）/ Sprint 16 企微（待 M9 中转层）
+  - **不做**：M7-Tier3.3 跨 skill 依赖图（skill 量未到 50+）/ M7-Tier3.4 安全联邦同步（与 local-only 矛盾）/ M7 Phase 4 跨用户上传（永废）
 
 ## 协作准则
 

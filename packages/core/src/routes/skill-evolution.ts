@@ -415,8 +415,22 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
            ORDER BY started_at DESC LIMIT 1`,
           skillName,
         );
+        const history = deps.db.all<{
+          id: number; skillName: string; status: string;
+          startedAt: string; endedAt: string | null;
+          decisionReason: string | null; pValue: number | null; effectSize: number | null;
+        }>(
+          `SELECT id, skill_name AS skillName, status,
+                  started_at AS startedAt, ended_at AS endedAt,
+                  decision_reason AS decisionReason, p_value AS pValue,
+                  effect_size AS effectSize
+           FROM skill_ab_test
+           WHERE skill_name = ? AND status != 'active'
+           ORDER BY ended_at DESC LIMIT 10`,
+          skillName,
+        );
         if (!active) {
-          return c.json({ active: null, history: [] });
+          return c.json({ active: null, history });
         }
         const counts = deps.db.all<{ variant: string; cnt: number }>(
           `SELECT variant, COUNT(*) AS cnt FROM skill_ab_outcome
@@ -429,31 +443,50 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
           active: {
             ...active,
             outcomeCounts: { A: aCount, B: bCount },
-            progress: Math.min(1, Math.min(aCount, bCount) / active.minCallsPerVariant),
+            progress: Math.min(1, Math.min(aCount, bCount) / Math.max(1, active.minCallsPerVariant)),
           },
-          history: [],
+          history,
         });
       }
 
       // 不带 skillName：列全部 active + 最近 5 条历史
-      const active = deps.db.all<{
+      const activeRows = deps.db.all<{
         id: number; skillName: string; status: string;
         variantAHash: string; variantBHash: string; startedAt: string;
+        minCallsPerVariant: number; maxTestDays: number;
       }>(
         `SELECT id, skill_name AS skillName, status,
                 variant_a_hash AS variantAHash, variant_b_hash AS variantBHash,
-                started_at AS startedAt
+                started_at AS startedAt,
+                min_calls_per_variant AS minCallsPerVariant,
+                max_test_days AS maxTestDays
          FROM skill_ab_test
          WHERE status = 'active' ORDER BY started_at ASC`,
       );
+      // 为每条 active 拉 outcome 计数 — N 条 active 通常 < 20，N+1 不构成性能问题
+      const active = activeRows.map(row => {
+        const counts = deps.db.all<{ variant: string; cnt: number }>(
+          `SELECT variant, COUNT(*) AS cnt FROM skill_ab_outcome
+           WHERE ab_test_id = ? GROUP BY variant`,
+          row.id,
+        );
+        const a = counts.find(r => r.variant === 'A')?.cnt ?? 0;
+        const b = counts.find(r => r.variant === 'B')?.cnt ?? 0;
+        return {
+          ...row,
+          outcomeCounts: { A: a, B: b },
+          progress: Math.min(1, Math.min(a, b) / Math.max(1, row.minCallsPerVariant)),
+        };
+      });
       const history = deps.db.all<{
         id: number; skillName: string; status: string;
         startedAt: string; endedAt: string | null;
-        decisionReason: string | null; pValue: number | null;
+        decisionReason: string | null; pValue: number | null; effectSize: number | null;
       }>(
         `SELECT id, skill_name AS skillName, status,
                 started_at AS startedAt, ended_at AS endedAt,
-                decision_reason AS decisionReason, p_value AS pValue
+                decision_reason AS decisionReason, p_value AS pValue,
+                effect_size AS effectSize
          FROM skill_ab_test
          WHERE status != 'active'
          ORDER BY ended_at DESC LIMIT 5`,

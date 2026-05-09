@@ -48,6 +48,13 @@ export interface SkillEvolverConfig {
   abTestEnabled?: boolean;
   abMinCallsPerVariant?: number;
   abMaxTestDays?: number;
+  /**
+   * M7-Tier3 PR-T3-2a: 进化执行模式
+   *   - 'apply'（默认）：决策直接落地
+   *   - 'dryRun'：决策只写 evolution_log（pending_approval=1），需用户在 UI apply/reject
+   * 'canary' 留给 PR-T3-2b。schema refine 强制 mode='dryRun' ⇎ abTestEnabled=true。
+   */
+  mode?: 'apply' | 'dryRun';
 }
 
 export interface RunEvolutionCycleOptions {
@@ -67,6 +74,8 @@ export interface EvolutionCycleResult {
   created: number;
   skipped: number;
   failed: number;
+  /** M7-Tier3 PR-T3-2a: dryRun 模式下决策落 evolution_log 但未写盘的数量 */
+  dryRunPending: number;
 }
 
 /** 一次完整的进化 cycle。永不抛异常，失败项记日志。 */
@@ -78,7 +87,11 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
 
   const result: EvolutionCycleResult = {
     candidatesFound: 0, refined: 0, created: 0, skipped: 0, failed: 0,
+    dryRunPending: 0,
   };
+
+  // M7-Tier3 PR-T3-2a: dryRun 模式
+  const dryRun = config.mode === 'dryRun';
 
   if (!config.enabled) {
     log.debug('skillEvolver disabled, skipping cycle');
@@ -135,7 +148,7 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
 
     // 3+4. 调 LLM + 执行决策（共享函数，inline review 也用同一套）
     const decisionResult = await runEvolverDecision({
-      evidence, llmCall, userSkillsDir,
+      evidence, llmCall, userSkillsDir, dryRun,
     });
 
     if ('error' in decisionResult) {
@@ -154,6 +167,12 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
     llmConsecutiveFailures = 0;
 
     const { decision, outcome } = decisionResult;
+
+    // PR-T3-2a: dryRun + 非 skip 决策 → 标 pending_approval=1
+    const isDryRunPending = dryRun
+      && !outcome.error
+      && (decision.decision === 'refine' || decision.decision === 'create');
+
     const evolutionLogId = logEvolutionDecision(db, {
       skillName: outcome.targetSkillName ?? skillName,
       decision: decision.decision,
@@ -168,11 +187,14 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
       previousContent: outcome.previousContent ?? null,
       newContent: outcome.newContent ?? null,
       triggerSource: 'cron',
+      pendingApproval: isDryRunPending,
     });
 
-    // M7-Tier3 PR-T3-1a/b: refine 成功 → 启动 A-B 测试（abTestEnabled=false 时跳过）
+    // M7-Tier3 PR-T3-1a/b: refine 成功 → 启动 A-B 测试
+    // PR-T3-2a: dryRun 与 A-B 互斥（dryRun 没写盘 → 没法 A-B），dryRun 时跳过 A-B
     if (
       !outcome.error
+      && !dryRun
       && decision.decision === 'refine'
       && evolutionLogId !== null
       && config.abTestEnabled !== false
@@ -190,7 +212,14 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
       });
     }
 
-    if (outcome.error) {
+    if (isDryRunPending) {
+      log.info('[evolver] dryRun decision pending approval', {
+        skill: outcome.targetSkillName ?? skillName,
+        decision: decision.decision,
+        evolutionLogId,
+      });
+      result.dryRunPending++;
+    } else if (outcome.error) {
       result.failed++;
     } else if (decision.decision === 'refine') {
       result.refined++;
@@ -271,6 +300,12 @@ export async function runEvolverDecision(opts: {
   userSkillsDir: string;
   /** Phase 5: 本 session 已用过的 skill 名单，注入 prompt 引导 refine 优先于 create */
   currentlyUsedSkills?: string[];
+  /**
+   * M7-Tier3 PR-T3-2a: dryRun 模式
+   * true 时 LLM 决策正常发生 + 安全扫描正常做，但**不写磁盘**。
+   * 调用方应把返回的 outcome 传给 logEvolutionDecision({ pendingApproval: true })。
+   */
+  dryRun?: boolean;
 }): Promise<{ decision: EvolverDecision; outcome: DecisionOutcome } | { error: string }> {
   let decision: EvolverDecision;
   try {
@@ -285,6 +320,7 @@ export async function runEvolverDecision(opts: {
 
   const outcome = await executeDecision({
     decision, evidence: opts.evidence, userSkillsDir: opts.userSkillsDir,
+    dryRun: opts.dryRun ?? false,
   });
   return { decision, outcome };
 }
@@ -308,25 +344,28 @@ async function executeDecision(params: {
   decision: EvolverDecision;
   evidence: EvolutionEvidence;
   userSkillsDir: string;
+  /** M7-Tier3 PR-T3-2a: dryRun 时跳过磁盘写，但仍跑安全扫描 + 计算 hash */
+  dryRun?: boolean;
 }): Promise<DecisionOutcome> {
-  const { decision, evidence, userSkillsDir } = params;
+  const { decision, evidence, userSkillsDir, dryRun } = params;
 
   if (decision.decision === 'skip') {
     return { newHash: null };
   }
 
   if (decision.decision === 'refine') {
-    return executeRefine(decision, evidence, userSkillsDir);
+    return executeRefine(decision, evidence, userSkillsDir, dryRun ?? false);
   }
 
   // create
-  return executeCreate(decision, userSkillsDir);
+  return executeCreate(decision, userSkillsDir, dryRun ?? false);
 }
 
 async function executeRefine(
   decision: EvolverDecision,
   evidence: EvolutionEvidence,
   userSkillsDir: string,
+  dryRun: boolean,
 ): Promise<DecisionOutcome> {
   if (!evidence.currentSkillMd) {
     return { newHash: null, error: 'SKILL.md missing at refine time' };
@@ -363,18 +402,21 @@ async function executeRefine(
     };
   }
 
-  // 直接走 editSkillInternal（complete atomic write + .bak + manifest 更新链路）
-  const res = await editSkillInternal({
-    name: evidence.skillName,
-    content: working,
-    userSkillsDir,
-  });
-  if (!res.success) {
-    return {
-      newHash: null,
-      error: res.error ?? 'editSkillInternal failed',
-      patchesApplied: JSON.stringify(patches),
-    };
+  // M7-Tier3 PR-T3-2a: dryRun 时跳过磁盘写，但仍返回 outcome 让 evolution_log 完整记录
+  if (!dryRun) {
+    // 直接走 editSkillInternal（complete atomic write + .bak + manifest 更新链路）
+    const res = await editSkillInternal({
+      name: evidence.skillName,
+      content: working,
+      userSkillsDir,
+    });
+    if (!res.success) {
+      return {
+        newHash: null,
+        error: res.error ?? 'editSkillInternal failed',
+        patchesApplied: JSON.stringify(patches),
+      };
+    }
   }
 
   return {
@@ -388,6 +430,7 @@ async function executeRefine(
 async function executeCreate(
   decision: EvolverDecision,
   userSkillsDir: string,
+  dryRun: boolean,
 ): Promise<DecisionOutcome> {
   const suggestedName = decision.changes?.suggestedName ?? '';
   const newSkillMd = decision.changes?.new_skill_md ?? '';
@@ -400,32 +443,33 @@ async function executeCreate(
     return { newHash: null, error: `skill "${suggestedName}" already exists` };
   }
 
-  const res = await createSkillInternal({
-    name: suggestedName,
-    content: newSkillMd,
-    userSkillsDir,
-  });
-  if (!res.success) {
-    return {
-      newHash: null,
-      error: res.error ?? 'createSkillInternal failed',
-      patchesApplied: JSON.stringify({ name: suggestedName }),
-      targetSkillName: suggestedName,
-    };
-  }
-
-  // 走进 evolver 创建的 skill 来源标记为 agent-created（createSkillInternal 已处理），
-  // 但我们额外加一个标记让 manifest 可审计：这里可选择 upsert 增加 createdAt 说明
-  // skill_evolution_log 本身已记录 decision='create'，manifest 保持 agent-created 即可。
-  try {
-    upsertManifestEntry(userSkillsDir, {
+  // M7-Tier3 PR-T3-2a: dryRun 时跳过 createSkillInternal + manifest upsert
+  // 待 apply 时由 /log/:id/apply endpoint 调 createSkillInternal 真正落盘
+  if (!dryRun) {
+    const res = await createSkillInternal({
       name: suggestedName,
-      sha256: computeSkillHash(newSkillMd),
-      source: 'agent-created',
-      createdAt: new Date().toISOString(),
+      content: newSkillMd,
+      userSkillsDir,
     });
-  } catch {
-    // manifest upsert 失败不算致命错误（createSkillInternal 已写入）
+    if (!res.success) {
+      return {
+        newHash: null,
+        error: res.error ?? 'createSkillInternal failed',
+        patchesApplied: JSON.stringify({ name: suggestedName }),
+        targetSkillName: suggestedName,
+      };
+    }
+
+    try {
+      upsertManifestEntry(userSkillsDir, {
+        name: suggestedName,
+        sha256: computeSkillHash(newSkillMd),
+        source: 'agent-created',
+        createdAt: new Date().toISOString(),
+      });
+    } catch {
+      // manifest upsert 失败不算致命错误（createSkillInternal 已写入）
+    }
   }
 
   return {
@@ -531,6 +575,12 @@ export interface LogEvolutionDecisionParams {
   newContent?: string | null;
   /** P1-B: 触发来源 'cron'（默认）| 'inline' */
   triggerSource: 'cron' | 'inline';
+  /**
+   * M7-Tier3 PR-T3-2a: dryRun 模式标记。
+   * true 时 evolver 已决策但磁盘未写，等待用户在 UI 应用/拒绝。
+   * 仅 decision='refine' / 'create' 有意义（skip 永远 false）。
+   */
+  pendingApproval?: boolean;
 }
 
 /**
@@ -552,8 +602,9 @@ export function logEvolutionDecision(db: SqliteStore, p: LogEvolutionDecisionPar
         evidence_count, evidence_summary,
         patches_applied, previous_hash, new_hash,
         model_used, duration_ms, error_message,
-        previous_content, new_content, trigger_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        previous_content, new_content, trigger_source,
+        pending_approval
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       p.skillName,
       p.decision,
       p.reasoning.slice(0, 1000),
@@ -568,6 +619,7 @@ export function logEvolutionDecision(db: SqliteStore, p: LogEvolutionDecisionPar
       p.previousContent ?? null,
       p.newContent ?? null,
       p.triggerSource,
+      p.pendingApproval ? 1 : 0,
     );
     const idRow = db.get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
     return idRow?.id ?? null;

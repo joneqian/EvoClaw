@@ -23,6 +23,7 @@ const MIGRATION_029 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_skill_evolu
 const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
 const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
 const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
+const MIGRATION_042 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_skill_evolver_pending.sql'), 'utf-8');
 
 const AGENT = 'agent-1';
 
@@ -60,6 +61,7 @@ describe('runEvolutionCycle', () => {
     db.exec(MIGRATION_037);
     db.exec(MIGRATION_040);
     db.exec(MIGRATION_041);
+    db.exec(MIGRATION_042);
     db.run(`INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`, AGENT, AGENT, '🤖', 'active');
     usageStore = new SkillUsageStore(db);
   });
@@ -517,5 +519,144 @@ describe('runEvolutionCycle', () => {
     });
     const abRow = db.get(`SELECT id FROM skill_ab_test WHERE skill_name = 'target'`);
     expect(abRow).toBeUndefined();
+  });
+
+  // ─── M7-Tier3 PR-T3-2a: dryRun 模式 ─────────────────────────────────────
+
+  describe('mode=dryRun', () => {
+    function setupRefineCandidate(): string {
+      writeSkill(userSkillsDir, 'dry-target', 'original marker text');
+      const content = fs.readFileSync(path.join(userSkillsDir, 'dry-target', 'SKILL.md'), 'utf-8');
+      upsertManifestEntry(userSkillsDir, {
+        name: 'dry-target', sha256: computeSkillHash(content),
+        source: 'bundled', createdAt: '2026-01-01T00:00:00Z',
+      });
+      for (let i = 0; i < 3; i++) {
+        usageStore.saveSummary({
+          skillName: 'dry-target', sessionKey: `s${i}`, agentId: AGENT,
+          summaryText: '偶发超时', invocationCount: 2, successRate: 0.5,
+        });
+      }
+      feedUsages('dry-target', 2, 5);
+      return content;
+    }
+
+    it('refine 决策 → SKILL.md 不变 + log pending=1 + dryRunPending++', async () => {
+      const before = setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'dryRun decision',
+        changes: { patches: [{ old: 'original marker', new: 'improved marker' }] },
+      }));
+
+      const result = await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5, mode: 'dryRun',
+        },
+        llmCall,
+      });
+
+      // 行为期望
+      expect(result.refined).toBe(0);
+      expect(result.dryRunPending).toBe(1);
+
+      // SKILL.md 文件未变
+      const after = fs.readFileSync(path.join(userSkillsDir, 'dry-target', 'SKILL.md'), 'utf-8');
+      expect(after).toBe(before);
+
+      // log 行存在 + pending_approval=1
+      const logRow = db.get<{
+        decision: string; pending_approval: number;
+        new_content: string | null; previous_content: string | null;
+      }>(
+        `SELECT decision, pending_approval, new_content, previous_content
+         FROM skill_evolution_log WHERE skill_name = 'dry-target'`,
+      );
+      expect(logRow?.decision).toBe('refine');
+      expect(logRow?.pending_approval).toBe(1);
+      // new_content 应包含 patched 后的内容（dryRun 仍计算 hash + 内容）
+      expect(logRow?.new_content).toContain('improved marker');
+      expect(logRow?.previous_content).toContain('original marker');
+    });
+
+    it('dryRun + abTestEnabled=true → A-B 不启动（互斥）', async () => {
+      setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'should not start ab',
+        changes: { patches: [{ old: 'original marker', new: 'improved marker' }] },
+      }));
+
+      await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5, mode: 'dryRun',
+          abTestEnabled: true,  // 显式开启 → 但 dryRun 优先
+        },
+        llmCall,
+      });
+
+      const abRow = db.get(`SELECT id FROM skill_ab_test WHERE skill_name = 'dry-target'`);
+      expect(abRow).toBeUndefined();
+    });
+
+    it('skip 决策不会被标 pending（pending 仅 refine/create）', async () => {
+      setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'skip',
+        reasoning: 'evidence too noisy',
+      }));
+
+      const result = await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5, mode: 'dryRun',
+        },
+        llmCall,
+      });
+      expect(result.dryRunPending).toBe(0);
+      expect(result.skipped).toBeGreaterThanOrEqual(1);
+
+      const logRow = db.get<{ decision: string; pending_approval: number }>(
+        `SELECT decision, pending_approval FROM skill_evolution_log WHERE skill_name = 'dry-target'`,
+      );
+      expect(logRow?.decision).toBe('skip');
+      expect(logRow?.pending_approval).toBe(0);
+    });
+
+    it('mode=apply（默认）行为不变 — SKILL.md 写入 + pending=0', async () => {
+      setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'apply mode',
+        changes: { patches: [{ old: 'original marker', new: 'improved marker' }] },
+      }));
+
+      const result = await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5,
+          // mode 不传 → 默认 'apply'
+        },
+        llmCall,
+      });
+      expect(result.refined).toBe(1);
+      expect(result.dryRunPending).toBe(0);
+      const after = fs.readFileSync(path.join(userSkillsDir, 'dry-target', 'SKILL.md'), 'utf-8');
+      expect(after).toContain('improved marker');
+      const logRow = db.get<{ pending_approval: number }>(
+        `SELECT pending_approval FROM skill_evolution_log WHERE skill_name = 'dry-target'`,
+      );
+      expect(logRow?.pending_approval).toBe(0);
+    });
   });
 });

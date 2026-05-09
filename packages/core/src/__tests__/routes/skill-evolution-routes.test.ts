@@ -19,6 +19,7 @@ const MIGRATION_029 = fs.readFileSync(path.join(MIGRATIONS_DIR, '029_skill_evolu
 const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inline_review.sql'), 'utf-8');
 const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
 const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
+const MIGRATION_042 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_skill_evolver_pending.sql'), 'utf-8');
 
 function mkTmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -52,6 +53,7 @@ describe('skill-evolution routes', () => {
     db.exec(MIGRATION_037);
     db.exec(MIGRATION_040);
     db.exec(MIGRATION_041);
+    db.exec(MIGRATION_042);
     app = new Hono();
     app.route('/skill-evolution', createSkillEvolutionRoutes({ db, userSkillsDir: skillsDir }));
   });
@@ -633,6 +635,171 @@ describe('skill-evolution routes', () => {
       const body = await res.json() as { active: unknown; history: Array<{ skillName: string }> };
       expect(body.active).toBeNull();
       expect(body.history).toHaveLength(1);
+    });
+  });
+
+  // ─── M7-Tier3 PR-T3-2a: dryRun apply/reject + pending 列表 ───────────
+
+  describe('/log/:id/apply + /log/:id/reject', () => {
+    function seedPendingRefine(skill: string, prevContent: string, newContent: string): number {
+      const result = db.run(
+        `INSERT INTO skill_evolution_log (
+           skill_name, decision, reasoning, evidence_count,
+           previous_hash, new_hash, previous_content, new_content,
+           pending_approval, trigger_source
+         ) VALUES (?, 'refine', 'dryRun pending', 3, ?, ?, ?, ?, 1, 'cron')`,
+        skill,
+        computeSkillHash(prevContent), computeSkillHash(newContent),
+        prevContent, newContent,
+      );
+      return Number(result.lastInsertRowid);
+    }
+
+    function seedPendingCreate(skill: string, newContent: string): number {
+      const result = db.run(
+        `INSERT INTO skill_evolution_log (
+           skill_name, decision, reasoning, evidence_count,
+           previous_hash, new_hash, previous_content, new_content,
+           pending_approval, trigger_source
+         ) VALUES (?, 'create', 'dryRun create pending', 3, NULL, ?, NULL, ?, 1, 'cron')`,
+        skill, computeSkillHash(newContent), newContent,
+      );
+      return Number(result.lastInsertRowid);
+    }
+
+    it('refine apply happy path → SKILL.md 写入 + pending=0 + decided_by=manual-apply', async () => {
+      const before = validSkill('alpha', 'old body');
+      const after = validSkill('alpha', 'new body');
+      writeSkillToDisk(skillsDir, 'alpha', before);
+      // 注册 manifest（editSkillInternal 需要查 manifest）
+      upsertManifestEntry(skillsDir, {
+        name: 'alpha', sha256: computeSkillHash(before),
+        source: 'agent-created', createdAt: new Date().toISOString(),
+      });
+      const id = seedPendingRefine('alpha', before, after);
+
+      const res = await app.request(`/skill-evolution/log/${id}/apply`, { method: 'POST' });
+      expect(res.status).toBe(200);
+
+      // 文件被写入
+      const onDisk = fs.readFileSync(path.join(skillsDir, 'alpha', 'SKILL.md'), 'utf-8');
+      expect(onDisk).toContain('new body');
+
+      // log 行更新
+      const row = db.get<{ pending_approval: number; approval_decided_by: string }>(
+        `SELECT pending_approval, approval_decided_by FROM skill_evolution_log WHERE id = ?`,
+        id,
+      );
+      expect(row?.pending_approval).toBe(0);
+      expect(row?.approval_decided_by).toBe('manual-apply');
+    });
+
+    it('refine apply 当磁盘 hash 已变 → 409 防覆盖', async () => {
+      const before = validSkill('beta', 'old');
+      const after = validSkill('beta', 'evolver suggested');
+      writeSkillToDisk(skillsDir, 'beta', before);
+      upsertManifestEntry(skillsDir, {
+        name: 'beta', sha256: computeSkillHash(before),
+        source: 'agent-created', createdAt: new Date().toISOString(),
+      });
+      const id = seedPendingRefine('beta', before, after);
+
+      // 用户手动改了 SKILL.md
+      const userEdit = validSkill('beta', 'user manual edit');
+      fs.writeFileSync(path.join(skillsDir, 'beta', 'SKILL.md'), userEdit, 'utf-8');
+
+      const res = await app.request(`/skill-evolution/log/${id}/apply`, { method: 'POST' });
+      expect(res.status).toBe(409);
+      const body = await res.json() as { error: string; previousHash: string; onDiskHash: string };
+      expect(body.error).toContain('changed since');
+      expect(body.previousHash).not.toBe(body.onDiskHash);
+
+      // log 行未变（仍 pending）
+      const row = db.get<{ pending_approval: number }>(
+        `SELECT pending_approval FROM skill_evolution_log WHERE id = ?`, id,
+      );
+      expect(row?.pending_approval).toBe(1);
+    });
+
+    it('reject happy path → pending=0 + rolled_back=1 + decided_by=manual-reject + 不写盘', async () => {
+      const before = validSkill('gamma', 'untouched');
+      writeSkillToDisk(skillsDir, 'gamma', before);
+      const id = seedPendingRefine('gamma', before, validSkill('gamma', 'rejected change'));
+
+      const res = await app.request(`/skill-evolution/log/${id}/reject`, { method: 'POST' });
+      expect(res.status).toBe(200);
+
+      // 磁盘未变
+      const onDisk = fs.readFileSync(path.join(skillsDir, 'gamma', 'SKILL.md'), 'utf-8');
+      expect(onDisk).toBe(before);
+
+      // log 行
+      const row = db.get<{
+        pending_approval: number; rolled_back: number; approval_decided_by: string;
+      }>(
+        `SELECT pending_approval, rolled_back, approval_decided_by
+         FROM skill_evolution_log WHERE id = ?`, id,
+      );
+      expect(row?.pending_approval).toBe(0);
+      expect(row?.rolled_back).toBe(1);
+      expect(row?.approval_decided_by).toBe('manual-reject');
+    });
+
+    it('已决议的 log 再 apply → 400 not pending', async () => {
+      const before = validSkill('delta', 'a');
+      writeSkillToDisk(skillsDir, 'delta', before);
+      upsertManifestEntry(skillsDir, {
+        name: 'delta', sha256: computeSkillHash(before),
+        source: 'agent-created', createdAt: new Date().toISOString(),
+      });
+      const id = seedPendingRefine('delta', before, validSkill('delta', 'b'));
+      // 第一次 apply
+      const r1 = await app.request(`/skill-evolution/log/${id}/apply`, { method: 'POST' });
+      expect(r1.status).toBe(200);
+      // 第二次 apply 应当 400
+      const r2 = await app.request(`/skill-evolution/log/${id}/apply`, { method: 'POST' });
+      expect(r2.status).toBe(400);
+    });
+
+    it('create apply happy path → 新 skill 文件创建 + manifest 注册', async () => {
+      const newContent = validSkill('new-skill', 'fresh body');
+      const id = seedPendingCreate('new-skill', newContent);
+
+      const res = await app.request(`/skill-evolution/log/${id}/apply`, { method: 'POST' });
+      expect(res.status).toBe(200);
+
+      const created = path.join(skillsDir, 'new-skill', 'SKILL.md');
+      expect(fs.existsSync(created)).toBe(true);
+      expect(fs.readFileSync(created, 'utf-8')).toContain('fresh body');
+    });
+
+    it('GET /log?pending=1 仅返回待审记录', async () => {
+      // 已决议（pending=0）
+      const before = validSkill('done-skill', 'a');
+      writeSkillToDisk(skillsDir, 'done-skill', before);
+      insertRefineLog('done-skill', before, validSkill('done-skill', 'b'));
+      // 待审
+      seedPendingRefine('pending-skill', validSkill('pending-skill', 'a'), validSkill('pending-skill', 'b'));
+
+      const res = await app.request('/skill-evolution/log?pending=1');
+      const body = await res.json() as { entries: Array<{ skillName: string; pendingApproval: number }> };
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].skillName).toBe('pending-skill');
+      expect(body.entries[0].pendingApproval).toBe(1);
+    });
+
+    it('GET /log/pending-count 返回待审数量', async () => {
+      seedPendingRefine('p1', validSkill('p1', 'a'), validSkill('p1', 'b'));
+      seedPendingRefine('p2', validSkill('p2', 'a'), validSkill('p2', 'b'));
+      // 已决议不计入
+      const dr = validSkill('done', 'a');
+      writeSkillToDisk(skillsDir, 'done', dr);
+      insertRefineLog('done', dr, validSkill('done', 'b'));
+
+      const res = await app.request('/skill-evolution/log/pending-count');
+      expect(res.status).toBe(200);
+      const body = await res.json() as { count: number };
+      expect(body.count).toBe(2);
     });
   });
 });

@@ -56,6 +56,13 @@ export interface RunInlineReviewOptions {
   rateLimitMinutes?: number;
   /** Phase 5: 本 session 已用过的 skill 名单（注入 prompt） */
   currentlyUsedSkills?: string[];
+  /**
+   * M7-Tier3 PR-T3-2a: 进化执行模式
+   *   - 'apply'（默认）：决策直接落地（PR-T3-2a 之前的行为）
+   *   - 'dryRun'：决策仅落 evolution_log + pending_approval=1，需用户在 UI 应用/拒绝
+   * 与 cron evolver 共享 SkillEvolverConfig.mode 字段，inline review 同样尊重该设置。
+   */
+  mode?: 'apply' | 'dryRun';
 }
 
 export interface InlineReviewResult {
@@ -160,11 +167,13 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
   });
 
   // 7. 跑共享决策核心
+  const dryRun = opts.mode === 'dryRun';
   const result = await runEvolverDecision({
     evidence,
     llmCall: opts.llmCall,
     userSkillsDir: opts.userSkillsDir,
     currentlyUsedSkills: opts.currentlyUsedSkills,
+    dryRun,
   });
 
   const durationMs = Date.now() - start;
@@ -189,6 +198,10 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
 
   // 9. 写决策日志
   const { decision, outcome } = result;
+  const isDryRunPending = dryRun
+    && !outcome.error
+    && (decision.decision === 'refine' || decision.decision === 'create');
+
   const evolutionLogId = logEvolutionDecision(opts.db, {
     skillName: outcome.targetSkillName ?? skillName,
     decision: decision.decision,
@@ -203,10 +216,12 @@ async function runInlineReviewInternal(opts: RunInlineReviewOptions): Promise<In
     previousContent: outcome.previousContent ?? null,
     newContent: outcome.newContent ?? null,
     triggerSource: 'inline',
+    pendingApproval: isDryRunPending,
   });
 
   // M7-Tier3 PR-T3-1a: refine 成功 → 启动 A-B（cron / inline 双通道一致）
-  if (!outcome.error && decision.decision === 'refine' && evolutionLogId !== null) {
+  // PR-T3-2a: dryRun 时跳过 A-B（与 cron 一致）
+  if (!outcome.error && !dryRun && decision.decision === 'refine' && evolutionLogId !== null) {
     maybeStartAbTest({
       db: opts.db,
       evolutionLogId,

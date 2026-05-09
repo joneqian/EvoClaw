@@ -448,6 +448,8 @@ interface EvolverConfig {
   abRollbackSuccessDeltaMin: number;
   abPValueThreshold: number;
   abDurationRatioRollback: number;
+  // M7-Tier3 PR-T3-2a: 进化执行模式（apply / dryRun，PR-T3-2b 扩 canary）
+  mode: 'apply' | 'dryRun';
 }
 
 /** M7-Tier1 PR6: Curator 完整配置（与 security.skillCurator schema 对齐） */
@@ -656,6 +658,33 @@ function SkillEvolverTab() {
             />
           </Field>
 
+          {/* M7-Tier3 PR-T3-2a: 执行模式 */}
+          <Field
+            label="执行模式"
+            hint={
+              draft.mode === 'dryRun'
+                ? 'dryRun 模式下决策仅落审计日志，需在「进化历史」Tab 手动应用/拒绝（与 A-B 对照实验互斥）'
+                : 'apply 直接生效；dryRun 仅写日志，等用户审批后再生效'
+            }
+          >
+            <select
+              value={draft.mode}
+              onChange={(e) => {
+                const next: 'apply' | 'dryRun' = e.target.value === 'dryRun' ? 'dryRun' : 'apply';
+                // dryRun 与 abTestEnabled 互斥（schema refine 强制），切到 dryRun 自动关 A-B
+                setDraft({
+                  ...draft,
+                  mode: next,
+                  ...(next === 'dryRun' ? { abTestEnabled: false } : {}),
+                });
+              }}
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+            >
+              <option value="apply">apply — 直接生效</option>
+              <option value="dryRun">dryRun — 待审核（手动应用/拒绝）</option>
+            </select>
+          </Field>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="最少证据数" hint="单 skill 至少积累多少条 usage 才进入 LLM 决策（1~50）">
               <input
@@ -721,15 +750,25 @@ function SkillEvolverTab() {
           </summary>
 
           <div className="mt-3 space-y-3">
-            <Field label="启用 A-B" hint="关闭后 refine 直接落地，不进入桶位对照">
-              <label className="inline-flex items-center gap-2 cursor-pointer">
+            <Field
+              label="启用 A-B"
+              hint={
+                draft.mode === 'dryRun'
+                  ? 'dryRun 模式下不写 SKILL.md → 没法启动 A-B（自动禁用）'
+                  : '关闭后 refine 直接落地，不进入桶位对照'
+              }
+            >
+              <label className={`inline-flex items-center gap-2 ${draft.mode === 'dryRun' ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
                 <input
                   type="checkbox"
-                  checked={draft.abTestEnabled}
+                  checked={draft.abTestEnabled && draft.mode !== 'dryRun'}
+                  disabled={draft.mode === 'dryRun'}
                   onChange={(e) => setDraft({ ...draft, abTestEnabled: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+                  className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand disabled:opacity-50"
                 />
-                <span className="text-sm text-slate-700">{draft.abTestEnabled ? '已启用' : '已禁用'}</span>
+                <span className="text-sm text-slate-700">
+                  {draft.mode === 'dryRun' ? '已禁用（dryRun 互斥）' : draft.abTestEnabled ? '已启用' : '已禁用'}
+                </span>
               </label>
             </Field>
 

@@ -1024,6 +1024,8 @@ export async function handleChannelMessage(
           userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
           llmCall: secondaryLLMCall,
           model: configManager?.getConfig().security?.skillEvolver?.model,
+          // M7-Tier3 PR-T3-2a: 与 cron evolver 共享 mode 决定（apply / dryRun）
+          mode: configManager?.getConfig().security?.skillEvolver?.mode,
           // 把上一条 assistant 回复也带上，让 LLM 二级分类拿到更多上下文（regex 漏检兜底用）
           ...(cleanResponse ? { lastAssistantMessage: cleanResponse.slice(0, 2000) } : {}),
         });

@@ -23,7 +23,8 @@ import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { SkillEvolverScheduler } from '../skill/skill-evolver-scheduler.js';
 import type { SkillAbEvaluatorScheduler } from '../skill/skill-ab-scheduler.js';
 import { createLogger } from '../infrastructure/logger.js';
-import { editSkillInternal } from '../skill/skill-manage-tool.js';
+import { createSkillInternal, editSkillInternal } from '../skill/skill-manage-tool.js';
+import { computeSkillHash } from '../skill/skill-manifest.js';
 
 const log = createLogger('skill-evolution-routes');
 
@@ -60,24 +61,31 @@ interface EvolutionLogRow {
   newContent: string | null;
   /** P1-B: 触发本条 inline review 的用户对话原文（仅 trigger_source='inline' 可能有） */
   conversationalFeedback?: string | null;
+  /** M7-Tier3 PR-T3-2a: dryRun 模式产生的待审决策 */
+  pendingApproval: number;
+  approvalDecidedAt: string | null;
+  approvalDecidedBy: string | null;
 }
 
 const LIST_COLUMNS = `
   id,
-  skill_name        AS skillName,
-  evolved_at        AS evolvedAt,
+  skill_name           AS skillName,
+  evolved_at           AS evolvedAt,
   decision,
   reasoning,
-  evidence_count    AS evidenceCount,
-  evidence_summary  AS evidenceSummary,
-  patches_applied   AS patchesApplied,
-  previous_hash     AS previousHash,
-  new_hash          AS newHash,
-  model_used        AS modelUsed,
-  duration_ms       AS durationMs,
-  error_message     AS errorMessage,
-  rolled_back       AS rolledBack,
-  trigger_source    AS triggerSource
+  evidence_count       AS evidenceCount,
+  evidence_summary     AS evidenceSummary,
+  patches_applied      AS patchesApplied,
+  previous_hash        AS previousHash,
+  new_hash             AS newHash,
+  model_used           AS modelUsed,
+  duration_ms          AS durationMs,
+  error_message        AS errorMessage,
+  rolled_back          AS rolledBack,
+  trigger_source       AS triggerSource,
+  pending_approval     AS pendingApproval,
+  approval_decided_at  AS approvalDecidedAt,
+  approval_decided_by  AS approvalDecidedBy
 `;
 
 const DETAIL_COLUMNS = `
@@ -90,17 +98,26 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
   const app = new Hono();
   const baseSkillsDir = deps.userSkillsDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
 
-  /** GET /log?skill=X&limit=50&offset=0 */
+  /**
+   * GET /log?skill=X&limit=50&offset=0&pending=1
+   *
+   * pending=1 时只返 pending_approval=1 的待审决策（PR-T3-2a dryRun 模式产物）。
+   */
   app.get('/log', (c) => {
     const skill = c.req.query('skill');
+    const pending = c.req.query('pending');
     const limit = Math.min(Number(c.req.query('limit')) || 50, 500);
     const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
     const params: unknown[] = [];
-    let where = '1=1';
+    const whereClauses: string[] = [];
     if (skill) {
-      where = 'skill_name = ?';
+      whereClauses.push('skill_name = ?');
       params.push(skill);
     }
+    if (pending === '1') {
+      whereClauses.push('pending_approval = 1');
+    }
+    const where = whereClauses.length ? whereClauses.join(' AND ') : '1=1';
     params.push(limit, offset);
     const rows = deps.db.all<Omit<EvolutionLogRow, 'previousContent' | 'newContent'>>(
       `SELECT ${LIST_COLUMNS}
@@ -111,6 +128,14 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
       ...params,
     );
     return c.json({ entries: rows });
+  });
+
+  /** GET /log/pending-count — 用于左侧徽章数字 */
+  app.get('/log/pending-count', (c) => {
+    const row = deps.db.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM skill_evolution_log WHERE pending_approval = 1`,
+    );
+    return c.json({ count: row?.count ?? 0 });
   });
 
   /** GET /log/:id */
@@ -212,6 +237,128 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
     }
 
     return c.json({ ok: true, rolledBackId: id });
+  });
+
+  /**
+   * POST /log/:id/apply
+   *
+   * 应用一条 dryRun 模式产生的待审决策：
+   *   - refine：调 editSkillInternal 写回 new_content
+   *   - create：调 createSkillInternal 创建新 skill
+   * 写入前做 hash 防覆盖检查（refine 才有意义）：
+   *   磁盘当前 hash != previous_hash → 用户在 dryRun 期手动改过 SKILL.md →
+   *   返回 409 + 提示用户重新决策（不强行覆盖用户编辑）。
+   */
+  app.post('/log/:id/apply', async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) {
+      return c.json({ error: 'invalid id' }, 400);
+    }
+    const row = deps.db.get<EvolutionLogRow>(
+      `SELECT ${DETAIL_COLUMNS} FROM skill_evolution_log WHERE id = ?`,
+      id,
+    );
+    if (!row) return c.json({ error: 'not found' }, 404);
+
+    if (row.pendingApproval !== 1) {
+      return c.json({ error: 'not pending approval' }, 400);
+    }
+    if (row.decision !== 'refine' && row.decision !== 'create') {
+      return c.json({ error: `cannot apply decision='${row.decision}'` }, 400);
+    }
+    if (!row.newContent) {
+      return c.json({ error: 'new_content missing' }, 400);
+    }
+
+    if (row.decision === 'refine') {
+      // hash 防覆盖：检查磁盘是否在 dryRun 期间已被手动修改
+      const skillMdPath = path.join(baseSkillsDir, row.skillName, 'SKILL.md');
+      if (fs.existsSync(skillMdPath)) {
+        try {
+          const onDisk = fs.readFileSync(skillMdPath, 'utf-8');
+          const onDiskHash = computeSkillHash(onDisk);
+          if (row.previousHash && onDiskHash !== row.previousHash) {
+            log.warn('apply 拒绝：磁盘 hash 已变（用户在 dryRun 期间修改过）', {
+              id, skill: row.skillName,
+              previousHash: row.previousHash, onDiskHash,
+            });
+            return c.json({
+              error: 'SKILL.md changed since decision was made — please reject this decision and re-evolve',
+              previousHash: row.previousHash,
+              onDiskHash,
+            }, 409);
+          }
+        } catch (err) {
+          log.warn('hash 防覆盖检查失败', { err: String(err) });
+          // 读盘失败不阻塞 apply（editSkillInternal 自身会处理）
+        }
+      }
+
+      const res = await editSkillInternal({
+        name: row.skillName,
+        content: row.newContent,
+        userSkillsDir: baseSkillsDir,
+      });
+      if (!res.success) {
+        log.warn('apply (refine) 失败', { id, err: res.error });
+        return c.json({ error: res.error ?? 'apply failed' }, 500);
+      }
+    } else {
+      // create
+      const res = await createSkillInternal({
+        name: row.skillName,
+        content: row.newContent,
+        userSkillsDir: baseSkillsDir,
+      });
+      if (!res.success) {
+        log.warn('apply (create) 失败', { id, err: res.error });
+        return c.json({ error: res.error ?? 'apply failed' }, 500);
+      }
+    }
+
+    deps.db.run(
+      `UPDATE skill_evolution_log
+       SET pending_approval = 0,
+           approval_decided_at = datetime('now'),
+           approval_decided_by = 'manual-apply'
+       WHERE id = ?`,
+      id,
+    );
+    log.info('[/log/:id/apply] manual apply', { id, skill: row.skillName, decision: row.decision });
+    return c.json({ ok: true, appliedId: id });
+  });
+
+  /**
+   * POST /log/:id/reject
+   *
+   * 拒绝一条待审决策：标 pending=0 + rolled_back=1 + decided_by='manual-reject'。
+   * 不写盘（dryRun 本来就没写）。
+   */
+  app.post('/log/:id/reject', (c) => {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) {
+      return c.json({ error: 'invalid id' }, 400);
+    }
+    const row = deps.db.get<{ pendingApproval: number; skillName: string; decision: string }>(
+      `SELECT pending_approval AS pendingApproval, skill_name AS skillName, decision
+       FROM skill_evolution_log WHERE id = ?`,
+      id,
+    );
+    if (!row) return c.json({ error: 'not found' }, 404);
+    if (row.pendingApproval !== 1) {
+      return c.json({ error: 'not pending approval' }, 400);
+    }
+    deps.db.run(
+      `UPDATE skill_evolution_log
+       SET pending_approval = 0,
+           rolled_back = 1,
+           approval_decided_at = datetime('now'),
+           approval_decided_by = 'manual-reject'
+       WHERE id = ?`,
+      id,
+    );
+    log.info('[/log/:id/reject] manual reject', { id, skill: row.skillName, decision: row.decision });
+    return c.json({ ok: true, rejectedId: id });
   });
 
   /**

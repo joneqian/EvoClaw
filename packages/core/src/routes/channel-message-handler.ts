@@ -8,7 +8,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
-import type { ChatMessage, ChatMessageAttachment, QuotedMessage } from '@evoclaw/shared';
+import type { ChatMessage, ChatMessageAttachment, FeishuDocContext, QuotedMessage } from '@evoclaw/shared';
 import { composeMessageWithQuote, DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
@@ -17,6 +17,8 @@ import { selectWorkspaceFiles } from '../agent/workspace-files-policy.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ChannelManager } from '../channel/channel-manager.js';
+import { buildFeishuDocContextPrefix } from '../channel/adapters/feishu/inbound/doc-context-builder.js';
+import type { FeishuAdapter } from '../channel/adapters/feishu/index.js';
 import type { HybridSearcher } from '../memory/hybrid-searcher.js';
 import type { MemoryStore } from '../memory/memory-store.js';
 import type { KnowledgeGraphStore } from '../memory/knowledge-graph.js';
@@ -103,6 +105,15 @@ export interface ChannelMessageContext {
    */
   fromPeerAgentId?: string;
   fromPeerOpenId?: string;
+  /**
+   * 飞书文档评论上下文（drive.notice.comment_add_v1 触发）
+   *
+   * 设置后 handler 会调 buildFeishuDocContextPrefix 把 fileToken/commentId 等
+   * 结构化字段 + comment timeline 拼成 XML 块注入 user message 前缀，
+   * 让 LLM 能调 feishu_read_doc / feishu_reply_comment 等工具继续协作。
+   * 普通 IM 消息不填。
+   */
+  feishuDoc?: FeishuDocContext;
 }
 
 /** 处理器依赖 */
@@ -367,7 +378,7 @@ export async function handleChannelMessage(
 ): Promise<string> {
   const { agentId, sessionKey, channel, peerId, chatType } = ctx;
   // 引用回复：把被引用消息拼成 <quoted_message> 前缀一起喂给 Agent + 存 DB + 进历史
-  const message = composeMessageWithQuote(ctx.message, ctx.quoted);
+  let message = composeMessageWithQuote(ctx.message, ctx.quoted);
   const { store, agentManager, channelManager, configManager, hybridSearcher, memoryExtractor, userMdRenderer, skillDiscoverer, laneQueue, memoryStore, ftsStore, knowledgeGraph } = deps;
 
   // 多账号：解析本 Agent 在该 channel 下绑定的 accountId，后续 sendMessage 显式传入，
@@ -389,6 +400,27 @@ export async function handleChannelMessage(
       `本条回复将走默认 adapter，多 bot 场景下头像可能错位。` +
       `请到桌面端"专家设置 → ${channel} → 解绑 → 重新连接"修复此 binding。`,
     );
+  }
+
+  // M13 Phase 5: 飞书文档评论上下文注入
+  // 当 ChannelMessageContext.feishuDoc 存在（drive.notice.comment_add_v1 触发）：
+  //   - 把 fileToken / commentId / replyId / isWhole 拼成 <feishu_doc_context> XML 块
+  //   - 调 listCommentReplies 拉 thread 最近 5 条回复 → <comment_timeline> XML 块
+  //   - 注入到 user message 前缀，让 LLM 看到结构化上下文 + 调 feishu_read_doc 等工具
+  // 永不阻塞主流程：拉取失败时仅注入最小 context block；adapter 不可用时跳过 timeline。
+  if (ctx.feishuDoc) {
+    try {
+      const feishuAdapter = channelManager.getAdapter('feishu', channelAccountId) as FeishuAdapter | undefined;
+      const docPrefix = await buildFeishuDocContextPrefix(
+        ctx.feishuDoc,
+        { feishuAdapter },
+      );
+      message = docPrefix + '\n\n' + message;
+      log.debug(`[feishu-doc] context prefix injected for fileToken=${ctx.feishuDoc.fileToken}`);
+    } catch (err) {
+      // 进一步兜底（builder 内部已 silent fallback，这里再保一道防御）
+      log.warn(`[feishu-doc] context prefix 注入失败（降级为原 message）: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // 1. 获取 Agent 配置

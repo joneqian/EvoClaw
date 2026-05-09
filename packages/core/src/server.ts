@@ -786,6 +786,8 @@ async function dispatchBroadcastMessage(
           quoted: msg.quoted,
           ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
           ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
+          // M13 Phase 5: 飞书文档评论上下文转发（drive.notice.comment_add_v1）
+          ...(msg.feishuDoc ? { feishuDoc: msg.feishuDoc } : {}),
         },
         channelMsgDeps,
       );
@@ -1574,6 +1576,8 @@ async function main() {
           senderId: msg.senderId,
           ...(msg.fromPeerAgentId ? { fromPeerAgentId: msg.fromPeerAgentId } : {}),
           ...(msg.fromPeerOpenId ? { fromPeerOpenId: msg.fromPeerOpenId } : {}),
+          // M13 Phase 5: 飞书文档评论上下文转发
+          ...(msg.feishuDoc ? { feishuDoc: msg.feishuDoc } : {}),
         },
         channelMsgDeps,
       );

@@ -28,6 +28,7 @@ const MIGRATION_001 = fs.readFileSync(path.join(MIGRATIONS_DIR, '001_initial.sql
 const MIGRATION_028 = fs.readFileSync(path.join(MIGRATIONS_DIR, '028_skill_evolution_log.sql'), 'utf-8');
 const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
 const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
+const MIGRATION_043 = fs.readFileSync(path.join(MIGRATIONS_DIR, '043_skill_ab_test_canary.sql'), 'utf-8');
 
 describe('skill-ab-store', () => {
   let db: SqliteStore;
@@ -40,6 +41,7 @@ describe('skill-ab-store', () => {
     db.exec(MIGRATION_028);
     db.exec(MIGRATION_040);
     db.exec(MIGRATION_041);
+    db.exec(MIGRATION_043);
   });
 
   afterEach(() => {
@@ -101,6 +103,59 @@ describe('skill-ab-store', () => {
         expect(v === 'A' || v === 'B').toBe(true);
       }
     });
+
+    // ─── M7-Tier3 PR-T3-2b: canary 桶位偏置 ───
+    it('ratioB=undefined 时退化到 50/50（向后兼容）', () => {
+      // 跑 5000 次，B 比例应在 [0.45, 0.55]
+      let bCount = 0;
+      const N = 5000;
+      for (let i = 0; i < N; i++) {
+        if (assignBucket(`session-${i}`, 'arxiv', 1, undefined) === 'B') bCount++;
+      }
+      const ratio = bCount / N;
+      expect(ratio).toBeGreaterThan(0.45);
+      expect(ratio).toBeLessThan(0.55);
+    });
+
+    it('ratioB=0.1 时 B 桶 ~10%（10000 次模拟，偏差 < 2%）', () => {
+      let bCount = 0;
+      const N = 10000;
+      for (let i = 0; i < N; i++) {
+        if (assignBucket(`session-${i}`, 'arxiv', 1, 0.1) === 'B') bCount++;
+      }
+      const ratio = bCount / N;
+      // 期望 0.1 ± 0.02
+      expect(ratio).toBeGreaterThan(0.08);
+      expect(ratio).toBeLessThan(0.12);
+    });
+
+    it('ratioB=0.3 时 B 桶 ~30%（10000 次模拟，偏差 < 3%）', () => {
+      let bCount = 0;
+      const N = 10000;
+      for (let i = 0; i < N; i++) {
+        if (assignBucket(`session-${i}`, 'arxiv', 1, 0.3) === 'B') bCount++;
+      }
+      const ratio = bCount / N;
+      expect(ratio).toBeGreaterThan(0.27);
+      expect(ratio).toBeLessThan(0.33);
+    });
+
+    it('ratioB=0 时永不返回 B；ratioB=1 时永不返回 A', () => {
+      // 边界值校验（schema 限制 0.05~0.5，但函数本身应支持极端值不崩）
+      let bAt0 = 0, aAt1 = 0;
+      for (let i = 0; i < 200; i++) {
+        if (assignBucket(`s${i}`, 'arxiv', 1, 0) === 'B') bAt0++;
+        if (assignBucket(`s${i}`, 'arxiv', 1, 1) === 'A') aAt1++;
+      }
+      expect(bAt0).toBe(0);
+      expect(aAt1).toBe(0);
+    });
+
+    it('canary 模式下同 (sessionKey, skillName, abTestId, ratioB) → 同变体', () => {
+      const a = assignBucket('s1', 'arxiv', 1, 0.1);
+      const b = assignBucket('s1', 'arxiv', 1, 0.1);
+      expect(a).toBe(b);
+    });
   });
 
   // ─── 主表 CRUD ──────────────────────────────────────────────────────
@@ -123,6 +178,36 @@ describe('skill-ab-store', () => {
       expect(found!.variantBHash).toBe('bbb222');
       expect(found!.minCallsPerVariant).toBe(30);  // 默认
       expect(found!.maxTestDays).toBe(7);
+      // PR-T3-2b: 默认非 canary
+      expect(found!.isCanary).toBe(0);
+      expect(found!.canaryRatioB).toBeNull();
+    });
+
+    it('startTest 传 canaryRatioB → is_canary=1 + canary_ratio_b 持久化', () => {
+      const evId = seedEvolutionLog('arxiv');
+      const id = startTest(db, {
+        skillName: 'arxiv',
+        evolutionLogId: evId,
+        variantAHash: 'a1', variantBHash: 'b1',
+        canaryRatioB: 0.1,
+      });
+      expect(id).not.toBeNull();
+      const found = findActiveTest(db, 'arxiv');
+      expect(found!.isCanary).toBe(1);
+      expect(found!.canaryRatioB).toBeCloseTo(0.1, 5);
+    });
+
+    it('startTest 不传 canaryRatioB → is_canary=0 + canary_ratio_b=null（默认 50/50）', () => {
+      const evId = seedEvolutionLog('arxiv');
+      const id = startTest(db, {
+        skillName: 'arxiv',
+        evolutionLogId: evId,
+        variantAHash: 'a1', variantBHash: 'b1',
+      });
+      expect(id).not.toBeNull();
+      const found = findActiveTest(db, 'arxiv');
+      expect(found!.isCanary).toBe(0);
+      expect(found!.canaryRatioB).toBeNull();
     });
 
     it('未启动 → findActiveTest 返回 null', () => {

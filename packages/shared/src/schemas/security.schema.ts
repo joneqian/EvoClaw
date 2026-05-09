@@ -32,12 +32,17 @@ export const skillEvolverSchema = z.object({
   /** 辅助模型标识（未配置则走 ModelRouter 默认辅助模型） */
   model: z.string().optional(),
   /**
-   * M7-Tier3 PR-T3-2a: 进化执行模式
-   *   - apply（默认）：LLM 决策直接生效，行为与 PR-T3-1c 之前一致
-   *   - dryRun：决策落 evolution_log 但不写 SKILL.md，需用户在 UI 应用/拒绝
-   *   - PR-T3-2b 将扩 'canary'（灰度推送 N% 流量到新版本）
+   * M7-Tier3 PR-T3-2a/2b: 进化执行模式
+   *   - apply（默认）：LLM 决策直接生效（行为与 PR-T3-1c 之前一致）
+   *   - dryRun：决策落 evolution_log 但不写 SKILL.md，需用户 UI 审批
+   *   - canary：决策直接落 SKILL.md + 启动 A-B，但桶位 90/10（仅 N% 流量读新版）
    */
-  mode: z.enum(['apply', 'dryRun']).default('apply'),
+  mode: z.enum(['apply', 'dryRun', 'canary']).default('apply'),
+  /**
+   * M7-Tier3 PR-T3-2b: canary 模式 B 桶比例（仅 mode='canary' 生效）
+   * 默认 0.1（10% 流量到新版本），范围 5%-50%
+   */
+  canaryRatioB: z.number().min(0.05).max(0.5).default(0.1),
   // ─── M7-Tier3 PR-T3-1a/b: A-B 对照实验配置 ───
   /** refine 决策后是否启动 A-B（默认 true） */
   abTestEnabled: z.boolean().default(true),

@@ -448,8 +448,10 @@ interface EvolverConfig {
   abRollbackSuccessDeltaMin: number;
   abPValueThreshold: number;
   abDurationRatioRollback: number;
-  // M7-Tier3 PR-T3-2a: 进化执行模式（apply / dryRun，PR-T3-2b 扩 canary）
-  mode: 'apply' | 'dryRun';
+  // M7-Tier3 PR-T3-2a/2b: 进化执行模式（apply / dryRun / canary）
+  mode: 'apply' | 'dryRun' | 'canary';
+  // M7-Tier3 PR-T3-2b: canary B 桶比例（仅 mode='canary' 生效）
+  canaryRatioB: number;
 }
 
 /** M7-Tier1 PR6: Curator 完整配置（与 security.skillCurator schema 对齐） */
@@ -658,19 +660,23 @@ function SkillEvolverTab() {
             />
           </Field>
 
-          {/* M7-Tier3 PR-T3-2a: 执行模式 */}
+          {/* M7-Tier3 PR-T3-2a/2b: 执行模式 */}
           <Field
             label="执行模式"
             hint={
               draft.mode === 'dryRun'
-                ? 'dryRun 模式下决策仅落审计日志，需在「进化历史」Tab 手动应用/拒绝（与 A-B 对照实验互斥）'
-                : 'apply 直接生效；dryRun 仅写日志，等用户审批后再生效'
+                ? 'dryRun 决策仅落审计日志，需在「进化历史」Tab 手动应用/拒绝（与 A-B 互斥）'
+                : draft.mode === 'canary'
+                  ? `canary 决策直接落地 + 启动 A-B，但仅 ${Math.round((draft.canaryRatioB ?? 0.1) * 100)}% 流量读新版（90/10 默认）`
+                  : 'apply 直接生效；dryRun 待审核；canary 灰度推送 N% 流量'
             }
           >
             <select
               value={draft.mode}
               onChange={(e) => {
-                const next: 'apply' | 'dryRun' = e.target.value === 'dryRun' ? 'dryRun' : 'apply';
+                const v = e.target.value;
+                const next: 'apply' | 'dryRun' | 'canary' =
+                  v === 'dryRun' ? 'dryRun' : v === 'canary' ? 'canary' : 'apply';
                 // dryRun 与 abTestEnabled 互斥（schema refine 强制），切到 dryRun 自动关 A-B
                 setDraft({
                   ...draft,
@@ -682,8 +688,41 @@ function SkillEvolverTab() {
             >
               <option value="apply">apply — 直接生效</option>
               <option value="dryRun">dryRun — 待审核（手动应用/拒绝）</option>
+              <option value="canary">canary — 灰度推送（仅 N% 流量到新版）</option>
             </select>
           </Field>
+
+          {/* M7-Tier3 PR-T3-2b: canary B 桶比例 — 仅 mode='canary' 显示 */}
+          {draft.mode === 'canary' && (
+            <Field
+              label="Canary B 桶比例"
+              hint="新版本承载流量比例（5% ~ 50%，默认 10%）。比例越低风险越小但样本积累越慢"
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0.05}
+                  max={0.5}
+                  step={0.05}
+                  value={draft.canaryRatioB}
+                  onChange={(e) => setDraft({ ...draft, canaryRatioB: Number(e.target.value) })}
+                  className="flex-1"
+                />
+                <input
+                  type="number"
+                  min={0.05}
+                  max={0.5}
+                  step={0.05}
+                  value={draft.canaryRatioB}
+                  onChange={(e) => setDraft({ ...draft, canaryRatioB: Number(e.target.value) })}
+                  className="w-20 px-2 py-1 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                />
+                <span className="text-sm text-slate-500 tabular-nums w-12">
+                  {Math.round(draft.canaryRatioB * 100)}%
+                </span>
+              </div>
+            </Field>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="最少证据数" hint="单 skill 至少积累多少条 usage 才进入 LLM 决策（1~50）">

@@ -551,12 +551,15 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
           id: number; skillName: string; status: string;
           variantAHash: string; variantBHash: string; startedAt: string;
           minCallsPerVariant: number; maxTestDays: number;
+          isCanary: number; canaryRatioB: number | null;
         }>(
           `SELECT id, skill_name AS skillName, status,
                   variant_a_hash AS variantAHash, variant_b_hash AS variantBHash,
                   started_at AS startedAt,
                   min_calls_per_variant AS minCallsPerVariant,
-                  max_test_days AS maxTestDays
+                  max_test_days AS maxTestDays,
+                  is_canary AS isCanary,
+                  canary_ratio_b AS canaryRatioB
            FROM skill_ab_test
            WHERE skill_name = ? AND status = 'active'
            ORDER BY started_at DESC LIMIT 1`,
@@ -601,12 +604,15 @@ export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono 
         id: number; skillName: string; status: string;
         variantAHash: string; variantBHash: string; startedAt: string;
         minCallsPerVariant: number; maxTestDays: number;
+        isCanary: number; canaryRatioB: number | null;
       }>(
         `SELECT id, skill_name AS skillName, status,
                 variant_a_hash AS variantAHash, variant_b_hash AS variantBHash,
                 started_at AS startedAt,
                 min_calls_per_variant AS minCallsPerVariant,
-                max_test_days AS maxTestDays
+                max_test_days AS maxTestDays,
+                is_canary AS isCanary,
+                canary_ratio_b AS canaryRatioB
          FROM skill_ab_test
          WHERE status = 'active' ORDER BY started_at ASC`,
       );

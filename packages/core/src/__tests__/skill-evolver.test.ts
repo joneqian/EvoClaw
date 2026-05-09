@@ -24,6 +24,7 @@ const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inlin
 const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
 const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
 const MIGRATION_042 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_skill_evolver_pending.sql'), 'utf-8');
+const MIGRATION_043 = fs.readFileSync(path.join(MIGRATIONS_DIR, '043_skill_ab_test_canary.sql'), 'utf-8');
 
 const AGENT = 'agent-1';
 
@@ -62,6 +63,7 @@ describe('runEvolutionCycle', () => {
     db.exec(MIGRATION_040);
     db.exec(MIGRATION_041);
     db.exec(MIGRATION_042);
+    db.exec(MIGRATION_043);
     db.run(`INSERT INTO agents (id, name, emoji, status) VALUES (?, ?, ?, ?)`, AGENT, AGENT, '🤖', 'active');
     usageStore = new SkillUsageStore(db);
   });
@@ -657,6 +659,111 @@ describe('runEvolutionCycle', () => {
         `SELECT pending_approval FROM skill_evolution_log WHERE skill_name = 'dry-target'`,
       );
       expect(logRow?.pending_approval).toBe(0);
+    });
+  });
+
+  // ─── M7-Tier3 PR-T3-2b: canary 模式 ─────────────────────────────────────
+
+  describe('mode=canary', () => {
+    function setupRefineCandidate(name = 'canary-target'): string {
+      writeSkill(userSkillsDir, name, 'original marker text');
+      const content = fs.readFileSync(path.join(userSkillsDir, name, 'SKILL.md'), 'utf-8');
+      upsertManifestEntry(userSkillsDir, {
+        name, sha256: computeSkillHash(content),
+        source: 'bundled', createdAt: '2026-01-01T00:00:00Z',
+      });
+      for (let i = 0; i < 3; i++) {
+        usageStore.saveSummary({
+          skillName: name, sessionKey: `s${i}`, agentId: AGENT,
+          summaryText: '偶发超时', invocationCount: 2, successRate: 0.5,
+        });
+      }
+      feedUsages(name, 2, 5);
+      return content;
+    }
+
+    it('refine + mode=canary → SKILL.md 写入 + ab_test 行 is_canary=1 + canary_ratio_b 持久化', async () => {
+      setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'canary launch',
+        changes: { patches: [{ old: 'original marker', new: 'improved marker' }] },
+      }));
+
+      const result = await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5,
+          mode: 'canary',
+          canaryRatioB: 0.15,
+        },
+        llmCall,
+      });
+
+      // refine 走 apply 路径写盘
+      expect(result.refined).toBe(1);
+      const onDisk = fs.readFileSync(path.join(userSkillsDir, 'canary-target', 'SKILL.md'), 'utf-8');
+      expect(onDisk).toContain('improved marker');
+
+      // ab_test 行 canary 字段
+      const abRow = db.get<{ is_canary: number; canary_ratio_b: number }>(
+        `SELECT is_canary, canary_ratio_b FROM skill_ab_test WHERE skill_name = 'canary-target'`,
+      );
+      expect(abRow?.is_canary).toBe(1);
+      expect(abRow?.canary_ratio_b).toBeCloseTo(0.15, 5);
+    });
+
+    it('mode=canary 默认 canaryRatioB=0.1（schema fallback 经由 evolver 主循环）', async () => {
+      setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'default 10%',
+        changes: { patches: [{ old: 'original marker', new: 'improved marker' }] },
+      }));
+
+      // 不给 canaryRatioB → evolver 主循环用 0.1 fallback
+      await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5,
+          mode: 'canary',
+        },
+        llmCall,
+      });
+
+      const abRow = db.get<{ is_canary: number; canary_ratio_b: number }>(
+        `SELECT is_canary, canary_ratio_b FROM skill_ab_test WHERE skill_name = 'canary-target'`,
+      );
+      expect(abRow?.is_canary).toBe(1);
+      expect(abRow?.canary_ratio_b).toBeCloseTo(0.1, 5);
+    });
+
+    it('mode=canary 在 abTestEnabled=false 时仍启动 A-B（canary 模式核心 = 桶位）', async () => {
+      setupRefineCandidate();
+      const llmCall = vi.fn().mockResolvedValue(JSON.stringify({
+        decision: 'refine',
+        reasoning: 'canary overrides abTestEnabled=false',
+        changes: { patches: [{ old: 'original marker', new: 'improved marker' }] },
+      }));
+
+      await runEvolutionCycle({
+        db, userSkillsDir,
+        config: {
+          enabled: true, cronSchedule: '0 3 * * *',
+          minEvidenceCount: 2, successRateThreshold: 0.8,
+          maxCandidatesPerRun: 5,
+          mode: 'canary',
+          abTestEnabled: false,  // 显式关 → 但 canary 必须启动 A-B
+        },
+        llmCall,
+      });
+
+      const abRow = db.get(`SELECT id FROM skill_ab_test WHERE skill_name = 'canary-target'`);
+      expect(abRow).toBeDefined();
     });
   });
 });

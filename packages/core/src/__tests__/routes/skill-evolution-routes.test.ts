@@ -20,6 +20,7 @@ const MIGRATION_037 = fs.readFileSync(path.join(MIGRATIONS_DIR, '037_skill_inlin
 const MIGRATION_040 = fs.readFileSync(path.join(MIGRATIONS_DIR, '040_skill_ab_test.sql'), 'utf-8');
 const MIGRATION_041 = fs.readFileSync(path.join(MIGRATIONS_DIR, '041_skill_ab_outcome.sql'), 'utf-8');
 const MIGRATION_042 = fs.readFileSync(path.join(MIGRATIONS_DIR, '042_skill_evolver_pending.sql'), 'utf-8');
+const MIGRATION_043 = fs.readFileSync(path.join(MIGRATIONS_DIR, '043_skill_ab_test_canary.sql'), 'utf-8');
 
 function mkTmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -54,6 +55,7 @@ describe('skill-evolution routes', () => {
     db.exec(MIGRATION_040);
     db.exec(MIGRATION_041);
     db.exec(MIGRATION_042);
+    db.exec(MIGRATION_043);
     app = new Hono();
     app.route('/skill-evolution', createSkillEvolutionRoutes({ db, userSkillsDir: skillsDir }));
   });

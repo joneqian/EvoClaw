@@ -49,12 +49,15 @@ export interface SkillEvolverConfig {
   abMinCallsPerVariant?: number;
   abMaxTestDays?: number;
   /**
-   * M7-Tier3 PR-T3-2a: 进化执行模式
+   * M7-Tier3 PR-T3-2a/2b: 进化执行模式
    *   - 'apply'（默认）：决策直接落地
-   *   - 'dryRun'：决策只写 evolution_log（pending_approval=1），需用户在 UI apply/reject
-   * 'canary' 留给 PR-T3-2b。schema refine 强制 mode='dryRun' ⇎ abTestEnabled=true。
+   *   - 'dryRun'：决策只写 evolution_log（pending_approval=1），需 UI 审批
+   *   - 'canary'：决策直接落地 + 启动 A-B 但桶位偏置（90% A / 10% B）
+   * schema refine 强制 mode='dryRun' ⇎ abTestEnabled=true。
    */
-  mode?: 'apply' | 'dryRun';
+  mode?: 'apply' | 'dryRun' | 'canary';
+  /** M7-Tier3 PR-T3-2b: canary B 桶比例（仅 mode='canary' 生效，默认 0.1） */
+  canaryRatioB?: number;
 }
 
 export interface RunEvolutionCycleOptions {
@@ -192,12 +195,14 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
 
     // M7-Tier3 PR-T3-1a/b: refine 成功 → 启动 A-B 测试
     // PR-T3-2a: dryRun 与 A-B 互斥（dryRun 没写盘 → 没法 A-B），dryRun 时跳过 A-B
+    // PR-T3-2b: canary 模式仍启动 A-B，但桶位比例由 config.canaryRatioB 决定（90/10 默认）
+    const isCanary = config.mode === 'canary';
     if (
       !outcome.error
       && !dryRun
       && decision.decision === 'refine'
       && evolutionLogId !== null
-      && config.abTestEnabled !== false
+      && (config.abTestEnabled !== false || isCanary)  // canary 总是启动 A-B（桶位是核心）
     ) {
       maybeStartAbTest({
         db,
@@ -209,6 +214,7 @@ export async function runEvolutionCycle(opts: RunEvolutionCycleOptions): Promise
         userSkillsDir,
         ...(config.abMinCallsPerVariant !== undefined ? { minCallsPerVariant: config.abMinCallsPerVariant } : {}),
         ...(config.abMaxTestDays !== undefined ? { maxTestDays: config.abMaxTestDays } : {}),
+        ...(isCanary ? { canaryRatioB: config.canaryRatioB ?? 0.1 } : {}),
       });
     }
 
@@ -496,6 +502,8 @@ interface MaybeStartAbTestOpts {
   /** 覆盖默认 30 / 7（与 SkillEvolverConfig.abMinCallsPerVariant / abMaxTestDays 对齐） */
   minCallsPerVariant?: number;
   maxTestDays?: number;
+  /** M7-Tier3 PR-T3-2b: canary 模式 B 桶比例（undefined → 50/50 经典 A-B） */
+  canaryRatioB?: number;
 }
 
 /**
@@ -546,6 +554,7 @@ function maybeStartAbTest(opts: MaybeStartAbTestOpts): void {
     variantBHash: opts.newHash,
     ...(opts.minCallsPerVariant !== undefined ? { minCallsPerVariant: opts.minCallsPerVariant } : {}),
     ...(opts.maxTestDays !== undefined ? { maxTestDays: opts.maxTestDays } : {}),
+    ...(opts.canaryRatioB !== undefined ? { canaryRatioB: opts.canaryRatioB } : {}),
   });
   if (!id) {
     log.warn(`[ab][skip] startTest returned null`, { skillName: opts.skillName });

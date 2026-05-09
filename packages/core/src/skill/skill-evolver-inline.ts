@@ -57,12 +57,13 @@ export interface RunInlineReviewOptions {
   /** Phase 5: 本 session 已用过的 skill 名单（注入 prompt） */
   currentlyUsedSkills?: string[];
   /**
-   * M7-Tier3 PR-T3-2a: 进化执行模式
-   *   - 'apply'（默认）：决策直接落地（PR-T3-2a 之前的行为）
+   * M7-Tier3 PR-T3-2a/2b: 进化执行模式
+   *   - 'apply' / 'canary'：决策直接落地（inline review 不启动 A-B，canary 在 inline 通道等价 apply）
    *   - 'dryRun'：决策仅落 evolution_log + pending_approval=1，需用户在 UI 应用/拒绝
-   * 与 cron evolver 共享 SkillEvolverConfig.mode 字段，inline review 同样尊重该设置。
+   * 与 cron evolver 共享 SkillEvolverConfig.mode 字段。注：inline 通道本就不启动 A-B（reactive
+   * 单次评审，无统计学意义），canary 桶位逻辑只在 cron evolver 主路径生效。
    */
-  mode?: 'apply' | 'dryRun';
+  mode?: 'apply' | 'dryRun' | 'canary';
 }
 
 export interface InlineReviewResult {

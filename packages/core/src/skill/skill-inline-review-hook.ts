@@ -41,11 +41,11 @@ export interface TriggerInlineReviewOptions {
   /** 上一条 assistant 回复（用于 LLM 二级分类时给 LLM 更多上下文，可选） */
   lastAssistantMessage?: string;
   /**
-   * M7-Tier3 PR-T3-2a: 进化执行模式（与 cron evolver 共享 SkillEvolverConfig.mode）
-   *   - 'apply'（默认）：决策直接落地
+   * M7-Tier3 PR-T3-2a/2b: 进化执行模式（与 cron evolver 共享 SkillEvolverConfig.mode）
+   *   - 'apply' / 'canary'：决策直接落地（inline 通道不启动 A-B，canary 等价 apply）
    *   - 'dryRun'：决策仅落 evolution_log 等用户审批
    */
-  mode?: 'apply' | 'dryRun';
+  mode?: 'apply' | 'dryRun' | 'canary';
 }
 
 /**

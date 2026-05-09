@@ -36,6 +36,10 @@ export interface AbTestRow {
   decisionReason: string | null;
   pValue: number | null;
   effectSize: number | null;
+  /** M7-Tier3 PR-T3-2b: canary 模式标记（1=is_canary） */
+  isCanary: number;
+  /** M7-Tier3 PR-T3-2b: canary B 桶比例（仅 isCanary=1 时有意义） */
+  canaryRatioB: number | null;
 }
 
 export interface AbOutcomeRow {
@@ -60,6 +64,12 @@ export interface StartAbTestInput {
   minCallsPerVariant?: number;
   /** 默认 7 天；ConfigManager 可覆盖 */
   maxTestDays?: number;
+  /**
+   * M7-Tier3 PR-T3-2b: canary B 桶比例（5%-50%）
+   * 给值 → 标 is_canary=1 + canary_ratio_b=value
+   * undefined → 默认 50/50 经典 A-B
+   */
+  canaryRatioB?: number;
 }
 
 export interface RecordOutcomeInput {
@@ -86,7 +96,9 @@ const ROW_COLUMNS = `
   max_test_days        AS maxTestDays,
   decision_reason      AS decisionReason,
   p_value              AS pValue,
-  effect_size          AS effectSize
+  effect_size          AS effectSize,
+  is_canary            AS isCanary,
+  canary_ratio_b       AS canaryRatioB
 `;
 
 /**
@@ -124,18 +136,22 @@ export function startTest(db: SqliteStore, input: StartAbTestInput): number | nu
       return null;
     }
 
+    const isCanary = input.canaryRatioB !== undefined ? 1 : 0;
     db.run(
       `INSERT INTO skill_ab_test (
         skill_name, evolution_log_id, status,
         variant_a_hash, variant_b_hash,
-        min_calls_per_variant, max_test_days
-      ) VALUES (?, ?, 'active', ?, ?, ?, ?)`,
+        min_calls_per_variant, max_test_days,
+        is_canary, canary_ratio_b
+      ) VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
       input.skillName,
       input.evolutionLogId,
       input.variantAHash,
       input.variantBHash,
       input.minCallsPerVariant ?? 30,
       input.maxTestDays ?? 7,
+      isCanary,
+      input.canaryRatioB ?? null,
     );
     const idRow = db.get<{ id: number }>(`SELECT last_insert_rowid() AS id`);
     if (!idRow) return null;
@@ -242,12 +258,14 @@ export function getOutcomes(db: SqliteStore, abTestId: number): AbOutcomeRow[] {
 /**
  * 桶位分配（D2 hash 确定性）
  *
- * 算法：SHA-1(`<sessionKey>:<skillName>:<abTestId>`) → 取首字节奇偶 → A/B
+ * 算法：
+ *   - 默认（ratioB=undefined）：SHA-1 首字节奇偶 → A/B（约 50/50，PR-T3-1a 行为）
+ *   - canary（ratioB=0.1）：SHA-1 前 4 字节 mod 1000 落 [0, ratioB*1000) 为 B
  *
  * 不变量：
  *   - 同 (sessionKey, skillName, abTestId) 永远同变体（同 session 行为稳定）
  *   - 不同 abTestId 重新洗牌（防同一用户长期偏向同一变体）
- *   - 全局 ~50/50 分布（SHA-1 输出近似均匀）
+ *   - ratioB 不变时分布稳定（10000 次模拟统计偏差 < 2%）
  *
  * sessionKey 为空时退化到 hash(`anon:<skillName>:<abTestId>`)，仍确定性但全局
  * 偏 A 或 B 视 (skillName, abTestId) 而定 — 这是 acceptable 因匿名调用罕见。
@@ -256,9 +274,16 @@ export function assignBucket(
   sessionKey: string | undefined,
   skillName: string,
   abTestId: number,
+  /** M7-Tier3 PR-T3-2b: canary 模式下 B 桶比例（0~1）。undefined → 50/50 */
+  ratioB?: number,
 ): AbVariant {
   const key = `${sessionKey ?? 'anon'}:${skillName}:${abTestId}`;
   const hash = crypto.createHash('sha1').update(key).digest();
-  // 首字节最低位 = 0 → A; = 1 → B
-  return (hash[0]! & 1) === 0 ? 'A' : 'B';
+  if (ratioB === undefined) {
+    // 默认：首字节最低位 = 0 → A; = 1 → B
+    return (hash[0]! & 1) === 0 ? 'A' : 'B';
+  }
+  // canary：取 hash 前 4 字节做大整数 → mod 1000 → 落 [0, 1000*ratioB) 为 B
+  const bucket = ((hash[0]! << 24) | (hash[1]! << 16) | (hash[2]! << 8) | hash[3]!) >>> 0;
+  return (bucket % 1000) < (ratioB * 1000) ? 'B' : 'A';
 }

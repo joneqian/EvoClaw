@@ -97,7 +97,7 @@ interface InlineStats {
   byDate: Array<{ date: string; count: number }>;
 }
 
-/** M7-Tier3 PR-T3-1c: A-B 测试进度 */
+/** M7-Tier3 PR-T3-1c/2b: A-B 测试进度（canary 字段 PR-T3-2b 引入） */
 interface AbActiveTest {
   id: number;
   skillName: string;
@@ -109,6 +109,9 @@ interface AbActiveTest {
   maxTestDays: number;
   outcomeCounts: { A: number; B: number };
   progress: number;
+  /** M7-Tier3 PR-T3-2b: canary 模式标识（兼容旧后端：缺字段时按 0 处理） */
+  isCanary?: number;
+  canaryRatioB?: number | null;
 }
 
 interface AbHistoryEntry {
@@ -528,28 +531,39 @@ function AbStatusCard({ status }: { status: AbStatusResponse | null }) {
 
       {status.active.length > 0 && (
         <div className="space-y-1.5">
-          {status.active.map(test => (
-            <div key={test.id} className="text-[11px]">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 truncate">{test.skillName}</span>
-                <span className="text-sky-600 shrink-0 ml-2">
-                  剩 {daysRemaining(test.startedAt, test.maxTestDays)} 天
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                  <div
-                    className="h-full bg-sky-500 transition-all"
-                    style={{ width: `${Math.round(test.progress * 100)}%` }}
-                  />
+          {status.active.map(test => {
+            const isCanary = test.isCanary === 1;
+            const canaryPct = test.canaryRatioB != null ? Math.round(test.canaryRatioB * 100) : 10;
+            return (
+              <div key={test.id} className="text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-700 truncate flex items-center gap-1">
+                    {isCanary && (
+                      <span className="px-1 py-0 rounded bg-amber-100 text-amber-700 text-[10px]" title={`Canary ${canaryPct}%`}>
+                        🐤 {canaryPct}%
+                      </span>
+                    )}
+                    {test.skillName}
+                  </span>
+                  <span className="text-sky-600 shrink-0 ml-2">
+                    剩 {daysRemaining(test.startedAt, test.maxTestDays)} 天
+                  </span>
                 </div>
-                <span className="text-[10px] text-slate-500 shrink-0 tabular-nums">
-                  A {test.outcomeCounts.A} / B {test.outcomeCounts.B}
-                  <span className="text-slate-400"> · 目标 {test.minCallsPerVariant}</span>
-                </span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${isCanary ? 'bg-amber-500' : 'bg-sky-500'}`}
+                      style={{ width: `${Math.round(test.progress * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 shrink-0 tabular-nums">
+                    A {test.outcomeCounts.A} / B {test.outcomeCounts.B}
+                    <span className="text-slate-400"> · 目标 {test.minCallsPerVariant}</span>
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

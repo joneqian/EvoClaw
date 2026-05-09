@@ -224,10 +224,11 @@ function InlineWeixinConnect({ agentId, onConnect }: { agentId: string; onConnec
 // ─── 飞书连接表单（内联） ───
 
 type GroupScope = 'group' | 'group_sender' | 'group_topic' | 'group_topic_sender';
+// M13 Phase 1 PR-1A 改默认为 group_topic（员工用话题功能时多任务自动按话题隔离）
 const GROUP_SCOPE_OPTIONS: Array<{ value: GroupScope; label: string }> = [
-  { value: 'group', label: '整群共享一个会话（默认）' },
+  { value: 'group', label: '整群共享一个会话' },
   { value: 'group_sender', label: '群内按成员分离' },
-  { value: 'group_topic', label: '群内按话题分离' },
+  { value: 'group_topic', label: '群内按话题分离（默认）' },
   { value: 'group_topic_sender', label: '群内按「话题 × 成员」分离' },
 ];
 
@@ -247,7 +248,8 @@ function InlineFeishuConnect({
 }) {
   const [appId, setAppId] = useState('');
   const [appSecret, setAppSecret] = useState('');
-  const [groupScope, setGroupScope] = useState<GroupScope>('group');
+  // M13 Phase 1 PR-1A: 默认 group_topic（与后端 schema default 对齐）
+  const [groupScope, setGroupScope] = useState<GroupScope>('group_topic');
   // 群旁听缓冲（多机器人协作），默认开启
   const [historyEnabled, setHistoryEnabled] = useState(true);
   const [historyLimit, setHistoryLimit] = useState(20);
@@ -569,6 +571,26 @@ function InlineFeishuConnect({
       )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}
+
+      {/* M13 Phase 1 PR-1C: 多 bot 同群协作的头像/昵称区分提示
+          飞书 bot 头像/昵称在飞书开放平台后台配置（EvoClaw 无权改），
+          多 Agent 同群时让员工可视区分需要主动配置。 */}
+      <div className="rounded-lg bg-amber-50 border border-amber-200 p-2.5 text-[11px] text-amber-800 leading-relaxed">
+        <div className="font-semibold mb-1">💡 多 Agent 同群协作小贴士</div>
+        <p>
+          多个 Agent 在同一飞书群协作时，为让员工区分各 Agent 身份，建议：
+        </p>
+        <ol className="list-decimal pl-4 mt-1 space-y-0.5">
+          <li>
+            EvoClaw 内每个 Agent 配 <b>不同 emoji</b>（如 PM 🎯、设计 🎨、文案 ✍️）
+          </li>
+          <li>
+            飞书开放平台后台（<a href="https://open.feishu.cn" target="_blank" rel="noreferrer" className="underline">open.feishu.cn</a>）
+            为各应用配 <b>不同头像 + 昵称</b>（飞书侧元数据，EvoClaw 无权改）
+          </li>
+        </ol>
+      </div>
+
       <button
         onClick={handleConnect}
         disabled={

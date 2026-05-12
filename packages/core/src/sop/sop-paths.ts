@@ -8,13 +8,12 @@
  * base 参数用于测试时注入临时目录。
  */
 
-import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 
-/** 获取品牌数据目录（~/.evoclaw or ~/.healthclaw） */
+/** 获取品牌数据目录（~/.evoclaw or ~/.healthclaw，或 {BRAND}_HOME 覆盖） */
 function defaultBase(): string {
-  return path.join(os.homedir(), DEFAULT_DATA_DIR);
+  return getDataDir();
 }
 
 /** SOP 根目录 */

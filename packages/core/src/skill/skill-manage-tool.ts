@@ -20,12 +20,11 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { ToolDefinition } from '../bridge/tool-injector.js';
 import { createLogger } from '../infrastructure/logger.js';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import { scanSkillMd, SKILL_NAME_REGEX, type SkillContentScanResult } from './skill-content-scanner.js';
 import {
   computeSkillHash,
@@ -75,7 +74,7 @@ export interface SkillManageOptions {
 
 /** 默认用户 Skills 根目录 */
 export function defaultUserSkillsDir(): string {
-  return path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+  return path.join(getDataDir(), 'skills');
 }
 
 /**

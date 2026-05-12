@@ -7,11 +7,11 @@
  */
 
 import type { SkillPrepareResult, SkillSource } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import { execSync } from 'node:child_process';
 import { parseSkillMd } from './skill-parser.js';
 import { analyzeSkillSecurity } from './skill-analyzer.js';
@@ -38,7 +38,7 @@ export class SkillInstaller {
     skillsBaseDir?: string,
     getPolicyOverride?: () => SkillInstallPolicyOverride | undefined,
   ) {
-    this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+    this.skillsBaseDir = skillsBaseDir ?? path.join(getDataDir(), 'skills');
     this.getPolicyOverride = getPolicyOverride;
   }
 

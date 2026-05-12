@@ -17,13 +17,13 @@
  * /run 留给 commit 5 跟 scheduler 一起做（需要 LLM provider 解析）
  */
 
-import os from 'node:os';
 import path from 'node:path';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { DEFAULT_DATA_DIR, skillCuratorSchema } from '@evoclaw/shared';
+import { skillCuratorSchema } from '@evoclaw/shared';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import { createLogger } from '../infrastructure/logger.js';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import {
   readCuratorState,
   updateCuratorState,
@@ -55,7 +55,7 @@ export interface CuratorRouteDeps {
 
 export function createCuratorRoutes(deps: CuratorRouteDeps = {}): Hono {
   const app = new Hono();
-  const userSkillsDir = deps.userSkillsDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+  const userSkillsDir = deps.userSkillsDir ?? path.join(getDataDir(), 'skills');
 
   /** PR6: 优先从 ConfigManager 读，回退到构造时 deps.intervalDays，最后默认 7 */
   function resolveIntervalDays(): number {

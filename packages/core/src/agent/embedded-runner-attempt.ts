@@ -15,7 +15,6 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import type { ThinkLevel } from '@evoclaw/shared';
 import type { AgentRunConfig, AttemptResult, ProviderConfig, ToolCallRecord, MessageSnapshot, RuntimeEvent } from './types.js';
@@ -260,12 +259,12 @@ export async function runSingleAttempt(params: AttemptParams): Promise<AttemptRe
   // ─── 工具池 ───
   const toolSafety = new ToolSafetyGuard();
   // Skill 搜索路径 + SkillTool 创建（避免 agent→skill 层级违反，在此处桥接）
-  const { DEFAULT_DATA_DIR } = await import('@evoclaw/shared');
+  const { getDataDir } = await import('../infrastructure/data-dir.js');
   const { createSkillTool } = await import('../skill/skill-tool.js');
   const { createToolSearchTool } = await import('./kernel/tool-search.js');
   const { BUNDLED_SKILLS_DIR } = await import('../context/plugins/tool-registry.js');
   const skillSearchPaths = [
-    path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+    path.join(getDataDir(), 'skills'),
     ...(config.workspacePath ? [path.join(config.workspacePath, 'skills')] : []),
     BUNDLED_SKILLS_DIR,  // Bundled 技能最低优先级
   ];

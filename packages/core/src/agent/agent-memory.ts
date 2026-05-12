@@ -13,10 +13,9 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 
-const AGENT_MEMORY_DIR = path.join(os.homedir(), DEFAULT_DATA_DIR, 'agent-memory');
+const AGENT_MEMORY_DIR = path.join(getDataDir(), 'agent-memory');
 
 /**
  * 获取指定 Agent 类型的记忆目录路径

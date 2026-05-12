@@ -6,9 +6,9 @@ import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { PORT_RANGE, TOKEN_BYTES, DEFAULT_DATA_DIR, BRAND, isSensitiveEnvName, compileCustomPatterns } from '@evoclaw/shared';
+import { PORT_RANGE, TOKEN_BYTES, BRAND, isSensitiveEnvName, compileCustomPatterns } from '@evoclaw/shared';
+import { getDataDir } from './infrastructure/data-dir.js';
 import { SqliteStore } from './infrastructure/db/sqlite-store.js';
 import { MigrationRunner } from './infrastructure/db/migration-runner.js';
 import { ConfigManager } from './infrastructure/config-manager.js';
@@ -685,7 +685,7 @@ function syncEnvVarsFromConfig(configManager: ConfigManager): void {
 function seedBundledSkills(): void {
   const log = createLogger('server');
 
-  const skillsDir = path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+  const skillsDir = path.join(getDataDir(), 'skills');
   // bundled 目录查找：向上遍历找项目根（含 pnpm-workspace.yaml），再定位 packages/core/src/skill/bundled
   let searchDir = typeof import.meta.dirname === 'string'
     ? import.meta.dirname
@@ -1779,7 +1779,7 @@ async function main() {
   // 给外部脚本（如 scripts/validate-self-evolution.sh）拿 port+token 用，
   // dev:healthclaw 模式下 Tauri 吞掉首行 JSON 后用户终端看不到 token，
   // 文件兜底解决。stop / SIGTERM 时通过 shutdown handler 删除。
-  const runtimeInfoPath = path.join(os.homedir(), DEFAULT_DATA_DIR, '.runtime-info.json');
+  const runtimeInfoPath = path.join(getDataDir(), '.runtime-info.json');
   try {
     fs.mkdirSync(path.dirname(runtimeInfoPath), { recursive: true });
     fs.writeFileSync(
@@ -1817,7 +1817,7 @@ async function main() {
   if (db && configManager) {
     const { SkillEvolverScheduler } = await import('./skill/skill-evolver-scheduler.js');
     const { createSecondaryLLMCallFn } = await import('./agent/llm-client.js');
-    const evolverUserSkillsDir = path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+    const evolverUserSkillsDir = path.join(getDataDir(), 'skills');
     skillEvolverScheduler = new SkillEvolverScheduler({
       db,
       userSkillsDir: evolverUserSkillsDir,
@@ -2151,7 +2151,7 @@ async function main() {
   decayScheduler = new DecayScheduler(db);
   decayScheduler.start();
 
-  const memoryDataDir = path.join(os.homedir(), DEFAULT_DATA_DIR);
+  const memoryDataDir = getDataDir();
   // 记忆整合使用 cache 优化的二级模型调用（summarize 类型 → 固定 system prompt → cache 命中）
   const llmCallForConsolidation = (system: string, user: string) =>
     callLLMSecondaryCached(configManager, 'summarize', user, { appendToSystem: system });

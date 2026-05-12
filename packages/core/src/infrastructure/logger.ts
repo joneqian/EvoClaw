@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { getDataDir } from './data-dir.js';
 import { sanitizePII } from './pii-sanitizer.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -13,7 +12,7 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
-const LOG_DIR = path.join(os.homedir(), DEFAULT_DATA_DIR, 'logs');
+const LOG_DIR = path.join(getDataDir(), 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'core.log');
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB，超过后轮转
 const MAX_BACKUPS = 5; // 保留 5 个备份文件

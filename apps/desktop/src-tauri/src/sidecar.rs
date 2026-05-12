@@ -4,6 +4,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 
+// M14 PR-A3: 跨平台 binary 后缀（Windows 加 .exe）
+#[cfg(target_os = "windows")]
+const BUN_BIN_NAME: &str = "bun.exe";
+#[cfg(not(target_os = "windows"))]
+const BUN_BIN_NAME: &str = "bun";
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SidecarInfo {
     pub port: u16,
@@ -261,16 +267,20 @@ fn verify_runtime(path: &str) -> bool {
 }
 
 /// 查找内嵌在 app bundle 里的 bun 二进制
+///
+/// 跨平台：Windows 上文件名为 `bun.exe`，其他为 `bun`（见 `BUN_BIN_NAME`）
 fn find_bundled_bun(app: &tauri::AppHandle) -> Option<String> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
     // 1) 开发模式：优先用源目录下的 bun-bin
-    let dev_bun = concat!(env!("CARGO_MANIFEST_DIR"), "/bun-bin/bun");
-    candidates.push(std::path::PathBuf::from(dev_bun));
+    let dev_bun = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("bun-bin")
+        .join(BUN_BIN_NAME);
+    candidates.push(dev_bun);
 
     // 2) 打包后的 resource dir (生产模式)
     if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("bun-bin/bun"));
+        candidates.push(resource_dir.join("bun-bin").join(BUN_BIN_NAME));
     }
 
     for candidate in &candidates {
@@ -287,12 +297,20 @@ fn find_bundled_bun(app: &tauri::AppHandle) -> Option<String> {
 }
 
 /// 查找系统安装的 bun
+///
+/// 跨平台：Windows 用 USERPROFILE + Program Files + `where`；Unix 用 HOME + shell `which`
 fn find_bun_binary() -> Option<String> {
     let home = get_home_dir();
     eprintln!("[sidecar] 查找 bun, HOME={}", home);
 
-    // Bun 默认安装路径
-    let candidates = [
+    // 平台特定的固定路径候选
+    #[cfg(target_os = "windows")]
+    let candidates: Vec<String> = vec![
+        format!("{}\\.bun\\bin\\bun.exe", home),
+        "C:\\Program Files\\Bun\\bun.exe".to_string(),
+    ];
+    #[cfg(not(target_os = "windows"))]
+    let candidates: Vec<String> = vec![
         format!("{}/.bun/bin/bun", home),
         "/opt/homebrew/bin/bun".to_string(),
         "/usr/local/bin/bun".to_string(),
@@ -305,20 +323,38 @@ fn find_bun_binary() -> Option<String> {
         }
     }
 
-    // 尝试通过 shell 查找
-    for shell in ["/bin/zsh", "/bin/bash"] {
-        if !std::path::Path::new(shell).exists() {
-            continue;
+    // Windows: `where bun` 查询 PATH
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = std::process::Command::new("where").arg("bun").output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let path = line.trim();
+                if !path.is_empty() && std::path::Path::new(path).exists() {
+                    eprintln!("[sidecar] where 查找到 bun: {}", path);
+                    return Some(path.to_string());
+                }
+            }
         }
-        if let Ok(output) = std::process::Command::new(shell)
-            .args(["-lc", "which bun 2>/dev/null"])
-            .env("HOME", &home)
-            .output()
-        {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() && std::path::Path::new(&path).exists() {
-                eprintln!("[sidecar] shell 查找到 bun: {}", path);
-                return Some(path);
+    }
+
+    // Unix: 通过 shell 查找（zsh / bash 加载 nvm/fnm 等初始化）
+    #[cfg(not(target_os = "windows"))]
+    {
+        for shell in ["/bin/zsh", "/bin/bash"] {
+            if !std::path::Path::new(shell).exists() {
+                continue;
+            }
+            if let Ok(output) = std::process::Command::new(shell)
+                .args(["-lc", "which bun 2>/dev/null"])
+                .env("HOME", &home)
+                .output()
+            {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() && std::path::Path::new(&path).exists() {
+                    eprintln!("[sidecar] shell 查找到 bun: {}", path);
+                    return Some(path);
+                }
             }
         }
     }
@@ -327,138 +363,251 @@ fn find_bun_binary() -> Option<String> {
     None
 }
 
-/// 获取用户 home 目录（GUI app 里 HOME 可能为空）
+/// 获取用户 home 目录（跨平台）
+///
+/// - Unix（macOS / Linux）：`$HOME` → `dscl` fallback（macOS）→ `/Users/$USER`
+/// - Windows: `%USERPROFILE%` → `C:\\Users\\%USERNAME%` 最终回退
 fn get_home_dir() -> String {
-    // 优先环境变量
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.is_empty() {
-            return home;
-        }
-    }
-    // 回退：通过系统调用获取
-    if let Ok(output) = std::process::Command::new("/usr/bin/dscl")
-        .args([".", "-read", &format!("/Users/{}", std::env::var("USER").unwrap_or_default()), "NFSHomeDirectory"])
-        .output()
+    #[cfg(target_os = "windows")]
     {
-        let s = String::from_utf8_lossy(&output.stdout);
-        if let Some(path) = s.split_whitespace().last() {
-            return path.to_string();
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            if !profile.is_empty() {
+                return profile;
+            }
+        }
+        if let Ok(home_drive) = std::env::var("HOMEDRIVE") {
+            if let Ok(home_path) = std::env::var("HOMEPATH") {
+                let combined = format!("{}{}", home_drive, home_path);
+                if !combined.is_empty() {
+                    return combined;
+                }
+            }
+        }
+        let user = std::env::var("USERNAME").unwrap_or_else(|_| "Default".to_string());
+        format!("C:\\Users\\{}", user)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 优先环境变量
+        if let Ok(home) = std::env::var("HOME") {
+            if !home.is_empty() {
+                return home;
+            }
+        }
+        // macOS 专用 fallback：dscl 读 NFSHomeDirectory（GUI app 里 HOME 可能为空）
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(output) = std::process::Command::new("/usr/bin/dscl")
+                .args([
+                    ".",
+                    "-read",
+                    &format!("/Users/{}", std::env::var("USER").unwrap_or_default()),
+                    "NFSHomeDirectory",
+                ])
+                .output()
+            {
+                let s = String::from_utf8_lossy(&output.stdout);
+                if let Some(path) = s.split_whitespace().last() {
+                    return path.to_string();
+                }
+            }
+            "/Users/".to_string()
+                + &std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
+        }
+        // Linux 最终回退
+        #[cfg(target_os = "linux")]
+        {
+            "/home/".to_string() + &std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            "/".to_string()
         }
     }
-    // 最终回退
-    "/Users/".to_string() + &std::env::var("USER").unwrap_or_else(|_| "unknown".to_string())
 }
 
 /// 查找 node 可执行文件路径
-/// macOS GUI app 不继承用户 shell 的 PATH，需要主动搜索常见安装位置
+///
+/// - macOS / Linux: shell -ilc which + nvm/fnm/volta + 常见固定路径
+/// - Windows: where node + nodejs 默认安装路径 + Scoop/Chocolatey
+///
+/// 注意：macOS GUI app 不继承用户 shell 的 PATH，需要主动搜索常见安装位置
 fn find_node_binary() -> Option<String> {
     let home = get_home_dir();
     eprintln!("[sidecar] 查找 node, HOME={}", home);
 
-    // 1) 尝试通过用户默认 shell 获取 node 路径
-    for shell in ["/bin/zsh", "/bin/bash"] {
-        if !std::path::Path::new(shell).exists() {
-            continue;
-        }
-        // 使用 -ilc 启动交互式登录 shell，确保 nvm/fnm 等初始化脚本被加载
-        if let Ok(output) = std::process::Command::new(shell)
-            .args(["-ilc", "which node 2>/dev/null || command -v node 2>/dev/null"])
-            .env("HOME", &home)
-            .output()
-        {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            eprintln!("[sidecar] {} -ilc which node => '{}'", shell, path);
-            if !path.is_empty() && !path.contains("not found") && std::path::Path::new(&path).exists() {
-                return Some(path);
-            }
-        }
-    }
-
-    // 2) nvm：优先读 default alias 指向的版本
-    let nvm_base = format!("{}/.nvm", home);
-    let nvm_versions = format!("{}/versions/node", nvm_base);
-
-    // 2a) 读 ~/.nvm/alias/default → 得到版本号如 "22" 或 "22.22.1"
-    let alias_path = format!("{}/alias/default", nvm_base);
-    if let Ok(alias_content) = std::fs::read_to_string(&alias_path) {
-        let alias = alias_content.trim();
-        eprintln!("[sidecar] nvm default alias: '{}'", alias);
-        if !alias.is_empty() {
-            // alias 可能是 "22"(主版本) 或 "v22.22.1"(完整版本)，需要匹配
-            let prefix = if alias.starts_with('v') { alias.to_string() } else { format!("v{}", alias) };
-            if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
-                let mut matched: Vec<_> = entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        let name = e.file_name().to_string_lossy().to_string();
-                        name.starts_with(&prefix) && e.path().join("bin/node").exists()
-                    })
-                    .collect();
-                matched.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
-                if let Some(ver) = matched.first() {
-                    let node_path = ver.path().join("bin/node");
-                    eprintln!("[sidecar] nvm default 找到 node: {}", node_path.display());
-                    return Some(node_path.to_string_lossy().to_string());
+    #[cfg(target_os = "windows")]
+    {
+        // 1) where node 查询 PATH（nvm-windows / 标准安装都能找到）
+        if let Ok(output) = std::process::Command::new("where").arg("node").output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let path = line.trim();
+                if !path.is_empty() && std::path::Path::new(path).exists() {
+                    eprintln!("[sidecar] where 查找到 node: {}", path);
+                    return Some(path.to_string());
                 }
             }
         }
-    }
 
-    // 2b) 没有 alias 文件时，扫描所有版本取最新
-    if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
-        let mut versions: Vec<_> = entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().join("bin/node").exists())
-            .collect();
-        versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
-        if let Some(latest) = versions.first() {
-            let node_path = latest.path().join("bin/node");
-            eprintln!("[sidecar] nvm 最新版本 node: {}", node_path.display());
-            return Some(node_path.to_string_lossy().to_string());
+        // 2) 常见 Windows 安装路径
+        let candidates = [
+            "C:\\Program Files\\nodejs\\node.exe".to_string(),
+            "C:\\Program Files (x86)\\nodejs\\node.exe".to_string(),
+            format!("{}\\AppData\\Roaming\\npm\\node.exe", home),
+            format!("{}\\scoop\\apps\\nodejs\\current\\node.exe", home),
+            format!("{}\\AppData\\Local\\fnm_multishells\\node.exe", home),
+        ];
+        for candidate in &candidates {
+            if std::path::Path::new(candidate).exists() {
+                eprintln!("[sidecar] 固定路径找到 node: {}", candidate);
+                return Some(candidate.clone());
+            }
         }
+
+        eprintln!("[sidecar] 未找到 node");
+        return None;
     }
 
-    // 3) 常见固定路径
-    let candidates = [
-        format!("{}/Library/Application Support/fnm/aliases/default/bin/node", home),
-        format!("{}/.local/share/fnm/aliases/default/bin/node", home),
-        format!("{}/.volta/bin/node", home),
-        "/opt/homebrew/bin/node".to_string(),
-        "/usr/local/bin/node".to_string(),
-        "/usr/bin/node".to_string(),
-    ];
-
-    for candidate in &candidates {
-        if std::path::Path::new(candidate).exists() {
-            eprintln!("[sidecar] 固定路径找到 node: {}", candidate);
-            return Some(candidate.clone());
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 1) 尝试通过用户默认 shell 获取 node 路径
+        for shell in ["/bin/zsh", "/bin/bash"] {
+            if !std::path::Path::new(shell).exists() {
+                continue;
+            }
+            // 使用 -ilc 启动交互式登录 shell，确保 nvm/fnm 等初始化脚本被加载
+            if let Ok(output) = std::process::Command::new(shell)
+                .args(["-ilc", "which node 2>/dev/null || command -v node 2>/dev/null"])
+                .env("HOME", &home)
+                .output()
+            {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                eprintln!("[sidecar] {} -ilc which node => '{}'", shell, path);
+                if !path.is_empty()
+                    && !path.contains("not found")
+                    && std::path::Path::new(&path).exists()
+                {
+                    return Some(path);
+                }
+            }
         }
-    }
 
-    eprintln!("[sidecar] 未找到 node");
-    None
+        // 2) nvm：优先读 default alias 指向的版本
+        let nvm_base = format!("{}/.nvm", home);
+        let nvm_versions = format!("{}/versions/node", nvm_base);
+
+        // 2a) 读 ~/.nvm/alias/default → 得到版本号如 "22" 或 "22.22.1"
+        let alias_path = format!("{}/alias/default", nvm_base);
+        if let Ok(alias_content) = std::fs::read_to_string(&alias_path) {
+            let alias = alias_content.trim();
+            eprintln!("[sidecar] nvm default alias: '{}'", alias);
+            if !alias.is_empty() {
+                // alias 可能是 "22"(主版本) 或 "v22.22.1"(完整版本)，需要匹配
+                let prefix = if alias.starts_with('v') {
+                    alias.to_string()
+                } else {
+                    format!("v{}", alias)
+                };
+                if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+                    let mut matched: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| {
+                            let name = e.file_name().to_string_lossy().to_string();
+                            name.starts_with(&prefix) && e.path().join("bin/node").exists()
+                        })
+                        .collect();
+                    matched.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                    if let Some(ver) = matched.first() {
+                        let node_path = ver.path().join("bin/node");
+                        eprintln!("[sidecar] nvm default 找到 node: {}", node_path.display());
+                        return Some(node_path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+
+        // 2b) 没有 alias 文件时，扫描所有版本取最新
+        if let Ok(entries) = std::fs::read_dir(&nvm_versions) {
+            let mut versions: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().join("bin/node").exists())
+                .collect();
+            versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+            if let Some(latest) = versions.first() {
+                let node_path = latest.path().join("bin/node");
+                eprintln!("[sidecar] nvm 最新版本 node: {}", node_path.display());
+                return Some(node_path.to_string_lossy().to_string());
+            }
+        }
+
+        // 3) 常见固定路径
+        let candidates = [
+            format!(
+                "{}/Library/Application Support/fnm/aliases/default/bin/node",
+                home
+            ),
+            format!("{}/.local/share/fnm/aliases/default/bin/node", home),
+            format!("{}/.volta/bin/node", home),
+            "/opt/homebrew/bin/node".to_string(),
+            "/usr/local/bin/node".to_string(),
+            "/usr/bin/node".to_string(),
+        ];
+
+        for candidate in &candidates {
+            if std::path::Path::new(candidate).exists() {
+                eprintln!("[sidecar] 固定路径找到 node: {}", candidate);
+                return Some(candidate.clone());
+            }
+        }
+
+        eprintln!("[sidecar] 未找到 node");
+        None
+    }
 }
 
 /// 存储子进程 PID，用于退出时清理
 pub struct SidecarChild(pub Mutex<Option<u32>>);
 
 /// 杀掉当前 sidecar 子进程（如果有）
+///
+/// - Unix: `kill -TERM` 等 500ms → `kill -9` 强制
+/// - Windows: `taskkill /T /PID` 优雅 → 500ms → `taskkill /T /F /PID` 强制
 fn kill_sidecar_process(app: &tauri::AppHandle) {
     if let Some(state) = app.try_state::<SidecarChild>() {
         if let Ok(mut pid_lock) = state.0.lock() {
             if let Some(pid) = pid_lock.take() {
                 println!("[sidecar] 正在终止子进程 PID={}", pid);
-                // 先发 SIGTERM 让进程优雅退出
-                let _ = std::process::Command::new("kill")
-                    .args(["-TERM", &pid.to_string()])
-                    .output();
-                // 等待 500ms 后强制 SIGKILL
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                    let _ = std::process::Command::new("kill")
-                        .args(["-9", &pid.to_string()])
+
+                #[cfg(target_os = "windows")]
+                {
+                    // taskkill /T 杀进程树（含子进程）
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/T", "/PID", &pid.to_string()])
                         .output();
-                });
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let _ = std::process::Command::new("taskkill")
+                            .args(["/T", "/F", "/PID", &pid.to_string()])
+                            .output();
+                    });
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    // 先发 SIGTERM 让进程优雅退出
+                    let _ = std::process::Command::new("kill")
+                        .args(["-TERM", &pid.to_string()])
+                        .output();
+                    // 等待 500ms 后强制 SIGKILL
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let _ = std::process::Command::new("kill")
+                            .args(["-9", &pid.to_string()])
+                            .output();
+                    });
+                }
             }
         }
     }

@@ -11,6 +11,7 @@ function formatDateTime(isoStr: string): string {
 }
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Sparkles, Pencil, Eye, X as XIcon, Settings as SettingsIcon, MoreVertical } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useAgentStore } from '../stores/agent-store';
 import { get, post, put } from '../lib/api';
@@ -932,9 +933,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
       {skills.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center mb-3">
-            <svg className="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-            </svg>
+            <Sparkles className="w-6 h-6 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground mb-1">暂无已安装技能</p>
           <p className="text-xs text-muted-foreground mb-4">技能可以扩展专家的能力</p>
@@ -952,9 +951,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
             {skills.map((skill) => (
               <div key={skill.name} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border">
                 <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
-                  <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                  </svg>
+                  <Sparkles className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">{skill.name}</p>
@@ -1303,14 +1300,9 @@ function SettingsTab({ agentId }: { agentId: string }) {
                   {/* 编辑/查看图标 */}
                   <span className="text-muted-foreground group-hover:text-muted-foreground transition-colors shrink-0">
                     {meta.editable ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z" />
-                      </svg>
+                      <Pencil className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
                     ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                      </svg>
+                      <Eye className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
                     )}
                   </span>
                 </button>
@@ -1363,9 +1355,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
                     className="w-7 h-7 flex items-center justify-center rounded-lg
                       hover:bg-accent transition-colors text-muted-foreground hover:text-muted-foreground"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <XIcon className="w-4 h-4" strokeWidth={2} aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -1461,19 +1451,14 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
           {/* Header */}
           <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+              <SettingsIcon className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
               <h2 className="text-base font-bold text-foreground">专家设置</h2>
             </div>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-muted-foreground"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <XIcon className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
 
@@ -1493,11 +1478,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
                   onClick={() => setShowMenu(!showMenu)}
                   className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground"
                 >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="5" r="1.5" />
-                    <circle cx="12" cy="12" r="1.5" />
-                    <circle cx="12" cy="19" r="1.5" />
-                  </svg>
+                  <MoreVertical className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
                 </button>
                 {showMenu && (
                   <div className="absolute right-0 top-full mt-1 w-36 bg-card

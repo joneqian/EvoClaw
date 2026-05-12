@@ -1,47 +1,66 @@
 import { useCallback } from 'react';
+import {
+  FileText,
+  FilePen,
+  Globe,
+  Terminal,
+  Compass,
+  Star,
+  Zap,
+  Shield,
+  AlertTriangle,
+  type LucideIcon,
+} from 'lucide-react';
 import AgentAvatar from './AgentAvatar';
 
 /** 权限类别配置 */
-const CATEGORY_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string }> = {
+interface CategoryConfig {
+  label: string;
+  Icon: LucideIcon;
+  color: string;
+  bg: string;
+}
+
+const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   file_read: {
     label: '文件读取',
-    icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+    Icon: FileText,
     color: 'text-info',
     bg: 'bg-info/10',
   },
   file_write: {
     label: '文件修改',
-    icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10',
+    Icon: FilePen,
     color: 'text-warning',
     bg: 'bg-warning/10',
   },
   network: {
     label: '网络访问',
-    icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418',
+    Icon: Globe,
     color: 'text-purple-600 dark:text-purple-300',
     bg: 'bg-purple-50 dark:bg-purple-950/40',
   },
   shell: {
     label: '命令执行',
-    icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z',
+    Icon: Terminal,
     color: 'text-danger',
     bg: 'bg-danger/10',
   },
   browser: {
     label: '浏览器',
-    icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3',
+    Icon: Compass,
     color: 'text-cyan-600 dark:text-cyan-300',
     bg: 'bg-cyan-50 dark:bg-cyan-950/40',
   },
   mcp: {
     label: 'MCP 工具',
-    icon: 'M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z',
+    Icon: Star,
     color: 'text-indigo-600 dark:text-indigo-300',
     bg: 'bg-indigo-50 dark:bg-indigo-950/40',
   },
   skill: {
     label: '技能调用',
-    icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z',
+    Icon: Zap,
     color: 'text-success',
     bg: 'bg-success/10',
   },
@@ -81,8 +100,8 @@ export default function PermissionDialog({
 
   if (!isOpen) return null;
 
-  const config = CATEGORY_CONFIG[category] ?? {
-    label: category, icon: '', color: 'text-muted-foreground', bg: 'bg-muted',
+  const config: CategoryConfig = CATEGORY_CONFIG[category] ?? {
+    label: category, Icon: Shield, color: 'text-muted-foreground', bg: 'bg-muted',
   };
 
   return (
@@ -97,9 +116,7 @@ export default function PermissionDialog({
       >
         {/* 顶部安全标识栏 */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-muted/50 rounded-t-2xl">
-          <svg className="w-4 h-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-          </svg>
+          <Shield className="w-4 h-4 text-warning" strokeWidth={2} aria-hidden="true" />
           <span className="text-xs font-medium text-muted-foreground">权限请求</span>
         </div>
 
@@ -117,13 +134,9 @@ export default function PermissionDialog({
           {/* 权限详情卡片 */}
           <div className={`rounded-xl p-4 ${config.bg} mb-5`}>
             <div className="flex items-start gap-3">
-              {config.icon && (
-                <div className="w-9 h-9 rounded-lg bg-card/80 flex items-center justify-center shrink-0 shadow-sm">
-                  <svg className={`w-5 h-5 ${config.color}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d={config.icon} />
-                  </svg>
-                </div>
-              )}
+              <div className="w-9 h-9 rounded-lg bg-card/80 flex items-center justify-center shrink-0 shadow-sm">
+                <config.Icon className={`w-5 h-5 ${config.color}`} strokeWidth={1.5} aria-hidden="true" />
+              </div>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-semibold ${config.color}`}>{config.label}</p>
                 <code className="block mt-1.5 text-xs text-muted-foreground bg-card/60 px-2.5 py-1.5 rounded-md
@@ -143,9 +156,7 @@ export default function PermissionDialog({
           {smartApprove && (
             <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10/60 px-3 py-2.5">
               <div className="flex items-center gap-1.5 mb-1">
-                <svg className="w-3.5 h-3.5 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
+                <AlertTriangle className="w-3.5 h-3.5 text-warning" strokeWidth={2} aria-hidden="true" />
                 <span className="text-[11px] font-semibold text-warning">AI 风险评估 · 建议人工确认</span>
               </div>
               <p className="text-xs text-warning/90 leading-relaxed">

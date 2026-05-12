@@ -5,6 +5,7 @@
 
 import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { X, Plus } from 'lucide-react';
 import { useChatStore } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from './AgentAvatar';
@@ -149,9 +150,7 @@ export default function ExpertPanel({
                     text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all"
                   title="删除专家"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
                 </button>
               </div>
             ))}
@@ -164,9 +163,7 @@ export default function ExpertPanel({
           className="w-full flex items-center justify-center gap-1.5 px-2.5 py-2 mt-2 rounded-lg text-sm
             font-medium text-foreground border border-border hover:border-muted-foreground hover:bg-muted transition-colors"
         >
-          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
+          <Plus className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden="true" />
           创建专家
         </button>
       </div>
@@ -229,9 +226,7 @@ export default function ExpertPanel({
                     text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all"
                   title="删除会话"
                 >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
                 </button>
               </div>
               );

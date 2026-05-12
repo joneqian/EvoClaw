@@ -8,6 +8,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { ChevronDown } from 'lucide-react';
 
 interface ThinkingBlockProps {
   content: string;
@@ -39,15 +40,11 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
             <span>思考过程</span>
           )}
         </span>
-        <svg
+        <ChevronDown
           className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
           strokeWidth={1.5}
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
+          aria-hidden="true"
+        />
       </button>
 
       {/* Content — 折叠区域 */}

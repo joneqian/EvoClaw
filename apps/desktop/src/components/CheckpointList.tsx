@@ -5,6 +5,7 @@
  * 点击撤销按钮触发外部 onRequestRevert，由父级弹 CheckpointRevertDialog 二次确认。
  */
 
+import { RotateCcw } from 'lucide-react';
 import type { CheckpointRecord } from '../hooks/useCheckpoints';
 
 interface Props {
@@ -35,15 +36,7 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
   if (list.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground text-sm">
-        <svg
-          className="w-12 h-12 mx-auto mb-3 text-muted-foreground"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1.5}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-        </svg>
+        <RotateCcw className="w-12 h-12 mx-auto mb-3 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
         <p>还没有可撤销的改动</p>
         <p className="text-xs mt-1 text-muted-foreground">Agent 修改文件后会在这里出现</p>
       </div>

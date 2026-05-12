@@ -3,6 +3,7 @@
  * 替代原生 <select>，统一风格：圆角卡片 + 点击外部关闭 + 键盘支持
  */
 import { useState, useRef, useEffect } from 'react';
+import { ChevronDown, Check } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
@@ -68,12 +69,11 @@ export default function Select({ options, value, onChange, placeholder = '请选
         <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
           {selected?.label ?? placeholder}
         </span>
-        <svg
+        <ChevronDown
           className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
+          strokeWidth={2}
+          aria-hidden="true"
+        />
       </button>
 
       {/* 下拉面板 */}
@@ -97,9 +97,7 @@ export default function Select({ options, value, onChange, placeholder = '请选
               <div className="flex items-center justify-between">
                 <span>{option.label}</span>
                 {option.value === value && (
-                  <svg className="w-3.5 h-3.5 text-brand" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
+                  <Check className="w-3.5 h-3.5 text-brand" strokeWidth={2.5} aria-hidden="true" />
                 )}
               </div>
               {option.hint && (

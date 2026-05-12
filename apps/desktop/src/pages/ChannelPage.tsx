@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link2, Info } from 'lucide-react';
 import { get, post } from '../lib/api';
 
 /** Channel 状态信息 */
@@ -182,9 +183,7 @@ export default function ChannelPage() {
                         {boundAgentName ? (
                           <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium
                             bg-brand/5 text-brand rounded-lg">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l4.5-4.5a4.5 4.5 0 016.364 6.364l-1.757 1.757" />
-                            </svg>
+                            <Link2 className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
                             {boundAgentName}
                           </span>
                         ) : (
@@ -214,9 +213,7 @@ export default function ChannelPage() {
 
             {/* 提示 */}
             <div className="flex items-center gap-2 px-4 py-3 bg-muted rounded-xl">
-              <svg className="w-4 h-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-              </svg>
+              <Info className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} aria-hidden="true" />
               <p className="text-xs text-muted-foreground">
                 在专家设置中连接和绑定渠道到具体的专家
               </p>

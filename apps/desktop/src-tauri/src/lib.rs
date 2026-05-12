@@ -1,4 +1,5 @@
 mod credential;
+mod credential_migration;
 mod crypto;
 mod permission;
 mod sidecar;
@@ -11,6 +12,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(permission::PermissionState::new())
         .setup(|app| {
+            // M14 PR-A1: macOS Keychain → JSON 文件一次性迁移
+            // 非 macOS 平台为 no-op；幂等（marker 文件防重复）
+            // 失败不阻塞启动，仅日志记录
+            credential_migration::migrate_from_keychain_if_needed();
+
             // 启动 Node.js Sidecar
             if let Err(e) = sidecar::spawn_sidecar(app) {
                 eprintln!("[setup] Sidecar 启动失败: {}", e);

@@ -12,7 +12,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import type {
   EvoClawConfig,
   ConfigValidation,
@@ -23,7 +22,8 @@ import type {
   NameSecurityPolicy,
 } from '@evoclaw/shared';
 import { parseModelRef, safeParseConfig } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR, BRAND_CONFIG_FILENAME, BRAND } from '@evoclaw/shared';
+import { BRAND_CONFIG_FILENAME, BRAND } from '@evoclaw/shared';
+import { getDataDir } from './data-dir.js';
 import { deepMerge, applyEnforced, mergeLayers } from './config-merge.js';
 import { runConfigMigrations } from './config-migration.js';
 import { writeCredentialFile } from './credential-file.js';
@@ -34,7 +34,7 @@ import { createLogger } from './logger.js';
 const log = createLogger('config');
 
 /** 默认配置目录（由品牌配置决定） */
-const DEFAULT_CONFIG_DIR = path.join(os.homedir(), DEFAULT_DATA_DIR);
+const DEFAULT_CONFIG_DIR = getDataDir();
 
 /** 默认配置文件名（由品牌配置决定） */
 const CONFIG_FILENAME = BRAND_CONFIG_FILENAME;

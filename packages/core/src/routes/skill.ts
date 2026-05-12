@@ -3,14 +3,13 @@
  */
 
 import { Hono } from 'hono';
-import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { SkillDiscoverer } from '../skill/skill-discoverer.js';
 import { SkillInstaller } from '../skill/skill-installer.js';
 import { getLoadedSkills, refreshSkillCache } from '../context/plugins/tool-registry.js';
 import type { SkillSource } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import type { SkillInstallPolicyOverride } from '../skill/install-policy.js';
 import { DEFAULT_INSTALL_POLICY_MATRIX } from '../skill/install-policy.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
@@ -126,7 +125,7 @@ export function createSkillRoutes(
   app.post('/check-updates', async (c) => {
     try {
       // 收集候选 manifest：用户级目录 + 所有 agent 级目录
-      const userDir = opts.skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+      const userDir = opts.skillsBaseDir ?? path.join(getDataDir(), 'skills');
       const agentsRoot = path.join(userDir, '..', 'agents');
       const roots: string[] = [userDir];
       if (fs.existsSync(agentsRoot)) {

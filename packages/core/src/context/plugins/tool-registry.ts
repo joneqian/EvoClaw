@@ -18,11 +18,10 @@
 import type { ContextPlugin, TurnContext, BootstrapContext } from '../plugin.interface.js';
 import type { InstalledSkill, NameSecurityPolicy } from '@evoclaw/shared';
 import type { ChatMessage } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { filterByPolicy } from '../../security/extension-security.js';
+import { getDataDir } from '../../infrastructure/data-dir.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { parseSkillMd } from '../../skill/skill-parser.js';
 import { checkGates, allGatesPassed } from '../../skill/skill-gate.js';
 import { createLogger } from '../../infrastructure/logger.js';
@@ -64,10 +63,10 @@ export const BUNDLED_SKILLS_DIR = path.resolve(
   '..', '..', 'skill', 'bundled',
 );
 
-/** 默认路径（由品牌配置决定） */
+/** 默认路径（由品牌配置 + getDataDir 决定） */
 const DEFAULT_PATHS: SkillPaths = {
-  userDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
-  agentDirTemplate: path.join(os.homedir(), DEFAULT_DATA_DIR, 'agents', '{agentId}', 'workspace', 'skills'),
+  userDir: path.join(getDataDir(), 'skills'),
+  agentDirTemplate: path.join(getDataDir(), 'agents', '{agentId}', 'workspace', 'skills'),
   bundledDir: BUNDLED_SKILLS_DIR,
 };
 

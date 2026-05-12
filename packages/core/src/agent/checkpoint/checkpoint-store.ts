@@ -21,17 +21,16 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { createLogger } from '../../infrastructure/logger.js';
+import { getDataDir } from '../../infrastructure/data-dir.js';
 
 const log = createLogger('checkpoint-store');
 
 /** Checkpoint 根目录 */
 function defaultRoot(): string {
-  return path.join(os.homedir(), DEFAULT_DATA_DIR, 'checkpoints');
+  return path.join(getDataDir(), 'checkpoints');
 }
 
 function objectsDir(root: string): string {

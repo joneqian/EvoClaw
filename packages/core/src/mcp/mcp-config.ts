@@ -7,9 +7,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { createLogger } from '../infrastructure/logger.js';
+import { getDataDir } from '../infrastructure/data-dir.js';
 
 const log = createLogger('mcp-config');
 
@@ -65,7 +64,7 @@ export function discoverMcpConfigs(projectRoot?: string, workspacePath?: string)
   }
 
   // 3. 全局 evo_claw.json
-  const globalConfigPath = path.join(os.homedir(), DEFAULT_DATA_DIR, 'evo_claw.json');
+  const globalConfigPath = path.join(getDataDir(), 'evo_claw.json');
   loadGlobalConfig(globalConfigPath, configs);
 
   const result = [...configs.values()];

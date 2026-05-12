@@ -6,12 +6,11 @@
  */
 
 import type { SkillSearchResult, SkillGateResult } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { parseSkillMd } from './skill-parser.js';
 import { checkGates, allGatesPassed } from './skill-gate.js';
+import { getDataDir } from '../infrastructure/data-dir.js';
 
 /** 已安装 Skill（含门控详情） */
 export interface InstalledSkillDetail extends SkillSearchResult {
@@ -64,7 +63,7 @@ export class SkillDiscoverer {
   private skillsBaseDir: string;
 
   constructor(skillsBaseDir?: string) {
-    this.skillsBaseDir = skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+    this.skillsBaseDir = skillsBaseDir ?? path.join(getDataDir(), 'skills');
   }
 
   /** 浏览技能列表（支持分类、排序、分页） */

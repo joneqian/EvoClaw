@@ -9,9 +9,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { ParsedExtensionPack, ExtensionPackInstallResult } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import { mergeSecurityPolicies } from '../security/extension-security.js';
 import { scanPackage, extractPackageFromNpxArgs, isNpmRunner } from '../security/osv-scanner.js';
@@ -52,8 +51,8 @@ export async function installExtensionPack(
 
   // 1. 安装 Skills
   const targetSkillsDir = agentId
-    ? path.join(os.homedir(), DEFAULT_DATA_DIR, 'agents', agentId, 'workspace', 'skills')
-    : path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+    ? path.join(getDataDir(), 'agents', agentId, 'workspace', 'skills')
+    : path.join(getDataDir(), 'skills');
 
   for (const skillDir of skillDirs) {
     const skillName = path.basename(skillDir);
@@ -79,7 +78,7 @@ export async function installExtensionPack(
   if (manifest.mcpServers && manifest.mcpServers.length > 0) {
     // MCP 配置存储在 evo_claw.json 中（由 discoverMcpConfigs 读取）
     // 这里通过写入 .mcp.json 到数据目录
-    const mcpConfigPath = path.join(os.homedir(), DEFAULT_DATA_DIR, '.mcp.json');
+    const mcpConfigPath = path.join(getDataDir(), '.mcp.json');
     let existingMcpConfigs: Record<string, unknown> = {};
     try {
       if (fs.existsSync(mcpConfigPath)) {

@@ -6,12 +6,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import type { InstalledExtensionPack } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 
 /** 注册表文件路径 */
-const REGISTRY_PATH = path.join(os.homedir(), DEFAULT_DATA_DIR, 'extension-packs.json');
+const REGISTRY_PATH = path.join(getDataDir(), 'extension-packs.json');
 
 /** 注册已安装的扩展包 */
 export function registerInstalledPack(pack: InstalledExtensionPack): void {

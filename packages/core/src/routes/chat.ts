@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import os from 'node:os';
 import { isBun } from '../infrastructure/runtime.js';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import { createBunSSEResponse } from '../infrastructure/bun-sse.js';
 
 /**
@@ -24,7 +24,6 @@ import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { VectorStore } from '../infrastructure/db/vector-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { ChatMessage } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { parseQuotedPrefix } from '@evoclaw/shared';
 import { ContextEngine } from '../context/context-engine.js';
 import type { TurnContext } from '../context/plugin.interface.js';
@@ -1393,7 +1392,7 @@ export function createChatRoutes(
               userMessage: message,
               sessionKey,
               db: store,
-              userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+              userSkillsDir: path.join(getDataDir(), 'skills'),
               llmCall: llmCallForReview,
               model: configManager?.getConfig().security?.skillEvolver?.model,
               // M7-Tier3 PR-T3-2a: 让 inline review 也尊重 skillEvolver.mode（与 cron 一致）
@@ -1425,7 +1424,7 @@ export function createChatRoutes(
               ownerAgentId: agentId,
               recentMessages: messages,
               recentSkillsUsed,
-              userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+              userSkillsDir: path.join(getDataDir(), 'skills'),
               db: store,
             });
           } catch (err) {

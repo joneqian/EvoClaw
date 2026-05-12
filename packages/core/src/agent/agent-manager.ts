@@ -1,10 +1,10 @@
 import type { AgentConfig, AgentStatus, SessionKey } from '@evoclaw/shared';
-import { DEFAULT_DATA_DIR, AGENTS_DIR } from '@evoclaw/shared';
+import { AGENTS_DIR } from '@evoclaw/shared';
 import { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import { readFileWithCache, invalidateCache } from './workspace-cache.js';
 import { isWorkspaceFileAccessAllowed } from './workspace-files-policy.js';
 import { createLogger } from '../infrastructure/logger.js';
@@ -33,7 +33,7 @@ export class AgentManager {
 
   constructor(store: SqliteStore, agentsBaseDir?: string) {
     this.store = store;
-    this.agentsBaseDir = agentsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, AGENTS_DIR);
+    this.agentsBaseDir = agentsBaseDir ?? path.join(getDataDir(), AGENTS_DIR);
   }
 
   /** 创建 Agent */

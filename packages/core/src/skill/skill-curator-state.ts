@@ -16,10 +16,9 @@
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_DATA_DIR } from '@evoclaw/shared';
 import { createLogger } from '../infrastructure/logger.js';
+import { getDataDir } from '../infrastructure/data-dir.js';
 
 const log = createLogger('skill-curator-state');
 
@@ -47,7 +46,7 @@ function defaultState(): CuratorState {
 
 function statePath(skillsBaseDir?: string): string {
   return path.join(
-    skillsBaseDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+    skillsBaseDir ?? path.join(getDataDir(), 'skills'),
     FILENAME,
   );
 }

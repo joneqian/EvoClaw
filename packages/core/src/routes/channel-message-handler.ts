@@ -7,9 +7,9 @@
 
 import crypto from 'node:crypto';
 import path from 'node:path';
-import os from 'node:os';
 import type { ChatMessage, ChatMessageAttachment, FeishuDocContext, QuotedMessage } from '@evoclaw/shared';
-import { composeMessageWithQuote, DEFAULT_DATA_DIR } from '@evoclaw/shared';
+import { composeMessageWithQuote } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { AgentManager } from '../agent/agent-manager.js';
 import { reconcileBootstrapState } from '../agent/bootstrap-reconciler.js';
@@ -1066,7 +1066,7 @@ export async function handleChannelMessage(
           userMessage: message,
           sessionKey,
           db: store,
-          userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+          userSkillsDir: path.join(getDataDir(), 'skills'),
           llmCall: secondaryLLMCall,
           model: configManager?.getConfig().security?.skillEvolver?.model,
           // M7-Tier3 PR-T3-2a: 与 cron evolver 共享 mode 决定（apply / dryRun）
@@ -1101,7 +1101,7 @@ export async function handleChannelMessage(
           ownerAgentId: agentId,
           recentMessages: messages,
           recentSkillsUsed,
-          userSkillsDir: path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills'),
+          userSkillsDir: path.join(getDataDir(), 'skills'),
           db: store,
         });
       } catch (err) {

@@ -1,7 +1,7 @@
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs';
-import { DEFAULT_DATA_DIR, DB_FILENAME } from '@evoclaw/shared';
+import { DB_FILENAME } from '@evoclaw/shared';
+import { getDataDir } from '../data-dir.js';
 import { createDatabase, pragmaSet, type DatabaseInstance } from './sqlite-adapter.js';
 
 /** run() 返回类型 */
@@ -19,7 +19,7 @@ export class SqliteStore {
   readonly dbPath: string;
 
   constructor(dbPath?: string) {
-    this.dbPath = dbPath ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'data', DB_FILENAME);
+    this.dbPath = dbPath ?? path.join(getDataDir(), 'data', DB_FILENAME);
 
     // 确保目录存在
     if (this.dbPath !== ':memory:') {

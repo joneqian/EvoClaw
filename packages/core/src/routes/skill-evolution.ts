@@ -14,10 +14,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { Hono } from 'hono';
 import { CronExpressionParser } from 'cron-parser';
-import { DEFAULT_DATA_DIR, skillEvolverSchema } from '@evoclaw/shared';
+import { skillEvolverSchema } from '@evoclaw/shared';
+import { getDataDir } from '../infrastructure/data-dir.js';
 import type { SqliteStore } from '../infrastructure/db/sqlite-store.js';
 import type { ConfigManager } from '../infrastructure/config-manager.js';
 import type { SkillEvolverScheduler } from '../skill/skill-evolver-scheduler.js';
@@ -96,7 +96,7 @@ const DETAIL_COLUMNS = `
 
 export function createSkillEvolutionRoutes(deps: SkillEvolutionRouteDeps): Hono {
   const app = new Hono();
-  const baseSkillsDir = deps.userSkillsDir ?? path.join(os.homedir(), DEFAULT_DATA_DIR, 'skills');
+  const baseSkillsDir = deps.userSkillsDir ?? path.join(getDataDir(), 'skills');
 
   /**
    * GET /log?skill=X&limit=50&offset=0&pending=1

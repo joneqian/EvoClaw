@@ -28,19 +28,31 @@
   "bundle": {
     "active": true,
     "targets": [
-      "dmg"
+      "dmg",
+      "nsis"
     ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico"
     ],
     "macOS": {
       "minimumSystemVersion": "13.0"
     },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false
+      }
+    },
     "resources": [
-      "bun-bin/bun",
+      "bun-bin/*",
       "../../../packages/core/dist/package.json",
       "../../../packages/core/dist/server.mjs",
       "../../../packages/core/dist/migrations/*",

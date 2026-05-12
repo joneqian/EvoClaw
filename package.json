@@ -29,11 +29,15 @@
     "dev:healthclaw": "BRAND=healthclaw ./scripts/dev.sh",
     "build:healthclaw": "BRAND=healthclaw bun scripts/brand-apply.mjs && turbo run build",
     "build:desktop:healthclaw": "BRAND=healthclaw bun scripts/brand-apply.mjs && turbo run build --filter=@evoclaw/desktop",
-    "build:dmg:healthclaw": "BRAND=healthclaw ./scripts/build-dmg.sh"
+    "build:dmg:healthclaw": "BRAND=healthclaw ./scripts/build-dmg.sh",
+    "build:exe": "node scripts/build-exe.mjs",
+    "build:exe:evoclaw": "BRAND=evoclaw node scripts/build-exe.mjs",
+    "build:exe:healthclaw": "BRAND=healthclaw node scripts/build-exe.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "oxlint": "^0.17.0",
+    "png-to-ico": "^3.0.1",
     "sharp": "^0.34.5",
     "turbo": "^2.9.6",
     "typescript": "^5.8.0",

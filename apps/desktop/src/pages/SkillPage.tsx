@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Search, Zap, X as XIcon, Store, ChevronRight, ChevronLeft, Download, Pin, Archive, FolderClosed } from 'lucide-react';
 import { get, post, del } from '../lib/api';
 import { BRAND_NAME, SKILL_THREAT_LABELS } from '@evoclaw/shared';
 import type { SkillThreatType } from '@evoclaw/shared';
@@ -441,9 +442,7 @@ export default function SkillPage() {
 
         {/* 搜索 */}
         <div className="relative w-[240px] shrink-0">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-          </svg>
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" strokeWidth={2} aria-hidden="true" />
           <input type="text" value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={handleSearch}
@@ -543,9 +542,7 @@ export default function SkillPage() {
             <div className="p-5 border-b border-border">
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                  <svg className="w-7 h-7 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
+                  <Zap className="w-7 h-7 text-brand" strokeWidth={1.5} aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-base font-bold text-foreground">{detailSkill.name}</h3>
@@ -561,10 +558,8 @@ export default function SkillPage() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => setDetailSkill(null)} className="text-muted-foreground hover:text-muted-foreground transition-colors shrink-0 mt-1">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                <button onClick={() => setDetailSkill(null)} className="text-muted-foreground hover:text-muted-foreground transition-colors shrink-0 mt-1" aria-label="关闭">
+                  <XIcon className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -674,13 +669,9 @@ export default function SkillPage() {
             <button onClick={() => setTab('store')}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016A3.001 3.001 0 0021 9.349m-18 0a2.994 2.994 0 00.407-1.476L3.75 4.5h16.5l.342 3.373A2.994 2.994 0 0021 9.349" />
-              </svg>
+              <Store className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" />
               探索技能广场
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
+              <ChevronRight className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -691,9 +682,7 @@ export default function SkillPage() {
             <button onClick={() => setTab('brand')}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
+              <ChevronLeft className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
               返回精选
             </button>
             <span className="text-xs text-muted-foreground mx-1">|</span>
@@ -827,9 +816,7 @@ function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem
   return (
     <div onClick={onDetail} className="flex items-start gap-3 p-4 rounded-xl border border-border hover:border-border hover:shadow-sm transition-all group cursor-pointer">
       <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center shrink-0">
-        <svg className="w-5 h-5 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
+        <Zap className="w-5 h-5 text-brand" strokeWidth={1.5} aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
@@ -838,9 +825,7 @@ function StoreCard({ skill, installed, onInstall, onDetail }: { skill: SkillItem
             <span className="text-xs text-brand font-medium shrink-0">Added</span>
           ) : (
             <button onClick={(e) => { e.stopPropagation(); onInstall(); }} className="shrink-0 text-muted-foreground hover:text-brand transition-colors" title="安装">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75v6.75m0 0l-3-3m3 3l3-3m-8.25 6a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-              </svg>
+              <Download className="w-4 h-4" strokeWidth={2} aria-hidden="true" />
             </button>
           )}
         </div>
@@ -1004,9 +989,7 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onT
         : 'border-border hover:border-border'
     }`}>
       <div className="w-11 h-11 rounded-xl bg-brand/5 flex items-center justify-center shrink-0">
-        <svg className="w-5 h-5 text-brand-active" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
+        <Zap className="w-5 h-5 text-brand-active" strokeWidth={1.5} aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-1">
@@ -1037,10 +1020,7 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onT
               }`}
               title={isPinned ? '已钉住：自动进化与归档跳过此 skill。点击取消' : '钉住：保护此 skill 不被自动进化或归档'}
             >
-              <svg className="w-3.5 h-3.5" fill={isPinned ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 12V4M16 12l4 4-4 4M8 8h8M8 16h8M4 4h.01M4 20h.01" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 17v5M9 11l3-7 3 7H9z" />
-              </svg>
+              <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-current' : ''}`} strokeWidth={2} aria-hidden="true" />
             </button>
           )}
           {/* M7-Tier1 PR2: 归档按钮（仅 agent-created；hover 显示。pinned 时禁用：与后端 archiveSkill 的 pinned 拒绝一致） */}
@@ -1055,16 +1035,12 @@ function MySkillCard({ skill, onUninstall, updateInfo, onUpgrade, lifecycle, onT
               } ${canPin ? '' : 'ml-auto'}`}
               title={isPinned ? '已钉住的 skill 不可归档（先取消 pin）' : '归档：移到 .archive/，从 <available_skills> 摘除（可恢复）'}
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
+              <Archive className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
             </button>
           )}
           <button onClick={() => onUninstall(skill.name)}
             className={`shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-danger transition-all ${(canPin || canArchive) ? '' : 'ml-auto'}`} title="卸载">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <XIcon className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
         <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{skill.description}</p>
@@ -1127,12 +1103,11 @@ function ArchivedSection({ entries, onRestore }: ArchivedSectionProps) {
         onClick={() => setExpanded(v => !v)}
         className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
       >
-        <svg
+        <ChevronRight
           className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-90' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+          strokeWidth={2}
+          aria-hidden="true"
+        />
         <span>已归档（{entries.length}）</span>
         <span className="text-xs font-normal text-muted-foreground">— 文件保留在 .archive/，可恢复</span>
       </button>
@@ -1144,9 +1119,7 @@ function ArchivedSection({ entries, onRestore }: ArchivedSectionProps) {
               className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted border border-border"
             >
               <div className="flex items-center gap-2 min-w-0 flex-1">
-                <svg className="w-3.5 h-3.5 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8" />
-                </svg>
+                <FolderClosed className="w-3.5 h-3.5 text-muted-foreground shrink-0" strokeWidth={2} aria-hidden="true" />
                 <span className="text-sm text-foreground truncate">{e.name}</span>
                 <span className="text-xs text-muted-foreground shrink-0">{e.source}</span>
               </div>

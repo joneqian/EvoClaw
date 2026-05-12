@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Paperclip, Sparkles, Square, ArrowUp, ListChecks, MessageSquare, Clock, ChevronRight, Check, Trash2 } from 'lucide-react';
 import { BRAND_EVENT_PREFIX, parseQuotedPrefix } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall, type ToolSegment, type RecallMeta } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
@@ -539,9 +540,7 @@ function ChatView() {
               title="添加附件"
             >
               {/* 回形针图标 */}
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-              </svg>
+              <Paperclip className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
             </button>
             <button
               disabled={isStreaming}
@@ -551,9 +550,7 @@ function ChatView() {
               title="AI 增强"
             >
               {/* 星形图标 */}
-              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
-              </svg>
+              <Sparkles className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
             </button>
           </div>
 
@@ -572,9 +569,7 @@ function ChatView() {
                 className="w-8 h-8 flex items-center justify-center rounded-full transition-colors bg-danger text-white hover:bg-danger"
                 title="停止"
               >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" rx="1" />
-                </svg>
+                <Square className="w-4 h-4 fill-current" strokeWidth={1} aria-hidden="true" />
               </button>
             ) : (
               <button
@@ -586,9 +581,7 @@ function ChatView() {
                     : 'bg-brand text-white hover:bg-brand-hover'
                 }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-                </svg>
+                <ArrowUp className="w-4 h-4" strokeWidth={2} aria-hidden="true" />
               </button>
             )}
           </div>
@@ -611,9 +604,7 @@ function ChatView() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg
               hover:bg-muted transition-colors text-muted-foreground"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
-            </svg>
+            <ListChecks className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
             专家设置
           </button>
         </div>
@@ -646,9 +637,7 @@ function ChatView() {
               onClick={() => currentAgentId && newConversation(currentAgentId)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors"
             >
-              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-              </svg>
+              <MessageSquare className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
               新建对话
             </button>
           </div>
@@ -670,9 +659,7 @@ function ChatView() {
               {backgroundedNotice && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 border border-warning/30
                                 rounded-full text-xs text-warning shadow-sm">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <Clock className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
                   <span>Agent 已转后台运行（{(backgroundedNotice.elapsedMs / 1000).toFixed(0)}s），您可以继续对话</span>
                   <button
                     onClick={() => setBackgroundedNotice(null)}
@@ -883,9 +870,7 @@ function ToolCallCard({ seg }: { seg: ToolSegment }) {
           <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">{seg.summary}</span>
         )}
         {hasResult && (
-          <svg className={`w-3 h-3 text-muted-foreground shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
+          <ChevronRight className={`w-3 h-3 text-muted-foreground shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} strokeWidth={2} aria-hidden="true" />
         )}
       </div>
       {/* 工具进度区域（运行中 + 有进度时显示） */}
@@ -918,7 +903,7 @@ function ToolCallItemLegacy({ tc }: { tc: ToolCall }) {
     ? <span className="w-3 h-3 border-2 border-warning/50 border-t-transparent rounded-full animate-spin" />
     : tc.status === 'error'
       ? <span className="text-danger text-xs font-bold">!</span>
-      : <svg className="w-3.5 h-3.5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
+      : <Check className="w-3.5 h-3.5 text-success" strokeWidth={2.5} aria-hidden="true" />;
 
   return (
     <div className="rounded-lg border border-border bg-muted/50 overflow-hidden">
@@ -956,9 +941,7 @@ function MessageActions({ content }: { content: string }) {
           hover:text-muted-foreground hover:bg-accent rounded transition-colors"
         title="复制"
       >
-        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-        </svg>
+        <Trash2 className="w-3 h-3" strokeWidth={1.5} aria-hidden="true" />
         复制
       </button>
     </div>

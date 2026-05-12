@@ -17,6 +17,14 @@ import {
   Search,
   Users,
   CheckCircle2,
+  ListChecks,
+  Sliders,
+  ShieldAlert,
+  ShieldX,
+  KeyRound,
+  Zap as ZapIcon,
+  Image as ImageIcon,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useAgentStore } from '../stores/agent-store';
@@ -69,14 +77,6 @@ const TABS: { key: TabKey; label: string; Icon: LucideIcon }[] = [
   { key: 'audit', label: '审计日志', Icon: FileText },
 ];
 
-// ─── 兼容 path 字符串图标的本地 wrapper（用于 GUARD_FEATURES 等遗留 config，TODO 后续 PR 完全替换） ───
-function PathIcon({ d, className = 'w-4 h-4' }: { d: string; className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
-    </svg>
-  );
-}
 
 // ─── 主页面 ───
 
@@ -474,18 +474,18 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
 // ─── 审计日志 Tab ───
 
 /** 工具名称美化 */
-const TOOL_DISPLAY: Record<string, { label: string; icon: string }> = {
-  bash: { label: 'Shell', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z' },
-  read: { label: 'Read', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
-  write: { label: 'Write', icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z' },
-  edit: { label: 'Edit', icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z' },
-  grep: { label: 'Grep', icon: 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z' },
-  find: { label: 'Find', icon: 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z' },
-  ls: { label: 'List', icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z' },
-  web_search: { label: 'Search', icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3' },
-  web_fetch: { label: 'Fetch', icon: 'M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244' },
-  image: { label: 'Image', icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z' },
-  pdf: { label: 'PDF', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
+const TOOL_DISPLAY: Record<string, { label: string; Icon: LucideIcon }> = {
+  bash: { label: 'Shell', Icon: Terminal },
+  read: { label: 'Read', Icon: FileText },
+  write: { label: 'Write', Icon: FilePen },
+  edit: { label: 'Edit', Icon: FilePen },
+  grep: { label: 'Grep', Icon: Search },
+  find: { label: 'Find', Icon: Search },
+  ls: { label: 'List', Icon: ListChecks },
+  web_search: { label: 'Search', Icon: Globe },
+  web_fetch: { label: 'Fetch', Icon: Compass },
+  image: { label: 'Image', Icon: ImageIcon },
+  pdf: { label: 'PDF', Icon: FileText },
 };
 
 function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, onLoadMore, formatTime, formatDuration }: {
@@ -575,8 +575,10 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
                 px-5 py-3 hover:bg-muted/50 transition-colors ${idx > 0 ? 'border-t border-border' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
-                    <PathIcon d={toolInfo?.icon ?? 'M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z'}
-                      className="w-4 h-4 text-muted-foreground" />
+                    {(() => {
+                      const ToolIcon = toolInfo?.Icon ?? Star;
+                      return <ToolIcon className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />;
+                    })()}
                   </div>
                   <div className="min-w-0">
                     <span className="text-sm font-medium text-foreground">{toolInfo?.label ?? entry.toolName}</span>
@@ -614,17 +616,17 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
 
 // ─── 安全防护 Tab ───
 
-const GUARD_FEATURES = [
-  { title: '危险命令检测', desc: '自动拦截 rm -rf、DROP TABLE、sudo 等 11 种危险操作模式', color: 'text-danger', bg: 'bg-danger/10', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z' },
-  { title: '受限路径保护', desc: '禁止访问 /etc、~/.ssh、/System 等 8 类系统敏感路径', color: 'text-purple-600 dark:text-purple-300', bg: 'bg-purple-50 dark:bg-purple-950/40', icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z' },
-  { title: '消息发送确认', desc: '邮件、Slack、微信等 7 种消息类工具强制用户确认', color: 'text-warning', bg: 'bg-warning/10', icon: 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75' },
-  { title: '循环检测与熔断', desc: '重复/乒乓/无进展 3 种模式检测，阈值 30 次自动熔断', color: 'text-success', bg: 'bg-success/10', icon: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
+const GUARD_FEATURES: { title: string; desc: string; color: string; bg: string; Icon: LucideIcon }[] = [
+  { title: '危险命令检测', desc: '自动拦截 rm -rf、DROP TABLE、sudo 等 11 种危险操作模式', color: 'text-danger', bg: 'bg-danger/10', Icon: AlertTriangle },
+  { title: '受限路径保护', desc: '禁止访问 /etc、~/.ssh、/System 等 8 类系统敏感路径', color: 'text-purple-600 dark:text-purple-300', bg: 'bg-purple-50 dark:bg-purple-950/40', Icon: KeyRound },
+  { title: '消息发送确认', desc: '邮件、Slack、微信等 7 种消息类工具强制用户确认', color: 'text-warning', bg: 'bg-warning/10', Icon: ShieldAlert },
+  { title: '循环检测与熔断', desc: '重复/乒乓/无进展 3 种模式检测，阈值 30 次自动熔断', color: 'text-success', bg: 'bg-success/10', Icon: ShieldX },
 ];
 
-const GUARD_PROTECTIONS = [
+const GUARD_PROTECTIONS: { id: string; Icon: LucideIcon; iconColor: string; iconBg: string; title: string; tag: string; tagStyle: string; desc: string }[] = [
   {
     id: 'env',
-    icon: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
+    Icon: ShieldCheck,
     iconColor: 'text-warning',
     iconBg: 'bg-warning/10',
     title: '电脑环境安全防护',
@@ -634,7 +636,7 @@ const GUARD_PROTECTIONS = [
   },
   {
     id: 'info',
-    icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
+    Icon: KeyRound,
     iconColor: 'text-brand',
     iconBg: 'bg-brand/10',
     title: '用户信息安全保护',
@@ -644,7 +646,7 @@ const GUARD_PROTECTIONS = [
   },
   {
     id: 'skill',
-    icon: 'M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3',
+    Icon: Wrench,
     iconColor: 'text-teal-500',
     iconBg: 'bg-teal-50',
     title: 'Skill 技能安全扫描',
@@ -655,26 +657,26 @@ const GUARD_PROTECTIONS = [
 ];
 
 /** 权限模式配置 */
-const PERMISSION_MODES = [
+const PERMISSION_MODES: { key: 'default' | 'strict' | 'permissive'; label: string; desc: string; Icon: LucideIcon; color: string; bg: string; ring: string }[] = [
   {
-    key: 'default' as const,
+    key: 'default',
     label: '标准模式',
     desc: '工具执行前需要用户确认授权，提供安全与效率的平衡',
-    icon: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286z',
+    Icon: ShieldCheck,
     color: 'text-brand', bg: 'bg-brand/10', ring: 'ring-brand/30',
   },
   {
-    key: 'strict' as const,
+    key: 'strict',
     label: '严格模式',
     desc: '未明确授权的操作自动拒绝，适合生产环境和无人值守场景',
-    icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
+    Icon: ShieldX,
     color: 'text-danger', bg: 'bg-danger/10', ring: 'ring-danger/40',
   },
   {
-    key: 'permissive' as const,
+    key: 'permissive',
     label: '宽松模式',
     desc: '工作区内的文件修改和命令执行自动放行，适合开发测试',
-    icon: 'M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
+    Icon: ZapIcon,
     color: 'text-warning', bg: 'bg-warning/10', ring: 'ring-warning/50',
   },
 ];
@@ -710,7 +712,7 @@ function GuardTab() {
       {/* 权限模式选择 */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <PathIcon d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" className="w-5 h-5 text-muted-foreground" />
+          <Sliders className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
           <h3 className="text-sm font-bold text-foreground">权限模式</h3>
           {saving && <span className="text-xs text-muted-foreground animate-pulse">保存中...</span>}
         </div>
@@ -729,7 +731,7 @@ function GuardTab() {
               >
                 <div className="flex items-center gap-2 mb-2">
                   <div className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center`}>
-                    <PathIcon d={m.icon} className={`w-4 h-4 ${m.color}`} />
+                    <m.Icon className={`w-4 h-4 ${m.color}`} strokeWidth={1.5} aria-hidden="true" />
                   </div>
                   <span className={`text-sm font-semibold ${active ? m.color : 'text-foreground'}`}>{m.label}</span>
                 </div>
@@ -753,7 +755,7 @@ function GuardTab() {
             <div key={item.id} className="bg-card rounded-2xl border border-border/60 p-5 hover:border-border transition-all">
               <div className="flex items-start gap-4">
                 <div className={`w-11 h-11 rounded-xl ${item.iconBg} flex items-center justify-center shrink-0`}>
-                  <PathIcon d={item.icon} className={`w-5.5 h-5.5 ${item.iconColor}`} />
+                  <item.Icon className={`w-5 h-5 ${item.iconColor}`} strokeWidth={1.5} aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2.5 mb-1.5">
@@ -786,7 +788,7 @@ function GuardTab() {
           <div key={f.title} className="bg-card rounded-xl border border-border/60 p-4 hover:border-border transition-colors">
             <div className="flex items-center gap-2.5 mb-2.5">
               <div className={`w-8 h-8 rounded-lg ${f.bg} flex items-center justify-center shrink-0`}>
-                <PathIcon d={f.icon} className={`w-4 h-4 ${f.color}`} />
+                <f.Icon className={`w-4 h-4 ${f.color}`} strokeWidth={1.5} aria-hidden="true" />
               </div>
               <span className="text-sm font-semibold text-foreground">{f.title}</span>
             </div>

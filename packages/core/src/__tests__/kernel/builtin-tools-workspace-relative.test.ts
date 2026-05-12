@@ -23,19 +23,22 @@ const migrationsDir = path.join(import.meta.dirname, '..', '..', 'infrastructure
 const INITIAL_SQL = fs.readFileSync(path.join(migrationsDir, '001_initial.sql'), 'utf-8');
 
 describe('resolveAgentPath', () => {
-  const ws = '/tmp/agents/abc/workspace';
+  // M14 PR-A5: 用 path.join 构造期望值跨平台一致（Windows 用 \，Unix 用 /）
+  const ws = path.join(path.sep, 'tmp', 'agents', 'abc', 'workspace');
 
   it('treats bare names as workspace-relative', () => {
-    expect(resolveAgentPath('foo.md', ws)).toBe('/tmp/agents/abc/workspace/foo.md');
-    expect(resolveAgentPath('sub/bar.md', ws)).toBe('/tmp/agents/abc/workspace/sub/bar.md');
+    expect(resolveAgentPath('foo.md', ws)).toBe(path.join(ws, 'foo.md'));
+    expect(resolveAgentPath('sub/bar.md', ws)).toBe(path.join(ws, 'sub/bar.md'));
   });
 
   it('expands @workspace prefix', () => {
-    expect(resolveAgentPath('@workspace/foo.md', ws)).toBe('/tmp/agents/abc/workspace/foo.md');
+    expect(resolveAgentPath('@workspace/foo.md', ws)).toBe(path.join(ws, 'foo.md'));
     expect(resolveAgentPath('@workspace', ws)).toBe(ws);
   });
 
   it('passes absolute paths through', () => {
+    // Unix-specific paths：Windows 上跳过（路径概念不同）
+    if (process.platform === 'win32') return;
     expect(resolveAgentPath('/etc/hosts', ws)).toBe('/etc/hosts');
     expect(resolveAgentPath('/tmp/foo.md', ws)).toBe('/tmp/foo.md');
   });

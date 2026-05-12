@@ -128,7 +128,11 @@ describe('path-validation', () => {
     });
   });
 
-  describe('isDangerousRemovalPath', () => {
+  // M14 PR-A5: Unix 系统危险路径（/、/etc、/usr 等）在 Windows 上不适用
+  // Windows 等价检测（C:\Windows、C:\Program Files）是另一回事，单独 issue 跟进
+  const describeUnixOnly = process.platform === 'win32' ? describe.skip : describe;
+
+  describeUnixOnly('isDangerousRemovalPath (Unix only)', () => {
     it('根目录是危险的', () => {
       expect(isDangerousRemovalPath('/')).toBe(true);
     });
@@ -154,7 +158,7 @@ describe('path-validation', () => {
     });
   });
 
-  describe('checkDangerousRemovalPaths', () => {
+  describeUnixOnly('checkDangerousRemovalPaths (Unix only)', () => {
     it('rm -rf / 被拦截', () => {
       const result = checkDangerousRemovalPaths('rm', ['-rf', '/']);
       expect(result.safe).toBe(false);
@@ -187,7 +191,7 @@ describe('path-validation', () => {
     });
   });
 
-  describe('validateCommandPaths', () => {
+  describeUnixOnly('validateCommandPaths (Unix only)', () => {
     it('cat /etc/passwd 检测到受限路径', () => {
       const result = validateCommandPaths('cat', ['/etc/passwd']);
       expect(result.safe).toBe(false);

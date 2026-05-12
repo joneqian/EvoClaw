@@ -26,9 +26,11 @@ describe('resolveAgentPath', () => {
   // M14 PR-A5: 用 path.join 构造期望值跨平台一致（Windows 用 \，Unix 用 /）
   const ws = path.join(path.sep, 'tmp', 'agents', 'abc', 'workspace');
 
+  // 相对路径分支走 path.resolve（Windows 会加 drive letter），@workspace 分支走 path.join
+  // 测试期望分别匹配两种实现，保证跨平台一致
   it('treats bare names as workspace-relative', () => {
-    expect(resolveAgentPath('foo.md', ws)).toBe(path.join(ws, 'foo.md'));
-    expect(resolveAgentPath('sub/bar.md', ws)).toBe(path.join(ws, 'sub/bar.md'));
+    expect(resolveAgentPath('foo.md', ws)).toBe(path.resolve(ws, 'foo.md'));
+    expect(resolveAgentPath('sub/bar.md', ws)).toBe(path.resolve(ws, 'sub/bar.md'));
   });
 
   it('expands @workspace prefix', () => {

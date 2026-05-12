@@ -14,7 +14,7 @@ pnpm monorepo + Tauri 2.0 桌面应用，Bun Sidecar 架构。用户创建具有
 | Agent 运行时 | 自研 Agent Kernel (query-loop + stream-client + builtin-tools，参考 Claude Code 架构) |
 | LLM | Kernel 双协议抽象 (Anthropic Messages + OpenAI Chat Completions)，国产模型走 openai-completions + 自定义 baseUrl |
 | 构建 | Turborepo + pnpm 10 + Vitest + Oxlint |
-| 安全 | macOS Keychain (security-framework) + AES-256-GCM (ring) |
+| 安全 | 凭证 JSON 文件 (Unix 0o600 / Windows NTFS ACL) + macOS Keychain 一次性 migration + AES-256-GCM (ring)，三 OS 统一 |
 | 沙箱 | Docker (可选，3 模式: off/selective/all，首次使用时引导安装) |
 
 ## Monorepo 结构
@@ -117,7 +117,19 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: M7-Tier3 自进化能力收官 ✅（2026-05-09）+ M13 Phase 5 飞书文档协作收尾 ✅ — 5 PR 完整闭环
+- **当前冲刺**: M14 跨平台支持 Phase 1（Windows）✅（2026-05-12）— 7 PR 完整闭环
+  - **A1 凭证文件实现 + macOS migration**：PR #148（移除 security-framework Keychain 调用 + 三 OS 统一 JSON 文件 + macOS Keychain → JSON 一次性迁移 + 19 单测）
+  - **A2 sidecar binary 下载跨平台**：PR #149（download-bun/node.mjs 三 OS × arm64/x64 通吃 + scripts/lib/platform.mjs 共享 + PowerShell 解压）
+  - **A3 Tauri Rust 端 Windows 路径**：PR #150（sidecar.rs 5 处 mac-only 痛点 cfg(windows) 分支：bun.exe 后缀 + Windows binary 查找 + USERPROFILE + taskkill）
+  - **A4 Tauri Windows NSIS bundle + 真 ICO**：PR #151（targets nsis + windows.nsis installMode=currentUser + png-to-ico 6 尺寸合并 ICO 370KB + scripts/build-exe.mjs 跨平台入口）
+  - **A5 CI matrix + release workflow**：PR #152（test.yml matrix 三 OS + release.yml workflow_dispatch mac DMG + win NSIS EXE + 修 3 个 pre-existing 跨平台测试）
+  - **A6 数据目录抽 helper**：PR #153（getDataDir() helper + EVOCLAW_HOME/HEALTHCLAW_HOME 环境变量企业 IT 统一部署 + 24 个调用点收编）
+  - **A7 文档**：PR #154（INSTALL_WINDOWS.md + cross-platform-credential.md 架构文档）
+  - 关键决策（详见 `docs/iteration-plans/M14-CrossPlatform-Plan.md`）：D1 三 OS 全明文 JSON 完全抄 Hermes / D2 Windows 优先 Linux 后插 / D3 本期未签名 / D4 macOS 退化 Keychain + migration / D5 保持 sidecar 内置 binary
+  - **未签名 UX 取舍**：Mac SmartScreen 等价 Gatekeeper 需 xattr / Win SmartScreen 需"仍要运行" / Linux 几乎无阻力。企业 IT 渠道（MDM / GPO / 内部 apt 仓库）顺畅
+  - **Phase 2 Linux 后插**：1-1.5w，复用 90% 代码（待启动）
+  - **Phase 3 签名 / 公证**：等 Apple Developer + Authenticode 证书（M9 + 商用证书购买）
+- **上一冲刺（M7-Tier3）**: M7-Tier3 自进化能力收官 ✅（2026-05-09）+ M13 Phase 5 飞书文档协作收尾 ✅ — 5 PR 完整闭环
   - **3.1 A-B 对照实验**：PR #131（plan）+ #132（数据基础+SHA-1 桶位+outcome 表）+ #133（Mann-Whitney U + 自动 promote/rollback）+ #139（A-B 进度 UI + 8 字段配置 + active/history 视图）
   - **3.2 dryRun + canary**：PR #140（dryRun + apply/reject + 409 防覆盖检查 + 11 测试）+ PR #141（canary + 桶位偏置 90/10 + AbStatusCard 🐤 标识 + 10 测试）
   - **M13 Phase 5 收尾**：PR #142 — 补 M11.1 PR6 留下的最后 1 个 gap（feishuDoc 字段 0 消费点 → 注入 `<feishu_doc_context>` + `<comment_timeline>` + 10 unit test）
@@ -135,13 +147,13 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
   - **provider 重构 + thinking 升级 ✅**：PR #79（thinkingLevels 数组 + defaultThinkLevel）+ #80（Kimi K2.6 + GLM 5.1 + Qwen 3.6）+ #81（27 处 high → low 默认值）+ #121（buildAuthHeaders → AuthStrategy 分发）
 - **上上冲刺**: M11.1 飞书 Channel 完整复刻 ✅（2026-04-21，PR #46 + #47 + #48 + #49 + #50 + #52）— 4 周 6 PR 交付 ~3500 行飞书实现 + 3033 测试。WebSocket 长连接（桌面 sidecar 无公网 IP）。覆盖：基础 text/post/image/file/audio/video 全消息类型 + Markdown→Post 智能渲染 + ocf1 envelope 审批卡（Promise+TTL+cancel 生命周期）+ CardKit 流式卡片 + 4 档群会话隔离（group/sender/topic/topic_sender）+ reactions/入群离群/p2p_entered 事件 + drive.notice.comment_add_v1 文档评论事件 + doc-api 薄封装 + withFeishuRetry 指数退避 equal jitter + **PR6 Phase K** 9 个 Agent-facing channel tools。Review 8.2/10
 - **更早**: M7.1 进化日志 UI ✅（PR #43 + #44，2026-04-21）；M7 Skill 自进化 Phase 1-3 ✅（PR #39 + #40 + #41 + #42，2026-04-21）；M8 会话隔离 ✅（PR #30）；M9 Phase 1 T1/T2 ✅（PR #26 + #28）；M6 Provider 增强 ✅（PR #20，OAuth 推迟到 A3）；M5 Skills 生态增强 ✅（PR #18）
-- **下一冲刺候选**（推荐序，2026-05-09 重排）:
-  1. **M13 Phase 1 路由扩容**（2w）— cross-app 路由表 + binding scope 升级，解锁多 Agent 真实部署（Phase 5 已 ✅，Phase 1 仍是首选）
+- **下一冲刺候选**（推荐序，2026-05-12 重排，M13 Phase 1 + M14 Phase 1 均已 ✅）:
+  1. **M14 Phase 2 Linux 后插**（1-1.5w）— 复用 Phase 1 90% 代码，加 appimage/deb target + linux runner + INSTALL_LINUX.md
   2. **M3.1 全局预算 token 上限**（~1w）— 跨渠道通用，企业刚需
   3. **M13 Phase 2 task-plan service + PlansPage 实装**（4-5d）— 前端空壳已待落地（`apps/desktop/src/pages/PlansPage.tsx:13` 占位）
   4. **M12 运营可观测**（3-4d）— SkillPage 已覆盖 60-70%，剩 cost/调用/限流看板
   5. **A3 OAuth Provider 接入**（1-2w）
-  - **外部阻塞**：M9 Windows 打包链 T3-T7（等 Apple Developer 证书 / 阿里云账号 / Windows 环境）/ Sprint 16 企微（待 M9 中转层）
+  - **外部阻塞**：M14 Phase 3 签名（等 Apple Developer + Authenticode 证书 / 阿里云账号）/ Sprint 16 企微（待 M9 中转层）
   - **不做**：M7-Tier3.3 跨 skill 依赖图（skill 量未到 50+）/ M7-Tier3.4 安全联邦同步（与 local-only 矛盾）/ M7 Phase 4 跨用户上传（永废）
 
 ## 协作准则

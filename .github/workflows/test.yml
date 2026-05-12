@@ -15,9 +15,14 @@ concurrency:
 
 jobs:
   test:
-    name: Lint + Typecheck + Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Lint + Typecheck + Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      # 一个 OS 失败时其他 OS 继续跑，便于诊断哪个平台先坏
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v6

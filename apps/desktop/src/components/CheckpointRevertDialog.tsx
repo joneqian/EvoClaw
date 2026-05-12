@@ -5,6 +5,7 @@
  * 必须二次确认。复用 DestructiveConfirmDialog 的视觉规范。
  */
 
+import { RotateCcw } from 'lucide-react';
 import type { CheckpointRecord } from '../hooks/useCheckpoints';
 
 interface Props {
@@ -34,19 +35,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-warning"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
-              />
-            </svg>
+            <RotateCcw className="w-5 h-5 text-warning" strokeWidth={1.5} aria-hidden="true" />
           </div>
           <div>
             <h3 className="text-base font-semibold text-foreground">撤销改动确认</h3>

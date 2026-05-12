@@ -1,39 +1,138 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* ─── EvoClaw Design System v2 ─── */
+/*
+  ───────────────────────────────────────────────────────────
+  EvoClaw Design System v3 — dual-theme
+  详见 docs/architecture/design-system.md
+  ─────────────────────────────────────────────────────────── */
+
+/* 暗色模式触发：<html data-theme="dark"> */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 @theme {
-  /* Brand palette */
-  --color-brand: #00d4aa;
-  --color-brand-hover: #00c39c;
-  --color-brand-active: #00a88a;
-  --color-brand-muted: oklch(0.93 0.05 168);
+  /* ─── Brand ─── */
+  --color-brand: var(--theme-brand);
+  --color-brand-hover: var(--theme-brand-hover);
+  --color-brand-active: var(--theme-brand-active);
+  --color-brand-muted: var(--theme-brand-muted);
 
-  /* Semantic */
+  /* ─── Semantic tokens (shadcn-style) ─── */
+  --color-background: var(--theme-background);
+  --color-foreground: var(--theme-foreground);
+
+  --color-card: var(--theme-card);
+  --color-card-foreground: var(--theme-card-foreground);
+
+  --color-popover: var(--theme-popover);
+  --color-popover-foreground: var(--theme-popover-foreground);
+
+  --color-muted: var(--theme-muted);
+  --color-muted-foreground: var(--theme-muted-foreground);
+
+  --color-accent: var(--theme-accent);
+  --color-accent-foreground: var(--theme-accent-foreground);
+
+  --color-border: var(--theme-border);
+  --color-input: var(--theme-input);
+  --color-ring: var(--theme-ring);
+
+  /* ─── Status colors (双主题统一) ─── */
   --color-success: #22c55e;
+  --color-success-foreground: #ffffff;
   --color-warning: #f59e0b;
+  --color-warning-foreground: #ffffff;
   --color-danger: #ef4444;
+  --color-danger-foreground: #ffffff;
+  --color-info: #3b82f6;
+  --color-info-foreground: #ffffff;
 }
 
+/* ─── 亮色（默认） ─── */
 :root {
+  /* BRAND_LIGHT_BLOCK_START */
+  --theme-brand: #00d4aa;
+  --theme-brand-hover: #00c39c;
+  --theme-brand-active: #00a88a;
+  --theme-brand-muted: oklch(0.93 0.05 168);
+  /* BRAND_LIGHT_BLOCK_END */
+
+  --theme-background: #ffffff;
+  --theme-foreground: #0f172a;
+
+  --theme-card: #ffffff;
+  --theme-card-foreground: #0f172a;
+
+  --theme-popover: #ffffff;
+  --theme-popover-foreground: #0f172a;
+
+  --theme-muted: #f8fafc;
+  --theme-muted-foreground: #64748b;
+
+  --theme-accent: #f1f5f9;
+  --theme-accent-foreground: #0f172a;
+
+  --theme-border: #e2e8f0;
+  --theme-input: #e2e8f0;
+  --theme-ring: var(--theme-brand);
+
+  /* 滚动条 */
+  --theme-scrollbar-thumb: #d1d5db;
+  --theme-scrollbar-thumb-hover: #9ca3af;
+
   font-size: 17px;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   letter-spacing: -0.011em;
+  color-scheme: light;
 }
 
-/* 亮色模式：纯白底 */
+/* ─── 暗色 ─── */
+[data-theme="dark"] {
+  /* BRAND_DARK_BLOCK_START */
+  --theme-brand: #00e5b8;
+  --theme-brand-hover: #00d4aa;
+  --theme-brand-active: #00c39c;
+  --theme-brand-muted: oklch(0.25 0.05 168);
+  /* BRAND_DARK_BLOCK_END */
+
+  --theme-background: #0b0f17;
+  --theme-foreground: #e2e8f0;
+
+  --theme-card: #11161f;
+  --theme-card-foreground: #e2e8f0;
+
+  --theme-popover: #141a24;
+  --theme-popover-foreground: #e2e8f0;
+
+  --theme-muted: #1a212d;
+  --theme-muted-foreground: #94a3b8;
+
+  --theme-accent: #222a37;
+  --theme-accent-foreground: #e2e8f0;
+
+  --theme-border: #2a3340;
+  --theme-input: #2a3340;
+  --theme-ring: var(--theme-brand);
+
+  --theme-scrollbar-thumb: #3a4453;
+  --theme-scrollbar-thumb-hover: #4a5566;
+
+  color-scheme: dark;
+}
+
+/* ─── Body ─── */
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #ffffff;
-  color: #0f172a;
+  background-color: var(--theme-background);
+  color: var(--theme-foreground);
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
-/* 自定义滚动条 */
+/* ─── 自定义滚动条 ─── */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -44,15 +143,31 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--theme-scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--theme-scrollbar-thumb-hover);
 }
 
-/* macOS 交通灯区域占位 */
+/* ─── macOS 交通灯区域占位 ─── */
 .titlebar-pad {
   padding-top: 38px;
+}
+
+/* ─── Focus 标准（PR-U5 会强化） ─── */
+:focus-visible {
+  outline: 2px solid var(--theme-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 1px;
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { Clock, RefreshCw, Trash2 } from 'lucide-react';
 import Select from '../components/Select';
 
 interface CronTask {
@@ -201,9 +202,7 @@ export default function CronPage() {
         {tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Clock className="w-8 h-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
             </div>
             <p className="text-sm text-muted-foreground mb-1">暂无定时任务</p>
             <p className="text-xs text-muted-foreground">点击右上角创建你的第一个自动化任务</p>
@@ -220,9 +219,7 @@ export default function CronPage() {
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                       task.enabled ? 'bg-brand/10' : 'bg-accent'
                     }`}>
-                      <svg className={`w-5 h-5 ${task.enabled ? 'text-brand' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                      <Clock className={`w-5 h-5 ${task.enabled ? 'text-brand' : 'text-muted-foreground'}`} strokeWidth={1.5} aria-hidden="true" />
                     </div>
 
                     {/* 中间内容 */}
@@ -240,9 +237,7 @@ export default function CronPage() {
                       <p className="text-xs text-muted-foreground mb-2">{task.description}</p>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-                          </svg>
+                          <RefreshCw className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
                           {task.cronLabel}
                         </span>
                         {task.lastRun && <span>上次: {task.lastRun}</span>}
@@ -276,9 +271,7 @@ export default function CronPage() {
                         className="p-1.5 text-muted-foreground hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
                         title="删除"
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                        </svg>
+                        <Trash2 className="w-4 h-4" strokeWidth={1.5} aria-hidden="true" />
                       </button>
                     </div>
                   </div>

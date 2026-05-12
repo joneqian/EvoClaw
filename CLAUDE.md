@@ -118,8 +118,8 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
 - **当前冲刺**: M15 UI 现代化 5 件套（2026-05-12 启动）— 对齐 2025-2026 Anthropic/Claude AI 极简流派 + 反超 Hermes 工业级 UI 标准
-  - **U1 暗色主题 + dual-theme 设计系统**：feat/ui-dark-mode 进行中（shadcn 命名 token + CSS variables + ThemeProvider 三态 + 384 处颜色硬编码 sweep + ThemeSwitcher）
-  - **U2 lucide-react 图标库**：86 处内联 SVG → 标准库（待启动）
+  - **U1 暗色主题 + dual-theme 设计系统** ✅（PR #155，2026-05-12）：shadcn 命名 token + CSS variables + ThemeProvider 三态 + 2000+ 处颜色硬编码 sweep + ThemeSwitcher + brand-apply 模板升级 v3
+  - **U2 lucide-react 图标库**：feat/ui-lucide-icons 进行中（~80% 完成：IconNav/App/Dialog/Select/AlertPage/SecurityPage 已迁移；ChatPage/SkillPage/ExpertSettingsPanel 留 PR-U2b 收尾）
   - **U3 Toast (sonner) + Skeleton 系统**：替换 7 处零散 toast（待启动）
   - **U4 i18n 中英双语**：2203 处中文字面量抽离（待启动）
   - **U5 ARIA + 键盘导航**：8 个 modal + 60+ 图标按钮 a11y 全覆盖（待启动）

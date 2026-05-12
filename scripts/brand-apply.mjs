@@ -244,10 +244,13 @@ function darken(hex, amount) {
   return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
 }
 
-function toOklchMuted(hex) {
-  // 简化：生成一个浅色 muted 变体（高亮度、低饱和度）
+function lighten(hex, amount) {
   const [r, g, b] = hexToRgb(hex);
-  // 计算色相角度（简化版）
+  return rgbToHex(r + (255 - r) * amount, g + (255 - g) * amount, b + (255 - b) * amount);
+}
+
+function hexHue(hex) {
+  const [r, g, b] = hexToRgb(hex);
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   let h = 0;
   if (max !== min) {
@@ -256,7 +259,15 @@ function toOklchMuted(hex) {
     else if (max === g) h = ((b - r) / d + 2) * 60;
     else h = ((r - g) / d + 4) * 60;
   }
-  return `oklch(0.93 0.05 ${Math.round(h)})`;
+  return Math.round(h);
+}
+
+function toOklchMuted(hex) {
+  return `oklch(0.93 0.05 ${hexHue(hex)})`;
+}
+
+function toOklchDarkMuted(hex) {
+  return `oklch(0.25 0.05 ${hexHue(hex)})`;
 }
 
 const brandPrimary = config.colors.primary;
@@ -264,13 +275,36 @@ const brandHover = darken(brandPrimary, 0.08);
 const brandActive = config.colors.primaryDark;
 const brandMuted = toOklchMuted(brandPrimary);
 
+// 暗色模式：品牌色提亮一档（更适合暗色背景）
+const brandPrimaryDark = lighten(brandPrimary, 0.12);
+const brandHoverDark = brandPrimary; // 提亮过 = light hover
+const brandActiveDark = brandHover;  // 进一步推到 hover
+const brandMutedDark = toOklchDarkMuted(brandPrimary);
+
+// 亮色块（v3 template 标记 BRAND_LIGHT_BLOCK_START / END）
 indexCss = indexCss.replace(
-  /--color-brand:\s*[^;]+;\s*\n\s*--color-brand-hover:\s*[^;]+;\s*\n\s*--color-brand-active:\s*[^;]+;\s*\n\s*--color-brand-muted:\s*[^;]+;/,
-  `--color-brand: ${brandPrimary};\n  --color-brand-hover: ${brandHover};\n  --color-brand-active: ${brandActive};\n  --color-brand-muted: ${brandMuted};`
+  /\/\* BRAND_LIGHT_BLOCK_START \*\/[\s\S]*?\/\* BRAND_LIGHT_BLOCK_END \*\//,
+  `/* BRAND_LIGHT_BLOCK_START */
+  --theme-brand: ${brandPrimary};
+  --theme-brand-hover: ${brandHover};
+  --theme-brand-active: ${brandActive};
+  --theme-brand-muted: ${brandMuted};
+  /* BRAND_LIGHT_BLOCK_END */`
+);
+
+// 暗色块（v3 template 标记 BRAND_DARK_BLOCK_START / END）
+indexCss = indexCss.replace(
+  /\/\* BRAND_DARK_BLOCK_START \*\/[\s\S]*?\/\* BRAND_DARK_BLOCK_END \*\//,
+  `/* BRAND_DARK_BLOCK_START */
+  --theme-brand: ${brandPrimaryDark};
+  --theme-brand-hover: ${brandHoverDark};
+  --theme-brand-active: ${brandActiveDark};
+  --theme-brand-muted: ${brandMutedDark};
+  /* BRAND_DARK_BLOCK_END */`
 );
 
 writeFileSync(indexCssPath, indexCss, 'utf-8');
-console.log(`  ✅ ${indexCssPath} (brand: ${brandPrimary})`);
+console.log(`  ✅ ${indexCssPath} (brand: ${brandPrimary} / dark: ${brandPrimaryDark})`);
 
 // ─── 6. 生成 Feature Flag 环境变量文件 ───
 

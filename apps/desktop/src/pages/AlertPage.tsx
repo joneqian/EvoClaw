@@ -59,16 +59,16 @@ const MOCK_ALERTS: AlertItem[] = [
 
 const LEVEL_CONFIG: Record<AlertLevel, { label: string; icon: React.ReactNode; bg: string; border: string; text: string; dot: string }> = {
   critical: {
-    label: '严重', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-600', dot: 'bg-red-500',
-    icon: <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>,
+    label: '严重', bg: 'bg-danger/10', border: 'border-danger/30', text: 'text-danger', dot: 'bg-danger',
+    icon: <svg className="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>,
   },
   warning: {
-    label: '警告', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-600', dot: 'bg-amber-500',
-    icon: <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>,
+    label: '警告', bg: 'bg-warning/10', border: 'border-warning/30', text: 'text-warning', dot: 'bg-warning',
+    icon: <svg className="w-5 h-5 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>,
   },
   info: {
-    label: '提示', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', dot: 'bg-blue-500',
-    icon: <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>,
+    label: '提示', bg: 'bg-info/10', border: 'border-info/30', text: 'text-info', dot: 'bg-info',
+    icon: <svg className="w-5 h-5 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>,
   },
 };
 
@@ -111,14 +111,14 @@ export default function AlertPage() {
       <div className="px-6 pt-5 pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">预警中心</h2>
-            <p className="text-sm text-slate-400 mt-1">集中展示服务对象的健康预警信息，及时跟进处理</p>
+            <h2 className="text-lg font-bold text-foreground">预警中心</h2>
+            <p className="text-sm text-muted-foreground mt-1">集中展示服务对象的健康预警信息，及时跟进处理</p>
           </div>
           {activeCount > 0 && (
             <button
               onClick={resolveAll}
-              className="px-4 py-2 text-sm font-medium text-slate-600
-                bg-white border border-slate-200 rounded-xl
+              className="px-4 py-2 text-sm font-medium text-muted-foreground
+                bg-card border border-border rounded-xl
                 hover:border-brand/40 hover:text-brand transition-all"
             >
               全部已读
@@ -128,29 +128,29 @@ export default function AlertPage() {
 
         {/* 统计卡片 */}
         <div className="flex gap-4 mt-4">
-          <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-              <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div className="flex items-center gap-3 px-4 py-3 bg-card rounded-xl border border-border flex-1">
+            <div className="w-10 h-10 rounded-xl bg-danger/10 flex items-center justify-center">
+              <svg className="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
             </div>
             <div>
-              <p className="text-xl font-bold text-red-500">{criticalCount}</p>
-              <p className="text-xs text-slate-400">严重预警</p>
+              <p className="text-xl font-bold text-danger">{criticalCount}</p>
+              <p className="text-xs text-muted-foreground">严重预警</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <svg className="w-5 h-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div className="flex items-center gap-3 px-4 py-3 bg-card rounded-xl border border-border flex-1">
+            <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
+              <svg className="w-5 h-5 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
               </svg>
             </div>
             <div>
-              <p className="text-xl font-bold text-amber-500">{activeCount}</p>
-              <p className="text-xs text-slate-400">待处理</p>
+              <p className="text-xl font-bold text-warning">{activeCount}</p>
+              <p className="text-xs text-muted-foreground">待处理</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
+          <div className="flex items-center gap-3 px-4 py-3 bg-card rounded-xl border border-border flex-1">
             <div className="w-10 h-10 rounded-xl bg-brand/10 flex items-center justify-center">
               <svg className="w-5 h-5 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
@@ -158,37 +158,37 @@ export default function AlertPage() {
             </div>
             <div>
               <p className="text-xl font-bold text-brand">{patientCount}</p>
-              <p className="text-xs text-slate-400">关注对象</p>
+              <p className="text-xs text-muted-foreground">关注对象</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-              <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div className="flex items-center gap-3 px-4 py-3 bg-card rounded-xl border border-border flex-1">
+            <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
+              <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div>
-              <p className="text-xl font-bold text-green-500">{alerts.filter(a => a.status === 'resolved').length}</p>
-              <p className="text-xs text-slate-400">已处理</p>
+              <p className="text-xl font-bold text-success">{alerts.filter(a => a.status === 'resolved').length}</p>
+              <p className="text-xs text-muted-foreground">已处理</p>
             </div>
           </div>
         </div>
 
         {/* 状态 Tab */}
-        <div className="flex gap-1 mt-4 bg-slate-100 rounded-xl p-1 w-fit">
+        <div className="flex gap-1 mt-4 bg-accent rounded-xl p-1 w-fit">
           {STATUS_TABS.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${
                 activeTab === tab.key
-                  ? 'bg-white text-slate-800 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {tab.label}
               {tab.key === 'active' && activeCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">
+                <span className="ml-1.5 px-1.5 py-0.5 text-xs font-bold bg-danger text-white rounded-full">
                   {activeCount}
                 </span>
               )}
@@ -201,13 +201,13 @@ export default function AlertPage() {
       <div className="flex-1 overflow-y-auto px-6 pb-6">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-green-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-sm text-slate-500 mb-1">一切正常</p>
-            <p className="text-xs text-slate-400">当前没有需要关注的预警信息</p>
+            <p className="text-sm text-muted-foreground mb-1">一切正常</p>
+            <p className="text-xs text-muted-foreground">当前没有需要关注的预警信息</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -219,7 +219,7 @@ export default function AlertPage() {
                 <div
                   key={alert.id}
                   className={`rounded-2xl border transition-all duration-200 ${
-                    isResolved ? 'border-slate-100 opacity-60' : `${lc.border} hover:shadow-md`
+                    isResolved ? 'border-border opacity-60' : `${lc.border} hover:shadow-md`
                   }`}
                 >
                   {/* 顶部色条 */}
@@ -244,41 +244,41 @@ export default function AlertPage() {
                       {/* 内容 */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-full">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold bg-accent text-muted-foreground rounded-full">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
                             </svg>
                             {alert.patient}
                           </span>
-                          <h4 className="text-sm font-bold text-slate-800">{alert.title}</h4>
+                          <h4 className="text-sm font-bold text-foreground">{alert.title}</h4>
                           <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${lc.bg} ${lc.text}`}>
                             {lc.label}
                           </span>
                           {isResolved && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-green-50 text-green-500 rounded-full">
+                            <span className="px-2 py-0.5 text-xs font-medium bg-success/10 text-success rounded-full">
                               已处理
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-400">{alert.description}</p>
+                        <p className="text-xs text-muted-foreground">{alert.description}</p>
 
                         {/* 展开详情 */}
                         {isExpanded && (
-                          <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                          <div className="mt-3 pt-3 border-t border-border space-y-2">
                             {alert.metric && (
                               <div className="flex gap-4">
-                                <div className="px-3 py-2 bg-slate-50 rounded-lg flex-1">
-                                  <p className="text-xs text-slate-400 mb-0.5">监测指标</p>
-                                  <p className="text-sm font-semibold text-slate-700">{alert.metric}</p>
+                                <div className="px-3 py-2 bg-muted rounded-lg flex-1">
+                                  <p className="text-xs text-muted-foreground mb-0.5">监测指标</p>
+                                  <p className="text-sm font-semibold text-foreground">{alert.metric}</p>
                                 </div>
-                                <div className="px-3 py-2 bg-slate-50 rounded-lg flex-1">
-                                  <p className="text-xs text-slate-400 mb-0.5">当前值</p>
+                                <div className="px-3 py-2 bg-muted rounded-lg flex-1">
+                                  <p className="text-xs text-muted-foreground mb-0.5">当前值</p>
                                   <p className={`text-sm font-semibold ${lc.text}`}>{alert.value}</p>
                                 </div>
                                 {alert.threshold && (
-                                  <div className="px-3 py-2 bg-slate-50 rounded-lg flex-1">
-                                    <p className="text-xs text-slate-400 mb-0.5">预警阈值</p>
-                                    <p className="text-sm font-semibold text-slate-700">{alert.threshold}</p>
+                                  <div className="px-3 py-2 bg-muted rounded-lg flex-1">
+                                    <p className="text-xs text-muted-foreground mb-0.5">预警阈值</p>
+                                    <p className="text-sm font-semibold text-foreground">{alert.threshold}</p>
                                   </div>
                                 )}
                               </div>
@@ -294,15 +294,15 @@ export default function AlertPage() {
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); ignoreAlert(alert.id); }}
-                                  className="px-3 py-1.5 text-xs font-medium text-slate-500
-                                    border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                                  className="px-3 py-1.5 text-xs font-medium text-muted-foreground
+                                    border border-border rounded-lg hover:bg-muted transition-colors"
                                 >
                                   忽略
                                 </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); deleteAlert(alert.id); }}
-                                  className="px-3 py-1.5 text-xs font-medium text-red-500
-                                    border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                                  className="px-3 py-1.5 text-xs font-medium text-danger
+                                    border border-danger/30 rounded-lg hover:bg-danger/10 transition-colors"
                                 >
                                   删除
                                 </button>
@@ -314,9 +314,9 @@ export default function AlertPage() {
 
                       {/* 右侧信息 */}
                       <div className="text-right shrink-0">
-                        <p className="text-xs text-slate-400">{alert.time}</p>
-                        <p className="text-xs text-slate-400 mt-1">{alert.source}</p>
-                        <svg className={`w-4 h-4 text-slate-300 ml-auto mt-2 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <p className="text-xs text-muted-foreground">{alert.time}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{alert.source}</p>
+                        <svg className={`w-4 h-4 text-muted-foreground ml-auto mt-2 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                         </svg>
                       </div>

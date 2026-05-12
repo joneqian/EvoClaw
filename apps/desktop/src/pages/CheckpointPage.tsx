@@ -37,13 +37,13 @@ export default function CheckpointPage() {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-50">
+    <div className="flex-1 overflow-auto bg-muted">
       <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold text-slate-800">撤销改动</h1>
-            <p className="text-sm text-slate-500 mt-1">
+            <h1 className="text-xl font-semibold text-foreground">撤销改动</h1>
+            <p className="text-sm text-muted-foreground mt-1">
               Agent 修改 / 创建文件前会自动备份，遇到问题可一键撤销最近 7 天的改动。
             </p>
           </div>
@@ -51,7 +51,7 @@ export default function CheckpointPage() {
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-100 rounded-md text-slate-600 transition-colors disabled:opacity-50"
+            className="text-xs px-3 py-1.5 border border-border hover:bg-accent rounded-md text-muted-foreground transition-colors disabled:opacity-50"
           >
             {loading ? '刷新中…' : '刷新'}
           </button>
@@ -59,7 +59,7 @@ export default function CheckpointPage() {
 
         {/* Error */}
         {error && !loading && (
-          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/30 rounded-lg text-sm text-danger">
             加载失败：{error}
           </div>
         )}
@@ -70,7 +70,7 @@ export default function CheckpointPage() {
         )}
 
         {loading && list.length === 0 && (
-          <div className="text-center py-16 text-slate-400 text-sm">加载中…</div>
+          <div className="text-center py-16 text-muted-foreground text-sm">加载中…</div>
         )}
       </div>
 
@@ -91,8 +91,8 @@ export default function CheckpointPage() {
         <div
           className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-bottom-2 ${
             toast.kind === 'ok'
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
+              ? 'bg-success/10 text-success border border-success/30'
+              : 'bg-danger/10 text-danger border border-danger/30'
           }`}
         >
           {toast.msg}

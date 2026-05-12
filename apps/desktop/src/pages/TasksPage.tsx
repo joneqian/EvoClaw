@@ -18,20 +18,20 @@ const RUNTIME_LABELS: Record<TaskRuntime, string> = {
 };
 
 const RUNTIME_COLORS: Record<TaskRuntime, { bg: string; text: string; ring: string }> = {
-  subagent: { bg: 'bg-purple-50', text: 'text-purple-600', ring: 'ring-purple-200' },
-  cron: { bg: 'bg-blue-50', text: 'text-blue-600', ring: 'ring-blue-200' },
-  heartbeat: { bg: 'bg-emerald-50', text: 'text-emerald-600', ring: 'ring-emerald-200' },
-  bash: { bg: 'bg-slate-100', text: 'text-slate-600', ring: 'ring-slate-200' },
-  boot: { bg: 'bg-amber-50', text: 'text-amber-600', ring: 'ring-amber-200' },
+  subagent: { bg: 'bg-purple-50 dark:bg-purple-950/40', text: 'text-purple-600 dark:text-purple-300', ring: 'ring-info/40' },
+  cron: { bg: 'bg-info/10', text: 'text-info', ring: 'ring-info/40' },
+  heartbeat: { bg: 'bg-success/10', text: 'text-success', ring: 'ring-success/40' },
+  bash: { bg: 'bg-accent', text: 'text-muted-foreground', ring: 'ring-border' },
+  boot: { bg: 'bg-warning/10', text: 'text-warning', ring: 'ring-warning/40' },
 };
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; dot: string; text: string }> = {
-  queued: { label: '排队中', dot: 'bg-slate-300', text: 'text-slate-500' },
-  running: { label: '运行中', dot: 'bg-blue-400 animate-pulse', text: 'text-blue-600' },
-  succeeded: { label: '已完成', dot: 'bg-emerald-400', text: 'text-emerald-600' },
-  failed: { label: '失败', dot: 'bg-red-400', text: 'text-red-600' },
-  timed_out: { label: '超时', dot: 'bg-orange-400', text: 'text-orange-600' },
-  cancelled: { label: '已取消', dot: 'bg-slate-400', text: 'text-slate-600' },
+  queued: { label: '排队中', dot: 'bg-border', text: 'text-muted-foreground' },
+  running: { label: '运行中', dot: 'bg-info animate-pulse', text: 'text-info' },
+  succeeded: { label: '已完成', dot: 'bg-success', text: 'text-success' },
+  failed: { label: '失败', dot: 'bg-danger', text: 'text-danger' },
+  timed_out: { label: '超时', dot: 'bg-warning', text: 'text-warning' },
+  cancelled: { label: '已取消', dot: 'bg-muted-foreground', text: 'text-muted-foreground' },
 };
 
 function formatDuration(ms: number): string {
@@ -73,7 +73,7 @@ function TaskRow({ task, agentName, onCancel }: TaskRowProps) {
   );
 
   return (
-    <div className={`group px-4 py-3 border-b border-slate-100 hover:bg-slate-50/60 transition-colors`}>
+    <div className={`group px-4 py-3 border-b border-border hover:bg-muted/60 transition-colors`}>
       <div className="flex items-start gap-3">
         {/* Runtime 徽标 */}
         <span
@@ -84,10 +84,10 @@ function TaskRow({ task, agentName, onCancel }: TaskRowProps) {
 
         {/* 标题 + 元信息 */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-sm text-slate-800 font-medium">
+          <div className="flex items-center gap-2 text-sm text-foreground font-medium">
             <span className="truncate">{task.label || task.sourceId || task.taskId}</span>
           </div>
-          <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
               <span className={statusCfg.text}>{statusCfg.label}</span>
@@ -107,7 +107,7 @@ function TaskRow({ task, agentName, onCancel }: TaskRowProps) {
 
           {/* 进度（仅运行中且有数据） */}
           {isActive && hasProgress && (
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
               {task.progress?.toolUseCount !== undefined && (
                 <span>工具调用 {task.progress.toolUseCount}</span>
               )}
@@ -125,7 +125,7 @@ function TaskRow({ task, agentName, onCancel }: TaskRowProps) {
 
           {/* 错误信息 */}
           {task.error && (
-            <div className="mt-1.5 text-xs text-red-500 truncate" title={task.error}>
+            <div className="mt-1.5 text-xs text-danger truncate" title={task.error}>
               {task.error}
             </div>
           )}
@@ -135,8 +135,8 @@ function TaskRow({ task, agentName, onCancel }: TaskRowProps) {
         {isActive && (
           <button
             onClick={() => onCancel(task.taskId)}
-            className="shrink-0 px-2.5 py-1 text-xs font-medium text-red-600 border border-red-200 rounded-md
-                       hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+            className="shrink-0 px-2.5 py-1 text-xs font-medium text-danger border border-danger/30 rounded-md
+                       hover:bg-danger/10 transition-colors opacity-0 group-hover:opacity-100"
           >
             中止
           </button>
@@ -211,29 +211,29 @@ export default function TasksPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-card">
       {/* 顶部标题 + 统计 */}
-      <div className="shrink-0 px-6 py-4 border-b border-slate-100">
+      <div className="shrink-0 px-6 py-4 border-b border-border">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-slate-800">后台任务</h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              共 {stats.total} 个任务 · 运行中 <span className="text-blue-600 font-medium">{stats.running}</span> · 已结束 {stats.ended}
+            <h1 className="text-lg font-semibold text-foreground">后台任务</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              共 {stats.total} 个任务 · 运行中 <span className="text-info font-medium">{stats.running}</span> · 已结束 {stats.ended}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => fetchTasks()}
               disabled={loading}
-              className="px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg
-                         hover:bg-slate-50 transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-sm text-muted-foreground border border-border rounded-lg
+                         hover:bg-muted transition-colors disabled:opacity-50"
             >
               {loading ? '刷新中...' : '刷新'}
             </button>
             <button
               onClick={() => pruneCompleted()}
-              className="px-3 py-1.5 text-sm text-slate-600 border border-slate-200 rounded-lg
-                         hover:bg-slate-50 transition-colors"
+              className="px-3 py-1.5 text-sm text-muted-foreground border border-border rounded-lg
+                         hover:bg-muted transition-colors"
               title="清理已结束超过 1 小时的任务记录"
             >
               清理历史
@@ -243,13 +243,13 @@ export default function TasksPage() {
       </div>
 
       {/* 过滤栏 */}
-      <div className="shrink-0 px-6 py-2 border-b border-slate-100 flex items-center gap-2 overflow-x-auto">
+      <div className="shrink-0 px-6 py-2 border-b border-border flex items-center gap-2 overflow-x-auto">
         <button
           onClick={() => setRuntimeFilter('all')}
           className={`shrink-0 px-3 py-1 text-xs font-medium rounded-full transition-colors ${
             runtimeFilter === 'all'
               ? 'bg-brand text-white'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              : 'bg-accent text-muted-foreground hover:bg-accent'
           }`}
         >
           全部
@@ -261,14 +261,14 @@ export default function TasksPage() {
             className={`shrink-0 px-3 py-1 text-xs font-medium rounded-full transition-colors ${
               runtimeFilter === rt
                 ? 'bg-brand text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                : 'bg-accent text-muted-foreground hover:bg-accent'
             }`}
           >
             {RUNTIME_LABELS[rt]}
           </button>
         ))}
         <div className="flex-1" />
-        <label className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0 cursor-pointer">
           <input
             type="checkbox"
             checked={activeOnly}
@@ -283,7 +283,7 @@ export default function TasksPage() {
       <div className="flex-1 overflow-y-auto">
         {error ? (
           <div className="px-6 py-8 text-center">
-            <p className="text-sm text-red-500">加载失败: {error}</p>
+            <p className="text-sm text-danger">加载失败: {error}</p>
             <button
               onClick={() => fetchTasks()}
               className="mt-2 text-xs text-brand hover:underline"
@@ -293,7 +293,7 @@ export default function TasksPage() {
           </div>
         ) : filteredTasks.length === 0 ? (
           <div className="px-6 py-16 text-center">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted-foreground">
               {tasks.length === 0 ? '当前没有后台任务' : '没有符合条件的任务'}
             </p>
           </div>
@@ -316,25 +316,25 @@ export default function TasksPage() {
           onClick={() => setConfirmCancel(null)}
         >
           <div
-            className="bg-white rounded-xl shadow-xl p-6 w-[360px]"
+            className="bg-card rounded-xl shadow-xl p-6 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold text-slate-800 mb-2">确认中止任务</h3>
-            <p className="text-sm text-slate-500 mb-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">确认中止任务</h3>
+            <p className="text-sm text-muted-foreground mb-5">
               确定要中止此任务吗？运行中的工作将被终止，且无法恢复。
             </p>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setConfirmCancel(null)}
-                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg
-                           hover:bg-slate-50 transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg
+                           hover:bg-muted transition-colors"
               >
                 取消
               </button>
               <button
                 onClick={confirmCancelTask}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg
-                           hover:bg-red-600 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-danger rounded-lg
+                           hover:bg-danger transition-colors"
               >
                 确认中止
               </button>

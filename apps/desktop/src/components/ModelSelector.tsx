@@ -121,14 +121,14 @@ export default function ModelSelector({ selectedModelId, onModelChange, disabled
       <button
         onClick={handleToggle}
         disabled={disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600
-          bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full transition-colors
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted-foreground
+          bg-muted hover:bg-accent border border-border rounded-full transition-colors
           disabled:opacity-40 disabled:cursor-not-allowed"
         title="切换模型"
       >
         {activeLogoSrc && <img src={activeLogoSrc} alt="" className="w-4 h-4 shrink-0" />}
         <span className="max-w-[150px] truncate">{displayName}</span>
-        <svg className={`w-3.5 h-3.5 shrink-0 transition-transform text-slate-400 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className={`w-3.5 h-3.5 shrink-0 transition-transform text-muted-foreground ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
         </svg>
       </button>
@@ -136,7 +136,7 @@ export default function ModelSelector({ selectedModelId, onModelChange, disabled
       {/* 下拉菜单 — 参考 EasyClaw 设计，固定定位避免被裁切 */}
       {open && (
         <div
-          className="fixed w-80 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-[100] flex flex-col"
+          className="fixed w-80 bg-card border border-border rounded-2xl shadow-xl overflow-hidden z-[100] flex flex-col"
           style={{
             bottom: `${window.innerHeight - (menuRef.current?.getBoundingClientRect().top ?? 0) + 8}px`,
             right: `${window.innerWidth - (menuRef.current?.getBoundingClientRect().right ?? 0)}px`,
@@ -144,19 +144,19 @@ export default function ModelSelector({ selectedModelId, onModelChange, disabled
           }}
         >
           {/* 标题 */}
-          <div className="px-4 py-3 border-b border-slate-100">
-            <span className="text-sm font-bold text-slate-800">选择模型</span>
+          <div className="px-4 py-3 border-b border-border">
+            <span className="text-sm font-bold text-foreground">选择模型</span>
           </div>
 
           <div className="overflow-y-auto flex-1">
             {!loaded && (
               <div className="flex justify-center py-6">
-                <span className="w-5 h-5 border-2 border-slate-300 border-t-brand rounded-full animate-spin" />
+                <span className="w-5 h-5 border-2 border-border border-t-brand rounded-full animate-spin" />
               </div>
             )}
 
             {allModels.length === 0 && loaded && (
-              <p className="px-4 py-4 text-sm text-slate-400 text-center">暂无可用模型</p>
+              <p className="px-4 py-4 text-sm text-muted-foreground text-center">暂无可用模型</p>
             )}
 
             {groups.map((group) => {
@@ -164,11 +164,11 @@ export default function ModelSelector({ selectedModelId, onModelChange, disabled
               return (
                 <div key={group.providerName}>
                   {/* 分组标题 — Provider logo + 名称 */}
-                  <div className="flex items-center gap-2 px-4 pt-3 pb-1.5 border-t border-slate-100 first:border-t-0">
+                  <div className="flex items-center gap-2 px-4 pt-3 pb-1.5 border-t border-border first:border-t-0">
                     {logoSrc && (
                       <img src={logoSrc} alt="" className="w-4 h-4 shrink-0" />
                     )}
-                    <span className="text-xs font-semibold text-slate-500 tracking-wide">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wide">
                       {group.providerName}
                     </span>
                   </div>
@@ -184,21 +184,21 @@ export default function ModelSelector({ selectedModelId, onModelChange, disabled
                           setOpen(false);
                         }}
                         className={`w-full flex items-center gap-3 px-4 py-2 transition-colors ${
-                          isSelected ? 'bg-brand/5' : 'hover:bg-slate-50'
+                          isSelected ? 'bg-brand/5' : 'hover:bg-muted'
                         }`}
                       >
                         {/* Provider logo */}
-                        <span className="w-6 h-6 rounded-md bg-slate-50 flex items-center justify-center shrink-0 overflow-hidden">
+                        <span className="w-6 h-6 rounded-md bg-muted flex items-center justify-center shrink-0 overflow-hidden">
                           {logoSrc ? (
                             <img src={logoSrc} alt="" className="w-4 h-4" />
                           ) : (
-                            <span className="text-xs font-bold text-slate-400">
+                            <span className="text-xs font-bold text-muted-foreground">
                               {group.providerName.charAt(0).toUpperCase()}
                             </span>
                           )}
                         </span>
                         {/* 模型名称 */}
-                        <span className={`flex-1 text-sm text-left truncate ${isSelected ? 'text-brand-active font-medium' : 'text-slate-700'}`}>
+                        <span className={`flex-1 text-sm text-left truncate ${isSelected ? 'text-brand-active font-medium' : 'text-foreground'}`}>
                           {model.name}
                         </span>
                         {/* 选中勾 */}

@@ -18,11 +18,11 @@ interface ThinkingBlockProps {
 
 export default function ThinkingBlock({ content, isExpanded, onToggle, isStreaming }: ThinkingBlockProps) {
   return (
-    <div className="my-2 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
+    <div className="my-2 rounded-lg border border-border bg-muted overflow-hidden">
       {/* Header — 始终可见 */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
       >
         <span className="flex items-center gap-2">
           <span className="text-base">💭</span>
@@ -30,9 +30,9 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
             <span className="flex items-center gap-1">
               正在思考
               <span className="flex gap-0.5 ml-1">
-                <span className="w-1 h-1 bg-slate-400 rounded-full animate-pulse" />
-                <span className="w-1 h-1 bg-slate-400 rounded-full animate-pulse [animation-delay:150ms]" />
-                <span className="w-1 h-1 bg-slate-400 rounded-full animate-pulse [animation-delay:300ms]" />
+                <span className="w-1 h-1 bg-muted-foreground rounded-full animate-pulse" />
+                <span className="w-1 h-1 bg-muted-foreground rounded-full animate-pulse [animation-delay:150ms]" />
+                <span className="w-1 h-1 bg-muted-foreground rounded-full animate-pulse [animation-delay:300ms]" />
               </span>
             </span>
           ) : (
@@ -56,8 +56,8 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
           isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
         }`}
       >
-        <div className="px-3 pb-3 border-t border-slate-200">
-          <div className="mt-2 max-h-80 overflow-y-auto text-sm text-slate-600 prose prose-sm prose-slate">
+        <div className="px-3 pb-3 border-t border-border">
+          <div className="mt-2 max-h-80 overflow-y-auto text-sm text-muted-foreground prose prose-sm prose-slate">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {content || '(思考中...)'}
             </ReactMarkdown>

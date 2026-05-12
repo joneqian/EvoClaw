@@ -42,21 +42,21 @@ type PaletteEntry =
 // ─── 权限徽章颜色 ───
 
 const PERMISSION_COLORS: Record<string, string> = {
-  file_read:  'bg-blue-50 text-blue-700',
-  file_write: 'bg-orange-50 text-orange-700',
-  network:    'bg-purple-50 text-purple-700',
-  shell:      'bg-rose-50 text-rose-700',
-  browser:    'bg-cyan-50 text-cyan-700',
-  mcp:        'bg-indigo-50 text-indigo-700',
-  skill:      'bg-emerald-50 text-emerald-700',
+  file_read:  'bg-info/10 text-info',
+  file_write: 'bg-warning/10 text-warning',
+  network:    'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300',
+  shell:      'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300',
+  browser:    'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300',
+  mcp:        'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300',
+  skill:      'bg-success/10 text-success',
 };
 
 const METHOD_COLORS: Record<string, string> = {
-  GET:    'text-emerald-600',
-  POST:   'text-blue-600',
-  PUT:    'text-amber-600',
-  PATCH:  'text-amber-600',
-  DELETE: 'text-rose-600',
+  GET:    'text-success',
+  POST:   'text-info',
+  PUT:    'text-warning',
+  PATCH:  'text-warning',
+  DELETE: 'text-rose-600 dark:text-rose-300',
 };
 
 // ─── 组件 ───
@@ -188,34 +188,34 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl shadow-slate-900/10 w-full max-w-[600px] mx-4
+        className="bg-card rounded-2xl shadow-2xl shadow-foreground/10 w-full max-w-[600px] mx-4
           animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[70vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 搜索框 */}
-        <div className="px-4 py-3 border-b border-slate-100">
+        <div className="px-4 py-3 border-b border-border">
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索命令、API 路径、工具名…"
-            className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 outline-none"
+            className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
 
         {/* 结果列表 */}
         <div className="flex-1 overflow-y-auto">
-          {loading && <div className="px-4 py-6 text-sm text-slate-400 text-center">加载中…</div>}
+          {loading && <div className="px-4 py-6 text-sm text-muted-foreground text-center">加载中…</div>}
           {!loading && entries.length === 0 && (
-            <div className="px-4 py-6 text-sm text-slate-400 text-center">Sidecar 未就绪或无命令数据</div>
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center">Sidecar 未就绪或无命令数据</div>
           )}
           {!loading && grouped.length === 0 && entries.length > 0 && (
-            <div className="px-4 py-6 text-sm text-slate-400 text-center">没有匹配的命令</div>
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center">没有匹配的命令</div>
           )}
           {grouped.map(([group, arr]) => (
             <div key={group} className="py-1.5">
-              <div className="px-4 py-1 text-[11px] font-medium text-slate-400 uppercase tracking-wide">
+              <div className="px-4 py-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                 {group}
               </div>
               <ul>
@@ -223,38 +223,38 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                   <li key={`${group}-${i}`}>
                     <button
                       onClick={() => handleEntryClick(entry)}
-                      className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-3 group"
+                      className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-3 group"
                     >
                       {entry.kind === 'route' && (
                         <>
-                          <span className={`text-[11px] font-mono font-semibold w-14 shrink-0 ${METHOD_COLORS[entry.data.method] ?? 'text-slate-600'}`}>
+                          <span className={`text-[11px] font-mono font-semibold w-14 shrink-0 ${METHOD_COLORS[entry.data.method] ?? 'text-muted-foreground'}`}>
                             {entry.data.method}
                           </span>
-                          <code className="text-xs font-mono text-slate-700 truncate flex-1">{entry.data.path}</code>
+                          <code className="text-xs font-mono text-foreground truncate flex-1">{entry.data.path}</code>
                           {entry.data.requiredPermission && (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${PERMISSION_COLORS[entry.data.requiredPermission] ?? 'bg-slate-100 text-slate-600'}`}>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${PERMISSION_COLORS[entry.data.requiredPermission] ?? 'bg-accent text-muted-foreground'}`}>
                               {entry.data.requiredPermission}
                             </span>
                           )}
-                          <span className="text-xs text-slate-400 truncate max-w-[160px]">{entry.data.description}</span>
+                          <span className="text-xs text-muted-foreground truncate max-w-[160px]">{entry.data.description}</span>
                         </>
                       )}
                       {entry.kind === 'tool' && (
                         <>
-                          <span className="text-xs font-mono font-medium text-slate-700 w-28 shrink-0 truncate">{entry.data.name}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${PERMISSION_COLORS[entry.data.category] ?? 'bg-slate-100 text-slate-600'}`}>
+                          <span className="text-xs font-mono font-medium text-foreground w-28 shrink-0 truncate">{entry.data.name}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${PERMISSION_COLORS[entry.data.category] ?? 'bg-accent text-muted-foreground'}`}>
                             {entry.data.category}
                           </span>
                           {entry.data.destructive && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 shrink-0">破坏性</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning shrink-0">破坏性</span>
                           )}
-                          <span className="text-xs text-slate-400 truncate flex-1">{entry.data.description}</span>
+                          <span className="text-xs text-muted-foreground truncate flex-1">{entry.data.description}</span>
                         </>
                       )}
                       {entry.kind === 'channel' && (
                         <>
-                          <span className="text-xs font-mono font-medium text-slate-700 w-28 shrink-0 truncate">/{entry.data.name}</span>
-                          <span className="text-xs text-slate-400 truncate flex-1">{entry.data.description}</span>
+                          <span className="text-xs font-mono font-medium text-foreground w-28 shrink-0 truncate">/{entry.data.name}</span>
+                          <span className="text-xs text-muted-foreground truncate flex-1">{entry.data.description}</span>
                         </>
                       )}
                     </button>
@@ -266,7 +266,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
         </div>
 
         {/* 底部状态条 */}
-        <div className="px-4 py-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="px-4 py-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
           <span>点击条目复制到剪贴板 · Esc 关闭</span>
           {entries.length > 0 && <span>共 {entries.length} 项</span>}
         </div>
@@ -274,7 +274,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
 
       {/* 复制成功 toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs shadow-lg">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-foreground text-background text-xs shadow-lg">
           {toast}
         </div>
       )}

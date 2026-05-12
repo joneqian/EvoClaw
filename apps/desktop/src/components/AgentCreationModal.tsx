@@ -180,17 +180,17 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
       onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
     >
       <div
-        className="w-[90vw] max-w-[900px] h-[80vh] bg-white rounded-xl shadow-xl
+        className="w-[90vw] max-w-[900px] h-[80vh] bg-card rounded-xl shadow-xl
           overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 头部 + 进度条 */}
-        <div className="px-5 pt-4 pb-3 border-b border-slate-100 shrink-0">
+        <div className="px-5 pt-4 pb-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-700">创建新专家</h3>
+            <h3 className="text-sm font-semibold text-foreground">创建新专家</h3>
             <button
               onClick={handleClose}
-              className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+              className="text-muted-foreground hover:text-muted-foreground text-lg leading-none"
             >
               ×
             </button>
@@ -207,22 +207,22 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     isActive
                       ? 'bg-brand/10 text-brand'
                       : isDone
-                        ? 'text-green-500'
-                        : 'text-slate-400'
+                        ? 'text-success'
+                        : 'text-muted-foreground'
                   }`}>
                     <span className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${
                       isDone
-                        ? 'bg-green-500 text-white'
+                        ? 'bg-success text-white'
                         : isActive
                           ? 'bg-brand text-white'
-                          : 'bg-slate-200 text-slate-500'
+                          : 'bg-accent text-muted-foreground'
                     }`}>
                       {isDone ? '✓' : i + 1}
                     </span>
                     <span className="hidden sm:inline">{step.label}</span>
                   </div>
                   {i < STAGE_STEPS.length - 1 && (
-                    <div className={`flex-1 h-px ${isDone ? 'bg-green-300' : 'bg-slate-200'}`} />
+                    <div className={`flex-1 h-px ${isDone ? 'bg-success/50' : 'bg-accent'}`} />
                   )}
                 </div>
               );
@@ -233,7 +233,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
         {/* 对话区域 — flex 填充剩余高度 */}
         <div className="flex min-h-0 flex-1">
           {/* 左侧：对话 */}
-          <div className={`flex-1 flex flex-col min-h-0 ${builderPreview ? 'border-r border-slate-100' : ''}`}>
+          <div className={`flex-1 flex flex-col min-h-0 ${builderPreview ? 'border-r border-border' : ''}`}>
             <div className="p-4 space-y-3 overflow-y-auto flex-1">
               {builderMessages.map((msg, i) => (
                 <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
@@ -245,7 +245,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                   <div className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
                     msg.role === 'user'
                       ? 'bg-brand text-white rounded-br-sm'
-                      : 'bg-slate-50 text-slate-700 rounded-bl-sm'
+                      : 'bg-muted text-foreground rounded-bl-sm'
                   }`}>
                     {msg.content}
                   </div>
@@ -256,9 +256,9 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                   <div className="w-6 h-6 rounded-full bg-brand/10 flex items-center justify-center text-xs shrink-0">
                     🤖
                   </div>
-                  <div className="px-3 py-2 bg-slate-50 rounded-lg rounded-bl-sm">
+                  <div className="px-3 py-2 bg-muted rounded-lg rounded-bl-sm">
                     {builderStage === 'constraints' ? (
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -267,9 +267,9 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                       </div>
                     ) : (
                       <span className="inline-flex gap-1">
-                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                       </span>
                     )}
                   </div>
@@ -293,7 +293,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                           disabled:opacity-50
                           ${isSelected
                             ? 'bg-brand/10 text-brand border-brand/40 font-medium'
-                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-brand/5 hover:border-brand/30 hover:text-brand'
+                            : 'bg-muted text-muted-foreground border-border hover:bg-brand/5 hover:border-brand/30 hover:text-brand'
                           }`}
                       >
                         {isSelected ? `✓ ${s}` : s}
@@ -305,7 +305,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
             )}
 
             {/* 输入区域 / 完成操作 */}
-            <div className="p-3 border-t border-slate-100 shrink-0">
+            <div className="p-3 border-t border-border shrink-0">
               {builderStage === 'preview' && !builderCreatedAgentId ? (
                 <div className="flex gap-2">
                   <button
@@ -320,9 +320,9 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                   <button
                     onClick={() => handleSuggestion('重来')}
                     disabled={builderLoading}
-                    className="px-4 py-2 text-sm text-slate-500
-                      hover:text-slate-700
-                      border border-slate-200 rounded-lg
+                    className="px-4 py-2 text-sm text-muted-foreground
+                      hover:text-foreground
+                      border border-border rounded-lg
                       disabled:opacity-50"
                   >
                     重新开始
@@ -337,8 +337,8 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     onKeyDown={(e) => { if (e.key === 'Enter' && (inputValue.trim() || selectedSuggestions.size > 0)) handleSend(); }}
                     placeholder="输入你的回答..."
                     disabled={builderLoading}
-                    className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg
-                      bg-white text-slate-900
+                    className="flex-1 px-3 py-2 text-sm border border-border rounded-lg
+                      bg-card text-foreground
                       focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
                       disabled:opacity-50"
                     autoFocus
@@ -361,7 +361,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
           {builderPreview && (
             <div className="w-80 lg:w-96 flex flex-col min-h-0 shrink-0">
               <div className="px-4 pt-4 pb-2 shrink-0">
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   工作区文件预览
                 </h4>
               </div>
@@ -376,24 +376,24 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     <div key={filename} className={`border rounded-lg overflow-hidden transition-colors ${
                       isEditing
                         ? 'border-brand/50 ring-1 ring-brand/20'
-                        : 'border-slate-100'
+                        : 'border-border'
                     }`}>
                       <button
                         onClick={() => toggleFile(filename)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-50 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted transition-colors"
                       >
                         <span className="text-sm">{meta.icon}</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium text-slate-700">{meta.label}</span>
-                            <code className="text-xs px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">{filename}</code>
+                            <span className="text-xs font-medium text-foreground">{meta.label}</span>
+                            <code className="text-xs px-1 py-0.5 bg-accent text-muted-foreground rounded font-mono">{filename}</code>
                           </div>
-                          <div className="text-xs text-slate-400 truncate mt-0.5">{meta.desc}</div>
+                          <div className="text-xs text-muted-foreground truncate mt-0.5">{meta.desc}</div>
                         </div>
                         {isRuntime ? (
-                          <span className="text-xs text-slate-400 italic shrink-0">运行时生成</span>
+                          <span className="text-xs text-muted-foreground italic shrink-0">运行时生成</span>
                         ) : hasContent ? (
-                          <span className={`text-slate-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                          <span className={`text-muted-foreground text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                             ▶
                           </span>
                         ) : null}
@@ -405,8 +405,8 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                               <textarea
                                 value={content}
                                 onChange={(e) => updatePreviewFile(filename, e.target.value)}
-                                className="w-full text-xs text-slate-700 bg-white
-                                  border border-slate-200 rounded p-2 font-mono leading-relaxed
+                                className="w-full text-xs text-foreground bg-card
+                                  border border-border rounded p-2 font-mono leading-relaxed
                                   focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
                                   resize-y"
                                 style={{ minHeight: '120px', maxHeight: '300px' }}
@@ -422,14 +422,14 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                             </div>
                           ) : (
                             <div className="group relative">
-                              <pre className="text-xs text-slate-600 bg-slate-50
+                              <pre className="text-xs text-muted-foreground bg-muted
                                 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed">
                                 {content}
                               </pre>
                               <button
                                 onClick={(e) => { e.stopPropagation(); setEditingFile(filename); }}
-                                className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-xs text-slate-400
-                                  bg-white border border-slate-200 rounded
+                                className="absolute top-1.5 right-1.5 px-1.5 py-0.5 text-xs text-muted-foreground
+                                  bg-card border border-border rounded
                                   opacity-0 group-hover:opacity-100 hover:text-brand hover:border-brand/30
                                   transition-all"
                               >

@@ -107,28 +107,28 @@ export default function ChannelPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-5 pb-4 shrink-0">
-        <h2 className="text-lg font-bold text-slate-900">连接总览</h2>
-        <p className="text-sm text-slate-400 mt-1">
+        <h2 className="text-lg font-bold text-foreground">连接总览</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           查看所有渠道的连接与绑定状态
         </p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pb-6">
         {loading ? (
-          <div className="text-center text-slate-400 mt-20">
-            <span className="w-5 h-5 border-2 border-slate-300 border-t-brand rounded-full animate-spin inline-block" />
+          <div className="text-center text-muted-foreground mt-20">
+            <span className="w-5 h-5 border-2 border-border border-t-brand rounded-full animate-spin inline-block" />
           </div>
         ) : (
           <div className="space-y-4">
             {/* 统计 */}
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>共 {PLATFORM_ORDER.length} 个渠道</span>
-              <span className="text-slate-300">|</span>
-              <span className="text-green-500">{connectedCount} 个已连接</span>
+              <span className="text-muted-foreground">|</span>
+              <span className="text-success">{connectedCount} 个已连接</span>
             </div>
 
             {/* 渠道列表 */}
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+            <div className="bg-card rounded-2xl border border-border overflow-hidden divide-y divide-border">
               {PLATFORM_ORDER.flatMap((type) => {
                 const platform = PLATFORMS[type];
                 if (!platform) return [];
@@ -153,26 +153,26 @@ export default function ChannelPage() {
                           <>
                             <img src={platform.logo} alt={platform.name} className="w-9 h-9 object-contain" />
                             <span
-                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                                isConnected ? 'bg-green-400' : 'bg-slate-300'
+                              className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${
+                                isConnected ? 'bg-success' : 'bg-border'
                               }`}
                             />
                           </>
                         )}
                         {!isFirstAccount && (
-                          <span className={`block w-3 h-3 mt-3 ml-3 rounded-full ${isConnected ? 'bg-green-400' : 'bg-slate-300'}`} />
+                          <span className={`block w-3 h-3 mt-3 ml-3 rounded-full ${isConnected ? 'bg-success' : 'bg-border'}`} />
                         )}
                       </div>
 
                       {/* 名称 + accountId + 状态 */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-slate-800">{platform.name}</p>
+                          <p className="text-sm font-medium text-foreground">{platform.name}</p>
                           {isMultiAccount && accountId && (
-                            <span className="text-xs font-mono text-slate-400">{displayAccountId(accountId)}</span>
+                            <span className="text-xs font-mono text-muted-foreground">{displayAccountId(accountId)}</span>
                           )}
                         </div>
-                        <p className={`text-xs mt-0.5 ${isConnected ? 'text-green-600' : 'text-slate-400'}`}>
+                        <p className={`text-xs mt-0.5 ${isConnected ? 'text-success' : 'text-muted-foreground'}`}>
                           {isConnected ? '已连接' : '未连接'}
                         </p>
                       </div>
@@ -188,7 +188,7 @@ export default function ChannelPage() {
                             {boundAgentName}
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-300">--</span>
+                          <span className="text-xs text-muted-foreground">--</span>
                         )}
                       </div>
 
@@ -197,13 +197,13 @@ export default function ChannelPage() {
                         {isConnected ? (
                           <button
                             onClick={() => handleDisconnect(type, accountId)}
-                            className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200
-                              rounded-lg hover:bg-red-50 transition-colors"
+                            className="px-3 py-1.5 text-xs font-medium text-danger border border-danger/30
+                              rounded-lg hover:bg-danger/10 transition-colors"
                           >
                             断开
                           </button>
                         ) : (
-                          <span className="px-3 py-1.5 text-xs text-slate-300">--</span>
+                          <span className="px-3 py-1.5 text-xs text-muted-foreground">--</span>
                         )}
                       </div>
                     </div>
@@ -213,11 +213,11 @@ export default function ChannelPage() {
             </div>
 
             {/* 提示 */}
-            <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 rounded-xl">
-              <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="flex items-center gap-2 px-4 py-3 bg-muted rounded-xl">
+              <svg className="w-4 h-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
               </svg>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 在专家设置中连接和绑定渠道到具体的专家
               </p>
             </div>

@@ -72,13 +72,13 @@ interface RecentConversation {
 
 function LoadingScreen() {
   return (
-    <div className="flex items-center justify-center h-screen bg-slate-50">
+    <div className="flex items-center justify-center h-screen bg-muted">
       <div className="text-center">
         <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-brand/20 to-brand/5
           flex items-center justify-center">
           <Icon d={ICON_PATHS.memory} className="w-6 h-6 text-brand" />
         </div>
-        <p className="text-sm text-slate-400 font-medium">正在启动 {BRAND_NAME}...</p>
+        <p className="text-sm text-muted-foreground font-medium">正在启动 {BRAND_NAME}...</p>
         <div className="mt-4 flex justify-center gap-1">
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
@@ -91,16 +91,16 @@ function LoadingScreen() {
 
 function ErrorScreen({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex items-center justify-center h-screen bg-slate-50">
+    <div className="flex items-center justify-center h-screen bg-muted">
       <div className="text-center max-w-sm">
-        <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-red-50
+        <div className="w-12 h-12 mx-auto mb-4 rounded-2xl bg-danger/10
           flex items-center justify-center">
-          <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg className="w-6 h-6 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
           </svg>
         </div>
-        <h2 className="text-base font-semibold text-slate-800 mb-1.5">连接失败</h2>
-        <p className="text-sm text-slate-500 mb-5">
+        <h2 className="text-base font-semibold text-foreground mb-1.5">连接失败</h2>
+        <p className="text-sm text-muted-foreground mb-5">
           无法连接到后端服务，请确保 Node.js 已安装。
         </p>
         <button
@@ -171,20 +171,20 @@ function BottomMenu({
   return (
     <div
       ref={menuRef}
-      className="w-52 bg-white border border-slate-200 rounded-xl shadow-lg shadow-slate-200/50 overflow-hidden"
+      className="w-52 bg-card border border-border rounded-xl shadow-lg shadow-border/50 overflow-hidden"
     >
       {MENU_SECTIONS.map((section, si) => (
         <div key={si}>
-          {si > 0 && <div className="border-t border-slate-100" />}
+          {si > 0 && <div className="border-t border-border" />}
           <div className="py-1">
             {section.items.map((item) => (
               <button
                 key={item.path}
                 onClick={() => { onNavigate(item.path); onClose(); }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-slate-600
-                  hover:bg-slate-50 transition-colors text-left"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-muted-foreground
+                  hover:bg-muted transition-colors text-left"
               >
-                <Icon d={item.icon} className="w-4 h-4 text-slate-400" />
+                <Icon d={item.icon} className="w-4 h-4 text-muted-foreground" />
                 {item.label}
               </button>
             ))}
@@ -192,11 +192,11 @@ function BottomMenu({
         </div>
       ))}
       {/* Sidecar 状态 */}
-      <div className="border-t border-slate-100 px-3.5 py-2.5 flex items-center gap-2">
+      <div className="border-t border-border px-3.5 py-2.5 flex items-center gap-2">
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-          sidecarConnected ? 'bg-emerald-400' : 'bg-red-400 animate-pulse'
+          sidecarConnected ? 'bg-success' : 'bg-danger animate-pulse'
         }`} />
-        <span className="text-xs text-slate-400 flex-1">
+        <span className="text-xs text-muted-foreground flex-1">
           Sidecar {sidecarConnected ? '已连接' : '未连接'}
         </span>
         {!sidecarConnected && (
@@ -427,31 +427,31 @@ export default function App() {
   const showExpertPanel = isChatRoute(location.pathname);
 
   return (
-    <div className="flex flex-col h-screen bg-white text-slate-900">
+    <div className="flex flex-col h-screen bg-card text-foreground">
       {/* 删除专家确认弹窗 */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
           onClick={() => setDeleteConfirm(null)}
         >
-          <div className="bg-white rounded-xl shadow-xl p-6 w-[360px]"
+          <div className="bg-card rounded-xl shadow-xl p-6 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold text-slate-800 mb-2">确认删除</h3>
-            <p className="text-sm text-slate-500 mb-5">
+            <h3 className="text-base font-semibold text-foreground mb-2">确认删除</h3>
+            <p className="text-sm text-muted-foreground mb-5">
               确定要删除专家「{deleteConfirm.agentName}」吗？该专家的所有会话记录也将一并删除，此操作不可撤销。
             </p>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg
-                  hover:bg-slate-50 transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg
+                  hover:bg-muted transition-colors"
               >
                 取消
               </button>
               <button
                 onClick={confirmDeleteAgent}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-lg
-                  hover:bg-red-600 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-danger rounded-lg
+                  hover:bg-danger transition-colors"
               >
                 确认删除
               </button>
@@ -530,7 +530,7 @@ export default function App() {
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
                   className={`w-10 h-[42px] flex items-center justify-center transition-colors ${
-                    menuOpen ? 'text-brand-active' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                    menuOpen ? 'text-brand-active' : 'text-muted-foreground hover:bg-accent hover:text-muted-foreground'
                   }`}
                   title="设置与更多"
                 >
@@ -543,8 +543,8 @@ export default function App() {
               {/* 最小化 */}
               <button
                 onClick={() => appWindow.minimize()}
-                className="w-10 h-[42px] flex items-center justify-center text-slate-400
-                  hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                className="w-10 h-[42px] flex items-center justify-center text-muted-foreground
+                  hover:bg-accent hover:text-muted-foreground transition-colors"
                 title="最小化"
               >
                 <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -555,8 +555,8 @@ export default function App() {
               {/* 最大化 */}
               <button
                 onClick={() => appWindow.toggleMaximize()}
-                className="w-10 h-[42px] flex items-center justify-center text-slate-400
-                  hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                className="w-10 h-[42px] flex items-center justify-center text-muted-foreground
+                  hover:bg-accent hover:text-muted-foreground transition-colors"
                 title="最大化"
               >
                 <svg className="w-[14px] h-[14px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -567,8 +567,8 @@ export default function App() {
               {/* 关闭 */}
               <button
                 onClick={() => appWindow.close()}
-                className="w-10 h-[42px] flex items-center justify-center text-slate-400
-                  hover:bg-red-500 hover:text-white transition-colors"
+                className="w-10 h-[42px] flex items-center justify-center text-muted-foreground
+                  hover:bg-danger hover:text-white transition-colors"
                 title="关闭"
               >
                 <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

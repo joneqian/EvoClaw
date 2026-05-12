@@ -59,7 +59,7 @@ export default function IconNav(_props: IconNavProps) {
   const sopGenerating = useSopStore((s) => s.generating);
 
   return (
-    <nav className="w-[88px] bg-[#fafafa] border-r border-slate-200/60 flex flex-col items-center shrink-0 select-none">
+    <nav className="w-[88px] bg-muted border-r border-border/60 flex flex-col items-center shrink-0 select-none">
       {/* 顶部品牌 logo + 拖拽区域 */}
       <div className="h-[80px] shrink-0 flex items-center justify-center px-1" data-tauri-drag-region>
         <img
@@ -83,7 +83,7 @@ export default function IconNav(_props: IconNavProps) {
                 return `relative w-[76px] flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl transition-all duration-150 ${
                   active
                     ? 'bg-brand/10 text-brand-active'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    : 'text-foreground hover:bg-accent'
                 }`;
               }}
             >

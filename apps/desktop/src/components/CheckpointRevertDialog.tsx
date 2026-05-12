@@ -28,14 +28,14 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
       onClick={busy ? undefined : onCancel}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 animate-in fade-in zoom-in-95 duration-200"
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
             <svg
-              className="w-5 h-5 text-amber-600"
+              className="w-5 h-5 text-warning"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth={1.5}
@@ -49,25 +49,25 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             </svg>
           </div>
           <div>
-            <h3 className="text-base font-semibold text-slate-800">撤销改动确认</h3>
-            <p className="text-xs text-slate-400">即将还原 / 删除以下文件</p>
+            <h3 className="text-base font-semibold text-foreground">撤销改动确认</h3>
+            <p className="text-xs text-muted-foreground">即将还原 / 删除以下文件</p>
           </div>
         </div>
 
         {/* Content */}
         <div className="px-5 pb-4">
-          <div className="bg-slate-50 rounded-lg p-3 mb-3 text-xs text-slate-600 space-y-1">
+          <div className="bg-muted rounded-lg p-3 mb-3 text-xs text-muted-foreground space-y-1">
             <div className="flex justify-between">
-              <span className="text-slate-400">工具</span>
+              <span className="text-muted-foreground">工具</span>
               <span className="font-mono">{record.toolName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">时间</span>
+              <span className="text-muted-foreground">时间</span>
               <span>{formatTs(record.createdAt)}</span>
             </div>
             {record.agentId && (
               <div className="flex justify-between">
-                <span className="text-slate-400">Agent</span>
+                <span className="text-muted-foreground">Agent</span>
                 <span className="font-mono truncate ml-2 max-w-[280px]">{record.agentId}</span>
               </div>
             )}
@@ -75,14 +75,14 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
 
           {filesModifiedByTool.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs text-slate-500 mb-1">
+              <div className="text-xs text-muted-foreground mb-1">
                 将还原 {filesModifiedByTool.length} 个被修改的文件
               </div>
               <ul className="space-y-1 max-h-32 overflow-auto">
                 {filesModifiedByTool.map((f) => (
                   <li
                     key={f.path}
-                    className="text-xs font-mono text-slate-700 bg-blue-50/40 rounded px-2 py-1 truncate"
+                    className="text-xs font-mono text-foreground bg-info/10/40 rounded px-2 py-1 truncate"
                     title={f.path}
                   >
                     ↩ {f.path}
@@ -94,14 +94,14 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
 
           {filesAddedByTool.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs text-slate-500 mb-1">
+              <div className="text-xs text-muted-foreground mb-1">
                 将删除 {filesAddedByTool.length} 个 agent 新建的文件
               </div>
               <ul className="space-y-1 max-h-32 overflow-auto">
                 {filesAddedByTool.map((f) => (
                   <li
                     key={f.path}
-                    className="text-xs font-mono text-slate-700 bg-red-50/40 rounded px-2 py-1 truncate"
+                    className="text-xs font-mono text-foreground bg-danger/10/40 rounded px-2 py-1 truncate"
                     title={f.path}
                   >
                     ✕ {f.path}
@@ -111,7 +111,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             </div>
           )}
 
-          <p className="text-xs text-amber-600 bg-amber-50/60 rounded px-3 py-2">
+          <p className="text-xs text-warning bg-warning/10/60 rounded px-3 py-2">
             ⚠ 此操作不可逆。撤销后当前文件内容将被覆盖，新建的文件会被删除。
           </p>
         </div>
@@ -122,7 +122,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+            className="flex-1 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
           >
             取消
           </button>
@@ -130,7 +130,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="flex-1 px-4 py-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2 text-sm font-medium bg-warning hover:bg-warning text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? '撤销中…' : '确认撤销'}
           </button>

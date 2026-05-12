@@ -92,22 +92,22 @@ export default function ProfileManager({ showToast }: Props) {
   }, [refresh, showToast]);
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-3">
+    <div className="bg-card rounded-xl border border-border p-4 mb-3">
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="text-sm font-medium text-slate-700 flex items-center gap-2">
+          <div className="text-sm font-medium text-foreground flex items-center gap-2">
             Profile
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand/10 text-brand">
               🏷️ {current}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             切换后 MCP 服务器 / LLM 凭据 / 环境变量会重载，进行中的对话不中断
           </p>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:border-brand hover:text-brand"
+          className="text-xs px-2.5 py-1 rounded-lg border border-border text-muted-foreground hover:border-brand hover:text-brand"
         >
           + 新建
         </button>
@@ -115,16 +115,16 @@ export default function ProfileManager({ showToast }: Props) {
 
       {/* 新建表单 */}
       {showCreate && (
-        <div className="flex items-center gap-2 mb-3 p-2.5 bg-slate-50 rounded-lg">
+        <div className="flex items-center gap-2 mb-3 p-2.5 bg-muted rounded-lg">
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="新 profile 名（字母/数字/-/_）"
-            className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded"
+            className="flex-1 px-2 py-1 text-xs border border-border rounded"
             disabled={creating}
           />
-          <span className="text-[10px] text-slate-400">复制自 {current}</span>
+          <span className="text-[10px] text-muted-foreground">复制自 {current}</span>
           <button
             onClick={handleCreate}
             disabled={creating || !newName.trim()}
@@ -135,7 +135,7 @@ export default function ProfileManager({ showToast }: Props) {
           <button
             onClick={() => { setShowCreate(false); setNewName(''); }}
             disabled={creating}
-            className="px-2.5 py-1 text-xs rounded border border-slate-200 text-slate-600"
+            className="px-2.5 py-1 text-xs rounded border border-border text-muted-foreground"
           >
             取消
           </button>
@@ -150,11 +150,11 @@ export default function ProfileManager({ showToast }: Props) {
           return (
             <div
               key={name}
-              className={`flex items-center justify-between px-3 py-2 rounded-lg border ${isCurrent ? 'border-brand/30 bg-brand/5' : 'border-slate-100 hover:border-slate-200'}`}
+              className={`flex items-center justify-between px-3 py-2 rounded-lg border ${isCurrent ? 'border-brand/30 bg-brand/5' : 'border-border hover:border-border'}`}
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-800">{name}</span>
-                {name === DEFAULT_PROFILE && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">默认</span>}
+                <span className="text-sm font-medium text-foreground">{name}</span>
+                {name === DEFAULT_PROFILE && <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">默认</span>}
                 {isCurrent && <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand/20 text-brand font-semibold">当前</span>}
               </div>
               <div className="flex items-center gap-2">
@@ -170,7 +170,7 @@ export default function ProfileManager({ showToast }: Props) {
                 {canDelete && (
                   <button
                     onClick={() => handleDelete(name)}
-                    className="text-xs text-slate-400 hover:text-red-500"
+                    className="text-xs text-muted-foreground hover:text-danger"
                     title="删除"
                   >
                     删除

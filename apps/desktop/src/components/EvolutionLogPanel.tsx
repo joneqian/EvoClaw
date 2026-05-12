@@ -62,21 +62,21 @@ function triggerLabel(source: TriggerSource): string {
 
 function triggerBadgeClass(source: TriggerSource): string {
   switch (source) {
-    case 'inline': return 'bg-violet-100 text-violet-700';
-    case 'cron': return 'bg-slate-100 text-slate-600';
-    case 'ab-promote': return 'bg-emerald-100 text-emerald-700';
-    case 'ab-rollback': return 'bg-rose-100 text-rose-700';
-    case 'ab-inconclusive': return 'bg-amber-100 text-amber-700';
-    default: return 'bg-slate-100 text-slate-600';
+    case 'inline': return 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300';
+    case 'cron': return 'bg-accent text-muted-foreground';
+    case 'ab-promote': return 'bg-success/15 text-success';
+    case 'ab-rollback': return 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300';
+    case 'ab-inconclusive': return 'bg-warning/15 text-warning';
+    default: return 'bg-accent text-muted-foreground';
   }
 }
 
 function decisionColor(decision: Decision, rolledBack: boolean): string {
-  if (rolledBack) return 'text-slate-400 line-through';
+  if (rolledBack) return 'text-muted-foreground line-through';
   switch (decision) {
-    case 'refine': return 'text-blue-600';
-    case 'create': return 'text-emerald-600';
-    case 'skip':   return 'text-slate-500';
+    case 'refine': return 'text-info';
+    case 'create': return 'text-success';
+    case 'skip':   return 'text-muted-foreground';
   }
 }
 
@@ -132,10 +132,10 @@ interface AbStatusResponse {
 
 function abStatusBadge(status: string): { label: string; cls: string } {
   switch (status) {
-    case 'promoted':     return { label: '✅ 升级', cls: 'bg-emerald-100 text-emerald-700' };
-    case 'rolled_back':  return { label: '↩ 回滚', cls: 'bg-rose-100 text-rose-700' };
-    case 'inconclusive': return { label: '— 不显著', cls: 'bg-amber-100 text-amber-700' };
-    default:             return { label: status, cls: 'bg-slate-100 text-slate-600' };
+    case 'promoted':     return { label: '✅ 升级', cls: 'bg-success/15 text-success' };
+    case 'rolled_back':  return { label: '↩ 回滚', cls: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300' };
+    case 'inconclusive': return { label: '— 不显著', cls: 'bg-warning/15 text-warning' };
+    default:             return { label: status, cls: 'bg-accent text-muted-foreground' };
   }
 }
 
@@ -289,14 +289,14 @@ export default function EvolutionLogPanel() {
   };
 
   if (error) {
-    return <div className="p-4 text-rose-600 text-sm">加载失败: {error}</div>;
+    return <div className="p-4 text-rose-600 dark:text-rose-300 text-sm">加载失败: {error}</div>;
   }
   if (loading && entries.length === 0) {
-    return <div className="p-4 text-slate-500 text-sm">加载中...</div>;
+    return <div className="p-4 text-muted-foreground text-sm">加载中...</div>;
   }
   if (!loading && entries.length === 0) {
     return (
-      <div className="p-8 text-center text-slate-500 text-sm">
+      <div className="p-8 text-center text-muted-foreground text-sm">
         尚无进化记录（当 security.skillEvolver.enabled=true 时，后台 Cron 会写入决策日志）
       </div>
     );
@@ -315,21 +315,21 @@ export default function EvolutionLogPanel() {
       {/* 左列：列表 */}
       <div className="w-[360px] shrink-0 overflow-y-auto">
         {inlineStats && inlineStats.total > 0 && (
-          <div className="mb-3 p-2.5 rounded-lg border border-violet-200 bg-violet-50/50">
+          <div className="mb-3 p-2.5 rounded-lg border border-violet-200 dark:border-violet-800/60 bg-violet-50 dark:bg-violet-950/40/50">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-violet-700">
+              <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
                 自我修复 · 近 {inlineStats.windowDays} 天
               </span>
               <span className="text-[10px] text-violet-500">
                 共 {inlineStats.total} · 成功率 {inlineSuccessRate ?? '—'}%
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[10px] text-violet-600">
+            <div className="flex items-center gap-3 text-[10px] text-violet-600 dark:text-violet-300">
               <span>refine {inlineStats.byDecision.refine}</span>
               <span>create {inlineStats.byDecision.create}</span>
               <span>skip {inlineStats.byDecision.skip}</span>
               {inlineStats.errorCount > 0 && (
-                <span className="text-rose-600">err {inlineStats.errorCount}</span>
+                <span className="text-rose-600 dark:text-rose-300">err {inlineStats.errorCount}</span>
               )}
             </div>
             {inlineStats.topSkills.length > 0 && (
@@ -347,26 +347,26 @@ export default function EvolutionLogPanel() {
             className={`px-2 py-0.5 text-xs rounded-full border ${
               filter === 'all'
                 ? 'bg-brand text-white border-brand'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                : 'bg-card text-muted-foreground border-border hover:bg-muted'
             }`}
           >全部</button>
           <button
             onClick={() => setFilter('pending')}
             className={`px-2 py-0.5 text-xs rounded-full border inline-flex items-center gap-1 ${
               filter === 'pending'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                ? 'bg-info text-white border-info'
+                : 'bg-card text-muted-foreground border-border hover:bg-muted'
             }`}
           >
             待审核
             {pendingCount > 0 && (
               <span className={`px-1.5 py-0 text-[10px] rounded-full ${
-                filter === 'pending' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+                filter === 'pending' ? 'bg-card/20 text-white' : 'bg-info/15 text-info'
               }`}>{pendingCount}</span>
             )}
           </button>
         </div>
-        <div className="text-xs text-slate-500 mb-2">{entries.length} 条记录（最近 100 条）</div>
+        <div className="text-xs text-muted-foreground mb-2">{entries.length} 条记录（最近 100 条）</div>
         {entries.map(e => {
           const active = e.id === selectedId;
           const canRollback = e.decision === 'refine' && e.rolledBack === 0 && !e.errorMessage;
@@ -374,7 +374,7 @@ export default function EvolutionLogPanel() {
             <button
               key={e.id}
               onClick={() => setSelectedId(e.id)}
-              className={`w-full text-left p-3 mb-2 rounded-lg border transition-colors ${active ? 'border-brand bg-brand/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              className={`w-full text-left p-3 mb-2 rounded-lg border transition-colors ${active ? 'border-brand bg-brand/5' : 'border-border bg-card hover:bg-muted'}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -385,22 +385,22 @@ export default function EvolutionLogPanel() {
                     {triggerLabel(e.triggerSource)}
                   </span>
                 </div>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   {new Date(e.evolvedAt).toLocaleString()}
                 </span>
               </div>
-              <div className="font-semibold text-sm text-slate-800 mt-1 truncate">{e.skillName}</div>
+              <div className="font-semibold text-sm text-foreground mt-1 truncate">{e.skillName}</div>
               {e.reasoning && (
-                <div className="text-xs text-slate-500 mt-1 line-clamp-2">{e.reasoning}</div>
+                <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{e.reasoning}</div>
               )}
               <div className="flex items-center gap-2 mt-2 text-xs">
-                {e.pendingApproval === 1 && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px]">待审核</span>}
-                {e.approvalDecidedBy === 'manual-apply' && <span className="text-emerald-600">✅ 已应用</span>}
-                {e.approvalDecidedBy === 'manual-reject' && <span className="text-slate-500">⊘ 已拒绝</span>}
-                {e.errorMessage && <span className="text-rose-600">❌ 失败</span>}
-                {e.rolledBack === 1 && e.approvalDecidedBy !== 'manual-reject' && <span className="text-amber-600">↩ 已回滚</span>}
-                {canRollback && <span className="text-slate-400">可回滚</span>}
-                <span className="text-slate-400">证据 {e.evidenceCount} 条</span>
+                {e.pendingApproval === 1 && <span className="px-1.5 py-0.5 rounded bg-info/15 text-info text-[10px]">待审核</span>}
+                {e.approvalDecidedBy === 'manual-apply' && <span className="text-success">✅ 已应用</span>}
+                {e.approvalDecidedBy === 'manual-reject' && <span className="text-muted-foreground">⊘ 已拒绝</span>}
+                {e.errorMessage && <span className="text-rose-600 dark:text-rose-300">❌ 失败</span>}
+                {e.rolledBack === 1 && e.approvalDecidedBy !== 'manual-reject' && <span className="text-warning">↩ 已回滚</span>}
+                {canRollback && <span className="text-muted-foreground">可回滚</span>}
+                <span className="text-muted-foreground">证据 {e.evidenceCount} 条</span>
               </div>
             </button>
           );
@@ -410,11 +410,11 @@ export default function EvolutionLogPanel() {
       {/* 右列：详情 */}
       {detail ? (
         <div className="flex-1 overflow-y-auto space-y-4">
-          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+          <div className="p-4 rounded-lg bg-muted border border-border">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-slate-800">{detail.skillName}</h3>
-                <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-foreground">{detail.skillName}</h3>
+                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                   <span>{new Date(detail.evolvedAt).toLocaleString()}</span>
                   <span>·</span>
                   <span>{decisionLabel(detail.decision)}</span>
@@ -431,26 +431,26 @@ export default function EvolutionLogPanel() {
                   <button
                     onClick={handleApply}
                     disabled={approvalInFlight !== null}
-                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-success text-white hover:bg-success disabled:opacity-50"
                   >
                     {approvalInFlight === 'apply' ? '应用中…' : '✅ 应用'}
                   </button>
                   <button
                     onClick={handleReject}
                     disabled={approvalInFlight !== null}
-                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-200 text-slate-700 hover:bg-slate-300 disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-accent text-foreground hover:bg-border disabled:opacity-50"
                   >
                     {approvalInFlight === 'reject' ? '拒绝中…' : '⊘ 拒绝'}
                   </button>
                 </div>
               )}
               {detail.approvalDecidedBy === 'manual-apply' && (
-                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-100 text-emerald-700">
+                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-success/15 text-success">
                   ✅ 已应用 {detail.approvalDecidedAt ? `· ${new Date(detail.approvalDecidedAt).toLocaleString()}` : ''}
                 </span>
               )}
               {detail.approvalDecidedBy === 'manual-reject' && (
-                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600">
+                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-accent text-muted-foreground">
                   ⊘ 已拒绝 {detail.approvalDecidedAt ? `· ${new Date(detail.approvalDecidedAt).toLocaleString()}` : ''}
                 </span>
               )}
@@ -458,30 +458,30 @@ export default function EvolutionLogPanel() {
                 <button
                   onClick={handleRollback}
                   disabled={rollbackInFlight}
-                  className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                  className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-warning text-white hover:bg-warning disabled:opacity-50"
                 >
                   {rollbackInFlight ? '回滚中...' : '↩ 回滚此改动'}
                 </button>
               )}
               {detail.rolledBack === 1 && detail.approvalDecidedBy !== 'manual-reject' && (
-                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-amber-100 text-amber-700">
+                <span className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-warning/15 text-warning">
                   ↩ 已回滚
                 </span>
               )}
             </div>
             {detail.reasoning && (
-              <div className="mt-3 text-sm text-slate-700 whitespace-pre-wrap">
-                <strong className="text-slate-600">LLM 理由：</strong>{detail.reasoning}
+              <div className="mt-3 text-sm text-foreground whitespace-pre-wrap">
+                <strong className="text-muted-foreground">LLM 理由：</strong>{detail.reasoning}
               </div>
             )}
             {detail.errorMessage && (
-              <div className="mt-3 p-2 rounded bg-rose-50 border border-rose-200 text-xs text-rose-700 whitespace-pre-wrap">
+              <div className="mt-3 p-2 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-xs text-rose-700 dark:text-rose-300 whitespace-pre-wrap">
                 <strong>错误：</strong>{detail.errorMessage}
               </div>
             )}
             {detail.triggerSource === 'inline' && detail.conversationalFeedback && (
-              <div className="mt-3 p-2 rounded bg-violet-50 border border-violet-200 text-xs text-violet-800">
-                <strong className="text-violet-600">用户反馈原文：</strong>
+              <div className="mt-3 p-2 rounded bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800/60 text-xs text-violet-800">
+                <strong className="text-violet-600 dark:text-violet-300">用户反馈原文：</strong>
                 <span className="whitespace-pre-wrap">{detail.conversationalFeedback}</span>
               </div>
             )}
@@ -500,15 +500,15 @@ export default function EvolutionLogPanel() {
           {/* M7-Tier1 PR1: HTML diff 区在 ContentDiffSection 里独立渲染 */}
           {/* （raw before/after 文本已替换为 ReactDiffViewer + 大文件折叠兜底） */}
           {detail.patchesApplied && detail.decision === 'refine' && (
-            <details className="p-3 rounded-lg bg-white border border-slate-200">
-              <summary className="cursor-pointer text-xs text-slate-600">Patches 列表</summary>
+            <details className="p-3 rounded-lg bg-card border border-border">
+              <summary className="cursor-pointer text-xs text-muted-foreground">Patches 列表</summary>
               <pre className="mt-2 text-xs whitespace-pre-wrap">{detail.patchesApplied}</pre>
             </details>
           )}
 
           {detail.evidenceSummary && (
-            <details className="p-3 rounded-lg bg-white border border-slate-200">
-              <summary className="cursor-pointer text-xs text-slate-600">证据摘要</summary>
+            <details className="p-3 rounded-lg bg-card border border-border">
+              <summary className="cursor-pointer text-xs text-muted-foreground">证据摘要</summary>
               <pre className="mt-2 text-xs whitespace-pre-wrap">{detail.evidenceSummary}</pre>
             </details>
           )}
@@ -526,8 +526,8 @@ function AbStatusCard({ status }: { status: AbStatusResponse | null }) {
   if (!hasContent) return null;
 
   return (
-    <div className="mb-3 p-2.5 rounded-lg border border-sky-200 bg-sky-50/50 space-y-2">
-      <div className="text-xs font-semibold text-sky-700">A-B 对照实验</div>
+    <div className="mb-3 p-2.5 rounded-lg border border-sky-200 dark:border-sky-800/60 bg-sky-50 dark:bg-sky-950/40/50 space-y-2">
+      <div className="text-xs font-semibold text-sky-700 dark:text-sky-300">A-B 对照实验</div>
 
       {status.active.length > 0 && (
         <div className="space-y-1.5">
@@ -537,28 +537,28 @@ function AbStatusCard({ status }: { status: AbStatusResponse | null }) {
             return (
               <div key={test.id} className="text-[11px]">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-700 truncate flex items-center gap-1">
+                  <span className="font-semibold text-foreground truncate flex items-center gap-1">
                     {isCanary && (
-                      <span className="px-1 py-0 rounded bg-amber-100 text-amber-700 text-[10px]" title={`Canary ${canaryPct}%`}>
+                      <span className="px-1 py-0 rounded bg-warning/15 text-warning text-[10px]" title={`Canary ${canaryPct}%`}>
                         🐤 {canaryPct}%
                       </span>
                     )}
                     {test.skillName}
                   </span>
-                  <span className="text-sky-600 shrink-0 ml-2">
+                  <span className="text-sky-600 dark:text-sky-300 shrink-0 ml-2">
                     剩 {daysRemaining(test.startedAt, test.maxTestDays)} 天
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                  <div className="flex-1 h-1.5 rounded-full bg-accent overflow-hidden">
                     <div
-                      className={`h-full transition-all ${isCanary ? 'bg-amber-500' : 'bg-sky-500'}`}
+                      className={`h-full transition-all ${isCanary ? 'bg-warning' : 'bg-sky-500'}`}
                       style={{ width: `${Math.round(test.progress * 100)}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-slate-500 shrink-0 tabular-nums">
+                  <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
                     A {test.outcomeCounts.A} / B {test.outcomeCounts.B}
-                    <span className="text-slate-400"> · 目标 {test.minCallsPerVariant}</span>
+                    <span className="text-muted-foreground"> · 目标 {test.minCallsPerVariant}</span>
                   </span>
                 </div>
               </div>
@@ -569,7 +569,7 @@ function AbStatusCard({ status }: { status: AbStatusResponse | null }) {
 
       {status.history.length > 0 && (
         <details className="text-[11px]">
-          <summary className="cursor-pointer text-sky-600 hover:text-sky-700">
+          <summary className="cursor-pointer text-sky-600 dark:text-sky-300 hover:text-sky-700 dark:text-sky-300">
             最近 {status.history.length} 次决策
           </summary>
           <div className="mt-1.5 space-y-1">
@@ -582,15 +582,15 @@ function AbStatusCard({ status }: { status: AbStatusResponse | null }) {
                       <span className={`px-1.5 py-0.5 rounded text-[10px] ${badge.cls}`}>
                         {badge.label}
                       </span>
-                      <span className="text-slate-700 truncate">{h.skillName}</span>
+                      <span className="text-foreground truncate">{h.skillName}</span>
                     </div>
                     {h.decisionReason && (
-                      <div className="text-slate-500 truncate mt-0.5" title={h.decisionReason}>
+                      <div className="text-muted-foreground truncate mt-0.5" title={h.decisionReason}>
                         {h.decisionReason}
                       </div>
                     )}
                   </div>
-                  <div className="text-[10px] text-slate-400 shrink-0 text-right tabular-nums">
+                  <div className="text-[10px] text-muted-foreground shrink-0 text-right tabular-nums">
                     {h.pValue != null && <div>p={h.pValue.toFixed(3)}</div>}
                     {h.effectSize != null && <div>Δ={(h.effectSize * 100).toFixed(0)}%</div>}
                   </div>
@@ -633,10 +633,10 @@ function ContentDiffSection({ previousContent, newContent, previousHash, newHash
   if (decision === 'create') {
     return (
       <div>
-        <h4 className="text-sm font-semibold text-slate-800 mb-2">
+        <h4 className="text-sm font-semibold text-foreground mb-2">
           新建 SKILL.md 内容（new_hash: <code className="font-mono text-xs">{newHash?.slice(0, 8) ?? '—'}</code>）
         </h4>
-        <pre className="text-xs p-3 rounded-lg bg-emerald-50 border border-emerald-100 overflow-x-auto max-h-[480px] whitespace-pre-wrap">
+        <pre className="text-xs p-3 rounded-lg bg-success/10 border border-success/20 overflow-x-auto max-h-[480px] whitespace-pre-wrap">
           {newContent ?? '（无）'}
         </pre>
       </div>
@@ -646,9 +646,9 @@ function ContentDiffSection({ previousContent, newContent, previousHash, newHash
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-semibold text-slate-800">
+        <h4 className="text-sm font-semibold text-foreground">
           SKILL.md 变更
-          <span className="ml-2 text-xs font-normal text-slate-400">
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
             <code className="font-mono">{previousHash?.slice(0, 8) ?? '—'}</code>
             {' → '}
             <code className="font-mono">{newHash?.slice(0, 8) ?? '—'}</code>
@@ -657,7 +657,7 @@ function ContentDiffSection({ previousContent, newContent, previousHash, newHash
         {showDiff && (
           <button
             onClick={() => setSplitView(v => !v)}
-            className="text-xs px-2 py-0.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
+            className="text-xs px-2 py-0.5 rounded border border-border text-muted-foreground hover:bg-muted"
             title="切换并排 / 行内 diff 视图"
           >
             {splitView ? '行内 diff' : '并排 diff'}
@@ -666,7 +666,7 @@ function ContentDiffSection({ previousContent, newContent, previousHash, newHash
       </div>
 
       {showDiff ? (
-        <div className="border border-slate-200 rounded-lg overflow-hidden text-xs max-h-[480px] overflow-y-auto">
+        <div className="border border-border rounded-lg overflow-hidden text-xs max-h-[480px] overflow-y-auto">
           <ReactDiffViewer
             oldValue={oldText}
             newValue={newText}
@@ -681,13 +681,13 @@ function ContentDiffSection({ previousContent, newContent, previousHash, newHash
           />
         </div>
       ) : (
-        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+        <div className="p-3 rounded-lg bg-warning/10 border border-warning/30 text-xs text-warning">
           <p className="mb-2">
             <strong>大文件</strong>（previous {Math.round(oldText.length / 1024)} KB / new {Math.round(newText.length / 1024)} KB），diff 已折叠以避免渲染卡顿。
           </p>
           <button
             onClick={() => setForceShowDiff(true)}
-            className="px-2 py-0.5 rounded bg-white border border-amber-300 text-amber-700 hover:bg-amber-100"
+            className="px-2 py-0.5 rounded bg-card border border-warning/40 text-warning hover:bg-warning/15"
           >
             仍要展开 diff
           </button>

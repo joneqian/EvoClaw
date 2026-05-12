@@ -34,9 +34,9 @@ function toolLabel(name: string): string {
 export default function CheckpointList({ list, onRequestRevert }: Props) {
   if (list.length === 0) {
     return (
-      <div className="text-center py-16 text-slate-400 text-sm">
+      <div className="text-center py-16 text-muted-foreground text-sm">
         <svg
-          className="w-12 h-12 mx-auto mb-3 text-slate-300"
+          className="w-12 h-12 mx-auto mb-3 text-muted-foreground"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -45,7 +45,7 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
         </svg>
         <p>还没有可撤销的改动</p>
-        <p className="text-xs mt-1 text-slate-300">Agent 修改文件后会在这里出现</p>
+        <p className="text-xs mt-1 text-muted-foreground">Agent 修改文件后会在这里出现</p>
       </div>
     );
   }
@@ -60,22 +60,22 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
         return (
           <li
             key={r.toolInvocationId}
-            className={`bg-white border rounded-xl px-4 py-3 transition-colors ${
-              reverted ? 'border-slate-200 opacity-60' : 'border-slate-200 hover:border-amber-300'
+            className={`bg-card border rounded-xl px-4 py-3 transition-colors ${
+              reverted ? 'border-border opacity-60' : 'border-border hover:border-warning/40'
             }`}
           >
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-slate-800">{toolLabel(r.toolName)}</span>
-                  <span className="text-xs text-slate-400">{formatTs(r.createdAt)}</span>
+                  <span className="text-sm font-medium text-foreground">{toolLabel(r.toolName)}</span>
+                  <span className="text-xs text-muted-foreground">{formatTs(r.createdAt)}</span>
                   {reverted && (
-                    <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">
+                    <span className="text-xs px-1.5 py-0.5 bg-accent text-muted-foreground rounded">
                       已撤销
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {editedFiles > 0 && <span>修改 {editedFiles} 个文件</span>}
                   {editedFiles > 0 && newFiles > 0 && <span className="mx-1">·</span>}
                   {newFiles > 0 && <span>新建 {newFiles} 个文件</span>}
@@ -85,7 +85,7 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
                 <button
                   type="button"
                   onClick={() => onRequestRevert(r)}
-                  className="text-xs px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-md font-medium transition-colors flex-shrink-0"
+                  className="text-xs px-3 py-1.5 bg-warning/10 hover:bg-warning/15 text-warning rounded-md font-medium transition-colors flex-shrink-0"
                 >
                   撤销
                 </button>
@@ -97,14 +97,14 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
               {r.files.slice(0, 5).map((f) => (
                 <li
                   key={f.path}
-                  className="text-xs font-mono text-slate-500 truncate"
+                  className="text-xs font-mono text-muted-foreground truncate"
                   title={f.path}
                 >
                   {f.existedBefore ? '↩' : '✕'} {f.path}
                 </li>
               ))}
               {r.files.length > 5 && (
-                <li className="text-xs text-slate-400">…还有 {r.files.length - 5} 个</li>
+                <li className="text-xs text-muted-foreground">…还有 {r.files.length - 5} 个</li>
               )}
             </ul>
           </li>

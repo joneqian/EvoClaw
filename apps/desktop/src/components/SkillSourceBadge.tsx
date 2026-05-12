@@ -12,11 +12,11 @@
 type Source = 'clawhub' | 'github' | 'local' | 'bundled' | 'mcp' | string;
 
 const STYLES: Record<string, { label: string; color: string; icon: string }> = {
-  bundled: { label: '内置', color: 'bg-indigo-50 text-indigo-700 border border-indigo-100', icon: '📦' },
-  local: { label: '本地', color: 'bg-slate-50 text-slate-600 border border-slate-200', icon: '🗂️' },
-  clawhub: { label: 'ClawHub', color: 'bg-violet-50 text-violet-700 border border-violet-100', icon: '✨' },
-  github: { label: 'GitHub', color: 'bg-amber-50 text-amber-800 border border-amber-100', icon: '⚠' },
-  mcp: { label: 'MCP', color: 'bg-sky-50 text-sky-700 border border-sky-100', icon: '🔌' },
+  bundled: { label: '内置', color: 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100', icon: '📦' },
+  local: { label: '本地', color: 'bg-muted text-muted-foreground border border-border', icon: '🗂️' },
+  clawhub: { label: 'ClawHub', color: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-100', icon: '✨' },
+  github: { label: 'GitHub', color: 'bg-warning/10 text-warning border border-warning/20', icon: '⚠' },
+  mcp: { label: 'MCP', color: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-100', icon: '🔌' },
 };
 
 interface Props {

@@ -8,20 +8,20 @@ import { invoke } from '@tauri-apps/api/core';
 // ─── 配置 ───
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string; dot: string }> = {
-  file_read:  { label: '文件读取', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z', color: 'text-blue-600', bg: 'bg-blue-50', dot: 'bg-blue-500' },
-  file_write: { label: '文件修改', icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10', color: 'text-orange-600', bg: 'bg-orange-50', dot: 'bg-orange-500' },
-  network:    { label: '网络访问', icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5a17.92 17.92 0 01-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418', color: 'text-purple-600', bg: 'bg-purple-50', dot: 'bg-purple-500' },
-  shell:      { label: '命令执行', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z', color: 'text-red-600', bg: 'bg-red-50', dot: 'bg-red-500' },
-  browser:    { label: '浏览器',   icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3', color: 'text-cyan-600', bg: 'bg-cyan-50', dot: 'bg-cyan-500' },
-  mcp:        { label: 'MCP 工具', icon: 'M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z', color: 'text-indigo-600', bg: 'bg-indigo-50', dot: 'bg-indigo-500' },
-  skill:      { label: '技能调用', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z', color: 'text-green-600', bg: 'bg-green-50', dot: 'bg-green-500' },
+  file_read:  { label: '文件读取', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z', color: 'text-info', bg: 'bg-info/10', dot: 'bg-info' },
+  file_write: { label: '文件修改', icon: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10', color: 'text-warning', bg: 'bg-warning/10', dot: 'bg-warning' },
+  network:    { label: '网络访问', icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5a17.92 17.92 0 01-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418', color: 'text-purple-600 dark:text-purple-300', bg: 'bg-purple-50 dark:bg-purple-950/40', dot: 'bg-purple-500' },
+  shell:      { label: '命令执行', icon: 'M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z', color: 'text-danger', bg: 'bg-danger/10', dot: 'bg-danger' },
+  browser:    { label: '浏览器',   icon: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3', color: 'text-cyan-600 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/40', dot: 'bg-cyan-500' },
+  mcp:        { label: 'MCP 工具', icon: 'M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z', color: 'text-indigo-600 dark:text-indigo-300', bg: 'bg-indigo-50 dark:bg-indigo-950/40', dot: 'bg-indigo-500' },
+  skill:      { label: '技能调用', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z', color: 'text-success', bg: 'bg-success/10', dot: 'bg-success' },
 };
 
 const STATUS_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  success: { label: '成功', icon: 'M4.5 12.75l6 6 9-13.5', color: 'text-emerald-500' },
-  error:   { label: '错误', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z', color: 'text-red-500' },
-  denied:  { label: '拒绝', icon: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636', color: 'text-amber-500' },
-  timeout: { label: '超时', icon: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z', color: 'text-orange-500' },
+  success: { label: '成功', icon: 'M4.5 12.75l6 6 9-13.5', color: 'text-success' },
+  error:   { label: '错误', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z', color: 'text-danger' },
+  denied:  { label: '拒绝', icon: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636', color: 'text-warning' },
+  timeout: { label: '超时', icon: 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z', color: 'text-warning' },
 };
 
 // ─── 类型 ───
@@ -155,32 +155,32 @@ export default function SecurityPage() {
   const formatDuration = (ms: number) => ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 
   return (
-    <div className="h-full flex flex-col bg-slate-50/50">
+    <div className="h-full flex flex-col bg-muted/50">
       {/* ─── 顶栏 ─── */}
-      <div className="px-6 pt-5 pb-4 bg-white border-b border-slate-200/60">
+      <div className="px-6 pt-5 pb-4 bg-card border-b border-border/60">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand/20 to-brand/5 flex items-center justify-center">
               <Icon d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" className="w-5 h-5 text-brand" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">安全中心</h2>
-              <p className="text-xs text-slate-400 mt-0.5">管理 Agent 权限、审计日志与安全策略</p>
+              <h2 className="text-lg font-bold text-foreground">安全中心</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">管理 Agent 权限、审计日志与安全策略</p>
             </div>
           </div>
           <AgentSelect agents={agents} value={selectedAgentId} onChange={setSelectedAgentId} />
         </div>
 
         {/* Tab */}
-        <div className="flex gap-1 bg-slate-100/80 p-1 rounded-xl">
+        <div className="flex gap-1 bg-accent/80 p-1 rounded-xl">
           {TABS.map(({ key, label, icon }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
               className={`flex items-center gap-1.5 flex-1 justify-center px-3 py-2 text-sm font-medium rounded-lg transition-all duration-150 ${
                 activeTab === key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <Icon d={icon} className="w-4 h-4" />
@@ -195,7 +195,7 @@ export default function SecurityPage() {
         {!selectedAgentId ? (
           <EmptyState icon="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" title="请先创建一个 Agent" desc="在专家中心创建后即可管理安全设置" />
         ) : loading && (activeTab === 'permissions' ? !permissions.length : !auditLogs.length) ? (
-          <div className="flex items-center justify-center h-64"><span className="w-6 h-6 border-2 border-slate-200 border-t-brand rounded-full animate-spin" /></div>
+          <div className="flex items-center justify-center h-64"><span className="w-6 h-6 border-2 border-border border-t-brand rounded-full animate-spin" /></div>
         ) : activeTab === 'permissions' ? (
           <PermissionsTab
             permissions={permissions} stats={stats} selectedIds={selectedIds} revoking={revoking}
@@ -219,8 +219,8 @@ export default function SecurityPage() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium shadow-lg shadow-slate-900/10 transition-all ${
-          toast.type === 'success' ? 'bg-slate-900 text-white' : 'bg-red-500 text-white'
+        <div className={`fixed bottom-6 right-6 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium shadow-lg shadow-foreground/10 transition-all ${
+          toast.type === 'success' ? 'bg-foreground text-background' : 'bg-danger text-white'
         }`}>
           <Icon d={toast.type === 'success' ? 'M4.5 12.75l6 6 9-13.5' : 'M6 18L18 6M6 6l12 12'} className="w-4 h-4" />
           {toast.message}
@@ -235,11 +235,11 @@ export default function SecurityPage() {
 function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6">
-      <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-        <Icon d={icon} className="w-8 h-8 text-slate-300" />
+      <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
+        <Icon d={icon} className="w-8 h-8 text-muted-foreground" />
       </div>
-      <p className="text-base font-medium text-slate-500">{title}</p>
-      <p className="text-sm text-slate-400 mt-1">{desc}</p>
+      <p className="text-base font-medium text-muted-foreground">{title}</p>
+      <p className="text-sm text-muted-foreground mt-1">{desc}</p>
     </div>
   );
 }
@@ -284,13 +284,13 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
           onClick={() => setFilterCategory('all')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
             filterCategory === 'all'
-              ? 'bg-slate-900 text-white border-slate-900'
-              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+              ? 'bg-foreground text-background border-foreground'
+              : 'bg-card text-muted-foreground border-border hover:border-border'
           }`}
         >
           全部
           <span className={`px-1.5 py-0.5 rounded-md text-xs ${
-            filterCategory === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+            filterCategory === 'all' ? 'bg-card/20 text-white' : 'bg-accent text-muted-foreground'
           }`}>{permissions.length}</span>
         </button>
         {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => {
@@ -304,14 +304,14 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
                 isActive
                   ? `${cfg.bg} ${cfg.color} border-current/20`
                   : count > 0
-                    ? 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                    : 'bg-white text-slate-400 border-slate-100'
+                    ? 'bg-card text-muted-foreground border-border hover:border-border'
+                    : 'bg-card text-muted-foreground border-border'
               }`}
             >
               {cfg.icon && <Icon d={cfg.icon} className="w-3.5 h-3.5" />}
               {cfg.label}
               <span className={`px-1.5 py-0.5 rounded-md text-xs ${
-                isActive ? 'bg-white/50' : count > 0 ? 'bg-slate-100 text-slate-500' : 'bg-slate-50 text-slate-300'
+                isActive ? 'bg-card/50' : count > 0 ? 'bg-accent text-muted-foreground' : 'bg-muted text-muted-foreground'
               }`}>{count}</span>
             </button>
           );
@@ -322,7 +322,7 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
       {filteredPermissions.length > 0 && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
               <input type="checkbox"
                 checked={filteredPermissions.length > 0 && filteredPermissions.every(p => selectedIds.has(p.id))}
                 onChange={() => {
@@ -337,27 +337,27 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
                     onToggleAll();
                   }
                 }}
-                className="rounded border-slate-300 text-brand focus:ring-brand/30" />
+                className="rounded border-border text-brand focus:ring-brand/30" />
               {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
             </label>
             {selectedIds.size > 0 && (
               <>
-                <div className="w-px h-4 bg-slate-200" />
+                <div className="w-px h-4 bg-accent" />
                 <button
                   onClick={() => onBulkRevoke('selected')}
                   className={`px-3 py-1 text-xs font-medium rounded-lg transition-all ${
-                    bulkConfirm === 'selected' ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-50'
+                    bulkConfirm === 'selected' ? 'bg-danger text-white' : 'text-danger hover:bg-danger/10'
                   }`}
                 >
                   {bulkConfirm === 'selected' ? `确认撤销 ${selectedIds.size} 条` : '撤销选中'}
                 </button>
                 {bulkConfirm === 'selected' && (
-                  <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">取消</button>
+                  <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-muted-foreground transition-colors">取消</button>
                 )}
               </>
             )}
           </div>
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-muted-foreground">
             {filterCategory !== 'all' ? `${filteredPermissions.length} / ` : ''}{permissions.length} 条权限
           </span>
         </div>
@@ -375,16 +375,16 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
       {/* 按类别分组 + 可折叠 */}
       <div className="space-y-4">
         {Array.from(grouped.entries()).map(([cat, perms]) => {
-          const cfg = CATEGORY_CONFIG[cat] ?? { label: cat, icon: '', color: 'text-slate-600', bg: 'bg-slate-50', dot: 'bg-slate-400' };
+          const cfg = CATEGORY_CONFIG[cat] ?? { label: cat, icon: '', color: 'text-muted-foreground', bg: 'bg-muted', dot: 'bg-muted-foreground' };
           const collapsed = collapsedGroups.has(cat);
           return (
-            <div key={cat} className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden">
+            <div key={cat} className="bg-card rounded-2xl border border-border/60 overflow-hidden">
               {/* 分组标题（可点击折叠） */}
               <button
                 onClick={() => toggleCollapse(cat)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50/50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
               >
-                <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${collapsed ? '' : 'rotate-90'}`}
+                <svg className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${collapsed ? '' : 'rotate-90'}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
@@ -392,42 +392,42 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
                   {cfg.icon && <Icon d={cfg.icon} className={`w-3.5 h-3.5 ${cfg.color}`} />}
                 </div>
                 <span className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</span>
-                <span className="ml-auto text-xs text-slate-400">{perms.length} 条</span>
+                <span className="ml-auto text-xs text-muted-foreground">{perms.length} 条</span>
               </button>
 
               {/* 权限条目（折叠内容） */}
               {!collapsed && (
-                <div className="border-t border-slate-100">
+                <div className="border-t border-border">
                   {perms.map((perm, idx) => {
                     const isConfirming = revoking === perm.id;
                     return (
                       <div key={perm.id} className={`group flex items-center gap-3 px-4 py-3 transition-all duration-150 ${
-                        idx > 0 ? 'border-t border-slate-50' : ''
-                      } ${selectedIds.has(perm.id) ? 'bg-brand/[0.02]' : 'hover:bg-slate-50/50'}`}>
+                        idx > 0 ? 'border-t border-border' : ''
+                      } ${selectedIds.has(perm.id) ? 'bg-brand/[0.02]' : 'hover:bg-muted/50'}`}>
                         <input type="checkbox" checked={selectedIds.has(perm.id)} onChange={() => onToggle(perm.id)}
-                          className="rounded border-slate-300 text-brand focus:ring-brand/30 shrink-0 ml-7" />
+                          className="rounded border-border text-brand focus:ring-brand/30 shrink-0 ml-7" />
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm text-slate-800">
+                          <span className="text-sm text-foreground">
                             {perm.resource === '*' ? '所有操作' : perm.resource}
                           </span>
                         </div>
-                        <span className="text-xs text-slate-400 shrink-0">{formatTime(perm.grantedAt)}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">{formatTime(perm.grantedAt)}</span>
                         <div className="shrink-0 w-16 text-right">
                           {isConfirming ? (
                             <div className="inline-flex items-center gap-1.5">
                               <button onClick={() => onRevoke(perm.id)}
-                                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors">
+                                className="px-2.5 py-1 text-xs font-medium rounded-lg bg-danger text-white hover:bg-danger transition-colors">
                                 确认
                               </button>
                               <button onClick={onCancel}
-                                className="px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                                className="px-2 py-1 text-xs text-muted-foreground hover:bg-accent rounded-lg transition-colors">
                                 取消
                               </button>
                             </div>
                           ) : (
                             <button onClick={() => onRevoke(perm.id)}
-                              className="px-2.5 py-1 text-xs font-medium rounded-lg text-slate-400
-                                opacity-0 group-hover:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all">
+                              className="px-2.5 py-1 text-xs font-medium rounded-lg text-muted-foreground
+                                opacity-0 group-hover:opacity-100 hover:text-danger hover:bg-danger/10 transition-all">
                               撤销
                             </button>
                           )}
@@ -493,16 +493,16 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
                 onClick={() => { onFilterChange({ ...filter, status: active ? '' : key }); setTimeout(onSearch, 0); }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   active
-                    ? 'bg-slate-900 text-white'
+                    ? 'bg-foreground text-background'
                     : count > 0
-                      ? 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                      : 'bg-white border border-slate-100 text-slate-400'
+                      ? 'bg-card border border-border text-muted-foreground hover:border-border'
+                      : 'bg-card border border-border text-muted-foreground'
                 }`}
               >
                 {sCfg && <Icon d={sCfg.icon} className="w-3 h-3" />}
                 {label}
                 {count > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded text-xs ${active ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
+                  <span className={`px-1.5 py-0.5 rounded text-xs ${active ? 'bg-card/20' : 'bg-accent text-muted-foreground'}`}>
                     {count}
                   </span>
                 )}
@@ -513,15 +513,15 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
 
         {/* 搜索框 */}
         <div className="relative w-56">
-          <Icon d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Icon d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             value={filter.toolName}
             onChange={(e) => onFilterChange({ ...filter, toolName: e.target.value })}
             onKeyDown={(e) => e.key === 'Enter' && onSearch()}
             placeholder="搜索工具..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-white
+            className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded-lg bg-card
               focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40
-              placeholder:text-slate-400 transition-all"
+              placeholder:text-muted-foreground transition-all"
           />
         </div>
       </div>
@@ -529,10 +529,10 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
       {logs.length === 0 ? (
         <EmptyState icon="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" title="暂无审计日志" desc="Agent 执行工具调用后将在此处记录" />
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200/60 overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/60 overflow-hidden">
           {/* 表头 */}
-          <div className="grid grid-cols-[1fr_100px_80px_110px] gap-3 px-5 py-2.5 bg-slate-50/80 border-b border-slate-100
-            text-xs font-medium text-slate-400 uppercase tracking-wider">
+          <div className="grid grid-cols-[1fr_100px_80px_110px] gap-3 px-5 py-2.5 bg-muted/80 border-b border-border
+            text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <span>工具调用</span>
             <span className="text-center">状态</span>
             <span className="text-right">耗时</span>
@@ -541,21 +541,21 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
 
           {/* 日志行 */}
           {logs.map((entry, idx) => {
-            const sCfg = STATUS_CONFIG[entry.status] ?? { label: entry.status, icon: '', color: 'text-slate-400' };
+            const sCfg = STATUS_CONFIG[entry.status] ?? { label: entry.status, icon: '', color: 'text-muted-foreground' };
             const toolInfo = TOOL_DISPLAY[entry.toolName];
-            const statusBg = entry.status === 'success' ? 'bg-emerald-50' : entry.status === 'error' ? 'bg-red-50' : entry.status === 'denied' ? 'bg-amber-50' : 'bg-slate-50';
+            const statusBg = entry.status === 'success' ? 'bg-success/10' : entry.status === 'error' ? 'bg-danger/10' : entry.status === 'denied' ? 'bg-warning/10' : 'bg-muted';
             return (
               <div key={entry.id} className={`grid grid-cols-[1fr_100px_80px_110px] gap-3 items-center
-                px-5 py-3 hover:bg-slate-50/50 transition-colors ${idx > 0 ? 'border-t border-slate-50' : ''}`}>
+                px-5 py-3 hover:bg-muted/50 transition-colors ${idx > 0 ? 'border-t border-border' : ''}`}>
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
                     <Icon d={toolInfo?.icon ?? 'M11.42 15.17l-5.658 3.286a1.125 1.125 0 01-1.674-1.087l1.058-6.3L.343 6.37a1.125 1.125 0 01.638-1.92l6.328-.924L10.14.706a1.125 1.125 0 012.02 0l2.83 5.82 6.328.924a1.125 1.125 0 01.638 1.92l-4.797 4.7 1.058 6.3a1.125 1.125 0 01-1.674 1.087L12 15.17z'}
-                      className="w-4 h-4 text-slate-500" />
+                      className="w-4 h-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-sm font-medium text-slate-800">{toolInfo?.label ?? entry.toolName}</span>
+                    <span className="text-sm font-medium text-foreground">{toolInfo?.label ?? entry.toolName}</span>
                     {toolInfo && toolInfo.label !== entry.toolName && (
-                      <span className="text-xs text-slate-400 ml-1.5 font-mono">{entry.toolName}</span>
+                      <span className="text-xs text-muted-foreground ml-1.5 font-mono">{entry.toolName}</span>
                     )}
                   </div>
                 </div>
@@ -565,8 +565,8 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
                     {sCfg.label}
                   </span>
                 </div>
-                <span className="text-xs text-slate-500 text-right font-mono tabular-nums">{formatDuration(entry.durationMs)}</span>
-                <span className="text-xs text-slate-400 text-right">{formatTime(entry.createdAt)}</span>
+                <span className="text-xs text-muted-foreground text-right font-mono tabular-nums">{formatDuration(entry.durationMs)}</span>
+                <span className="text-xs text-muted-foreground text-right">{formatTime(entry.createdAt)}</span>
               </div>
             );
           })}
@@ -576,8 +576,8 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
       {hasMore && (
         <div className="text-center">
           <button onClick={onLoadMore} disabled={loading}
-            className="px-6 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-200
-              rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors">
+            className="px-6 py-2.5 text-sm font-medium text-muted-foreground bg-card border border-border
+              rounded-xl hover:bg-muted disabled:opacity-50 transition-colors">
             {loading ? '加载中...' : '加载更多'}
           </button>
         </div>
@@ -589,21 +589,21 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
 // ─── 安全防护 Tab ───
 
 const GUARD_FEATURES = [
-  { title: '危险命令检测', desc: '自动拦截 rm -rf、DROP TABLE、sudo 等 11 种危险操作模式', color: 'text-red-600', bg: 'bg-red-50', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z' },
-  { title: '受限路径保护', desc: '禁止访问 /etc、~/.ssh、/System 等 8 类系统敏感路径', color: 'text-purple-600', bg: 'bg-purple-50', icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z' },
-  { title: '消息发送确认', desc: '邮件、Slack、微信等 7 种消息类工具强制用户确认', color: 'text-amber-600', bg: 'bg-amber-50', icon: 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75' },
-  { title: '循环检测与熔断', desc: '重复/乒乓/无进展 3 种模式检测，阈值 30 次自动熔断', color: 'text-emerald-600', bg: 'bg-emerald-50', icon: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
+  { title: '危险命令检测', desc: '自动拦截 rm -rf、DROP TABLE、sudo 等 11 种危险操作模式', color: 'text-danger', bg: 'bg-danger/10', icon: 'M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z' },
+  { title: '受限路径保护', desc: '禁止访问 /etc、~/.ssh、/System 等 8 类系统敏感路径', color: 'text-purple-600 dark:text-purple-300', bg: 'bg-purple-50 dark:bg-purple-950/40', icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z' },
+  { title: '消息发送确认', desc: '邮件、Slack、微信等 7 种消息类工具强制用户确认', color: 'text-warning', bg: 'bg-warning/10', icon: 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75' },
+  { title: '循环检测与熔断', desc: '重复/乒乓/无进展 3 种模式检测，阈值 30 次自动熔断', color: 'text-success', bg: 'bg-success/10', icon: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
 ];
 
 const GUARD_PROTECTIONS = [
   {
     id: 'env',
     icon: 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z',
-    iconColor: 'text-orange-500',
-    iconBg: 'bg-orange-50',
+    iconColor: 'text-warning',
+    iconBg: 'bg-warning/10',
     title: '电脑环境安全防护',
     tag: '主动防御',
-    tagStyle: 'border-orange-200 text-orange-600 bg-orange-50',
+    tagStyle: 'border-warning/30 text-warning bg-warning/10',
     desc: '当智能体调用各类工具时，系统会进行全过程的安全管控。识别并拦截可能破坏系统、窃取数据、尝试提权的高风险行为，保障您的电脑环境安全。',
   },
   {
@@ -613,7 +613,7 @@ const GUARD_PROTECTIONS = [
     iconBg: 'bg-brand/10',
     title: '用户信息安全保护',
     tag: '智能识别',
-    tagStyle: 'border-green-200 text-green-600 bg-green-50',
+    tagStyle: 'border-success/30 text-success bg-success/10',
     desc: '对输入给智能体的任务、提示词进行智能安全识别，自动检测是否包含个人隐私、敏感密钥、账号凭证等高风险信息，保障用户信息安全。',
   },
   {
@@ -642,14 +642,14 @@ const PERMISSION_MODES = [
     label: '严格模式',
     desc: '未明确授权的操作自动拒绝，适合生产环境和无人值守场景',
     icon: 'M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
-    color: 'text-red-600', bg: 'bg-red-50', ring: 'ring-red-300',
+    color: 'text-danger', bg: 'bg-danger/10', ring: 'ring-danger/40',
   },
   {
     key: 'permissive' as const,
     label: '宽松模式',
     desc: '工作区内的文件修改和命令执行自动放行，适合开发测试',
     icon: 'M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z',
-    color: 'text-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-300',
+    color: 'text-warning', bg: 'bg-warning/10', ring: 'ring-warning/50',
   },
 ];
 
@@ -684,9 +684,9 @@ function GuardTab() {
       {/* 权限模式选择 */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <Icon d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" className="w-5 h-5 text-slate-600" />
-          <h3 className="text-sm font-bold text-slate-800">权限模式</h3>
-          {saving && <span className="text-xs text-slate-400 animate-pulse">保存中...</span>}
+          <Icon d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" className="w-5 h-5 text-muted-foreground" />
+          <h3 className="text-sm font-bold text-foreground">权限模式</h3>
+          {saving && <span className="text-xs text-muted-foreground animate-pulse">保存中...</span>}
         </div>
         <div className="grid grid-cols-3 gap-3">
           {PERMISSION_MODES.map((m) => {
@@ -698,16 +698,16 @@ function GuardTab() {
                 className={`relative p-4 rounded-xl border text-left transition-all ${
                   active
                     ? `border-transparent ring-2 ${m.ring} ${m.bg}`
-                    : 'border-slate-200/60 bg-white hover:border-slate-300'
+                    : 'border-border/60 bg-card hover:border-border'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-2">
                   <div className={`w-8 h-8 rounded-lg ${m.bg} flex items-center justify-center`}>
                     <Icon d={m.icon} className={`w-4 h-4 ${m.color}`} />
                   </div>
-                  <span className={`text-sm font-semibold ${active ? m.color : 'text-slate-700'}`}>{m.label}</span>
+                  <span className={`text-sm font-semibold ${active ? m.color : 'text-foreground'}`}>{m.label}</span>
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed">{m.desc}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{m.desc}</p>
                 {active && (
                   <div className="absolute top-2.5 right-2.5">
                     <svg className={`w-5 h-5 ${m.color}`} fill="currentColor" viewBox="0 0 20 20">
@@ -726,14 +726,14 @@ function GuardTab() {
         {GUARD_PROTECTIONS.map((item) => {
           const enabled = enabledMap[item.id] ?? true;
           return (
-            <div key={item.id} className="bg-white rounded-2xl border border-slate-200/60 p-5 hover:border-slate-300 transition-all">
+            <div key={item.id} className="bg-card rounded-2xl border border-border/60 p-5 hover:border-border transition-all">
               <div className="flex items-start gap-4">
                 <div className={`w-11 h-11 rounded-xl ${item.iconBg} flex items-center justify-center shrink-0`}>
                   <Icon d={item.icon} className={`w-5.5 h-5.5 ${item.iconColor}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2.5 mb-1.5">
-                    <h3 className="text-sm font-bold text-slate-800">{item.title}</h3>
+                    <h3 className="text-sm font-bold text-foreground">{item.title}</h3>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border ${item.tagStyle}`}>
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75" />
@@ -741,14 +741,14 @@ function GuardTab() {
                       {item.tag}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">{item.desc}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
                   <div className={`relative w-11 h-6 rounded-full bg-brand cursor-default`}>
-                    <span className="absolute top-0.5 left-[22px] w-5 h-5 bg-white rounded-full shadow-sm" />
+                    <span className="absolute top-0.5 left-[22px] w-5 h-5 bg-card rounded-full shadow-sm" />
                   </div>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${enabled ? 'text-brand' : 'text-slate-400'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-brand' : 'bg-slate-300'}`} />
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium ${enabled ? 'text-brand' : 'text-muted-foreground'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-brand' : 'bg-border'}`} />
                     {enabled ? '保护中' : '已关闭'}
                   </span>
                 </div>
@@ -761,20 +761,20 @@ function GuardTab() {
       {/* 安全策略 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {GUARD_FEATURES.map((f) => (
-          <div key={f.title} className="bg-white rounded-xl border border-slate-200/60 p-4 hover:border-slate-300 transition-colors">
+          <div key={f.title} className="bg-card rounded-xl border border-border/60 p-4 hover:border-border transition-colors">
             <div className="flex items-center gap-2.5 mb-2.5">
               <div className={`w-8 h-8 rounded-lg ${f.bg} flex items-center justify-center shrink-0`}>
                 <Icon d={f.icon} className={`w-4 h-4 ${f.color}`} />
               </div>
-              <span className="text-sm font-semibold text-slate-800">{f.title}</span>
+              <span className="text-sm font-semibold text-foreground">{f.title}</span>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
           </div>
         ))}
       </div>
 
       {/* 底部安全提示 */}
-      <div className="flex items-center justify-center gap-2 pt-2 text-slate-400">
+      <div className="flex items-center justify-center gap-2 pt-2 text-muted-foreground">
         <Icon d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" className="w-4 h-4" />
         <span className="text-sm">您的每一次操作都在系统严格保护之下</span>
       </div>

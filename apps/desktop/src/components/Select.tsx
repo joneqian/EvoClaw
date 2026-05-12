@@ -61,15 +61,15 @@ export default function Select({ options, value, onChange, placeholder = '请选
         type="button"
         onClick={() => setOpen((v) => !v)}
         onKeyDown={handleKeyDown}
-        className="flex items-center justify-between gap-2 w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white
-          hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
+        className="flex items-center justify-between gap-2 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-card
+          hover:border-border focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
           transition-colors"
       >
-        <span className={selected ? 'text-slate-700' : 'text-slate-400'}>
+        <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>
           {selected?.label ?? placeholder}
         </span>
         <svg
-          className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -78,7 +78,7 @@ export default function Select({ options, value, onChange, placeholder = '请选
 
       {/* 下拉面板 */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[160px] bg-white border border-slate-200 rounded-xl shadow-lg py-1
+        <div className="absolute z-50 mt-1 w-full min-w-[160px] bg-card border border-border rounded-xl shadow-lg py-1
           animate-in fade-in slide-in-from-top-1 duration-150 right-0">
           {options.map((option) => (
             <button
@@ -91,7 +91,7 @@ export default function Select({ options, value, onChange, placeholder = '请选
               className={`w-full text-left px-3 py-2 text-sm transition-colors ${
                 option.value === value
                   ? 'bg-brand/5 text-brand font-medium'
-                  : 'text-slate-700 hover:bg-slate-50'
+                  : 'text-foreground hover:bg-muted'
               }`}
             >
               <div className="flex items-center justify-between">
@@ -103,7 +103,7 @@ export default function Select({ options, value, onChange, placeholder = '请选
                 )}
               </div>
               {option.hint && (
-                <div className="text-xs text-slate-400 mt-0.5">{option.hint}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">{option.hint}</div>
               )}
             </button>
           ))}

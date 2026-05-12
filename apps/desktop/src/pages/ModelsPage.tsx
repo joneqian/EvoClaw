@@ -254,8 +254,8 @@ function ProviderCard({
     : '未设置';
 
   return (
-    <div className={`bg-white rounded-xl border transition-colors ${
-      expanded ? 'border-brand/30 ring-1 ring-brand/10' : 'border-slate-200'
+    <div className={`bg-card rounded-xl border transition-colors ${
+      expanded ? 'border-brand/30 ring-1 ring-brand/10' : 'border-border'
     }`}>
       {/* M6 T1: 凭据池编辑弹窗 */}
       {poolOpen && (
@@ -270,20 +270,20 @@ function ProviderCard({
       {/* 头部 */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:bg-slate-50/50 transition-colors rounded-xl"
+        className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:bg-muted/50 transition-colors rounded-xl"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-slate-800">{provider.name}</h4>
-            <code className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">
+            <h4 className="text-sm font-semibold text-foreground">{provider.name}</h4>
+            <code className="text-xs px-1.5 py-0.5 bg-accent text-muted-foreground rounded font-mono">
               {provider.id}
             </code>
             {provider.hasApiKey ? (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success">
                 已配置
               </span>
             ) : (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-danger/10 text-danger">
                 未配置
               </span>
             )}
@@ -291,35 +291,35 @@ function ProviderCard({
               <span className="text-xs px-2 py-0.5 rounded-full bg-brand/10 text-brand-active">默认 LLM</span>
             )}
             {provider.id === defaultEMB.provider && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">默认 EMB</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning">默认 EMB</span>
             )}
           </div>
-          <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
             <span>{provider.baseUrl}</span>
-            <span className="text-slate-300">|</span>
+            <span className="text-muted-foreground">|</span>
             <span>{API_LABELS[provider.api] ?? provider.api}</span>
-            <span className="text-slate-300">|</span>
+            <span className="text-muted-foreground">|</span>
             <span>{provider.models.length} 个模型</span>
           </div>
         </div>
-        <span className={`text-slate-400 text-xs transition-transform shrink-0 ${expanded ? 'rotate-90' : ''}`}>
+        <span className={`text-muted-foreground text-xs transition-transform shrink-0 ${expanded ? 'rotate-90' : ''}`}>
           ▶
         </span>
       </button>
 
       {/* 展开详情 */}
       {expanded && (
-        <div className="px-4 pb-4 border-t border-slate-100">
+        <div className="px-4 pb-4 border-t border-border">
           {/* 配置信息 */}
           <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
             <div>
-              <span className="text-slate-400">API Key</span>
+              <span className="text-muted-foreground">API Key</span>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <p className="font-mono text-slate-600">{apiKeyDisplay}</p>
+                <p className="font-mono text-muted-foreground">{apiKeyDisplay}</p>
                 {provider.hasApiKey && (
                   <button
                     onClick={handleToggleApiKey}
-                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                    className="text-muted-foreground hover:text-muted-foreground transition-colors"
                     title={showApiKey ? '隐藏' : '显示'}
                   >
                     {showApiKey ? (
@@ -337,12 +337,12 @@ function ProviderCard({
               </div>
             </div>
             <div>
-              <span className="text-slate-400">API 协议</span>
-              <p className="text-slate-600 mt-0.5">{API_LABELS[provider.api] ?? provider.api}</p>
+              <span className="text-muted-foreground">API 协议</span>
+              <p className="text-muted-foreground mt-0.5">{API_LABELS[provider.api] ?? provider.api}</p>
             </div>
             <div className="col-span-2">
-              <span className="text-slate-400">Base URL</span>
-              <p className="font-mono text-slate-600 mt-0.5 break-all">{provider.baseUrl}</p>
+              <span className="text-muted-foreground">Base URL</span>
+              <p className="font-mono text-muted-foreground mt-0.5 break-all">{provider.baseUrl}</p>
             </div>
           </div>
 
@@ -358,48 +358,48 @@ function ProviderCard({
                 }
                 setPoolOpen(true);
               }}
-              className="px-2.5 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:border-brand hover:text-brand transition-colors"
+              className="px-2.5 py-1 text-xs rounded-lg border border-border text-muted-foreground hover:border-brand hover:text-brand transition-colors"
               title="配置多把 API Key 做 failover / round-robin"
             >
               🔑 多 Key 管理
             </button>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-muted-foreground">
               配置多把 Key 后，主 Key 限流会自动切换到备 Key
             </span>
           </div>
 
           {/* 编辑区域 */}
           {editing ? (
-            <div className="mt-3 space-y-2 bg-slate-50 rounded-lg p-3">
+            <div className="mt-3 space-y-2 bg-muted rounded-lg p-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">API Key（留空保持不变）</label>
+                <label className="block text-xs text-muted-foreground mb-1">API Key（留空保持不变）</label>
                 <input
                   type="password"
                   value={editApiKey}
                   onChange={(e) => { setEditApiKey(e.target.value); setTestResult(null); }}
                   placeholder={provider.hasApiKey ? '已配置，输入新值可覆盖' : '请输入 API Key'}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                    bg-white text-slate-900
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                    bg-card text-foreground
                     focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                    placeholder:text-slate-300"
+                    placeholder:text-muted-foreground"
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Base URL</label>
+                <label className="block text-xs text-muted-foreground mb-1">Base URL</label>
                 <input
                   type="text"
                   value={editBaseUrl}
                   onChange={(e) => setEditBaseUrl(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                    bg-white text-slate-900 font-mono
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                    bg-card text-foreground font-mono
                     focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </div>
               {testResult && (
                 <div className={`text-xs px-3 py-1.5 rounded ${
                   testResult.success
-                    ? 'bg-green-50 text-green-600'
-                    : 'bg-red-50 text-red-500'
+                    ? 'bg-success/10 text-success'
+                    : 'bg-danger/10 text-danger'
                 }`}>
                   {testResult.success ? '连接成功' : `连接失败: ${testResult.error}`}
                 </div>
@@ -407,15 +407,15 @@ function ProviderCard({
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => { setEditing(false); setEditApiKey(''); setEditBaseUrl(provider.baseUrl); setTestResult(null); }}
-                  className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700"
+                  className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
                 >
                   取消
                 </button>
                 <button
                   onClick={handleTest}
                   disabled={testing || (!editApiKey.trim() && !provider.hasApiKey)}
-                  className="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg
-                    text-slate-600 hover:bg-slate-100
+                  className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg
+                    text-muted-foreground hover:bg-accent
                     disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {testing ? '测试中...' : '测试连接'}
@@ -434,24 +434,24 @@ function ProviderCard({
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => { setEditing(true); setEditBaseUrl(provider.baseUrl); }}
-                className="text-xs px-3 py-1.5 font-medium border border-slate-200 rounded-lg
-                  text-slate-600 hover:bg-slate-50 transition-colors"
+                className="text-xs px-3 py-1.5 font-medium border border-border rounded-lg
+                  text-muted-foreground hover:bg-muted transition-colors"
               >
                 编辑配置
               </button>
               <button
                 onClick={handleSyncModels}
                 disabled={syncing || !provider.hasApiKey}
-                className="text-xs px-3 py-1.5 font-medium border border-blue-200 rounded-lg
-                  text-blue-500 hover:bg-blue-50
+                className="text-xs px-3 py-1.5 font-medium border border-info/30 rounded-lg
+                  text-info hover:bg-info/10
                   disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {syncing ? '加载中...' : '刷新预设'}
               </button>
               <button
                 onClick={() => onDelete(provider.id)}
-                className="text-xs px-3 py-1.5 font-medium border border-red-200 rounded-lg
-                  text-red-500 hover:bg-red-50 transition-colors"
+                className="text-xs px-3 py-1.5 font-medium border border-danger/30 rounded-lg
+                  text-danger hover:bg-danger/10 transition-colors"
               >
                 删除
               </button>
@@ -461,13 +461,13 @@ function ProviderCard({
           {/* 模型列表 */}
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-slate-500">模型列表</p>
+              <p className="text-xs font-medium text-muted-foreground">模型列表</p>
               <div className="flex items-center gap-2">
-                <p className="text-xs text-slate-400">{provider.models.length} 个</p>
+                <p className="text-xs text-muted-foreground">{provider.models.length} 个</p>
                 <button
                   onClick={() => setAddingModel(!addingModel)}
-                  className="text-xs px-2 py-0.5 rounded border border-dashed border-slate-300
-                    text-slate-500 hover:border-brand hover:text-brand-active transition-colors"
+                  className="text-xs px-2 py-0.5 rounded border border-dashed border-border
+                    text-muted-foreground hover:border-brand hover:text-brand-active transition-colors"
                 >
                   {addingModel ? '取消' : '+ 添加'}
                 </button>
@@ -486,9 +486,9 @@ function ProviderCard({
                       className={`px-3 py-1 text-xs rounded-lg font-medium transition-colors ${
                         newModelType === t
                           ? t === 'llm'
-                            ? 'bg-blue-100 text-blue-600'
-                            : 'bg-amber-100 text-amber-600'
-                          : 'bg-slate-100 text-slate-400'
+                            ? 'bg-info/15 text-info'
+                            : 'bg-warning/15 text-warning'
+                          : 'bg-accent text-muted-foreground'
                       }`}
                     >
                       {t === 'llm' ? 'LLM 对话模型' : 'Embedding 向量模型'}
@@ -499,29 +499,29 @@ function ProviderCard({
                   value={newModelId}
                   onChange={(e) => setNewModelId(e.target.value)}
                   placeholder="模型 ID（必填，如 qwen-plus-latest）"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg
-                    bg-white text-slate-900
+                  className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
+                    bg-card text-foreground
                     focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
-                    placeholder:text-slate-300"
+                    placeholder:text-muted-foreground"
                 />
                 <input
                   value={newModelName}
                   onChange={(e) => setNewModelName(e.target.value)}
                   placeholder="显示名称（可选，默认同 ID）"
-                  className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg
-                    bg-white text-slate-900
+                  className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
+                    bg-card text-foreground
                     focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
-                    placeholder:text-slate-300"
+                    placeholder:text-muted-foreground"
                 />
                 {newModelType === 'emb' && (
                   <input
                     value={newModelDimension}
                     onChange={(e) => setNewModelDimension(e.target.value.replace(/\D/g, ''))}
                     placeholder="向量维度（必填，如 1536/1024/768）"
-                    className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg
-                      bg-white text-slate-900
+                    className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
+                      bg-card text-foreground
                       focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
-                      placeholder:text-slate-300"
+                      placeholder:text-muted-foreground"
                   />
                 )}
                 <button
@@ -536,7 +536,7 @@ function ProviderCard({
             )}
 
             {provider.models.length === 0 && !addingModel ? (
-              <p className="text-xs text-slate-400 italic">暂无模型，点击上方「+ 添加」手动录入</p>
+              <p className="text-xs text-muted-foreground italic">暂无模型，点击上方「+ 添加」手动录入</p>
             ) : (
               <>
                 {/* 搜索框 */}
@@ -546,10 +546,10 @@ function ProviderCard({
                       value={modelSearch}
                       onChange={(e) => setModelSearch(e.target.value)}
                       placeholder="搜索模型名称或 ID..."
-                      className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg
-                        bg-white text-slate-900
+                      className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
+                        bg-card text-foreground
                         focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
-                        placeholder:text-slate-300"
+                        placeholder:text-muted-foreground"
                     />
                   </div>
                 )}
@@ -574,22 +574,22 @@ function ProviderCard({
                             isDefaultLLMModel
                               ? 'bg-brand/5 border border-brand/20'
                               : isDefaultEMBModel
-                                ? 'bg-amber-50/50 border border-amber-200/30'
-                                : 'bg-slate-50'
+                                ? 'bg-warning/10/50 border border-warning/30/30'
+                                : 'bg-muted'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${
                               isEmbedding
-                                ? 'bg-amber-50 text-amber-600'
-                                : 'bg-blue-50 text-blue-600'
+                                ? 'bg-warning/10 text-warning'
+                                : 'bg-info/10 text-info'
                             }`}>
                               {isEmbedding ? 'EMB' : 'LLM'}
                             </span>
-                            <span className="font-medium text-slate-700 truncate">{model.name}</span>
-                            <code className="text-xs text-slate-400 font-mono truncate">{model.id}</code>
+                            <span className="font-medium text-foreground truncate">{model.name}</span>
+                            <code className="text-xs text-muted-foreground font-mono truncate">{model.id}</code>
                             {model.dimension && (
-                              <span className="text-xs text-slate-400 shrink-0">{model.dimension}d</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{model.dimension}d</span>
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
@@ -597,7 +597,7 @@ function ProviderCard({
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                                 isDefaultLLMModel
                                   ? 'bg-brand/10 text-brand-active'
-                                  : 'bg-amber-100 text-amber-600'
+                                  : 'bg-warning/15 text-warning'
                               }`}>
                                 {isDefaultLLMModel ? '默认 LLM' : '默认 EMB'}
                               </span>
@@ -607,8 +607,8 @@ function ProviderCard({
                                   ? onSetDefaultEMB(provider.id, model.id)
                                   : onSetDefaultLLM(provider.id, model.id)
                                 }
-                                className="text-xs px-2 py-0.5 rounded-full border border-slate-200
-                                  text-slate-400 hover:border-brand hover:text-brand-active transition-colors"
+                                className="text-xs px-2 py-0.5 rounded-full border border-border
+                                  text-muted-foreground hover:border-brand hover:text-brand-active transition-colors"
                               >
                                 {isEmbedding ? '设为默认 EMB' : '设为默认 LLM'}
                               </button>
@@ -732,8 +732,8 @@ function AddProviderForm({
   }, [apiKey, effectiveId, effectiveName, effectiveBaseUrl, api, modelId, modelName, showToast, onSaved]);
 
   return (
-    <div className="bg-white rounded-xl border border-brand/30 ring-1 ring-brand/10 p-4">
-      <h4 className="text-sm font-semibold text-slate-800 mb-3">添加 Provider</h4>
+    <div className="bg-card rounded-xl border border-brand/30 ring-1 ring-brand/10 p-4">
+      <h4 className="text-sm font-semibold text-foreground mb-3">添加 Provider</h4>
 
       {/* 模式切换 */}
       <div className="flex gap-2 mb-4">
@@ -742,7 +742,7 @@ function AddProviderForm({
           className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
             mode === 'preset'
               ? 'border-brand bg-brand/10 text-brand-active font-medium'
-              : 'border-slate-200 text-slate-500'
+              : 'border-border text-muted-foreground'
           }`}
         >
           从预设选择
@@ -752,7 +752,7 @@ function AddProviderForm({
           className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
             mode === 'custom'
               ? 'border-brand bg-brand/10 text-brand-active font-medium'
-              : 'border-slate-200 text-slate-500'
+              : 'border-border text-muted-foreground'
           }`}
         >
           自定义
@@ -762,7 +762,7 @@ function AddProviderForm({
       {/* 预设选择 */}
       {mode === 'preset' && (
         availablePresets.length === 0 ? (
-          <p className="text-xs text-slate-400 mb-4">所有预设 Provider 都已添加，请使用「自定义」模式。</p>
+          <p className="text-xs text-muted-foreground mb-4">所有预设 Provider 都已添加，请使用「自定义」模式。</p>
         ) : (
           <div className="flex flex-wrap gap-2 mb-4">
             {availablePresets.map((p) => (
@@ -772,7 +772,7 @@ function AddProviderForm({
                 className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                   selectedPreset?.id === p.id
                     ? 'border-brand bg-brand/10 text-brand-active font-medium'
-                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    : 'border-border text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {p.name}
@@ -786,27 +786,27 @@ function AddProviderForm({
       {mode === 'custom' && (
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Provider ID</label>
+            <label className="block text-xs text-muted-foreground mb-1">Provider ID</label>
             <input
               value={customId}
               onChange={(e) => setCustomId(e.target.value)}
               placeholder="如: my-provider"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900 font-mono
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                bg-card text-foreground font-mono
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300"
+                placeholder:text-muted-foreground"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">显示名称</label>
+            <label className="block text-xs text-muted-foreground mb-1">显示名称</label>
             <input
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               placeholder="如: My Provider"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                bg-card text-foreground
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300"
+                placeholder:text-muted-foreground"
             />
           </div>
         </div>
@@ -815,34 +815,34 @@ function AddProviderForm({
       {/* 公共字段 */}
       <div className="space-y-3">
         <div>
-          <label className="block text-xs text-slate-500 mb-1">API Key</label>
+          <label className="block text-xs text-muted-foreground mb-1">API Key</label>
           <input
             type="password"
             value={apiKey}
             onChange={(e) => { setApiKey(e.target.value); setTestResult(null); }}
             placeholder={mode === 'preset' ? selectedPreset?.placeholder ?? '...' : 'API Key'}
-            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-              bg-white text-slate-900
+            className="w-full px-3 py-2 text-sm border border-border rounded-lg
+              bg-card text-foreground
               focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-              placeholder:text-slate-300"
+              placeholder:text-muted-foreground"
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Base URL</label>
+            <label className="block text-xs text-muted-foreground mb-1">Base URL</label>
             <input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://api.example.com/v1"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900 font-mono
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                bg-card text-foreground font-mono
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300"
+                placeholder:text-muted-foreground"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">API 协议</label>
+            <label className="block text-xs text-muted-foreground mb-1">API 协议</label>
             <Select
               value={api}
               onChange={(val) => setApi(val)}
@@ -856,27 +856,27 @@ function AddProviderForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">模型 ID（可选）</label>
+            <label className="block text-xs text-muted-foreground mb-1">模型 ID（可选）</label>
             <input
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
               placeholder="如: gpt-4o-mini"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900 font-mono
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                bg-card text-foreground font-mono
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300"
+                placeholder:text-muted-foreground"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">模型名称（可选）</label>
+            <label className="block text-xs text-muted-foreground mb-1">模型名称（可选）</label>
             <input
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
               placeholder="如: GPT-4o Mini"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                bg-card text-foreground
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
-                placeholder:text-slate-300"
+                placeholder:text-muted-foreground"
             />
           </div>
         </div>
@@ -885,8 +885,8 @@ function AddProviderForm({
       {testResult && (
         <div className={`mt-3 text-xs px-3 py-1.5 rounded ${
           testResult.success
-            ? 'bg-green-50 text-green-600'
-            : 'bg-red-50 text-red-500'
+            ? 'bg-success/10 text-success'
+            : 'bg-danger/10 text-danger'
         }`}>
           {testResult.success ? '连接成功' : `连接失败: ${testResult.error}`}
         </div>
@@ -896,15 +896,15 @@ function AddProviderForm({
       <div className="flex gap-2 mt-4">
         <button
           onClick={onCancel}
-          className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700"
+          className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           取消
         </button>
         <button
           onClick={handleTest}
           disabled={testing || !apiKey.trim() || !effectiveId}
-          className="px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-lg
-            text-slate-600 hover:bg-slate-50
+          className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg
+            text-muted-foreground hover:bg-muted
             disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {testing ? '测试中...' : '测试连接'}
@@ -994,10 +994,10 @@ export default function ModelsPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 头部 */}
-      <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-border bg-card flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">模型管理</h2>
-          <p className="text-sm text-slate-400 mt-0.5">管理 LLM Provider、API Key 和默认模型</p>
+          <h2 className="text-lg font-bold text-foreground">模型管理</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">管理 LLM Provider、API Key 和默认模型</p>
         </div>
         {!showAddForm && (
           <button
@@ -1014,19 +1014,19 @@ export default function ModelsPage() {
         <div className="space-y-4">
           {/* 默认模型信息 */}
           {(defaultLLM.provider || defaultEMB.provider) && (
-            <div className="bg-slate-50 rounded-lg px-4 py-3 flex gap-6">
+            <div className="bg-muted rounded-lg px-4 py-3 flex gap-6">
               {defaultLLM.provider && (
                 <div>
-                  <p className="text-xs text-slate-400">默认 LLM</p>
-                  <p className="text-sm font-medium text-slate-700 mt-0.5 font-mono">
+                  <p className="text-xs text-muted-foreground">默认 LLM</p>
+                  <p className="text-sm font-medium text-foreground mt-0.5 font-mono">
                     {defaultLLM.provider}/{defaultLLM.modelId}
                   </p>
                 </div>
               )}
               {defaultEMB.provider && (
                 <div>
-                  <p className="text-xs text-amber-500">默认 Embedding</p>
-                  <p className="text-sm font-medium text-slate-700 mt-0.5 font-mono">
+                  <p className="text-xs text-warning">默认 Embedding</p>
+                  <p className="text-sm font-medium text-foreground mt-0.5 font-mono">
                     {defaultEMB.provider}/{defaultEMB.modelId}
                   </p>
                 </div>
@@ -1046,11 +1046,11 @@ export default function ModelsPage() {
 
           {/* Provider 列表 */}
           {loading ? (
-            <div className="text-center text-slate-400 mt-16">
+            <div className="text-center text-muted-foreground mt-16">
               <p className="text-sm">加载中...</p>
             </div>
           ) : providers.length === 0 && !showAddForm ? (
-            <div className="text-center text-slate-400 mt-16">
+            <div className="text-center text-muted-foreground mt-16">
               <p className="text-lg mb-2">暂无已配置的 Provider</p>
               <p className="text-sm mb-4">点击右上角「添加 Provider」开始配置</p>
             </div>
@@ -1069,20 +1069,20 @@ export default function ModelsPage() {
                 />
                 {/* 删除确认 */}
                 {confirmDelete === provider.id && (
-                  <div className="mt-2 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between">
-                    <p className="text-xs text-red-600">
+                  <div className="mt-2 bg-danger/10 border border-danger/30 rounded-lg p-3 flex items-center justify-between">
+                    <p className="text-xs text-danger">
                       确定删除 {provider.name}？此操作不可恢复。
                     </p>
                     <div className="flex gap-2 shrink-0">
                       <button
                         onClick={() => setConfirmDelete(null)}
-                        className="text-xs px-3 py-1 text-slate-500 hover:text-slate-700"
+                        className="text-xs px-3 py-1 text-muted-foreground hover:text-foreground"
                       >
                         取消
                       </button>
                       <button
                         onClick={() => handleDelete(provider.id)}
-                        className="text-xs px-3 py-1 font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+                        className="text-xs px-3 py-1 font-medium text-white bg-danger rounded-lg hover:bg-danger transition-colors"
                       >
                         确认删除
                       </button>
@@ -1093,7 +1093,7 @@ export default function ModelsPage() {
             ))
           )}
 
-          <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+          <p className="mt-4 text-xs text-muted-foreground leading-relaxed">
             点击 Provider 卡片展开查看详情和模型列表。API Key 保存在本地配置文件中。
           </p>
         </div>
@@ -1102,7 +1102,7 @@ export default function ModelsPage() {
       {/* Toast */}
       {toast && (
         <div className={`fixed bottom-6 right-6 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg ${
-          toast.type === 'success' ? 'bg-brand text-white' : 'bg-red-500 text-white'
+          toast.type === 'success' ? 'bg-brand text-white' : 'bg-danger text-white'
         }`}>
           {toast.message}
         </div>

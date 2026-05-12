@@ -56,16 +56,16 @@ function genKeyId(existing: PoolKey[]): string {
 
 function describeState(state: KeyRuntimeState): { label: string; color: string } {
   if (state.disabled) {
-    return { label: `已禁用（${state.reason ?? 'auth'}）`, color: 'bg-red-50 text-red-700' };
+    return { label: `已禁用（${state.reason ?? 'auth'}）`, color: 'bg-danger/10 text-danger' };
   }
   if (state.cooldownUntil && Date.now() < state.cooldownUntil) {
     const remain = Math.ceil((state.cooldownUntil - Date.now()) / 1000);
-    return { label: `冷却 ${remain}s`, color: 'bg-amber-50 text-amber-700' };
+    return { label: `冷却 ${remain}s`, color: 'bg-warning/10 text-warning' };
   }
   if (state.failCount > 0) {
-    return { label: `失败 ${state.failCount} 次`, color: 'bg-slate-100 text-slate-600' };
+    return { label: `失败 ${state.failCount} 次`, color: 'bg-accent text-muted-foreground' };
   }
-  return { label: '正常', color: 'bg-green-50 text-green-700' };
+  return { label: '正常', color: 'bg-success/10 text-success' };
 }
 
 export default function CredentialPoolEditor({ providerId, initialPool, onSaved, onClose, showToast }: Props) {
@@ -176,31 +176,31 @@ export default function CredentialPoolEditor({ providerId, initialPool, onSaved,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-[560px] max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card rounded-xl shadow-xl w-[560px] max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">多 Key 凭据池</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h3 className="text-sm font-bold text-foreground">多 Key 凭据池</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
               配置多把 apiKey，失败时自动切换（failover）或轮流使用（round-robin）
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 -mt-1 -mr-1 text-lg leading-none">×</button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground -mt-1 -mr-1 text-lg leading-none">×</button>
         </div>
 
         {/* 策略 */}
         <div className="mb-4">
-          <label className="block text-xs font-medium text-slate-600 mb-1.5">策略</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">策略</label>
           <div className="flex gap-2">
             <button
               onClick={() => setStrategy('failover')}
-              className={`flex-1 px-3 py-2 text-xs rounded-lg border ${strategy === 'failover' ? 'border-brand bg-brand/5 text-brand' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              className={`flex-1 px-3 py-2 text-xs rounded-lg border ${strategy === 'failover' ? 'border-brand bg-brand/5 text-brand' : 'border-border text-muted-foreground hover:border-border'}`}
             >
               <div className="font-semibold">Failover</div>
               <div className="text-[10px] opacity-70 mt-0.5">失败时切换到下一把</div>
             </button>
             <button
               onClick={() => setStrategy('round-robin')}
-              className={`flex-1 px-3 py-2 text-xs rounded-lg border ${strategy === 'round-robin' ? 'border-brand bg-brand/5 text-brand' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+              className={`flex-1 px-3 py-2 text-xs rounded-lg border ${strategy === 'round-robin' ? 'border-brand bg-brand/5 text-brand' : 'border-border text-muted-foreground hover:border-border'}`}
             >
               <div className="font-semibold">Round-Robin</div>
               <div className="text-[10px] opacity-70 mt-0.5">按顺序轮流使用</div>
@@ -211,33 +211,33 @@ export default function CredentialPoolEditor({ providerId, initialPool, onSaved,
         {/* keys 列表 */}
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-slate-600">Keys（{keys.length}）</label>
+            <label className="text-xs font-medium text-muted-foreground">Keys（{keys.length}）</label>
             <button onClick={handleAdd} className="text-xs text-brand hover:underline">+ 添加一把</button>
           </div>
           {keys.length === 0 && (
-            <p className="text-xs text-slate-400 bg-slate-50 rounded-lg p-3 text-center">尚未配置，点击「添加一把」开始</p>
+            <p className="text-xs text-muted-foreground bg-muted rounded-lg p-3 text-center">尚未配置，点击「添加一把」开始</p>
           )}
           <div className="space-y-2">
             {keys.map((k, idx) => {
               const status = statuses[k.id];
               return (
-                <div key={idx} className="border border-slate-200 rounded-lg p-2.5 space-y-1.5">
+                <div key={idx} className="border border-border rounded-lg p-2.5 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={k.id}
                       onChange={(e) => handleUpdate(idx, { id: e.target.value })}
                       placeholder="id（如 primary）"
-                      className="w-[120px] px-2 py-1 text-xs border border-slate-200 rounded font-mono"
+                      className="w-[120px] px-2 py-1 text-xs border border-border rounded font-mono"
                     />
                     <input
                       type="password"
                       value={k.apiKey}
                       onChange={(e) => handleUpdate(idx, { apiKey: e.target.value })}
                       placeholder="API Key"
-                      className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded font-mono"
+                      className="flex-1 px-2 py-1 text-xs border border-border rounded font-mono"
                     />
-                    <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer">
+                    <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer">
                       <input
                         type="checkbox"
                         checked={k.enabled}
@@ -247,7 +247,7 @@ export default function CredentialPoolEditor({ providerId, initialPool, onSaved,
                     </label>
                     <button
                       onClick={() => handleRemove(idx)}
-                      className="text-slate-300 hover:text-red-500 text-xs"
+                      className="text-muted-foreground hover:text-danger text-xs"
                       title="删除"
                     >
                       ✕
@@ -270,14 +270,14 @@ export default function CredentialPoolEditor({ providerId, initialPool, onSaved,
         </div>
 
         {/* 底部操作 */}
-        <div className="flex justify-between items-center mt-5 pt-3 border-t border-slate-100">
+        <div className="flex justify-between items-center mt-5 pt-3 border-t border-border">
           {initialPool ? (
-            <button onClick={handleDisablePool} disabled={saving} className="text-xs text-red-500 hover:underline disabled:opacity-40">
+            <button onClick={handleDisablePool} disabled={saving} className="text-xs text-danger hover:underline disabled:opacity-40">
               移除凭据池
             </button>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">
+            <button onClick={onClose} className="px-3.5 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted">
               取消
             </button>
             <button

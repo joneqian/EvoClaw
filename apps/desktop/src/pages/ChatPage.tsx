@@ -452,9 +452,9 @@ function ChatView() {
     const { used, max } = turnProgress;
     const remaining = Math.max(0, max - used);
     const ratio = max > 0 ? remaining / max : 1;
-    let colorCls = 'text-slate-400';
+    let colorCls = 'text-muted-foreground';
     if (ratio < 0.2) colorCls = 'text-rose-500';
-    else if (ratio < 0.5) colorCls = 'text-amber-600';
+    else if (ratio < 0.5) colorCls = 'text-warning';
     return { text: `已用 ${used} / 剩余 ${remaining}`, colorCls };
   })();
 
@@ -467,19 +467,19 @@ function ChatView() {
           </span>
         </div>
       )}
-      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-2xl border border-border/80 bg-card shadow-sm overflow-hidden">
         {/* 附件卡片区 */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-4 pt-3">
             {attachments.map((file, i) => (
-              <div key={i} className="group/att relative w-[160px] rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-brand/40 transition-colors">
+              <div key={i} className="group/att relative w-[160px] rounded-lg border border-border bg-muted p-3 hover:border-brand/40 transition-colors">
                 <button
                   onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-400 text-white text-xs
-                    flex items-center justify-center opacity-0 group-hover/att:opacity-100 hover:bg-red-500 transition-all"
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-muted-foreground text-white text-xs
+                    flex items-center justify-center opacity-0 group-hover/att:opacity-100 hover:bg-danger transition-all"
                 >×</button>
-                <p className="text-xs font-medium text-slate-700 truncate mb-2">{file.name}</p>
-                <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-500">
+                <p className="text-xs font-medium text-foreground truncate mb-2">{file.name}</p>
+                <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-accent text-muted-foreground">
                   {getFileExtLabel(file.name)}
                 </span>
               </div>
@@ -508,8 +508,8 @@ function ChatView() {
           }}
           placeholder="任何问题，尽管吩咐~"
           rows={3}
-          className="w-full resize-none px-4 py-3 text-sm bg-transparent text-slate-900
-            focus:outline-none placeholder:text-slate-400 min-h-[80px]"
+          className="w-full resize-none px-4 py-3 text-sm bg-transparent text-foreground
+            focus:outline-none placeholder:text-muted-foreground min-h-[80px]"
         />
 
         {/* 底部操作栏 */}
@@ -533,8 +533,8 @@ function ChatView() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isStreaming}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400
-                hover:bg-slate-100 hover:text-slate-600 transition-colors
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground
+                hover:bg-accent hover:text-muted-foreground transition-colors
                 disabled:opacity-40 disabled:cursor-not-allowed"
               title="添加附件"
             >
@@ -545,8 +545,8 @@ function ChatView() {
             </button>
             <button
               disabled={isStreaming}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400
-                hover:bg-slate-100 hover:text-slate-600 transition-colors
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground
+                hover:bg-accent hover:text-muted-foreground transition-colors
                 disabled:opacity-40 disabled:cursor-not-allowed"
               title="AI 增强"
             >
@@ -569,7 +569,7 @@ function ChatView() {
             {isStreaming ? (
               <button
                 onClick={cancelRun}
-                className="w-8 h-8 flex items-center justify-center rounded-full transition-colors bg-red-500 text-white hover:bg-red-600"
+                className="w-8 h-8 flex items-center justify-center rounded-full transition-colors bg-danger text-white hover:bg-danger"
                 title="停止"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -582,7 +582,7 @@ function ChatView() {
                 disabled={!input.trim() && attachments.length === 0}
                 className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
                   !input.trim() && attachments.length === 0
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    ? 'bg-accent text-muted-foreground cursor-not-allowed'
                     : 'bg-brand text-white hover:bg-brand-hover'
                 }`}
               >
@@ -594,22 +594,22 @@ function ChatView() {
           </div>
         </div>
       </div>
-      <p className="text-xs text-slate-300 text-center mt-2">内容由AI生成，仅供参考</p>
+      <p className="text-xs text-muted-foreground text-center mt-2">内容由AI生成，仅供参考</p>
     </div>
   );
 
   return (
-    <div className="flex-1 flex flex-col bg-white h-full relative">
+    <div className="flex-1 flex flex-col bg-card h-full relative">
       {/* 右上角：专家设置 */}
       {currentAgent && (
         <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
           {!sidecarConnected && (
-            <span className="text-xs text-red-400">Sidecar 未连接</span>
+            <span className="text-xs text-danger">Sidecar 未连接</span>
           )}
           <button
             onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 rounded-lg
-              hover:bg-slate-50 transition-colors text-slate-600"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg
+              hover:bg-muted transition-colors text-muted-foreground"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
@@ -622,16 +622,16 @@ function ChatView() {
       {loadingMessages ? (
         /* 加载状态 */
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-slate-400">加载历史消息...</p>
+          <p className="text-sm text-muted-foreground">加载历史消息...</p>
         </div>
       ) : !hasMessages ? (
         /* ── 空态：欢迎 + 输入 ── */
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold text-foreground">
               Hi, 我是{currentAgent?.name ?? '专家'}
             </h1>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm text-muted-foreground mt-1">
               {currentAgent?.name ?? ''}
             </p>
           </div>
@@ -644,9 +644,9 @@ function ChatView() {
           <div className="shrink-0 px-4 pt-3 pb-1">
             <button
               onClick={() => currentAgentId && newConversation(currentAgentId)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors"
             >
-              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
               </svg>
               新建对话
@@ -668,15 +668,15 @@ function ChatView() {
           {(subagentNotices.length > 0 || backgroundedNotice) && (
             <div className="shrink-0 px-6 pt-1 pb-0 flex flex-col gap-1.5 items-center">
               {backgroundedNotice && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200
-                                rounded-full text-xs text-amber-700 shadow-sm">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 border border-warning/30
+                                rounded-full text-xs text-warning shadow-sm">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <span>Agent 已转后台运行（{(backgroundedNotice.elapsedMs / 1000).toFixed(0)}s），您可以继续对话</span>
                   <button
                     onClick={() => setBackgroundedNotice(null)}
-                    className="ml-1 text-amber-500 hover:text-amber-700"
+                    className="ml-1 text-warning hover:text-warning"
                     title="关闭"
                   >
                     ×
@@ -687,10 +687,10 @@ function ChatView() {
                 const isOk = n.success && n.status === 'completed';
                 const isCancelled = n.status === 'cancelled';
                 const colorCls = isOk
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  ? 'bg-success/10 border-success/30 text-success'
                   : isCancelled
-                  ? 'bg-slate-50 border-slate-200 text-slate-600'
-                  : 'bg-red-50 border-red-200 text-red-700';
+                  ? 'bg-muted border-border text-muted-foreground'
+                  : 'bg-danger/10 border-danger/30 text-danger';
                 const statusText = isOk ? '完成' : isCancelled ? '已取消' : '失败';
                 return (
                   <div
@@ -698,12 +698,12 @@ function ChatView() {
                     className={`flex items-center gap-2 px-3 py-1.5 border rounded-full text-xs shadow-sm max-w-full ${colorCls}`}
                   >
                     <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      isOk ? 'bg-emerald-500' : isCancelled ? 'bg-slate-400' : 'bg-red-500'
+                      isOk ? 'bg-success' : isCancelled ? 'bg-muted-foreground' : 'bg-danger'
                     }`} />
                     <span className="truncate max-w-[320px]">
                       子任务{statusText}：{n.task.slice(0, 60)}
                     </span>
-                    <span className="text-slate-400 shrink-0">
+                    <span className="text-muted-foreground shrink-0">
                       {(n.durationMs / 1000).toFixed(1)}s
                     </span>
                     <button
@@ -781,7 +781,7 @@ export default function ChatPage() {
   }
 
   // 无专家选中 → 空白页
-  return <div className="h-full bg-white" />;
+  return <div className="h-full bg-card" />;
 }
 
 
@@ -830,7 +830,7 @@ function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasCon
       {!showAll && hiddenCount > 0 && (
         <button
           onClick={() => setExpanded(true)}
-          className="text-xs text-slate-400 hover:text-brand px-2 py-0.5 transition-colors"
+          className="text-xs text-muted-foreground hover:text-brand px-2 py-0.5 transition-colors"
         >
           ... 还有 {hiddenCount} 个工具调用，点击展开
         </button>
@@ -838,7 +838,7 @@ function ToolCallList({ toolCalls, hasContent }: { toolCalls: ToolCall[]; hasCon
       {expanded && toolCalls.length > MAX_VISIBLE_TOOLS && (
         <button
           onClick={() => setExpanded(false)}
-          className="text-xs text-slate-400 hover:text-brand px-2 py-0.5 transition-colors"
+          className="text-xs text-muted-foreground hover:text-brand px-2 py-0.5 transition-colors"
         >
           收起
         </button>
@@ -863,37 +863,37 @@ function ToolCallCard({ seg }: { seg: ToolSegment }) {
   const [expanded, setExpanded] = useState(false);
   const hasResult = !!seg.result;
   const statusIcon = seg.status === 'running'
-    ? <span className="w-2.5 h-2.5 border-[1.5px] border-amber-400 border-t-transparent rounded-full animate-spin" />
+    ? <span className="w-2.5 h-2.5 border-[1.5px] border-warning/50 border-t-transparent rounded-full animate-spin" />
     : seg.status === 'error'
-      ? <span className="w-2 h-2 rounded-full bg-red-400" />
-      : <span className="w-2 h-2 rounded-full bg-emerald-400" />;
+      ? <span className="w-2 h-2 rounded-full bg-danger" />
+      : <span className="w-2 h-2 rounded-full bg-success" />;
 
   return (
     <div
       className={`rounded-md border overflow-hidden my-1 ${
         hasResult ? 'cursor-pointer' : ''
-      } ${seg.isError ? 'border-red-100 bg-red-50/30' : 'border-slate-100 bg-slate-50/40'}`}
+      } ${seg.isError ? 'border-danger/20 bg-danger/10/30' : 'border-border bg-muted/40'}`}
       onClick={() => hasResult && setExpanded(!expanded)}
     >
       {/* 标题行 */}
       <div className="flex items-center gap-1.5 px-2.5 py-1.5">
         <span className="shrink-0">{statusIcon}</span>
-        <span className="text-xs font-medium text-slate-600 font-mono">{seg.displayName}</span>
+        <span className="text-xs font-medium text-muted-foreground font-mono">{seg.displayName}</span>
         {seg.summary && (
-          <span className="text-xs text-slate-400 truncate flex-1 min-w-0">{seg.summary}</span>
+          <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">{seg.summary}</span>
         )}
         {hasResult && (
-          <svg className={`w-3 h-3 text-slate-300 shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className={`w-3 h-3 text-muted-foreground shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
           </svg>
         )}
       </div>
       {/* 工具进度区域（运行中 + 有进度时显示） */}
       {seg.status === 'running' && seg.progress && (
-        <div className="border-t border-slate-100/80">
-          <pre className="bg-slate-900 text-green-400 font-mono text-[11px] leading-relaxed p-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
+        <div className="border-t border-border/80">
+          <pre className="bg-foreground text-success dark:bg-muted dark:text-success font-mono text-[11px] leading-relaxed p-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
             {seg.progress}
-            <span className="inline-block w-1.5 h-3 bg-green-400 animate-pulse ml-0.5" />
+            <span className="inline-block w-1.5 h-3 bg-success animate-pulse ml-0.5" />
           </pre>
         </div>
       )}
@@ -901,8 +901,8 @@ function ToolCallCard({ seg }: { seg: ToolSegment }) {
       <div className={`overflow-hidden transition-all duration-200 ease-in-out ${
         expanded && seg.result ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
       }`}>
-        <div className="px-2.5 pb-2 border-t border-slate-100/80">
-          <pre className="text-[11px] text-slate-500 font-mono whitespace-pre-wrap break-all leading-relaxed mt-1.5 max-h-48 overflow-y-auto">
+        <div className="px-2.5 pb-2 border-t border-border/80">
+          <pre className="text-[11px] text-muted-foreground font-mono whitespace-pre-wrap break-all leading-relaxed mt-1.5 max-h-48 overflow-y-auto">
             {seg.result && seg.result.length > 2000 ? seg.result.slice(0, 2000) + '\n... (truncated)' : seg.result}
           </pre>
         </div>
@@ -915,16 +915,16 @@ function ToolCallCard({ seg }: { seg: ToolSegment }) {
 function ToolCallItemLegacy({ tc }: { tc: ToolCall }) {
   const displayName = TOOL_DISPLAY_NAMES[tc.name] ?? tc.name;
   const statusIcon = tc.status === 'running'
-    ? <span className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+    ? <span className="w-3 h-3 border-2 border-warning/50 border-t-transparent rounded-full animate-spin" />
     : tc.status === 'error'
-      ? <span className="text-red-500 text-xs font-bold">!</span>
-      : <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
+      ? <span className="text-danger text-xs font-bold">!</span>
+      : <svg className="w-3.5 h-3.5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
 
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50/50 overflow-hidden">
+    <div className="rounded-lg border border-border bg-muted/50 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <span className="text-xs font-semibold text-slate-700 flex-1">{displayName}</span>
-        {tc.summary && <span className="text-xs text-slate-400 truncate">{tc.summary}</span>}
+        <span className="text-xs font-semibold text-foreground flex-1">{displayName}</span>
+        {tc.summary && <span className="text-xs text-muted-foreground truncate">{tc.summary}</span>}
         <span className="shrink-0">{statusIcon}</span>
       </div>
     </div>
@@ -932,18 +932,18 @@ function ToolCallItemLegacy({ tc }: { tc: ToolCall }) {
 }
 
 /** Markdown 文本样式类 */
-const MARKDOWN_CLASSES = `max-w-none break-words text-sm leading-relaxed text-slate-900
+const MARKDOWN_CLASSES = `max-w-none break-words text-sm leading-relaxed text-foreground
   [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5
   [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1.5
   [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1
   [&_h4]:text-sm [&_h4]:font-semibold [&_h4]:mt-2 [&_h4]:mb-1
   [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5
-  [&_pre]:bg-slate-900 [&_pre]:text-slate-100 [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto
-  [&_code]:text-pink-600 [&_code]:text-sm
-  [&_pre_code]:text-slate-100 [&_pre_code]:text-xs
+  [&_pre]:bg-foreground dark:[&_pre]:bg-muted [&_pre]:text-card dark:[&_pre]:text-foreground [&_pre]:rounded-lg [&_pre]:text-xs [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto
+  [&_code]:text-brand [&_code]:text-sm
+  [&_pre_code]:text-card dark:[&_pre_code]:text-foreground [&_pre_code]:text-xs
   [&_a]:text-brand [&_a]:no-underline hover:[&_a]:underline
-  [&_strong]:font-semibold [&_strong]:text-slate-900
-  [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-600
+  [&_strong]:font-semibold [&_strong]:text-foreground
+  [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground
   [&_table]:text-xs [&_th]:px-2 [&_td]:px-2 [&_hr]:my-3`;
 
 /** 消息操作栏 */
@@ -952,8 +952,8 @@ function MessageActions({ content }: { content: string }) {
     <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
       <button
         onClick={() => navigator.clipboard.writeText(content)}
-        className="flex items-center gap-1 px-2 py-0.5 text-xs text-slate-400
-          hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
+        className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground
+          hover:text-muted-foreground hover:bg-accent rounded transition-colors"
         title="复制"
       >
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1004,19 +1004,19 @@ function RecallMetaBar({ meta }: { meta: RecallMeta }) {
   };
 
   return (
-    <div className="mb-3 border border-slate-200 rounded-lg overflow-hidden bg-slate-50/50">
+    <div className="mb-3 border border-border rounded-lg overflow-hidden bg-muted/50">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-1.5 flex items-center justify-between text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+        className="w-full px-3 py-1.5 flex items-center justify-between text-xs text-muted-foreground hover:bg-accent transition-colors"
       >
         <span className="flex items-center gap-1.5">
-          <span className="text-slate-400">💭</span>
+          <span className="text-muted-foreground">💭</span>
           本轮用到 {count} 条记忆
         </span>
-        <span className="text-slate-300">{expanded ? '▾' : '▸'}</span>
+        <span className="text-muted-foreground">{expanded ? '▾' : '▸'}</span>
       </button>
       {expanded && (
-        <div className="border-t border-slate-200 divide-y divide-slate-100">
+        <div className="border-t border-border divide-y divide-border">
           {meta.memoryIds.map((id, i) => {
             const l0 = meta.l0Indexes[i] ?? '(无摘要)';
             const cat = meta.categories[i] ?? '';
@@ -1024,18 +1024,18 @@ function RecallMetaBar({ meta }: { meta: RecallMeta }) {
             const isFlagged = !!flagged[id];
             return (
               <div key={id} className="flex items-start gap-2 px-3 py-1.5 text-xs">
-                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] shrink-0">
+                <span className="px-1.5 py-0.5 rounded bg-accent text-muted-foreground text-[10px] shrink-0">
                   {CATEGORY_LABELS[cat] ?? cat}
                 </span>
-                <span className="flex-1 text-slate-700 leading-snug">{l0}</span>
-                <span className="text-[10px] text-slate-300 shrink-0">{Math.round(score * 100)}%</span>
+                <span className="flex-1 text-foreground leading-snug">{l0}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">{Math.round(score * 100)}%</span>
                 {isFlagged ? (
-                  <span className="text-[10px] text-orange-500 shrink-0">已反馈</span>
+                  <span className="text-[10px] text-warning shrink-0">已反馈</span>
                 ) : (
                   <button
                     onClick={() => handleFlag(id)}
                     disabled={flagging === id}
-                    className="text-[10px] text-slate-400 hover:text-orange-500 transition-colors shrink-0 disabled:opacity-50"
+                    className="text-[10px] text-muted-foreground hover:text-warning transition-colors shrink-0 disabled:opacity-50"
                     title="标记为不准确，下次召回会降权"
                   >
                     {flagging === id ? '提交中…' : '不准'}
@@ -1064,9 +1064,9 @@ function MessageBubble({ message }: { message: Message }) {
     const imageAttachments = (message.attachments ?? []).filter((a) => a.type === 'image');
     return (
       <div className="flex justify-end py-3">
-        <div className="max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed bg-slate-100 text-slate-900 rounded-br-sm">
+        <div className="max-w-[75%] rounded-xl px-4 py-2.5 text-sm leading-relaxed bg-accent text-foreground rounded-br-sm">
           {quoted && (
-            <div className="mb-2 border-l-2 border-slate-400 pl-2 text-xs text-slate-600">
+            <div className="mb-2 border-l-2 border-muted-foreground pl-2 text-xs text-muted-foreground">
               <div className="font-medium truncate">
                 回复 {displayAuthor || '消息'}
               </div>
@@ -1089,7 +1089,7 @@ function MessageBubble({ message }: { message: Message }) {
                     key={i}
                     src={src}
                     alt="用户发送的图片"
-                    className="max-h-40 max-w-[200px] rounded border border-slate-200 object-cover"
+                    className="max-h-40 max-w-[200px] rounded border border-border object-cover"
                     onClick={() => window.open(src, '_blank')}
                   />
                 );
@@ -1105,11 +1105,11 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className="group border-t border-slate-100 first:border-t-0 py-4">
+    <div className="group border-t border-border first:border-t-0 py-4">
       {/* Sprint 15.12 Phase E — Show Your Work 折叠条 */}
       {message.recallMeta && <RecallMetaBar meta={message.recallMeta} />}
       {isEmpty ? (
-        <div className="flex items-center gap-2 text-slate-400 text-xs py-1">
+        <div className="flex items-center gap-2 text-muted-foreground text-xs py-1">
           <span className="flex gap-0.5">
             <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
             <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />

@@ -18,10 +18,10 @@ interface KBFile {
 
 /** 状态标签颜色 */
 const STATUS_STYLES: Record<string, { label: string; color: string }> = {
-  pending: { label: '待索引', color: 'bg-yellow-100 text-yellow-700' },
-  indexing: { label: '索引中', color: 'bg-blue-100 text-blue-700' },
-  indexed: { label: '已索引', color: 'bg-green-100 text-green-700' },
-  error: { label: '失败', color: 'bg-red-100 text-red-700' },
+  pending: { label: '待索引', color: 'bg-warning/15 text-warning' },
+  indexing: { label: '索引中', color: 'bg-info/15 text-info' },
+  indexed: { label: '已索引', color: 'bg-success/15 text-success' },
+  error: { label: '失败', color: 'bg-danger/15 text-danger' },
 };
 
 /** 格式化文件大小 */
@@ -68,26 +68,26 @@ function FileRow({
   }, [agentId, file.id, onRefresh]);
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 bg-white rounded-lg border border-slate-200 hover:border-brand/40 transition-colors">
+    <div className="flex items-center gap-4 px-4 py-3 bg-card rounded-lg border border-border hover:border-brand/40 transition-colors">
       {/* 文件图标 */}
-      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-        <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shrink-0">
+        <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
         </svg>
       </div>
 
       {/* 文件信息 */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-900 truncate">{file.file_name}</p>
+        <p className="text-sm font-medium text-foreground truncate">{file.file_name}</p>
         <div className="flex items-center gap-3 mt-0.5">
-          <span className="text-xs text-slate-400">{formatSize(file.file_size)}</span>
-          <span className="text-xs text-slate-400">{file.chunk_count} 块</span>
+          <span className="text-xs text-muted-foreground">{formatSize(file.file_size)}</span>
+          <span className="text-xs text-muted-foreground">{file.chunk_count} 块</span>
           <span className={`px-2 py-0.5 rounded text-xs font-medium ${status.color}`}>
             {status.label}
           </span>
         </div>
         {file.error_message && (
-          <p className="text-xs text-red-500 mt-1 truncate">{file.error_message}</p>
+          <p className="text-xs text-danger mt-1 truncate">{file.error_message}</p>
         )}
       </div>
 
@@ -96,7 +96,7 @@ function FileRow({
         <button
           onClick={handleReindex}
           disabled={reindexing}
-          className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors"
+          className="px-3 py-1.5 text-xs font-medium text-muted-foreground bg-accent rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
           title="重新索引"
         >
           {reindexing ? '索引中...' : '重建索引'}
@@ -106,13 +106,13 @@ function FileRow({
           <div className="flex items-center gap-1">
             <button
               onClick={handleDelete}
-              className="px-2 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
+              className="px-2 py-1.5 text-xs rounded-lg bg-danger text-white hover:bg-danger transition-colors"
             >
               确认
             </button>
             <button
               onClick={() => setDeleting(false)}
-              className="px-2 py-1.5 text-xs rounded-lg bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+              className="px-2 py-1.5 text-xs rounded-lg bg-accent text-muted-foreground hover:bg-border transition-colors"
             >
               取消
             </button>
@@ -120,7 +120,7 @@ function FileRow({
         ) : (
           <button
             onClick={handleDelete}
-            className="p-1.5 rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-danger/10 hover:text-danger transition-colors"
             title="删除"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -188,9 +188,9 @@ export default function KnowledgePage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="px-6 py-4 border-b border-slate-200 bg-white">
+      <div className="px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-slate-900">知识库</h2>
+          <h2 className="text-lg font-bold text-foreground">知识库</h2>
           <AgentSelect
             agents={agents}
             value={selectedAgentId}
@@ -205,7 +205,7 @@ export default function KnowledgePage() {
             value={importPath}
             onChange={(e) => setImportPath(e.target.value)}
             placeholder="输入文件路径（支持 .md / .txt / .pdf / 代码文件）"
-            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+            className="flex-1 px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
           />
           <button
             type="submit"
@@ -216,28 +216,28 @@ export default function KnowledgePage() {
           </button>
         </form>
         {error && (
-          <p className="text-xs text-red-500 mt-2">{error}</p>
+          <p className="text-xs text-danger mt-2">{error}</p>
         )}
       </div>
 
       {/* 文件列表 */}
       <div className="flex-1 overflow-y-auto p-6">
         {!selectedAgentId ? (
-          <div className="text-center text-slate-400 mt-20">
+          <div className="text-center text-muted-foreground mt-20">
             <p className="text-lg">请先创建一个 Agent</p>
           </div>
         ) : loading ? (
-          <div className="text-center text-slate-400 mt-20">
+          <div className="text-center text-muted-foreground mt-20">
             <p className="text-sm">加载中...</p>
           </div>
         ) : files.length === 0 ? (
-          <div className="text-center text-slate-400 mt-20">
+          <div className="text-center text-muted-foreground mt-20">
             <p className="text-lg">暂无知识库文件</p>
             <p className="text-sm mt-1">输入文件路径导入文档，Agent 对话时将自动检索相关内容</p>
           </div>
         ) : (
           <div className="space-y-2 max-w-3xl mx-auto">
-            <p className="text-xs text-slate-400 mb-2">
+            <p className="text-xs text-muted-foreground mb-2">
               共 {files.length} 个文件
             </p>
             {files.map((file) => (

@@ -9,7 +9,7 @@ pnpm monorepo + Tauri 2.0 桌面应用，Bun Sidecar 架构。用户创建具有
 | 层 | 技术 |
 |---|---|
 | 桌面框架 | Tauri 2.0 (Rust) |
-| 前端 | React 19 + TypeScript + Tailwind CSS 4 + Zustand |
+| 前端 | React 19 + TypeScript + Tailwind CSS 4（shadcn 语义 token + 双主题）+ Zustand |
 | Sidecar | Hono + Bun + bun:sqlite (WAL)，Node.js 回退兼容 |
 | Agent 运行时 | 自研 Agent Kernel (query-loop + stream-client + builtin-tools，参考 Claude Code 架构) |
 | LLM | Kernel 双协议抽象 (Anthropic Messages + OpenAI Chat Completions)，国产模型走 openai-completions + 自定义 baseUrl |
@@ -117,7 +117,14 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **反馈循环防护**: 零宽空格标记防止注入记忆被重复存储
 - **热度衰减**: `sigmoid(log1p(access_count)) × exp(-0.099 × age_days)`，7 天半衰期
 - 设计文档: `docs/prd/PRD_2026-03-20.md` (v6.3), `docs/architecture/Architecture_2026-03-20.md` (v6.3), `docs/architecture/AgentSystemDesign.md`, `docs/architecture/MemorySystemDesign.md`, `docs/iteration-plans/IterationPlan_2026-03-20.md` (v6.3)
-- **当前冲刺**: M14 跨平台支持 Phase 1（Windows）✅（2026-05-12）— 7 PR 完整闭环
+- **当前冲刺**: M15 UI 现代化 5 件套（2026-05-12 启动）— 对齐 2025-2026 Anthropic/Claude AI 极简流派 + 反超 Hermes 工业级 UI 标准
+  - **U1 暗色主题 + dual-theme 设计系统**：feat/ui-dark-mode 进行中（shadcn 命名 token + CSS variables + ThemeProvider 三态 + 384 处颜色硬编码 sweep + ThemeSwitcher）
+  - **U2 lucide-react 图标库**：86 处内联 SVG → 标准库（待启动）
+  - **U3 Toast (sonner) + Skeleton 系统**：替换 7 处零散 toast（待启动）
+  - **U4 i18n 中英双语**：2203 处中文字面量抽离（待启动）
+  - **U5 ARIA + 键盘导航**：8 个 modal + 60+ 图标按钮 a11y 全覆盖（待启动）
+  - 详见 `docs/iteration-plans/M15-UIModernization-Plan.md` + `docs/architecture/design-system.md`
+- **上一冲刺**: M14 跨平台支持 Phase 1（Windows）✅（2026-05-12）— 7 PR 完整闭环
   - **A1 凭证文件实现 + macOS migration**：PR #148（移除 security-framework Keychain 调用 + 三 OS 统一 JSON 文件 + macOS Keychain → JSON 一次性迁移 + 19 单测）
   - **A2 sidecar binary 下载跨平台**：PR #149（download-bun/node.mjs 三 OS × arm64/x64 通吃 + scripts/lib/platform.mjs 共享 + PowerShell 解压）
   - **A3 Tauri Rust 端 Windows 路径**：PR #150（sidecar.rs 5 处 mac-only 痛点 cfg(windows) 分支：bun.exe 后缀 + Windows binary 查找 + USERPROFILE + taskkill）

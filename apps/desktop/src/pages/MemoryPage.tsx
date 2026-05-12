@@ -24,13 +24,13 @@ function StalenessBadge({ updatedAt }: { updatedAt: string }) {
   if (days <= 1) return null;
   if (days > 7) {
     return (
-      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700" title="超过 7 天未更新，建议验证">
+      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger/15 text-danger" title="超过 7 天未更新，建议验证">
         ⚠ {Math.floor(days)}d
       </span>
     );
   }
   return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-yellow-100 text-yellow-700" title={`${Math.floor(days)} 天未更新`}>
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/15 text-warning" title={`${Math.floor(days)} 天未更新`}>
       {Math.floor(days)}d
     </span>
   );
@@ -38,15 +38,15 @@ function StalenessBadge({ updatedAt }: { updatedAt: string }) {
 
 /** 分类显示名称和颜色 */
 const CATEGORIES: Record<string, { name: string; color: string }> = {
-  profile: { name: '个人信息', color: 'bg-blue-100 text-blue-700' },
-  preference: { name: '偏好习惯', color: 'bg-purple-100 text-purple-700' },
-  entity: { name: '实体知识', color: 'bg-green-100 text-green-700' },
-  event: { name: '事件经历', color: 'bg-yellow-100 text-yellow-700' },
-  case: { name: '问题案例', color: 'bg-orange-100 text-orange-700' },
-  pattern: { name: '行为模式', color: 'bg-pink-100 text-pink-700' },
-  tool: { name: '工具使用', color: 'bg-cyan-100 text-cyan-700' },
-  skill: { name: '技能知识', color: 'bg-indigo-100 text-indigo-700' },
-  correction: { name: '纠正反馈', color: 'bg-red-100 text-red-700' },
+  profile: { name: '个人信息', color: 'bg-info/15 text-info' },
+  preference: { name: '偏好习惯', color: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' },
+  entity: { name: '实体知识', color: 'bg-success/15 text-success' },
+  event: { name: '事件经历', color: 'bg-warning/15 text-warning' },
+  case: { name: '问题案例', color: 'bg-warning/15 text-warning' },
+  pattern: { name: '行为模式', color: 'bg-pink-100 text-pink-700 dark:text-pink-300' },
+  tool: { name: '工具使用', color: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300' },
+  skill: { name: '技能知识', color: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' },
+  correction: { name: '纠正反馈', color: 'bg-danger/15 text-danger' },
 };
 
 const ALL_CATEGORIES = Object.keys(CATEGORIES);
@@ -54,17 +54,17 @@ const ALL_CATEGORIES = Object.keys(CATEGORIES);
 /** 分类标签 */
 function CategoryBadge({ category }: { category: string }) {
   const cat = CATEGORIES[category];
-  if (!cat) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-500">{category}</span>;
+  if (!cat) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-accent text-muted-foreground">{category}</span>;
   return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${cat.color}`}>{cat.name}</span>;
 }
 
 /** 置信度圆点 — 列表项主要信号（用户反馈会立刻降低这个值） */
 function ConfidenceDot({ value }: { value: number }) {
   const pct = Math.round(value * 100);
-  const color = pct >= 70 ? 'bg-green-400' : pct >= 40 ? 'bg-yellow-400' : 'bg-slate-300';
+  const color = pct >= 70 ? 'bg-success' : pct >= 40 ? 'bg-warning' : 'bg-border';
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] text-slate-400"
+      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
       title={`置信度 ${pct}%`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${color}`} />
@@ -76,10 +76,10 @@ function ConfidenceDot({ value }: { value: number }) {
 /** 热度圆点 — 仅搜索结果使用（搜索结果没有 confidence 字段，显示 activation） */
 function HotnessDot({ value }: { value: number }) {
   const pct = Math.round(value * 100);
-  const color = pct >= 70 ? 'bg-green-400' : pct >= 40 ? 'bg-yellow-400' : 'bg-slate-300';
+  const color = pct >= 70 ? 'bg-success' : pct >= 40 ? 'bg-warning' : 'bg-border';
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] text-slate-400"
+      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
       title={`激活度（热度）${pct}%`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${color}`} />
@@ -108,7 +108,7 @@ function MemoryRow({
       className={`flex items-center gap-2 px-3 py-2 cursor-pointer border-l-2 transition-colors ${
         active
           ? 'bg-brand/5 border-brand'
-          : 'border-transparent hover:bg-slate-50'
+          : 'border-transparent hover:bg-muted'
       }`}
       onClick={onSelect}
     >
@@ -117,17 +117,17 @@ function MemoryRow({
         checked={selected}
         onChange={(e) => { e.stopPropagation(); onToggleCheck(); }}
         onClick={(e) => e.stopPropagation()}
-        className="shrink-0 w-3.5 h-3.5 rounded border-slate-300 text-brand focus:ring-brand/30"
+        className="shrink-0 w-3.5 h-3.5 rounded border-border text-brand focus:ring-brand/30"
       />
       <div className="flex-1 min-w-0">
-        <p className="text-[13px] text-slate-800 truncate leading-tight">
+        <p className="text-[13px] text-foreground truncate leading-tight">
           {isPinned && <span className="text-brand mr-1">*</span>}
           {unit.l0Index}
         </p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <CategoryBadge category={unit.category} />
           <ConfidenceDot value={unit.confidence} />
-          <span className="text-[10px] text-slate-300">{unit.accessCount}次</span>
+          <span className="text-[10px] text-muted-foreground">{unit.accessCount}次</span>
           <StalenessBadge updatedAt={unit.updatedAt} />
         </div>
       </div>
@@ -148,14 +148,14 @@ function SearchRow({
   return (
     <div
       className={`px-3 py-2 cursor-pointer border-l-2 transition-colors ${
-        active ? 'bg-brand/5 border-brand' : 'border-transparent hover:bg-slate-50'
+        active ? 'bg-brand/5 border-brand' : 'border-transparent hover:bg-muted'
       }`}
       onClick={onSelect}
     >
-      <p className="text-[13px] text-slate-800 truncate leading-tight">{result.l0Index}</p>
+      <p className="text-[13px] text-foreground truncate leading-tight">{result.l0Index}</p>
       <div className="flex items-center gap-1.5 mt-0.5">
         <CategoryBadge category={result.category} />
-        <span className="text-[10px] text-slate-400">{Math.round(result.finalScore * 100)}% 匹配</span>
+        <span className="text-[10px] text-muted-foreground">{Math.round(result.finalScore * 100)}% 匹配</span>
         <HotnessDot value={result.activation} />
       </div>
     </div>
@@ -200,52 +200,52 @@ function EditDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
+        className="bg-card rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-900">编辑记忆</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">L0 摘要为检索锚点，不可编辑</p>
+        <div className="px-5 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-foreground">编辑记忆</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">L0 摘要为检索锚点，不可编辑</p>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">L0 摘要（锁定）</label>
+            <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">L0 摘要（锁定）</label>
             <input
               type="text"
               value={unit.l0Index}
               disabled
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-slate-50 text-slate-400 cursor-not-allowed"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md bg-muted text-muted-foreground cursor-not-allowed"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">L1 概述</label>
+            <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">L1 概述</label>
             <textarea
               value={l1}
               onChange={(e) => setL1(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
               placeholder="结构化概览"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">L2 详情</label>
+            <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">L2 详情</label>
             <textarea
               value={l2}
               onChange={(e) => setL2(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
               placeholder="完整内容"
             />
           </div>
           {error && (
-            <p className="text-xs text-red-500">{error}</p>
+            <p className="text-xs text-danger">{error}</p>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-border">
           <button
             onClick={onClose}
             disabled={saving}
-            className="px-3 py-1.5 text-xs rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded-md bg-accent text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
             取消
           </button>
@@ -299,19 +299,19 @@ function FeedbackDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 flex flex-col"
+        className="bg-card rounded-lg shadow-xl w-full max-w-md mx-4 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-900">反馈这条记忆</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5 truncate">{unit.l0Index}</p>
+        <div className="px-5 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-foreground">反馈这条记忆</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{unit.l0Index}</p>
         </div>
         <div className="p-5 space-y-3">
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1.5">问题类型</label>
+            <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">问题类型</label>
             <div className="space-y-1.5">
               {(Object.entries(TYPE_LABELS) as [MemoryFeedbackType, string][]).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer hover:bg-slate-50">
+                <label key={key} className="flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer hover:bg-muted">
                   <input
                     type="radio"
                     name="feedback-type"
@@ -320,38 +320,38 @@ function FeedbackDialog({
                     onChange={() => setType(key)}
                     className="text-brand focus:ring-brand/30"
                   />
-                  <span className="text-sm text-slate-700">{label}</span>
+                  <span className="text-sm text-foreground">{label}</span>
                 </label>
               ))}
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">备注（可选）</label>
+            <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">备注（可选）</label>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
               placeholder="补充说明，例如哪里不对、应该是什么"
             />
           </div>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-muted-foreground">
             提交后该记忆的置信度会自动降低 0.15，下次召回排序会下降。
           </p>
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200">
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-border">
           <button
             onClick={onClose}
             disabled={submitting}
-            className="px-3 py-1.5 text-xs rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded-md bg-accent text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
             取消
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="px-3 py-1.5 text-xs rounded-md bg-orange-500 text-white hover:bg-orange-600 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 text-xs rounded-md bg-warning text-white hover:bg-warning transition-colors disabled:opacity-50"
           >
             {submitting ? '提交中…' : '提交反馈'}
           </button>
@@ -383,7 +383,7 @@ function DetailPanel({
 
   if (!unit) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-300">
+      <div className="h-full flex items-center justify-center text-muted-foreground">
         <p className="text-sm">选择一条记忆查看详情</p>
       </div>
     );
@@ -396,44 +396,44 @@ function DetailPanel({
       <div className="flex-1 overflow-y-auto p-5">
         {/* L0 摘要 + 元信息 */}
         <div className="mb-4">
-          <h3 className="text-base font-semibold text-slate-900 leading-snug">{unit.l0Index}</h3>
+          <h3 className="text-base font-semibold text-foreground leading-snug">{unit.l0Index}</h3>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <CategoryBadge category={unit.category} />
             <StalenessBadge updatedAt={unit.updatedAt} />
-            <span className="text-xs text-slate-400">置信度 {Math.round(unit.confidence * 100)}%</span>
-            <span className="text-xs text-slate-400">激活度 {Math.round(unit.activation * 100)}%</span>
-            <span className="text-xs text-slate-400">访问 {unit.accessCount} 次</span>
+            <span className="text-xs text-muted-foreground">置信度 {Math.round(unit.confidence * 100)}%</span>
+            <span className="text-xs text-muted-foreground">激活度 {Math.round(unit.activation * 100)}%</span>
+            <span className="text-xs text-muted-foreground">访问 {unit.accessCount} 次</span>
           </div>
         </div>
 
         {/* L1 概述 */}
         {unit.l1Overview && (
           <div className="mb-4">
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">概述</p>
-            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{unit.l1Overview}</p>
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">概述</p>
+            <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{unit.l1Overview}</p>
           </div>
         )}
 
         {/* L2 详细内容 */}
         {unit.l2Content && (
           <div className="mb-4">
-            <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">详细内容</p>
-            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{unit.l2Content}</p>
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">详细内容</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{unit.l2Content}</p>
           </div>
         )}
 
         {/* 时间信息 */}
-        <div className="border-t border-slate-100 pt-3 mt-4">
-          <div className="flex gap-4 text-xs text-slate-400">
+        <div className="border-t border-border pt-3 mt-4">
+          <div className="flex gap-4 text-xs text-muted-foreground">
             <span>创建 {formatDate(unit.createdAt)}</span>
             <span>更新 {formatDate(unit.updatedAt)}</span>
-            {unit.archivedAt && <span className="text-orange-400">已归档 {formatDate(unit.archivedAt)}</span>}
+            {unit.archivedAt && <span className="text-warning">已归档 {formatDate(unit.archivedAt)}</span>}
           </div>
         </div>
       </div>
 
       {/* 操作栏 */}
-      <div className="flex items-center gap-2 px-5 py-3 border-t border-slate-100 bg-white shrink-0">
+      <div className="flex items-center gap-2 px-5 py-3 border-t border-border bg-card shrink-0">
         <button
           onClick={() => setEditing(true)}
           className="px-3 py-1.5 text-xs rounded-md bg-brand/10 text-brand hover:bg-brand/20 transition-colors"
@@ -442,7 +442,7 @@ function DetailPanel({
         </button>
         <button
           onClick={() => setFeedbackOpen(true)}
-          className="px-3 py-1.5 text-xs rounded-md bg-orange-50 text-orange-600 hover:bg-orange-100 transition-colors"
+          className="px-3 py-1.5 text-xs rounded-md bg-warning/10 text-warning hover:bg-warning/15 transition-colors"
         >
           反馈
         </button>
@@ -451,7 +451,7 @@ function DetailPanel({
           className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
             isPinned
               ? 'bg-brand/10 text-brand hover:bg-brand/20'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              : 'bg-accent text-muted-foreground hover:bg-accent'
           }`}
         >
           {isPinned ? '取消置顶' : '置顶'}
@@ -461,13 +461,13 @@ function DetailPanel({
           <>
             <button
               onClick={() => { deleteMemory(agentId, unit.id); setDeleting(false); }}
-              className="px-3 py-1.5 text-xs rounded-md bg-red-500 text-white hover:bg-red-600 transition-colors"
+              className="px-3 py-1.5 text-xs rounded-md bg-danger text-white hover:bg-danger transition-colors"
             >
               确认删除
             </button>
             <button
               onClick={() => setDeleting(false)}
-              className="px-3 py-1.5 text-xs rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+              className="px-3 py-1.5 text-xs rounded-md bg-accent text-muted-foreground hover:bg-accent transition-colors"
             >
               取消
             </button>
@@ -475,7 +475,7 @@ function DetailPanel({
         ) : (
           <button
             onClick={() => setDeleting(true)}
-            className="px-3 py-1.5 text-xs rounded-md text-red-500 hover:bg-red-50 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-md text-danger hover:bg-danger/10 transition-colors"
           >
             删除
           </button>
@@ -492,7 +492,7 @@ function DetailPanel({
 function SearchDetailPanel({ result }: { result: SearchResult | null }) {
   if (!result) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-300">
+      <div className="h-full flex items-center justify-center text-muted-foreground">
         <p className="text-sm">选择一条结果查看详情</p>
       </div>
     );
@@ -500,24 +500,24 @@ function SearchDetailPanel({ result }: { result: SearchResult | null }) {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <h3 className="text-base font-semibold text-slate-900 leading-snug mb-2">{result.l0Index}</h3>
+      <h3 className="text-base font-semibold text-foreground leading-snug mb-2">{result.l0Index}</h3>
       <div className="flex items-center gap-2 mb-4">
         <CategoryBadge category={result.category} />
-        <span className="text-xs text-slate-400">匹配度 {Math.round(result.finalScore * 100)}%</span>
-        <span className="text-xs text-slate-400">激活度 {Math.round(result.activation * 100)}%</span>
+        <span className="text-xs text-muted-foreground">匹配度 {Math.round(result.finalScore * 100)}%</span>
+        <span className="text-xs text-muted-foreground">激活度 {Math.round(result.activation * 100)}%</span>
       </div>
 
       {result.l1Overview && (
         <div className="mb-4">
-          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">概述</p>
-          <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{result.l1Overview}</p>
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">概述</p>
+          <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{result.l1Overview}</p>
         </div>
       )}
 
       {result.l2Content && (
         <div className="mb-4">
-          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide mb-1">详细内容</p>
-          <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{result.l2Content}</p>
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">详细内容</p>
+          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{result.l2Content}</p>
         </div>
       )}
     </div>
@@ -540,14 +540,14 @@ function KnowledgeGraphTab({ agentId }: { agentId: string }) {
   }, [agentId, fetchKnowledgeGraph]);
 
   if (!agentId) {
-    return <div className="text-center text-slate-300 mt-16"><p className="text-sm">请先选择 Agent</p></div>;
+    return <div className="text-center text-muted-foreground mt-16"><p className="text-sm">请先选择 Agent</p></div>;
   }
   if (loading) {
-    return <div className="text-center text-slate-300 mt-16"><p className="text-xs">加载中…</p></div>;
+    return <div className="text-center text-muted-foreground mt-16"><p className="text-xs">加载中…</p></div>;
   }
   if (knowledgeRelations.length === 0) {
     return (
-      <div className="text-center text-slate-300 mt-16 px-4">
+      <div className="text-center text-muted-foreground mt-16 px-4">
         <p className="text-sm">暂无知识图谱关系</p>
         <p className="text-xs mt-1">Agent 在对话中提取实体关系后会显示在这里</p>
       </div>
@@ -563,23 +563,23 @@ function KnowledgeGraphTab({ agentId }: { agentId: string }) {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <div className="mb-3 text-xs text-slate-400">
+      <div className="mb-3 text-xs text-muted-foreground">
         共 {knowledgeRelations.length} 条关系，{Object.keys(grouped).length} 个实体
       </div>
       <div className="space-y-4">
         {Object.entries(grouped).map(([subject, rels]) => (
-          <div key={subject} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
-              <span className="text-xs font-medium text-slate-700">{subject}</span>
-              <span className="ml-2 text-[10px] text-slate-400">{rels.length} 条关系</span>
+          <div key={subject} className="bg-card rounded-lg border border-border overflow-hidden">
+            <div className="px-3 py-2 bg-muted border-b border-border">
+              <span className="text-xs font-medium text-foreground">{subject}</span>
+              <span className="ml-2 text-[10px] text-muted-foreground">{rels.length} 条关系</span>
             </div>
             <table className="w-full text-xs">
               <tbody>
                 {rels.map((r) => (
-                  <tr key={r.id} className="border-t border-slate-100 first:border-t-0">
-                    <td className="px-3 py-1.5 text-slate-500 w-20">{r.relation}</td>
-                    <td className="px-3 py-1.5 text-slate-700">{r.objectId}</td>
-                    <td className="px-3 py-1.5 text-right text-[10px] text-slate-300 w-16">{Math.round(r.confidence * 100)}%</td>
+                  <tr key={r.id} className="border-t border-border first:border-t-0">
+                    <td className="px-3 py-1.5 text-muted-foreground w-20">{r.relation}</td>
+                    <td className="px-3 py-1.5 text-foreground">{r.objectId}</td>
+                    <td className="px-3 py-1.5 text-right text-[10px] text-muted-foreground w-16">{Math.round(r.confidence * 100)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -600,14 +600,14 @@ function ConsolidationsTab({ agentId }: { agentId: string }) {
   }, [agentId, fetchConsolidations]);
 
   if (!agentId) {
-    return <div className="text-center text-slate-300 mt-16"><p className="text-sm">请先选择 Agent</p></div>;
+    return <div className="text-center text-muted-foreground mt-16"><p className="text-sm">请先选择 Agent</p></div>;
   }
   if (loading) {
-    return <div className="text-center text-slate-300 mt-16"><p className="text-xs">加载中…</p></div>;
+    return <div className="text-center text-muted-foreground mt-16"><p className="text-xs">加载中…</p></div>;
   }
   if (consolidations.length === 0) {
     return (
-      <div className="text-center text-slate-300 mt-16 px-4">
+      <div className="text-center text-muted-foreground mt-16 px-4">
         <p className="text-sm">暂无整合历史</p>
         <p className="text-xs mt-1">AutoDream 在 24h + 5 个新会话后自动触发</p>
       </div>
@@ -616,7 +616,7 @@ function ConsolidationsTab({ agentId }: { agentId: string }) {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <div className="mb-3 text-xs text-slate-400">
+      <div className="mb-3 text-xs text-muted-foreground">
         共 {consolidations.length} 次 AutoDream 运行
       </div>
       <div className="space-y-2">
@@ -625,25 +625,25 @@ function ConsolidationsTab({ agentId }: { agentId: string }) {
             ? Math.round((new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
             : null;
           const statusColor =
-            run.status === 'completed' ? 'bg-green-100 text-green-700' :
-            run.status === 'failed' ? 'bg-red-100 text-red-700' :
-            'bg-yellow-100 text-yellow-700';
+            run.status === 'completed' ? 'bg-success/15 text-success' :
+            run.status === 'failed' ? 'bg-danger/15 text-danger' :
+            'bg-warning/15 text-warning';
           return (
-            <div key={run.id} className="bg-white rounded-lg border border-slate-200 p-3">
+            <div key={run.id} className="bg-card rounded-lg border border-border p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColor}`}>{run.status}</span>
-                  <span className="text-xs text-slate-500">{formatDate(run.startedAt)}</span>
-                  {duration !== null && <span className="text-[10px] text-slate-400">耗时 {duration}s</span>}
+                  <span className="text-xs text-muted-foreground">{formatDate(run.startedAt)}</span>
+                  {duration !== null && <span className="text-[10px] text-muted-foreground">耗时 {duration}s</span>}
                 </div>
               </div>
               <div className="flex gap-4 text-xs">
-                <span className="text-slate-600">合并 <strong>{run.memoriesMerged}</strong></span>
-                <span className="text-slate-600">裁剪 <strong>{run.memoriesPruned}</strong></span>
-                <span className="text-slate-600">新建 <strong>{run.memoriesCreated}</strong></span>
+                <span className="text-muted-foreground">合并 <strong>{run.memoriesMerged}</strong></span>
+                <span className="text-muted-foreground">裁剪 <strong>{run.memoriesPruned}</strong></span>
+                <span className="text-muted-foreground">新建 <strong>{run.memoriesCreated}</strong></span>
               </div>
               {run.errorMessage && (
-                <p className="mt-2 text-[11px] text-red-500 bg-red-50 p-2 rounded">{run.errorMessage}</p>
+                <p className="mt-2 text-[11px] text-danger bg-danger/10 p-2 rounded">{run.errorMessage}</p>
               )}
             </div>
           );
@@ -663,14 +663,14 @@ function SessionSummariesTab({ agentId }: { agentId: string }) {
   }, [agentId, fetchSessionSummaries]);
 
   if (!agentId) {
-    return <div className="text-center text-slate-300 mt-16"><p className="text-sm">请先选择 Agent</p></div>;
+    return <div className="text-center text-muted-foreground mt-16"><p className="text-sm">请先选择 Agent</p></div>;
   }
   if (loading) {
-    return <div className="text-center text-slate-300 mt-16"><p className="text-xs">加载中…</p></div>;
+    return <div className="text-center text-muted-foreground mt-16"><p className="text-xs">加载中…</p></div>;
   }
   if (sessionSummaries.length === 0) {
     return (
-      <div className="text-center text-slate-300 mt-16 px-4">
+      <div className="text-center text-muted-foreground mt-16 px-4">
         <p className="text-sm">暂无会话摘要</p>
         <p className="text-xs mt-1">单个会话累计 ≥10K tokens 后自动生成</p>
       </div>
@@ -679,31 +679,31 @@ function SessionSummariesTab({ agentId }: { agentId: string }) {
 
   return (
     <div className="h-full overflow-y-auto p-5">
-      <div className="mb-3 text-xs text-slate-400">
+      <div className="mb-3 text-xs text-muted-foreground">
         共 {sessionSummaries.length} 条会话摘要
       </div>
       <div className="space-y-2">
         {sessionSummaries.map((s: SessionSummary) => {
           const isExpanded = expandedId === s.id;
           return (
-            <div key={s.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+            <div key={s.id} className="bg-card rounded-lg border border-border overflow-hidden">
               <button
                 onClick={() => setExpandedId(isExpanded ? null : s.id)}
-                className="w-full px-3 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                className="w-full px-3 py-2 flex items-center justify-between hover:bg-muted transition-colors"
               >
                 <div className="flex-1 min-w-0 text-left">
-                  <p className="text-xs font-mono text-slate-700 truncate">{s.sessionKey}</p>
-                  <div className="flex gap-3 mt-0.5 text-[10px] text-slate-400">
+                  <p className="text-xs font-mono text-foreground truncate">{s.sessionKey}</p>
+                  <div className="flex gap-3 mt-0.5 text-[10px] text-muted-foreground">
                     <span>{formatDate(s.updatedAt)}</span>
                     <span>{s.tokenCountAt.toLocaleString()} tokens</span>
                     <span>{s.turnCountAt} 轮</span>
                     <span>{s.toolCallCountAt} 工具调用</span>
                   </div>
                 </div>
-                <span className="text-slate-300 ml-2">{isExpanded ? '▾' : '▸'}</span>
+                <span className="text-muted-foreground ml-2">{isExpanded ? '▾' : '▸'}</span>
               </button>
               {isExpanded && (
-                <div className="px-4 py-3 border-t border-slate-100 prose prose-sm prose-slate max-w-none">
+                <div className="px-4 py-3 border-t border-border prose prose-sm prose-slate max-w-none">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.summaryMarkdown}</ReactMarkdown>
                 </div>
               )}
@@ -810,9 +810,9 @@ export default function MemoryPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏: 第 1 行 — 标题 + 搜索 + Agent */}
-      <div className="px-4 pt-3 pb-2 border-b border-slate-200 bg-white">
+      <div className="px-4 pt-3 pb-2 border-b border-border bg-card">
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-sm font-bold text-slate-900 shrink-0">记忆管理</h2>
+          <h2 className="text-sm font-bold text-foreground shrink-0">记忆管理</h2>
           {activeTab === 'memories' ? (
             <form onSubmit={handleSearch} className="flex-1 flex gap-1.5">
               <input
@@ -820,7 +820,7 @@ export default function MemoryPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索记忆..."
-                className="flex-1 px-2.5 py-1.5 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand"
+                className="flex-1 px-2.5 py-1.5 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand"
               />
               <button
                 type="submit"
@@ -833,7 +833,7 @@ export default function MemoryPage() {
                 <button
                   type="button"
                   onClick={handleClearSearch}
-                  className="px-2.5 py-1.5 text-xs text-slate-500 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors"
+                  className="px-2.5 py-1.5 text-xs text-muted-foreground bg-accent rounded-md hover:bg-accent transition-colors"
                 >
                   清除
                 </button>
@@ -846,7 +846,7 @@ export default function MemoryPage() {
         </div>
 
         {/* Sprint 15.12 Phase D — Tab 切换 */}
-        <div className="flex gap-1 border-b border-slate-100 -mx-4 px-4 mb-2">
+        <div className="flex gap-1 border-b border-border -mx-4 px-4 mb-2">
           {(Object.keys(TAB_LABELS) as MemoryTab[]).map((key) => (
             <button
               key={key}
@@ -854,7 +854,7 @@ export default function MemoryPage() {
               className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
                 activeTab === key
                   ? 'border-brand text-brand'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               {TAB_LABELS[key]}
@@ -870,7 +870,7 @@ export default function MemoryPage() {
               <button
                 onClick={() => setActiveCategory('all')}
                 className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
-                  activeCategory === 'all' ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  activeCategory === 'all' ? 'bg-brand text-white' : 'bg-accent text-muted-foreground hover:bg-accent'
                 }`}
               >
                 全部
@@ -880,7 +880,7 @@ export default function MemoryPage() {
                   key={key}
                   onClick={() => setActiveCategory(key)}
                   className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
-                    activeCategory === key ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    activeCategory === key ? 'bg-brand text-white' : 'bg-accent text-muted-foreground hover:bg-accent'
                   }`}
                 >
                   {CATEGORIES[key].name}
@@ -888,29 +888,29 @@ export default function MemoryPage() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-slate-400">搜索结果: {searchResults.length} 条</p>
+            <p className="text-xs text-muted-foreground">搜索结果: {searchResults.length} 条</p>
           )}
 
           {!isSearchMode && units.length > 0 && (
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={toggleSelectAll}
-                className="text-xs text-slate-500 hover:text-brand transition-colors"
+                className="text-xs text-muted-foreground hover:text-brand transition-colors"
               >
                 {selectedIds.size === units.length ? '取消全选' : '全选'}
               </button>
               {selectedIds.size > 0 && (
                 batchDeleting ? (
                   <div className="flex gap-1.5">
-                    <button onClick={handleBatchDelete} className="px-2.5 py-1 text-xs rounded bg-red-500 text-white hover:bg-red-600">
+                    <button onClick={handleBatchDelete} className="px-2.5 py-1 text-xs rounded bg-danger text-white hover:bg-danger">
                       确认删除 {selectedIds.size} 条
                     </button>
-                    <button onClick={() => setBatchDeleting(false)} className="px-2.5 py-1 text-xs rounded bg-slate-200 text-slate-600 hover:bg-slate-300">
+                    <button onClick={() => setBatchDeleting(false)} className="px-2.5 py-1 text-xs rounded bg-accent text-muted-foreground hover:bg-border">
                       取消
                     </button>
                   </div>
                 ) : (
-                  <button onClick={handleBatchDelete} className="text-xs text-red-500 hover:text-red-600">
+                  <button onClick={handleBatchDelete} className="text-xs text-danger hover:text-danger">
                     删除 {selectedIds.size} 条
                   </button>
                 )
@@ -925,22 +925,22 @@ export default function MemoryPage() {
       {activeTab === 'memories' ? (
         <div className="flex-1 flex overflow-hidden">
           {/* 左列表 */}
-          <div className="w-2/5 min-w-[280px] max-w-[420px] border-r border-slate-200 overflow-y-auto bg-white">
+          <div className="w-2/5 min-w-[280px] max-w-[420px] border-r border-border overflow-y-auto bg-card">
             {!selectedAgentId ? (
-              <div className="text-center text-slate-300 mt-16 px-4">
+              <div className="text-center text-muted-foreground mt-16 px-4">
                 <p className="text-sm">请先创建一个 Agent</p>
               </div>
             ) : loading ? (
-              <div className="text-center text-slate-300 mt-16">
+              <div className="text-center text-muted-foreground mt-16">
                 <p className="text-xs">加载中...</p>
               </div>
             ) : isSearchMode ? (
               searchResults.length === 0 ? (
-                <div className="text-center text-slate-300 mt-16">
+                <div className="text-center text-muted-foreground mt-16">
                   <p className="text-xs">未找到匹配的记忆</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-border">
                   {searchResults.map((result, idx) => (
                     <SearchRow
                       key={result.memoryId}
@@ -952,12 +952,12 @@ export default function MemoryPage() {
                 </div>
               )
             ) : units.length === 0 ? (
-              <div className="text-center text-slate-300 mt-16 px-4">
+              <div className="text-center text-muted-foreground mt-16 px-4">
                 <p className="text-sm">暂无记忆</p>
                 <p className="text-xs mt-1">与 Agent 对话后将自动积累</p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border">
                 {units.map((unit) => (
                   <MemoryRow
                     key={unit.id}
@@ -973,7 +973,7 @@ export default function MemoryPage() {
           </div>
 
           {/* 右详情 */}
-          <div className="flex-1 bg-slate-50">
+          <div className="flex-1 bg-muted">
             {isSearchMode ? (
               <SearchDetailPanel result={activeSearchResult} />
             ) : (
@@ -982,7 +982,7 @@ export default function MemoryPage() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 bg-slate-50 overflow-hidden">
+        <div className="flex-1 bg-muted overflow-hidden">
           {activeTab === 'graph' && <KnowledgeGraphTab agentId={selectedAgentId} />}
           {activeTab === 'consolidations' && <ConsolidationsTab agentId={selectedAgentId} />}
           {activeTab === 'summaries' && <SessionSummariesTab agentId={selectedAgentId} />}

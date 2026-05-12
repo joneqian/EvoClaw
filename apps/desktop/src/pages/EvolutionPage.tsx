@@ -23,17 +23,17 @@ const DIMENSION_LABELS: Record<string, string> = {
 
 /** 成长事件类型标签 */
 const EVENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  capability_up: { label: '提升', color: 'text-green-600' },
-  capability_down: { label: '下降', color: 'text-red-500' },
-  new_capability: { label: '新能力', color: 'text-blue-600' },
-  milestone: { label: '里程碑', color: 'text-yellow-600' },
+  capability_up: { label: '提升', color: 'text-success' },
+  capability_down: { label: '下降', color: 'text-danger' },
+  new_capability: { label: '新能力', color: 'text-info' },
+  milestone: { label: '里程碑', color: 'text-warning' },
 };
 
 /** 趋势箭头 */
 function TrendIcon({ trend }: { trend: string }) {
-  if (trend === 'up') return <span className="text-green-500">↑</span>;
-  if (trend === 'down') return <span className="text-red-500">↓</span>;
-  return <span className="text-slate-400">→</span>;
+  if (trend === 'up') return <span className="text-success">↑</span>;
+  if (trend === 'down') return <span className="text-danger">↓</span>;
+  return <span className="text-muted-foreground">→</span>;
 }
 
 /** SVG 雷达图 */
@@ -132,54 +132,54 @@ export default function EvolutionPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-slate-200 bg-white">
+      <div className="px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">进化仪表盘</h2>
+          <h2 className="text-lg font-bold text-foreground">进化仪表盘</h2>
           <AgentSelect agents={agents} value={selectedAgentId} onChange={setSelectedAgentId} />
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
         {!selectedAgentId ? (
-          <div className="text-center text-slate-400 mt-20"><p className="text-lg">请先创建一个 Agent</p></div>
+          <div className="text-center text-muted-foreground mt-20"><p className="text-lg">请先创建一个 Agent</p></div>
         ) : loading ? (
-          <div className="text-center text-slate-400 mt-20"><p className="text-sm">加载中...</p></div>
+          <div className="text-center text-muted-foreground mt-20"><p className="text-sm">加载中...</p></div>
         ) : (
           <div className="max-w-4xl mx-auto space-y-6">
             {/* 统计卡片 */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <p className="text-xs text-slate-400 mb-1">能力维度</p>
-                <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
+              <div className="bg-card rounded-lg border border-border p-4">
+                <p className="text-xs text-muted-foreground mb-1">能力维度</p>
+                <p className="text-2xl font-bold text-foreground">{stats.total}</p>
               </div>
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <p className="text-xs text-slate-400 mb-1">平均等级</p>
+              <div className="bg-card rounded-lg border border-border p-4">
+                <p className="text-xs text-muted-foreground mb-1">平均等级</p>
                 <p className="text-2xl font-bold text-brand">{stats.avgLevel}</p>
               </div>
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <p className="text-xs text-slate-400 mb-1">总使用次数</p>
-                <p className="text-2xl font-bold text-slate-900">{stats.totalUses}</p>
+              <div className="bg-card rounded-lg border border-border p-4">
+                <p className="text-xs text-muted-foreground mb-1">总使用次数</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalUses}</p>
               </div>
             </div>
 
             {/* 雷达图 + 成长向量 */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <h3 className="text-sm font-medium text-slate-700 mb-3">能力雷达</h3>
+              <div className="bg-card rounded-lg border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground mb-3">能力雷达</h3>
                 <RadarChart capabilities={capabilities} />
               </div>
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <h3 className="text-sm font-medium text-slate-700 mb-3">7 日成长向量</h3>
+              <div className="bg-card rounded-lg border border-border p-4">
+                <h3 className="text-sm font-medium text-foreground mb-3">7 日成长向量</h3>
                 {vector.length === 0 ? (
-                  <p className="text-sm text-slate-400 mt-8 text-center">暂无数据</p>
+                  <p className="text-sm text-muted-foreground mt-8 text-center">暂无数据</p>
                 ) : (
                   <div className="space-y-2">
                     {vector.map((v) => (
-                      <div key={v.dimension} className="flex items-center justify-between px-2 py-1.5 rounded bg-slate-50">
-                        <span className="text-sm text-slate-700">{DIMENSION_LABELS[v.dimension] ?? v.dimension}</span>
+                      <div key={v.dimension} className="flex items-center justify-between px-2 py-1.5 rounded bg-muted">
+                        <span className="text-sm text-foreground">{DIMENSION_LABELS[v.dimension] ?? v.dimension}</span>
                         <div className="flex items-center gap-2">
                           <TrendIcon trend={v.trend} />
-                          <span className={`text-sm font-mono ${v.delta > 0 ? 'text-green-600' : v.delta < 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                          <span className={`text-sm font-mono ${v.delta > 0 ? 'text-success' : v.delta < 0 ? 'text-danger' : 'text-muted-foreground'}`}>
                             {v.delta > 0 ? '+' : ''}{v.delta.toFixed(2)}
                           </span>
                         </div>
@@ -191,25 +191,25 @@ export default function EvolutionPage() {
             </div>
 
             {/* 最近进化事件 */}
-            <div className="bg-white rounded-lg border border-slate-200 p-4">
-              <h3 className="text-sm font-medium text-slate-700 mb-3">最近进化事件</h3>
+            <div className="bg-card rounded-lg border border-border p-4">
+              <h3 className="text-sm font-medium text-foreground mb-3">最近进化事件</h3>
               {events.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-4">暂无事件</p>
+                <p className="text-sm text-muted-foreground text-center py-4">暂无事件</p>
               ) : (
                 <div className="space-y-1.5 max-h-60 overflow-y-auto">
                   {events.map((e, i) => {
-                    const typeInfo = EVENT_TYPE_LABELS[e.type] ?? { label: e.type, color: 'text-slate-600' };
+                    const typeInfo = EVENT_TYPE_LABELS[e.type] ?? { label: e.type, color: 'text-muted-foreground' };
                     return (
-                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded bg-slate-50 text-sm">
+                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded bg-muted text-sm">
                         <div className="flex items-center gap-3">
                           <span className={`font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
-                          <span className="text-slate-700">{DIMENSION_LABELS[e.capability] ?? e.capability}</span>
+                          <span className="text-foreground">{DIMENSION_LABELS[e.capability] ?? e.capability}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`font-mono ${e.delta > 0 ? 'text-green-600' : e.delta < 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                          <span className={`font-mono ${e.delta > 0 ? 'text-success' : e.delta < 0 ? 'text-danger' : 'text-muted-foreground'}`}>
                             {e.delta > 0 ? '+' : ''}{e.delta.toFixed(2)}
                           </span>
-                          <span className="text-xs text-slate-400">{parseUtcDate(e.timestamp).toLocaleString('zh-CN')}</span>
+                          <span className="text-xs text-muted-foreground">{parseUtcDate(e.timestamp).toLocaleString('zh-CN')}</span>
                         </div>
                       </div>
                     );

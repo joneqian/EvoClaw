@@ -99,7 +99,7 @@ export default function AgentEditPage() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-400">
+      <div className="h-full flex items-center justify-center text-muted-foreground">
         <p className="text-sm">加载中...</p>
       </div>
     );
@@ -110,7 +110,7 @@ export default function AgentEditPage() {
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <p className="text-4xl mb-3">404</p>
-          <p className="text-sm text-slate-400 mb-4">专家不存在</p>
+          <p className="text-sm text-muted-foreground mb-4">专家不存在</p>
           <button onClick={() => navigate('/agents')} className="text-sm text-brand">
             返回专家中心
           </button>
@@ -122,75 +122,75 @@ export default function AgentEditPage() {
   return (
     <div className="h-full flex flex-col">
       {/* 顶栏 */}
-      <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-200">
+      <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/agents')}
-            className="text-slate-400 hover:text-slate-600 text-sm"
+            className="text-muted-foreground hover:text-muted-foreground text-sm"
           >
             ← 返回
           </button>
-          <div className="w-px h-5 bg-slate-200" />
+          <div className="w-px h-5 bg-accent" />
           <AgentAvatar name={agent.name} size="md" />
-          <h2 className="text-lg font-bold text-slate-800">{agent.name}</h2>
+          <h2 className="text-lg font-bold text-foreground">{agent.name}</h2>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             agent.status === 'active'
-              ? 'bg-green-50 text-green-600'
-              : 'bg-yellow-50 text-yellow-600'
+              ? 'bg-success/10 text-success'
+              : 'bg-warning/10 text-warning'
           }`}>
             {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
           </span>
         </div>
         {savedHint && (
-          <span className="text-xs text-green-500 animate-pulse">{savedHint}</span>
+          <span className="text-xs text-success animate-pulse">{savedHint}</span>
         )}
       </div>
 
       {/* 主体 */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* 左侧：基本信息 */}
-        <div className="w-72 shrink-0 border-r border-slate-200 p-5 space-y-5 overflow-y-auto">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        <div className="w-72 shrink-0 border-r border-border p-5 space-y-5 overflow-y-auto">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             基本信息
           </h3>
 
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Emoji</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Emoji</label>
             <input
               value={editEmoji}
               onChange={(e) => setEditEmoji(e.target.value)}
-              className="w-full px-3 py-2.5 text-2xl text-center border border-slate-200 rounded-lg
-                bg-white focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-2.5 text-2xl text-center border border-border rounded-lg
+                bg-card focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
               maxLength={4}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">名称</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">名称</label>
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg
-                bg-white text-slate-900
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg
+                bg-card text-foreground
                 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
             />
           </div>
 
           {/* M13 修改组 3：协调者 toggle — 配置驱动，让用户在 UI 上表达"团队协调中心"角色 */}
-          <div className="pt-3 border-t border-slate-100">
+          <div className="pt-3 border-t border-border">
             <label className="flex items-start gap-2.5 cursor-pointer group">
               <input
                 type="checkbox"
                 checked={editIsCoordinator}
                 onChange={(e) => setEditIsCoordinator(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand
+                className="mt-0.5 h-4 w-4 rounded border-border text-brand
                   focus:ring-2 focus:ring-brand/40 cursor-pointer"
               />
               <div className="flex-1">
-                <span className="text-xs font-medium text-slate-700 group-hover:text-slate-900">
+                <span className="text-xs font-medium text-foreground group-hover:text-foreground">
                   作为本群组协调中心
                 </span>
-                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
                   开启后，群里其他 Agent 会被引导通过 @ 本 Agent 协调跨角色任务。适合 PM、组长、客服派单员、辩论主持人等中心节点角色；扁平协作团队请保持关闭。
                 </p>
               </div>
@@ -206,11 +206,11 @@ export default function AgentEditPage() {
             {saving === 'basic' ? '保存中...' : '保存'}
           </button>
 
-          <div className="pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400">
+          <div className="pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground">
               创建于 {parseUtcDate(agent.createdAt).toLocaleString('zh-CN')}
             </p>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               ID: <code className="font-mono">{agent.id.slice(0, 8)}...</code>
             </p>
           </div>
@@ -219,10 +219,10 @@ export default function AgentEditPage() {
         {/* 右侧：工作区文件 */}
         <div className="flex-1 flex flex-col min-h-0">
           <div className="px-5 pt-5 pb-3 shrink-0">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               工作区文件
             </h3>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               这些文件定义了专家的人格、行为和能力。运行时专家会自动进化部分文件。
             </p>
           </div>
@@ -239,30 +239,30 @@ export default function AgentEditPage() {
                 <div key={filename} className={`border rounded-lg overflow-hidden transition-colors ${
                   isExpanded && !isRuntime
                     ? 'border-brand/40 ring-1 ring-brand/15'
-                    : 'border-slate-200'
+                    : 'border-border'
                 }`}>
                   {/* 文件头 */}
                   <button
                     onClick={() => setExpandedFile(isExpanded ? null : filename)}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left
-                      hover:bg-slate-50 transition-colors"
+                      hover:bg-muted transition-colors"
                   >
                     <span className="text-base">{meta.icon}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-700">{meta.label}</span>
-                        <code className="text-xs px-1 py-0.5 bg-slate-100 text-slate-500 rounded font-mono">
+                        <span className="text-sm font-medium text-foreground">{meta.label}</span>
+                        <code className="text-xs px-1 py-0.5 bg-accent text-muted-foreground rounded font-mono">
                           {filename}
                         </code>
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5">{meta.desc}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{meta.desc}</div>
                     </div>
                     {isRuntime ? (
-                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                      <span className="text-xs text-muted-foreground bg-accent px-2 py-0.5 rounded-full shrink-0">
                         运行时生成
                       </span>
                     ) : (
-                      <span className={`text-slate-400 text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                      <span className={`text-muted-foreground text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                         ▶
                       </span>
                     )}
@@ -270,9 +270,9 @@ export default function AgentEditPage() {
 
                   {/* 展开内容 */}
                   {isExpanded && (
-                    <div className="px-4 pb-3 border-t border-slate-100">
+                    <div className="px-4 pb-3 border-t border-border">
                       {isRuntime ? (
-                        <pre className="mt-2 text-xs text-slate-500 bg-slate-50
+                        <pre className="mt-2 text-xs text-muted-foreground bg-muted
                           rounded p-3 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap font-mono leading-relaxed italic">
                           {content || '(空 — 运行时从记忆数据动态渲染)'}
                         </pre>
@@ -281,8 +281,8 @@ export default function AgentEditPage() {
                           <textarea
                             value={content}
                             onChange={(e) => setFiles((prev) => ({ ...prev, [filename]: e.target.value }))}
-                            className="mt-2 w-full text-xs text-slate-700 bg-white
-                              border border-slate-200 rounded-lg p-3 font-mono leading-relaxed
+                            className="mt-2 w-full text-xs text-foreground bg-card
+                              border border-border rounded-lg p-3 font-mono leading-relaxed
                               focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
                               resize-y"
                             style={{ minHeight: '160px', maxHeight: '400px' }}

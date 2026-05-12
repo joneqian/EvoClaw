@@ -5,6 +5,31 @@ import Select from '../components/Select';
 import MCPServersPanel from '../components/MCPServersPanel';
 import ApiDocsPanel from '../components/ApiDocsPanel';
 import ProfileManager from '../components/ProfileManager';
+import { useTheme, type ThemeMode } from '../contexts/ThemeProvider';
+
+// ─── 主题切换行（M15 PR-U1） ───
+
+function ThemeRow() {
+  const { mode, setMode } = useTheme();
+  return (
+    <div className="px-4 py-3 flex items-center justify-between">
+      <div>
+        <div className="text-sm font-medium text-foreground">外观主题</div>
+        <div className="text-xs text-muted-foreground mt-0.5">应用界面主题（跟随系统 / 亮色 / 暗色）</div>
+      </div>
+      <Select
+        value={mode}
+        onChange={(val) => setMode(val as ThemeMode)}
+        options={[
+          { value: 'system', label: '跟随系统' },
+          { value: 'light', label: '亮色' },
+          { value: 'dark', label: '暗色' },
+        ]}
+        className="w-[140px]"
+      />
+    </div>
+  );
+}
 
 // ─── Tab 定义 ───
 
@@ -31,7 +56,7 @@ function isEnforced(enforcedPaths: string[], field: string): boolean {
 /** 锁定标记组件 */
 function EnforcedBadge() {
   return (
-    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700" title="此设置由企业管理员控制">
+    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/15 text-warning" title="此设置由企业管理员控制">
       <svg className="w-3 h-3 mr-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
       </svg>
@@ -78,12 +103,12 @@ function GeneralTab() {
       {/* M6 T2: Profile 管理（置顶，影响面最大） */}
       <ProfileManager showToast={(message, type = 'success') => setToast({ message, type })} />
 
-      <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+      <div className="bg-card rounded-xl border border-border divide-y divide-border">
         {/* 语言设置 */}
         <div className="px-4 py-3 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-slate-700">响应语言{isEnforced(enforced, 'language') && <EnforcedBadge />}</div>
-            <div className="text-xs text-slate-400 mt-0.5">Agent 回复时使用的语言</div>
+            <div className="text-sm font-medium text-foreground">响应语言{isEnforced(enforced, 'language') && <EnforcedBadge />}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Agent 回复时使用的语言</div>
           </div>
           <Select
             value={language}
@@ -96,11 +121,14 @@ function GeneralTab() {
           />
         </div>
 
+        {/* 主题切换（M15 PR-U1） */}
+        <ThemeRow />
+
       </div>
 
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-50 ${
-          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+          toast.type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'
         }`}>
           {toast.message}
         </div>
@@ -281,9 +309,9 @@ function EnvVarsTab() {
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-          <p className="text-xs text-slate-400">Skill 和工具通过 process.env 读取这些变量</p>
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Skill 和工具通过 process.env 读取这些变量</p>
           <button
             onClick={() => { setAddingNew(true); setNewKey(''); setNewValue(''); }}
             className="text-xs px-2.5 py-1 font-medium text-brand border border-brand/30 rounded-lg
@@ -293,18 +321,18 @@ function EnvVarsTab() {
           </button>
         </div>
 
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-border">
           {envVars.length === 0 && !addingNew && (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-slate-400">暂无环境变量</p>
-              <p className="text-xs text-slate-300 mt-1">点击"添加"或选择下方常用变量快速配置</p>
+              <p className="text-sm text-muted-foreground">暂无环境变量</p>
+              <p className="text-xs text-muted-foreground mt-1">点击"添加"或选择下方常用变量快速配置</p>
             </div>
           )}
 
           {envVars.map((item) => (
             <div key={item.key} className="px-4 py-2 flex items-center gap-2 group">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.configured ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-              <code className="text-xs font-mono font-semibold text-slate-700 bg-slate-50 px-2 py-0.5 rounded min-w-[140px] shrink-0">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.configured ? 'bg-success' : 'bg-accent'}`} />
+              <code className="text-xs font-mono font-semibold text-foreground bg-muted px-2 py-0.5 rounded min-w-[140px] shrink-0">
                 {item.key}
               </code>
               {editingKey === item.key ? (
@@ -316,20 +344,20 @@ function EnvVarsTab() {
                     onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') { setEditingKey(null); setEditValue(''); } }}
                     onBlur={handleSaveEdit}
                     placeholder="输入值"
-                    className="w-full px-2.5 py-1 text-xs border border-slate-200 rounded-lg
+                    className="w-full px-2.5 py-1 text-xs border border-border rounded-lg
                       focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand font-mono"
                     autoFocus
                   />
                 </div>
               ) : (
                 <>
-                  <code className="flex-1 text-xs text-slate-400 font-mono truncate">
+                  <code className="flex-1 text-xs text-muted-foreground font-mono truncate">
                     {item.configured ? item.maskedValue : '(未设置)'}
                   </code>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => startEdit(item.key)}
-                      className="p-1 text-slate-400 hover:text-brand rounded transition-colors"
+                      className="p-1 text-muted-foreground hover:text-brand rounded transition-colors"
                       title="编辑"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -338,7 +366,7 @@ function EnvVarsTab() {
                     </button>
                     <button
                       onClick={() => handleDelete(item.key)}
-                      className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+                      className="p-1 text-muted-foreground hover:text-danger rounded transition-colors"
                       title="删除"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -358,7 +386,7 @@ function EnvVarsTab() {
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value.toUpperCase())}
                 placeholder="VARIABLE_NAME"
-                className="w-[160px] px-2.5 py-1 text-xs border border-slate-200 rounded-lg
+                className="w-[160px] px-2.5 py-1 text-xs border border-border rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-brand/40 font-mono font-semibold"
                 autoFocus
               />
@@ -368,7 +396,7 @@ function EnvVarsTab() {
                 onChange={(e) => setNewValue(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddNew(); if (e.key === 'Escape') { setAddingNew(false); setNewKey(''); setNewValue(''); } }}
                 placeholder="Value"
-                className="flex-1 px-2.5 py-1 text-xs border border-slate-200 rounded-lg
+                className="flex-1 px-2.5 py-1 text-xs border border-border rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-brand/40 font-mono"
               />
               <button
@@ -381,7 +409,7 @@ function EnvVarsTab() {
               </button>
               <button
                 onClick={() => { setAddingNew(false); setNewKey(''); setNewValue(''); }}
-                className="text-xs text-slate-400 hover:text-slate-600"
+                className="text-xs text-muted-foreground hover:text-muted-foreground"
               >
                 取消
               </button>
@@ -390,12 +418,12 @@ function EnvVarsTab() {
         </div>
 
         {presetGroupsWithStatus.some(g => g.unconfiguredItems.length > 0) && (
-          <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+          <div className="px-4 py-3 border-t border-border bg-muted/50 space-y-2">
             {presetGroupsWithStatus.map((group) => (
               <div key={group.label} className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs text-slate-400 shrink-0">
+                <span className="text-xs text-muted-foreground shrink-0">
                   {group.icon} {group.label}
-                  <span className={`ml-1 ${group.configuredCount === group.items.length ? 'text-emerald-500' : group.configuredCount > 0 ? 'text-amber-500' : 'text-slate-300'}`}>
+                  <span className={`ml-1 ${group.configuredCount === group.items.length ? 'text-success' : group.configuredCount > 0 ? 'text-warning' : 'text-muted-foreground'}`}>
                     ({group.configuredCount}/{group.items.length})
                   </span>
                   :
@@ -404,8 +432,8 @@ function EnvVarsTab() {
                   <button
                     key={p.key}
                     onClick={() => handleAddPreset(p.key)}
-                    className="text-xs px-2 py-0.5 text-slate-500 hover:text-brand
-                      bg-white border border-slate-200 rounded-full
+                    className="text-xs px-2 py-0.5 text-muted-foreground hover:text-brand
+                      bg-card border border-border rounded-full
                       hover:border-brand/30 transition-colors"
                     title={p.hint}
                   >
@@ -420,7 +448,7 @@ function EnvVarsTab() {
 
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-50 ${
-          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+          toast.type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'
         }`}>
           {toast.message}
         </div>
@@ -611,28 +639,28 @@ function SkillEvolverTab() {
     && JSON.stringify(curatorOriginal) !== JSON.stringify(curatorDraft);
 
   if (loading || !draft || !original || !curatorDraft || !curatorOriginal) {
-    return <div className="text-center py-20 text-slate-400 text-sm">加载中…</div>;
+    return <div className="text-center py-20 text-muted-foreground text-sm">加载中…</div>;
   }
 
   return (
     <div className="max-w-3xl space-y-6">
       {toast && (
         <div className={`px-4 py-2 rounded-lg text-sm ${
-          toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+          toast.type === 'success' ? 'bg-success/10 text-success' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
         }`}>{toast.message}</div>
       )}
 
       {/* ─── Evolver 子区 ─── */}
-      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+      <section className="rounded-xl border border-border p-5 bg-card">
         <header className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Cron Evolver</h3>
-            <p className="text-xs text-slate-500 mt-0.5">按定时调度对失败率高的 skill 自动微调（可审计 + 可回滚）</p>
+            <h3 className="text-base font-semibold text-foreground">Cron Evolver</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">按定时调度对失败率高的 skill 自动微调（可审计 + 可回滚）</p>
           </div>
           <button
             onClick={handleRunEvolver}
             disabled={running !== null}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {running === 'evolver' ? '触发中…' : '立即触发'}
           </button>
@@ -645,9 +673,9 @@ function SkillEvolverTab() {
                 type="checkbox"
                 checked={draft.enabled}
                 onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
               />
-              <span className="text-sm text-slate-700">{draft.enabled ? '已启用' : '已禁用'}</span>
+              <span className="text-sm text-foreground">{draft.enabled ? '已启用' : '已禁用'}</span>
             </label>
           </Field>
 
@@ -656,7 +684,7 @@ function SkillEvolverTab() {
               type="text"
               value={draft.cronSchedule}
               onChange={(e) => setDraft({ ...draft, cronSchedule: e.target.value })}
-              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               placeholder="0 3 * * *"
             />
           </Field>
@@ -685,7 +713,7 @@ function SkillEvolverTab() {
                   ...(next === 'dryRun' ? { abTestEnabled: false } : {}),
                 });
               }}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
             >
               <option value="apply">apply — 直接生效</option>
               <option value="dryRun">dryRun — 待审核（手动应用/拒绝）</option>
@@ -716,9 +744,9 @@ function SkillEvolverTab() {
                   step={0.05}
                   value={draft.canaryRatioB}
                   onChange={(e) => setDraft({ ...draft, canaryRatioB: Number(e.target.value) })}
-                  className="w-20 px-2 py-1 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-20 px-2 py-1 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
-                <span className="text-sm text-slate-500 tabular-nums w-12">
+                <span className="text-sm text-muted-foreground tabular-nums w-12">
                   {Math.round(draft.canaryRatioB * 100)}%
                 </span>
               </div>
@@ -733,7 +761,7 @@ function SkillEvolverTab() {
                 max={50}
                 value={draft.minEvidenceCount}
                 onChange={(e) => setDraft({ ...draft, minEvidenceCount: Number(e.target.value) || 1 })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               />
             </Field>
 
@@ -745,7 +773,7 @@ function SkillEvolverTab() {
                 step={0.05}
                 value={draft.successRateThreshold}
                 onChange={(e) => setDraft({ ...draft, successRateThreshold: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               />
             </Field>
           </div>
@@ -757,7 +785,7 @@ function SkillEvolverTab() {
               max={20}
               value={draft.maxCandidatesPerRun}
               onChange={(e) => setDraft({ ...draft, maxCandidatesPerRun: Number(e.target.value) || 1 })}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
             />
           </Field>
 
@@ -766,24 +794,24 @@ function SkillEvolverTab() {
               type="text"
               value={draft.model ?? ''}
               onChange={(e) => setDraft({ ...draft, model: e.target.value || undefined })}
-              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               placeholder="例：openai/gpt-4o-mini"
             />
           </Field>
         </div>
 
         {/* ─── A-B 对照实验子分组 ─── */}
-        <details className="mt-4 pt-4 border-t border-slate-100" open={draft.abTestEnabled}>
-          <summary className="cursor-pointer flex items-center justify-between -mx-1 px-1 py-1 rounded hover:bg-slate-50">
+        <details className="mt-4 pt-4 border-t border-border" open={draft.abTestEnabled}>
+          <summary className="cursor-pointer flex items-center justify-between -mx-1 px-1 py-1 rounded hover:bg-muted">
             <div>
-              <span className="text-sm font-semibold text-slate-800">A-B 对照实验</span>
-              <span className="ml-2 text-xs text-slate-500">refine 后启动 A/B 桶位 + 统计学验证</span>
+              <span className="text-sm font-semibold text-foreground">A-B 对照实验</span>
+              <span className="ml-2 text-xs text-muted-foreground">refine 后启动 A/B 桶位 + 统计学验证</span>
             </div>
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); void handleRunAbEvaluator(); }}
               disabled={running !== null}
-              className="px-3 py-1 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-3 py-1 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {running === 'ab-evaluator' ? '评估中…' : '立即评估'}
             </button>
@@ -804,9 +832,9 @@ function SkillEvolverTab() {
                   checked={draft.abTestEnabled && draft.mode !== 'dryRun'}
                   disabled={draft.mode === 'dryRun'}
                   onChange={(e) => setDraft({ ...draft, abTestEnabled: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand disabled:opacity-50"
+                  className="w-4 h-4 rounded border-border text-brand focus:ring-brand disabled:opacity-50"
                 />
-                <span className="text-sm text-slate-700">
+                <span className="text-sm text-foreground">
                   {draft.mode === 'dryRun' ? '已禁用（dryRun 互斥）' : draft.abTestEnabled ? '已启用' : '已禁用'}
                 </span>
               </label>
@@ -820,7 +848,7 @@ function SkillEvolverTab() {
                   max={1000}
                   value={draft.abMinCallsPerVariant}
                   onChange={(e) => setDraft({ ...draft, abMinCallsPerVariant: Number(e.target.value) || 5 })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </Field>
 
@@ -831,7 +859,7 @@ function SkillEvolverTab() {
                   max={365}
                   value={draft.abMaxTestDays}
                   onChange={(e) => setDraft({ ...draft, abMaxTestDays: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </Field>
             </div>
@@ -841,7 +869,7 @@ function SkillEvolverTab() {
                 type="text"
                 value={draft.abEvaluatorCron}
                 onChange={(e) => setDraft({ ...draft, abEvaluatorCron: e.target.value })}
-                className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 placeholder="30 4 * * *"
               />
             </Field>
@@ -855,7 +883,7 @@ function SkillEvolverTab() {
                   step={0.01}
                   value={draft.abPromoteSuccessDeltaMin}
                   onChange={(e) => setDraft({ ...draft, abPromoteSuccessDeltaMin: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </Field>
 
@@ -867,7 +895,7 @@ function SkillEvolverTab() {
                   step={0.01}
                   value={draft.abRollbackSuccessDeltaMin}
                   onChange={(e) => setDraft({ ...draft, abRollbackSuccessDeltaMin: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </Field>
             </div>
@@ -881,7 +909,7 @@ function SkillEvolverTab() {
                   step={0.01}
                   value={draft.abPValueThreshold}
                   onChange={(e) => setDraft({ ...draft, abPValueThreshold: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </Field>
 
@@ -893,19 +921,19 @@ function SkillEvolverTab() {
                   step={0.1}
                   value={draft.abDurationRatioRollback}
                   onChange={(e) => setDraft({ ...draft, abDurationRatioRollback: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
                 />
               </Field>
             </div>
           </div>
         </details>
 
-        <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border">
           {isDirty && (
             <button
               onClick={() => setDraft(original)}
               disabled={saving}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+              className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40"
             >放弃改动</button>
           )}
           <button
@@ -914,25 +942,25 @@ function SkillEvolverTab() {
             className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               isDirty && !saving
                 ? 'bg-brand text-white hover:bg-brand-hover'
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'bg-accent text-muted-foreground cursor-not-allowed'
             }`}
           >{saving ? '保存中…' : isDirty ? '保存改动' : '已保存'}</button>
         </div>
       </section>
 
       {/* ─── Curator 子区（PR6: 完整配置 + 状态合一） ─── */}
-      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+      <section className="rounded-xl border border-border p-5 bg-card">
         <header className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Skill Curator</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h3 className="text-base font-semibold text-foreground">Skill Curator</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
               跨 session umbrella consolidation + 自动 stale/archive 治理
             </p>
           </div>
           <button
             onClick={handleRunCurator}
             disabled={running !== null}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {running === 'curator' ? '触发中…' : '立即触发'}
           </button>
@@ -946,9 +974,9 @@ function SkillEvolverTab() {
                 type="checkbox"
                 checked={curatorDraft.enabled}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
               />
-              <span className="text-sm text-slate-700">{curatorDraft.enabled ? '已启用' : '已禁用'}</span>
+              <span className="text-sm text-foreground">{curatorDraft.enabled ? '已启用' : '已禁用'}</span>
             </label>
           </Field>
 
@@ -960,7 +988,7 @@ function SkillEvolverTab() {
                 max={365}
                 value={curatorDraft.intervalDays}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, intervalDays: Number(e.target.value) || 1 })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               />
             </Field>
 
@@ -971,7 +999,7 @@ function SkillEvolverTab() {
                 max={3650}
                 value={curatorDraft.staleDays}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, staleDays: Number(e.target.value) || 1 })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               />
             </Field>
 
@@ -983,7 +1011,7 @@ function SkillEvolverTab() {
                 value={curatorDraft.archivedDays}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, archivedDays: Number(e.target.value) || 1 })}
                 className={`w-full px-3 py-1.5 text-sm rounded-lg border focus:ring-2 focus:ring-brand/40 focus:border-brand ${
-                  curatorDraft.archivedDays <= curatorDraft.staleDays ? 'border-rose-300 bg-rose-50' : 'border-slate-200'
+                  curatorDraft.archivedDays <= curatorDraft.staleDays ? 'border-rose-300 bg-rose-50 dark:bg-rose-950/40' : 'border-border'
                 }`}
               />
             </Field>
@@ -995,19 +1023,19 @@ function SkillEvolverTab() {
                 type="checkbox"
                 checked={curatorDraft.protectBundled}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, protectBundled: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-300 text-brand focus:ring-brand"
+                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
               />
-              <span className="text-sm text-slate-700">{curatorDraft.protectBundled ? '已保护' : '未保护（不推荐）'}</span>
+              <span className="text-sm text-foreground">{curatorDraft.protectBundled ? '已保护' : '未保护（不推荐）'}</span>
             </label>
           </Field>
         </div>
 
-        <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-border">
           {isCuratorDirty && (
             <button
               onClick={() => setCuratorDraft(curatorOriginal)}
               disabled={savingCurator}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+              className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40"
             >放弃改动</button>
           )}
           <button
@@ -1016,38 +1044,38 @@ function SkillEvolverTab() {
             className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               isCuratorDirty && !savingCurator
                 ? 'bg-brand text-white hover:bg-brand-hover'
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'bg-accent text-muted-foreground cursor-not-allowed'
             }`}
           >{savingCurator ? '保存中…' : isCuratorDirty ? '保存改动' : '已保存'}</button>
         </div>
 
         {/* 状态区 */}
         {curator && (
-          <div className="mt-5 pt-4 border-t border-slate-100 space-y-3 text-sm">
+          <div className="mt-5 pt-4 border-t border-border space-y-3 text-sm">
             <div className="grid grid-cols-3 gap-3">
-              <CuratorStat label="active" value={curator.agentCreatedStateCounts.active} color="text-emerald-600" />
-              <CuratorStat label="stale" value={curator.agentCreatedStateCounts.stale} color="text-amber-600" />
-              <CuratorStat label="archived" value={curator.agentCreatedStateCounts.archived} color="text-slate-500" />
+              <CuratorStat label="active" value={curator.agentCreatedStateCounts.active} color="text-success" />
+              <CuratorStat label="stale" value={curator.agentCreatedStateCounts.stale} color="text-warning" />
+              <CuratorStat label="archived" value={curator.agentCreatedStateCounts.archived} color="text-muted-foreground" />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-slate-50">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
               <div>
-                <p className="text-sm text-slate-700">{curator.state.paused ? '已暂停' : '正常调度'}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{curator.nextRun.reason}</p>
+                <p className="text-sm text-foreground">{curator.state.paused ? '已暂停' : '正常调度'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{curator.nextRun.reason}</p>
               </div>
               <button
                 onClick={handleToggleCuratorPause}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted"
               >
                 {curator.state.paused ? '恢复调度' : '暂停调度'}
               </button>
             </div>
 
-            <div className="text-xs text-slate-500 space-y-0.5">
-              <p>已钉住：<strong className="text-slate-700">{curator.pinnedCount}</strong> 个 skill（不会被自动归档）</p>
-              <p>累计运行：<strong className="text-slate-700">{curator.state.runCount}</strong> 次</p>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <p>已钉住：<strong className="text-foreground">{curator.pinnedCount}</strong> 个 skill（不会被自动归档）</p>
+              <p>累计运行：<strong className="text-foreground">{curator.state.runCount}</strong> 次</p>
               {curator.state.lastRunAt && (
-                <p>最近一次：<span className="text-slate-700">{new Date(curator.state.lastRunAt).toLocaleString('zh-CN')}</span> — {curator.state.lastRunSummary ?? '—'}</p>
+                <p>最近一次：<span className="text-foreground">{new Date(curator.state.lastRunAt).toLocaleString('zh-CN')}</span> — {curator.state.lastRunSummary ?? '—'}</p>
               )}
             </div>
           </div>
@@ -1066,18 +1094,18 @@ interface FieldProps {
 function Field({ label, hint, children }: FieldProps) {
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-foreground mb-1">{label}</label>
       {children}
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
     </div>
   );
 }
 
 function CuratorStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="p-3 rounded-lg bg-slate-50 text-center">
+    <div className="p-3 rounded-lg bg-muted text-center">
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }
@@ -1103,9 +1131,9 @@ const RISK_LABELS: Record<RiskKey, string> = {
 };
 
 const POLICY_LABELS: Record<PolicyValue, { label: string; bg: string; text: string }> = {
-  auto: { label: '直接安装', bg: 'bg-emerald-50', text: 'text-emerald-700' },
-  'require-confirm': { label: '需确认', bg: 'bg-amber-50', text: 'text-amber-800' },
-  block: { label: '阻止', bg: 'bg-rose-50', text: 'text-rose-700' },
+  auto: { label: '直接安装', bg: 'bg-success/10', text: 'text-success' },
+  'require-confirm': { label: '需确认', bg: 'bg-warning/10', text: 'text-warning' },
+  block: { label: '阻止', bg: 'bg-rose-50 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300' },
 };
 
 const POLICY_CYCLE: PolicyValue[] = ['auto', 'require-confirm', 'block'];
@@ -1195,7 +1223,7 @@ function SecurityPolicyTab() {
   }, [matrix]);
 
   if (loading || !matrix) {
-    return <div className="text-center py-20 text-slate-400 text-sm">加载中…</div>;
+    return <div className="text-center py-20 text-muted-foreground text-sm">加载中…</div>;
   }
 
   const overrideCount = Object.keys(draft).length;
@@ -1204,18 +1232,18 @@ function SecurityPolicyTab() {
     <div className="max-w-3xl space-y-4">
       {toast && (
         <div className={`px-4 py-2 rounded-lg text-sm ${
-          toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+          toast.type === 'success' ? 'bg-success/10 text-success' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
         }`}>{toast.message}</div>
       )}
 
-      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+      <section className="rounded-xl border border-border p-5 bg-card">
         <header className="mb-4">
-          <h3 className="text-base font-semibold text-slate-900">Skill 安装策略矩阵</h3>
-          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+          <h3 className="text-base font-semibold text-foreground">Skill 安装策略矩阵</h3>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
             按"来源 × 风险等级"决定 Skill 安装时的处理：
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-medium">直接安装</span>
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-medium">需确认</span>
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-medium">阻止</span>。
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-success/10 text-success font-medium">直接安装</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-warning/10 text-warning font-medium">需确认</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-medium">阻止</span>。
             点击单元格在三态间切换。覆盖项以蓝框标记，与默认相同时自动清除（节省存储 + 避免误判)。
           </p>
         </header>
@@ -1224,9 +1252,9 @@ function SecurityPolicyTab() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 border-b border-slate-200">来源 \ 风险</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border">来源 \ 风险</th>
                 {RISKS.map((r) => (
-                  <th key={r} className="px-3 py-2 text-center text-xs font-medium text-slate-500 border-b border-slate-200">
+                  <th key={r} className="px-3 py-2 text-center text-xs font-medium text-muted-foreground border-b border-border">
                     {RISK_LABELS[r]}
                   </th>
                 ))}
@@ -1234,8 +1262,8 @@ function SecurityPolicyTab() {
             </thead>
             <tbody>
               {SOURCES.map((src) => (
-                <tr key={src} className="border-b border-slate-100">
-                  <td className="px-3 py-2 text-sm font-medium text-slate-700">{SOURCE_LABELS[src]}</td>
+                <tr key={src} className="border-b border-border">
+                  <td className="px-3 py-2 text-sm font-medium text-foreground">{SOURCE_LABELS[src]}</td>
                   {RISKS.map((r) => {
                     const key = `${src}:${r}`;
                     const value = effective(src, r);
@@ -1247,7 +1275,7 @@ function SecurityPolicyTab() {
                           type="button"
                           onClick={() => handleCellCycle(src, r)}
                           className={`w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${meta.bg} ${meta.text} ${
-                            isOverridden ? 'ring-2 ring-blue-400' : 'hover:ring-1 hover:ring-slate-300'
+                            isOverridden ? 'ring-2 ring-info/60' : 'hover:ring-1 hover:ring-border'
                           }`}
                           title={isOverridden ? `已覆盖（默认：${POLICY_LABELS[matrix.default[key] ?? 'require-confirm'].label}）` : '点击修改'}
                         >
@@ -1262,23 +1290,23 @@ function SecurityPolicyTab() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-100">
-          <div className="text-xs text-slate-500">
-            当前覆盖：<strong className="text-slate-700">{overrideCount}</strong> 个单元格（共 15 个）
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+          <div className="text-xs text-muted-foreground">
+            当前覆盖：<strong className="text-foreground">{overrideCount}</strong> 个单元格（共 15 个）
           </div>
           <div className="flex items-center gap-2">
             {overrideCount > 0 && (
               <button
                 onClick={handleResetAll}
                 disabled={saving}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40 disabled:opacity-40"
               >全部恢复默认</button>
             )}
             {isDirty && (
               <button
                 onClick={() => setDraft(matrix.override)}
                 disabled={saving}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40"
               >放弃改动</button>
             )}
             <button
@@ -1287,7 +1315,7 @@ function SecurityPolicyTab() {
               className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 isDirty && !saving
                   ? 'bg-brand text-white hover:bg-brand-hover'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-accent text-muted-foreground cursor-not-allowed'
               }`}
             >{saving ? '保存中…' : isDirty ? '保存改动' : '已保存'}</button>
           </div>
@@ -1299,15 +1327,15 @@ function SecurityPolicyTab() {
 
 function AboutTab() {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="bg-card rounded-xl border border-border p-4">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-600">应用名称</span>
-          <span className="text-sm text-slate-800 font-medium">{BRAND_NAME}</span>
+          <span className="text-sm text-muted-foreground">应用名称</span>
+          <span className="text-sm text-foreground font-medium">{BRAND_NAME}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-600">架构</span>
-          <span className="text-sm text-slate-800">Tauri 2.0 + Node.js Sidecar</span>
+          <span className="text-sm text-muted-foreground">架构</span>
+          <span className="text-sm text-foreground">Tauri 2.0 + Node.js Sidecar</span>
         </div>
       </div>
     </div>
@@ -1404,48 +1432,48 @@ function IdentityLinksTab() {
     <div className="max-w-3xl space-y-6">
       {toast && (
         <div className={`px-4 py-2 rounded-lg text-sm ${
-          toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+          toast.type === 'success' ? 'bg-success/10 text-success' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
         }`}>{toast.message}</div>
       )}
 
-      <section className="rounded-xl border border-slate-200 p-5 bg-white">
+      <section className="rounded-xl border border-border p-5 bg-card">
         <header className="mb-4">
-          <h3 className="text-base font-semibold text-slate-900">我的多渠道身份</h3>
-          <p className="text-xs text-slate-500 mt-1">
+          <h3 className="text-base font-semibold text-foreground">我的多渠道身份</h3>
+          <p className="text-xs text-muted-foreground mt-1">
             把同一员工在飞书 / 企微 / 微信的不同 ID 绑定到同一逻辑身份（如 'self'），
             让 Agent 在跨渠道时识别员工是同一个人 + 跨渠道偏好/角色记忆按员工合并。
           </p>
         </header>
 
         {/* 添加表单 */}
-        <div className="bg-slate-50 rounded-lg p-3 mb-4 grid grid-cols-12 gap-2 items-end">
+        <div className="bg-muted rounded-lg p-3 mb-4 grid grid-cols-12 gap-2 items-end">
           <div className="col-span-3">
-            <label className="text-xs text-slate-600 block mb-1">身份名（canonical）</label>
+            <label className="text-xs text-muted-foreground block mb-1">身份名（canonical）</label>
             <input
               type="text"
               value={draft.canonicalId}
               onChange={(e) => setDraft({ ...draft, canonicalId: e.target.value })}
-              className="w-full px-2 py-1 text-sm rounded border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-2 py-1 text-sm rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               placeholder="self"
             />
           </div>
           <div className="col-span-3">
-            <label className="text-xs text-slate-600 block mb-1">渠道</label>
+            <label className="text-xs text-muted-foreground block mb-1">渠道</label>
             <select
               value={draft.channel}
               onChange={(e) => setDraft({ ...draft, channel: e.target.value })}
-              className="w-full px-2 py-1 text-sm rounded border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-2 py-1 text-sm rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
             >
               {CHANNEL_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div className="col-span-4">
-            <label className="text-xs text-slate-600 block mb-1">渠道 ID（如飞书 ou_xxx）</label>
+            <label className="text-xs text-muted-foreground block mb-1">渠道 ID（如飞书 ou_xxx）</label>
             <input
               type="text"
               value={draft.peerId}
               onChange={(e) => setDraft({ ...draft, peerId: e.target.value })}
-              className="w-full px-2 py-1 text-sm font-mono rounded border border-slate-200 focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-2 py-1 text-sm font-mono rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
               placeholder="ou_xxx / userid_yyy / wxid_zzz"
             />
           </div>
@@ -1459,30 +1487,30 @@ function IdentityLinksTab() {
         </div>
 
         {loading ? (
-          <div className="text-center py-8 text-slate-400 text-sm">加载中…</div>
+          <div className="text-center py-8 text-muted-foreground text-sm">加载中…</div>
         ) : links.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-sm">
+          <div className="text-center py-8 text-muted-foreground text-sm">
             暂无身份绑定。Agent 当前按渠道独立识别员工。
           </div>
         ) : (
           <div className="space-y-3">
             {grouped.map(([canonical, items]) => (
-              <div key={canonical} className="rounded-lg border border-slate-200 p-3">
+              <div key={canonical} className="rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-800">
-                    {canonical} <span className="text-xs text-slate-400">（{items.length} 个渠道身份）</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {canonical} <span className="text-xs text-muted-foreground">（{items.length} 个渠道身份）</span>
                   </span>
                 </div>
                 <div className="space-y-1">
                   {items.map(link => (
                     <div key={link.id} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-700">
-                        <span className="text-slate-500">{CHANNEL_OPTIONS.find(c => c.value === link.channel)?.label ?? link.channel}：</span>
-                        <code className="ml-1 font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">{link.peerId}</code>
+                      <span className="text-foreground">
+                        <span className="text-muted-foreground">{CHANNEL_OPTIONS.find(c => c.value === link.channel)?.label ?? link.channel}：</span>
+                        <code className="ml-1 font-mono text-xs bg-accent px-1 py-0.5 rounded">{link.peerId}</code>
                       </span>
                       <button
                         onClick={() => handleRemove(link.channel, link.peerId)}
-                        className="text-xs px-2 py-0.5 text-rose-600 hover:bg-rose-50 rounded"
+                        className="text-xs px-2 py-0.5 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40 rounded"
                       >解绑</button>
                     </div>
                   ))}
@@ -1503,8 +1531,8 @@ export default function SettingsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-slate-200 bg-white">
-        <h2 className="text-lg font-bold text-slate-900">设置</h2>
+      <div className="px-6 py-4 border-b border-border bg-card">
+        <h2 className="text-lg font-bold text-foreground">设置</h2>
         {/* Tab 切换 */}
         <div className="flex gap-1 mt-3">
           {TABS.map((tab) => (
@@ -1514,7 +1542,7 @@ export default function SettingsPage() {
               className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
                 activeTab === tab.key
                   ? 'bg-brand/10 text-brand font-medium'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
               {tab.label}

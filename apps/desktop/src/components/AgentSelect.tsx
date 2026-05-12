@@ -51,21 +51,21 @@ export default function AgentSelect({ agents, value, onChange, placeholder = '�
         type="button"
         onClick={() => setOpen((v) => !v)}
         onKeyDown={handleKeyDown}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white
-          hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
+        className="flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded-lg bg-card
+          hover:border-border focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
           transition-colors min-w-[140px]"
       >
         {selected ? (
           <>
             <AgentAvatar name={selected.name} size="xs" />
-            <span className="text-slate-700 truncate">{selected.name}</span>
+            <span className="text-foreground truncate">{selected.name}</span>
           </>
         ) : (
-          <span className="text-slate-400">{placeholder}</span>
+          <span className="text-muted-foreground">{placeholder}</span>
         )}
         {/* 箭头 */}
         <svg
-          className={`w-4 h-4 text-slate-400 ml-auto shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-muted-foreground ml-auto shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -74,10 +74,10 @@ export default function AgentSelect({ agents, value, onChange, placeholder = '�
 
       {/* 下拉面板 */}
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-56 py-1 bg-white border border-slate-200 rounded-xl shadow-lg
+        <div className="absolute right-0 top-full mt-1 z-50 w-56 py-1 bg-card border border-border rounded-xl shadow-lg
           max-h-64 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150">
           {agents.length === 0 ? (
-            <div className="px-3 py-4 text-center text-sm text-slate-400">{placeholder}</div>
+            <div className="px-3 py-4 text-center text-sm text-muted-foreground">{placeholder}</div>
           ) : (
             agents.map((agent) => (
               <button
@@ -90,7 +90,7 @@ export default function AgentSelect({ agents, value, onChange, placeholder = '�
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors
                   ${agent.id === value
                     ? 'bg-brand/5 text-brand font-medium'
-                    : 'text-slate-700 hover:bg-slate-50'
+                    : 'text-foreground hover:bg-muted'
                   }`}
               >
                 <AgentAvatar name={agent.name} size="sm" />

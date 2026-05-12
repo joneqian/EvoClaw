@@ -62,8 +62,8 @@ function formatDuration(ms: number | null): string {
 }
 
 function successRateColor(rate: number): string {
-  if (rate >= 0.8) return 'bg-emerald-500';
-  if (rate >= 0.5) return 'bg-amber-500';
+  if (rate >= 0.8) return 'bg-success';
+  if (rate >= 0.5) return 'bg-warning';
   return 'bg-rose-500';
 }
 
@@ -130,16 +130,16 @@ export default function SkillEffectivenessPanel({ agentId, days = 7 }: Props) {
   };
 
   if (error) {
-    return <div className="p-4 text-rose-600 text-sm">加载失败: {error}</div>;
+    return <div className="p-4 text-rose-600 dark:text-rose-300 text-sm">加载失败: {error}</div>;
   }
 
   if (loading && skills.length === 0) {
-    return <div className="p-4 text-slate-500 text-sm">加载中...</div>;
+    return <div className="p-4 text-muted-foreground text-sm">加载中...</div>;
   }
 
   if (!loading && skills.length === 0) {
     return (
-      <div className="p-8 text-center text-slate-500 text-sm">
+      <div className="p-8 text-center text-muted-foreground text-sm">
         近 {days} 天内该 Agent 尚未调用过任何 Skill
       </div>
     );
@@ -149,17 +149,17 @@ export default function SkillEffectivenessPanel({ agentId, days = 7 }: Props) {
     <div className="flex gap-4 h-full">
       {/* 左列：Skill 列表 */}
       <div className="w-[360px] shrink-0 overflow-y-auto">
-        <div className="text-xs text-slate-500 mb-2">近 {days} 天 · {skills.length} 个 Skill</div>
+        <div className="text-xs text-muted-foreground mb-2">近 {days} 天 · {skills.length} 个 Skill</div>
         {skills.map(s => {
           const active = s.skillName === selected;
           return (
             <button
               key={s.skillName}
               onClick={() => setSelected(s.skillName)}
-              className={`w-full text-left p-3 mb-2 rounded-lg border transition-colors ${active ? 'border-brand bg-brand/5' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+              className={`w-full text-left p-3 mb-2 rounded-lg border transition-colors ${active ? 'border-brand bg-brand/5' : 'border-border bg-card hover:bg-muted'}`}
             >
-              <div className="font-semibold text-sm text-slate-800">{s.skillName}</div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+              <div className="font-semibold text-sm text-foreground">{s.skillName}</div>
+              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                 <span>{s.invocationCount} 次</span>
                 <span>·</span>
                 <span>{formatDuration(s.avgDurationMs)}</span>
@@ -171,13 +171,13 @@ export default function SkillEffectivenessPanel({ agentId, days = 7 }: Props) {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="flex-1 h-1.5 bg-accent rounded-full overflow-hidden">
                   <div
                     className={`h-full ${successRateColor(s.successRate)}`}
                     style={{ width: `${Math.round(s.successRate * 100)}%` }}
                   />
                 </div>
-                <span className="text-xs text-slate-600 tabular-nums">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {Math.round(s.successRate * 100)}%
                 </span>
               </div>
@@ -190,17 +190,17 @@ export default function SkillEffectivenessPanel({ agentId, days = 7 }: Props) {
       {selected ? (
         <div className="flex-1 overflow-y-auto space-y-4">
           <div>
-            <h3 className="font-semibold text-slate-800 mb-2">{selected} — 最近 5 次调用</h3>
+            <h3 className="font-semibold text-foreground mb-2">{selected} — 最近 5 次调用</h3>
             {recent.length === 0 ? (
-              <div className="text-sm text-slate-500">暂无调用记录</div>
+              <div className="text-sm text-muted-foreground">暂无调用记录</div>
             ) : (
               <div className="space-y-2">
                 {recent.map(r => (
-                  <div key={r.id} className="p-3 border border-slate-200 rounded-lg bg-white">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
+                  <div key={r.id} className="p-3 border border-border rounded-lg bg-card">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{new Date(r.invokedAt).toLocaleString()}</span>
                       <div className="flex items-center gap-2">
-                        <span className={r.success === 1 ? 'text-emerald-600' : 'text-rose-600'}>
+                        <span className={r.success === 1 ? 'text-success' : 'text-rose-600 dark:text-rose-300'}>
                           {r.success === 1 ? '✓ 成功' : '✗ 失败'}
                         </span>
                         <span>·</span>
@@ -210,25 +210,25 @@ export default function SkillEffectivenessPanel({ agentId, days = 7 }: Props) {
                       </div>
                     </div>
                     {r.errorSummary && (
-                      <div className="mt-1 text-xs text-rose-600">{r.errorSummary}</div>
+                      <div className="mt-1 text-xs text-rose-600 dark:text-rose-300">{r.errorSummary}</div>
                     )}
                     <div className="mt-2 flex items-center gap-3">
                       <button
                         onClick={() => submitFeedback(r.id, 1)}
                         disabled={r.userFeedback === 1}
-                        className={`px-2 py-0.5 text-xs rounded ${r.userFeedback === 1 ? 'bg-emerald-100 text-emerald-700' : 'hover:bg-slate-100 text-slate-500'}`}
+                        className={`px-2 py-0.5 text-xs rounded ${r.userFeedback === 1 ? 'bg-success/15 text-success' : 'hover:bg-accent text-muted-foreground'}`}
                       >
                         👍 {r.userFeedback === 1 ? '已反馈' : '有用'}
                       </button>
                       <button
                         onClick={() => submitFeedback(r.id, -1)}
                         disabled={r.userFeedback === -1}
-                        className={`px-2 py-0.5 text-xs rounded ${r.userFeedback === -1 ? 'bg-rose-100 text-rose-700' : 'hover:bg-slate-100 text-slate-500'}`}
+                        className={`px-2 py-0.5 text-xs rounded ${r.userFeedback === -1 ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300' : 'hover:bg-accent text-muted-foreground'}`}
                       >
                         👎 {r.userFeedback === -1 ? '已反馈' : '有问题'}
                       </button>
                       {r.feedbackNote && (
-                        <span className="text-xs text-slate-500 italic">备注: {r.feedbackNote}</span>
+                        <span className="text-xs text-muted-foreground italic">备注: {r.feedbackNote}</span>
                       )}
                     </div>
                   </div>
@@ -239,19 +239,19 @@ export default function SkillEffectivenessPanel({ agentId, days = 7 }: Props) {
 
           {summaries.length > 0 && (
             <div>
-              <h3 className="font-semibold text-slate-800 mb-2">历史 Session 摘要</h3>
+              <h3 className="font-semibold text-foreground mb-2">历史 Session 摘要</h3>
               <div className="space-y-2">
                 {summaries.map(s => (
-                  <details key={s.id} className="p-3 border border-slate-200 rounded-lg bg-white">
-                    <summary className="cursor-pointer text-xs text-slate-600 flex items-center gap-2">
+                  <details key={s.id} className="p-3 border border-border rounded-lg bg-card">
+                    <summary className="cursor-pointer text-xs text-muted-foreground flex items-center gap-2">
                       <span>{new Date(s.summarizedAt).toLocaleString()}</span>
                       <span>·</span>
                       <span>{s.invocationCount} 次</span>
                       <span>·</span>
                       <span>{Math.round(s.successRate * 100)}%</span>
-                      {s.modelUsed && <span className="text-slate-400">({s.modelUsed})</span>}
+                      {s.modelUsed && <span className="text-muted-foreground">({s.modelUsed})</span>}
                     </summary>
-                    <p className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{s.summaryText}</p>
+                    <p className="mt-2 text-sm text-foreground whitespace-pre-wrap">{s.summaryText}</p>
                   </details>
                 ))}
               </div>

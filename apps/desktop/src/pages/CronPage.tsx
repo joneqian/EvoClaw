@@ -38,10 +38,10 @@ const MOCK_TASKS: CronTask[] = [
 ];
 
 const STATUS_CONFIG = {
-  idle: { label: '待执行', dot: 'bg-slate-300', text: 'text-slate-400' },
-  running: { label: '执行中', dot: 'bg-blue-400 animate-pulse', text: 'text-blue-500' },
-  success: { label: '已完成', dot: 'bg-green-400', text: 'text-green-500' },
-  error: { label: '执行失败', dot: 'bg-red-400', text: 'text-red-500' },
+  idle: { label: '待执行', dot: 'bg-border', text: 'text-muted-foreground' },
+  running: { label: '执行中', dot: 'bg-info animate-pulse', text: 'text-info' },
+  success: { label: '已完成', dot: 'bg-success', text: 'text-success' },
+  error: { label: '执行失败', dot: 'bg-danger', text: 'text-danger' },
 };
 
 export default function CronPage() {
@@ -89,8 +89,8 @@ export default function CronPage() {
       <div className="px-6 pt-5 pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">定时任务</h2>
-            <p className="text-sm text-slate-400 mt-1">配置专家的周期性自动执行任务，让健康管理全天候运转</p>
+            <h2 className="text-lg font-bold text-foreground">定时任务</h2>
+            <p className="text-sm text-muted-foreground mt-1">配置专家的周期性自动执行任务，让健康管理全天候运转</p>
           </div>
           <button
             onClick={() => setShowCreate(!showCreate)}
@@ -105,12 +105,12 @@ export default function CronPage() {
         <div className="flex gap-4 mt-4">
           {[
             { label: '运行中', value: tasks.filter(t => t.enabled).length, color: 'text-brand' },
-            { label: '今日执行', value: tasks.filter(t => t.lastRun?.startsWith('2026-03-19')).length, color: 'text-blue-500' },
-            { label: '已暂停', value: tasks.filter(t => !t.enabled).length, color: 'text-slate-400' },
+            { label: '今日执行', value: tasks.filter(t => t.lastRun?.startsWith('2026-03-19')).length, color: 'text-info' },
+            { label: '已暂停', value: tasks.filter(t => !t.enabled).length, color: 'text-muted-foreground' },
           ].map(s => (
-            <div key={s.label} className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-slate-200">
+            <div key={s.label} className="flex items-center gap-2 px-4 py-2 bg-card rounded-xl border border-border">
               <span className={`text-xl font-bold ${s.color}`}>{s.value}</span>
-              <span className="text-xs text-slate-500">{s.label}</span>
+              <span className="text-xs text-muted-foreground">{s.label}</span>
             </div>
           ))}
         </div>
@@ -119,23 +119,23 @@ export default function CronPage() {
       {/* 创建面板（独占内容区） */}
       {showCreate ? (
         <div className="flex-1 flex items-center justify-center px-6 pb-6">
-          <div className="w-full max-w-lg p-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-5">新建定时任务</h3>
+          <div className="w-full max-w-lg p-6 bg-card rounded-2xl border border-border shadow-sm">
+            <h3 className="text-base font-bold text-foreground mb-5">新建定时任务</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1.5">任务名称</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">任务名称</label>
                 <input
                   value={createForm.name}
                   onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                   placeholder="例如：每日健康报告"
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50
-                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-slate-400"
+                  className="w-full px-3.5 py-2.5 text-sm border border-border rounded-xl bg-muted
+                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground"
                   autoFocus
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1.5">执行专家</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">执行专家</label>
                   <Select
                     value={createForm.expert}
                     onChange={(val) => setCreateForm({ ...createForm, expert: val })}
@@ -149,7 +149,7 @@ export default function CronPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1.5">执行频率</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">执行频率</label>
                   <Select
                     value={createForm.cronLabel}
                     onChange={(val) => setCreateForm({ ...createForm, cronLabel: val })}
@@ -164,14 +164,14 @@ export default function CronPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-500 mb-1.5">任务描述</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">任务描述</label>
                 <textarea
                   value={createForm.description}
                   onChange={e => setCreateForm({ ...createForm, description: e.target.value })}
                   placeholder="描述这个定时任务要做什么..."
                   rows={3}
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl bg-slate-50
-                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-slate-400 resize-none"
+                  className="w-full px-3.5 py-2.5 text-sm border border-border rounded-xl bg-muted
+                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground resize-none"
                 />
               </div>
               <div className="flex gap-3 pt-2">
@@ -185,9 +185,9 @@ export default function CronPage() {
                 </button>
                 <button
                   onClick={() => setShowCreate(false)}
-                  className="px-6 py-2.5 text-sm font-medium text-slate-600
-                    bg-white border border-slate-200 rounded-xl
-                    hover:bg-slate-50 transition-all"
+                  className="px-6 py-2.5 text-sm font-medium text-muted-foreground
+                    bg-card border border-border rounded-xl
+                    hover:bg-muted transition-all"
                 >
                   取消
                 </button>
@@ -200,27 +200,27 @@ export default function CronPage() {
       <div className="flex-1 overflow-y-auto px-6 pb-6">
         {tasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <p className="text-sm text-slate-500 mb-1">暂无定时任务</p>
-            <p className="text-xs text-slate-400">点击右上角创建你的第一个自动化任务</p>
+            <p className="text-sm text-muted-foreground mb-1">暂无定时任务</p>
+            <p className="text-xs text-muted-foreground">点击右上角创建你的第一个自动化任务</p>
           </div>
         ) : (
           <div className="space-y-3">
             {tasks.map(task => {
               const sc = STATUS_CONFIG[task.status];
               return (
-                <div key={task.id} className={`bg-white rounded-2xl border p-5 transition-all duration-200
-                  ${task.enabled ? 'border-slate-200 hover:shadow-md' : 'border-slate-100 opacity-60'}`}>
+                <div key={task.id} className={`bg-card rounded-2xl border p-5 transition-all duration-200
+                  ${task.enabled ? 'border-border hover:shadow-md' : 'border-border opacity-60'}`}>
                   <div className="flex items-start gap-4">
                     {/* 左侧状态图标 */}
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      task.enabled ? 'bg-brand/10' : 'bg-slate-100'
+                      task.enabled ? 'bg-brand/10' : 'bg-accent'
                     }`}>
-                      <svg className={`w-5 h-5 ${task.enabled ? 'text-brand' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <svg className={`w-5 h-5 ${task.enabled ? 'text-brand' : 'text-muted-foreground'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
@@ -228,8 +228,8 @@ export default function CronPage() {
                     {/* 中间内容 */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-sm font-bold text-slate-800">{task.name}</h4>
-                        <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-500 rounded-full">
+                        <h4 className="text-sm font-bold text-foreground">{task.name}</h4>
+                        <span className="px-2 py-0.5 text-xs font-medium bg-accent text-muted-foreground rounded-full">
                           {task.expert}
                         </span>
                         <span className={`inline-flex items-center gap-1 text-xs font-medium ${sc.text}`}>
@@ -237,8 +237,8 @@ export default function CronPage() {
                           {sc.label}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 mb-2">{task.description}</p>
-                      <div className="flex items-center gap-4 text-xs text-slate-400">
+                      <p className="text-xs text-muted-foreground mb-2">{task.description}</p>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
@@ -264,16 +264,16 @@ export default function CronPage() {
                       <button
                         onClick={() => toggleTask(task.id)}
                         className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
-                          task.enabled ? 'bg-brand' : 'bg-slate-300'
+                          task.enabled ? 'bg-brand' : 'bg-border'
                         }`}
                       >
-                        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                        <span className={`absolute top-0.5 w-4 h-4 bg-card rounded-full shadow transition-transform duration-200 ${
                           task.enabled ? 'left-[22px]' : 'left-0.5'
                         }`} />
                       </button>
                       <button
                         onClick={() => deleteTask(task.id)}
-                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
                         title="删除"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

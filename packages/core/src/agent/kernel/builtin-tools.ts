@@ -86,11 +86,16 @@ function isBlockedReadPath(filePath: string): boolean {
   return BLOCKED_READ_PATH_PATTERNS.some(p => p.test(filePath));
 }
 
-/** 检测路径是否是受保护文件 (edit/write 拒绝) */
+/** 检测路径是否是受保护文件 (edit/write 拒绝)
+ *
+ * M14 PR-A5: 拆段用 regex `[\\/]+` 同时识别 / 和 \ 分隔符，避免 Windows 上
+ * `path.sep === '\'` 让 Unix 风格路径（如 `/project/.git/config`）整条不被
+ * 拆开导致漏检 `.git` 段。两个分隔符都识别后跨 OS 行为一致。
+ */
 function isDangerousWritePath(filePath: string): boolean {
   const basename = path.basename(filePath);
   if (DANGEROUS_FILES.has(basename)) return true;
-  const segments = filePath.split(path.sep);
+  const segments = filePath.split(/[\\/]+/);
   return segments.some(s => DANGEROUS_PATH_SEGMENTS.has(s));
 }
 

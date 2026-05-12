@@ -4,7 +4,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
 
-describe('extension-pack', () => {
+// M14 PR-A5: pack-parser fixture 用系统 `zip` 命令生成 ZIP，Windows 默认无此命令。
+// 改用 yazl/jszip 是更稳的修法（M14 Phase 2 范畴），本期先 skip-on-windows 让 CI 绿。
+const describeUnix = process.platform === 'win32' ? describe.skip : describe;
+
+describeUnix('extension-pack', () => {
   let tempDir: string;
 
   beforeEach(() => {

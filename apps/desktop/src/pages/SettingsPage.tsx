@@ -55,15 +55,15 @@ function UILanguageRow() {
 
 type SettingsTab = 'general' | 'env' | 'mcp' | 'skill-evolver' | 'security-policy' | 'identity-links' | 'api-docs' | 'about';
 
-const TABS: { key: SettingsTab; label: string }[] = [
-  { key: 'general', label: '通用' },
-  { key: 'env', label: '环境变量' },
-  { key: 'mcp', label: 'MCP 服务器' },
-  { key: 'skill-evolver', label: 'Skill 自进化' },
-  { key: 'security-policy', label: '安全策略' },
-  { key: 'identity-links', label: '我的多渠道身份' },
-  { key: 'api-docs', label: 'API 文档' },
-  { key: 'about', label: '关于' },
+const TABS: { key: SettingsTab; labelKey: string }[] = [
+  { key: 'general', labelKey: 'settings.tabs.general' },
+  { key: 'env', labelKey: 'settings.tabs.env' },
+  { key: 'mcp', labelKey: 'settings.tabs.mcp' },
+  { key: 'skill-evolver', labelKey: 'settings.tabs.skillEvolver' },
+  { key: 'security-policy', labelKey: 'settings.tabs.securityPolicy' },
+  { key: 'identity-links', labelKey: 'settings.tabs.identityLinks' },
+  { key: 'api-docs', labelKey: 'settings.tabs.apiDocs' },
+  { key: 'about', labelKey: 'settings.tabs.about' },
 ];
 
 // ─── 通用设置 Tab ───
@@ -75,10 +75,11 @@ function isEnforced(enforcedPaths: string[], field: string): boolean {
 
 /** 锁定标记组件 */
 function EnforcedBadge() {
+  const { t } = useTranslation();
   return (
-    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/15 text-warning" title="此设置由企业管理员控制">
+    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-warning/15 text-warning" title={t('settings.enforcedTooltip')}>
       <Lock className="w-3 h-3 mr-0.5" strokeWidth={2} aria-hidden="true" />
-      企业管控
+      {t('settings.enforced')}
     </span>
   );
 }
@@ -104,9 +105,9 @@ function GeneralTab() {
   const saveConfig = useCallback(async (patch: Record<string, unknown>) => {
     try {
       await put('/config', patch);
-      toast.success('已保存');
+      toast.success(t('common.saved'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '保存失败');
+      toast.error(err instanceof Error ? err.message : t('common.saveFailed'));
     }
   }, []);
 
@@ -184,6 +185,7 @@ interface EnvVarItem {
 // ─── 环境变量 Tab ───
 
 function EnvVarsTab() {
+  const { t } = useTranslation();
   const [envVars, setEnvVars] = useState<EnvVarItem[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -222,10 +224,10 @@ function EnvVarsTab() {
   const saveVars = useCallback(async (vars: Record<string, string>) => {
     try {
       await put('/config/env-vars', { envVars: vars });
-      showToast('已保存');
+      showToast(t('common.saved'));
       fetchEnvVars();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+      showToast(err instanceof Error ? err.message : t('common.saveFailed'), 'error');
     }
   }, [fetchEnvVars, showToast]);
 
@@ -276,7 +278,7 @@ function EnvVarsTab() {
     const v = newValue.trim();
     if (!k || !v) return;
     if (envVars.some(e => e.key === k)) {
-      showToast(`${k} 已存在，请直接编辑`, 'error');
+      showToast(t('settings.envExists', { key: k }), 'error');
       return;
     }
     const vars = await rebuildVarsMap();
@@ -312,7 +314,7 @@ function EnvVarsTab() {
     <>
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">Skill 和工具通过 process.env 读取这些变量</p>
+          <p className="text-xs text-muted-foreground">{t('settings.envDesc')}</p>
           <button
             onClick={() => { setAddingNew(true); setNewKey(''); setNewValue(''); }}
             className="text-xs px-2.5 py-1 font-medium text-brand border border-brand/30 rounded-lg
@@ -325,8 +327,8 @@ function EnvVarsTab() {
         <div className="divide-y divide-border">
           {envVars.length === 0 && !addingNew && (
             <div className="px-4 py-8 text-center">
-              <p className="text-sm text-muted-foreground">暂无环境变量</p>
-              <p className="text-xs text-muted-foreground mt-1">点击"添加"或选择下方常用变量快速配置</p>
+              <p className="text-sm text-muted-foreground">{t('settings.envEmpty')}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t('settings.envEmptyHint')}</p>
             </div>
           )}
 
@@ -344,7 +346,7 @@ function EnvVarsTab() {
                     onChange={(e) => setEditValue(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') { setEditingKey(null); setEditValue(''); } }}
                     onBlur={handleSaveEdit}
-                    placeholder="输入值"
+                    placeholder={t('settings.envValue')}
                     className="w-full px-2.5 py-1 text-xs border border-border rounded-lg
                       focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand font-mono"
                     autoFocus
@@ -353,20 +355,20 @@ function EnvVarsTab() {
               ) : (
                 <>
                   <code className="flex-1 text-xs text-muted-foreground font-mono truncate">
-                    {item.configured ? item.maskedValue : '(未设置)'}
+                    {item.configured ? item.maskedValue : t('settings.envUnset')}
                   </code>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => startEdit(item.key)}
                       className="p-1 text-muted-foreground hover:text-brand rounded transition-colors"
-                      title="编辑"
+                      title={t('common.edit')}
                     >
                       <Pencil className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
                     </button>
                     <button
                       onClick={() => handleDelete(item.key)}
                       className="p-1 text-muted-foreground hover:text-danger rounded transition-colors"
-                      title="删除"
+                      title={t('common.delete')}
                     >
                       <Trash2 className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
                     </button>
@@ -402,13 +404,13 @@ function EnvVarsTab() {
                 className="text-xs px-2.5 py-1 font-medium text-white bg-brand rounded-lg
                   hover:bg-brand-hover disabled:opacity-40 transition-colors"
               >
-                添加
+                {t('settings.add')}
               </button>
               <button
                 onClick={() => { setAddingNew(false); setNewKey(''); setNewValue(''); }}
                 className="text-xs text-muted-foreground hover:text-muted-foreground"
               >
-                取消
+                {t('common.cancel')}
               </button>
             </div>
           )}
@@ -491,6 +493,7 @@ interface CuratorStatus {
 }
 
 function SkillEvolverTab() {
+  const { t } = useTranslation();
   const [original, setOriginal] = useState<EvolverConfig | null>(null);
   const [draft, setDraft] = useState<EvolverConfig | null>(null);
   /** PR6: Curator 配置 */
@@ -543,7 +546,7 @@ function SkillEvolverTab() {
       setDraft(res.evolver);
       showToast('已保存（scheduler 自动热重载）', 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+      showToast(err instanceof Error ? err.message : t('common.saveFailed'), 'error');
     } finally {
       setSaving(false);
     }
@@ -617,7 +620,7 @@ function SkillEvolverTab() {
       setCuratorDraft(res.curator);
       showToast('Curator 配置已保存（自动热重载）', 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+      showToast(err instanceof Error ? err.message : t('common.saveFailed'), 'error');
     } finally {
       setSavingCurator(false);
     }
@@ -1129,6 +1132,7 @@ interface PolicyMatrix {
 }
 
 function SecurityPolicyTab() {
+  const { t } = useTranslation();
   const [matrix, setMatrix] = useState<PolicyMatrix | null>(null);
   const [draft, setDraft] = useState<Record<string, PolicyValue>>({});
   const [saving, setSaving] = useState(false);
@@ -1188,9 +1192,9 @@ function SecurityPolicyTab() {
       );
       setMatrix((m) => m ? { ...m, override: res.override } : m);
       setDraft(res.override);
-      showToast('已保存', 'success');
+      showToast(t('common.saved'), 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '保存失败', 'error');
+      showToast(err instanceof Error ? err.message : t('common.saveFailed'), 'error');
     } finally {
       setSaving(false);
     }
@@ -1333,6 +1337,7 @@ const CHANNEL_OPTIONS = [
 ];
 
 function IdentityLinksTab() {
+  const { t } = useTranslation();
   const [links, setLinks] = useState<IdentityLink[]>([]);
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState({ canonicalId: 'self', channel: 'feishu', peerId: '' });
@@ -1494,12 +1499,13 @@ function IdentityLinksTab() {
 // ─── 主页面 ───
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-4 border-b border-border bg-card">
-        <h2 className="text-lg font-bold text-foreground">设置</h2>
+        <h2 className="text-lg font-bold text-foreground">{t('settings.title')}</h2>
         {/* Tab 切换 */}
         <div className="flex gap-1 mt-3">
           {TABS.map((tab) => (
@@ -1512,7 +1518,7 @@ export default function SettingsPage() {
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </div>

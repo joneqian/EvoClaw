@@ -93,14 +93,14 @@ export default function CronPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-foreground">{t('cronPage.title')}</h2>
-            <p className="text-sm text-muted-foreground mt-1">配置专家的周期性自动执行任务，让健康管理全天候运转</p>
+            <p className="text-sm text-muted-foreground mt-1">{t('cronPage.titleDesc')}</p>
           </div>
           <button
             onClick={() => setShowCreate(!showCreate)}
             className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-xl
               hover:bg-brand-hover shadow-sm transition-all"
           >
-            {showCreate ? '取消' : '+ 新建任务'}
+            {showCreate ? t('common.cancel') : t('cronPage.addNew')}
           </button>
         </div>
 
@@ -123,14 +123,14 @@ export default function CronPage() {
       {showCreate ? (
         <div className="flex-1 flex items-center justify-center px-6 pb-6">
           <div className="w-full max-w-lg p-6 bg-card rounded-2xl border border-border shadow-sm">
-            <h3 className="text-base font-bold text-foreground mb-5">新建定时任务</h3>
+            <h3 className="text-base font-bold text-foreground mb-5">{t('cronPage.createTitle')}</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">任务名称</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('cronPage.taskName')}</label>
                 <input
                   value={createForm.name}
                   onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
-                  placeholder="例如：每日健康报告"
+                  placeholder={t('cronPage.taskNamePlaceholder')}
                   className="w-full px-3.5 py-2.5 text-sm border border-border rounded-xl bg-muted
                     focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground"
                   autoFocus
@@ -138,11 +138,11 @@ export default function CronPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">执行专家</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('cronPage.taskExpert')}</label>
                   <Select
                     value={createForm.expert}
                     onChange={(val) => setCreateForm({ ...createForm, expert: val })}
-                    placeholder="选择专家"
+                    placeholder={t('cronPage.taskExpertPlaceholder')}
                     options={[
                       { value: '营养膳食专家', label: '营养膳食专家' },
                       { value: '慢病管理助手', label: '慢病管理助手' },
@@ -152,11 +152,11 @@ export default function CronPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">执行频率</label>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('cronPage.taskFrequency')}</label>
                   <Select
                     value={createForm.cronLabel}
                     onChange={(val) => setCreateForm({ ...createForm, cronLabel: val })}
-                    placeholder="选择频率"
+                    placeholder={t('cronPage.taskFrequencyPlaceholder')}
                     options={[
                       { value: '每天 08:00', label: '每天 08:00' },
                       { value: '每天 09:00/15:00/21:00', label: '每天三次' },
@@ -167,11 +167,11 @@ export default function CronPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">任务描述</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('cronPage.taskDescription')}</label>
                 <textarea
                   value={createForm.description}
                   onChange={e => setCreateForm({ ...createForm, description: e.target.value })}
-                  placeholder="描述这个定时任务要做什么..."
+                  placeholder={t('cronPage.taskDescriptionPlaceholder')}
                   rows={3}
                   className="w-full px-3.5 py-2.5 text-sm border border-border rounded-xl bg-muted
                     focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground resize-none"

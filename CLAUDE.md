@@ -121,7 +121,7 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
   - **U1 暗色主题 + dual-theme 设计系统** ✅（PR #155，2026-05-12）：shadcn 命名 token + CSS variables + ThemeProvider 三态 + 2000+ 处颜色硬编码 sweep + ThemeSwitcher + brand-apply 模板升级 v3
   - **U2 lucide-react 图标库** ✅（PR #156 + PR #157，2026-05-12）：86 处内联 SVG 全部换 Lucide 标准组件，25 文件全覆盖；删 PathIcon 过渡 wrapper；SecurityPage 5 个 config 数组（TOOL_DISPLAY / GUARD_FEATURES / GUARD_PROTECTIONS / PERMISSION_MODES / STATUS_CONFIG）全迁移；同步修 PR-U1 留下的 brand-apply 模板未升级 bug
   - **U3 Toast (sonner) + Skeleton 系统** ✅（PR #158，2026-05-12）：sonner 全局 Toaster 跟随主题；9 个文件 12 处零散 `setToast` 状态迁移；新增 `components/Skeleton.tsx` (Skeleton/SkeletonText/SkeletonCard)；CommandPalette loading state 接入示范
-  - **U4 i18n 中英双语**：PR #159（基建+核心命名空间 130 key）+ feat/ui-i18n-zh-en-followup（PR-U4b：扩 +50 key，sweep CheckpointPage/CheckpointList/CheckpointRevertDialog/DestructiveConfirmDialog/PermissionDialog/ExpertPanel/AgentsPage 7 个高频 Dialog/Panel 关键路径）；**长尾页面文案留 PR-U4c**
+  - **U4 i18n 中英双语**：PR #159（基建+130 key）+ PR #160（U4b 扩+50 key/7 Dialog）+ feat/ui-i18n-zh-en-longtail（U4c 扩+80 key/8 页面标题与 CTA：SetupPage 四步引导 + SkillPage 头部 + MemoryPage 头部 + SecurityPage 头部 + CronPage/TasksPage/KnowledgePage/AlertPage 页面标题）；**深层 Tab 内文案留 PR-U4d**
   - **U4 i18n 中英双语**：2203 处中文字面量抽离（待启动）
   - **U5 ARIA + 键盘导航**：8 个 modal + 60+ 图标按钮 a11y 全覆盖（待启动）
   - 详见 `docs/iteration-plans/M15-UIModernization-Plan.md` + `docs/architecture/design-system.md`

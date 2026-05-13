@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTasksStore, type TaskRuntime, type TaskStatus, type TaskRecord } from '../stores/tasks-store';
 import { useAgentStore } from '../stores/agent-store';
 
@@ -147,6 +148,7 @@ function TaskRow({ task, agentName, onCancel }: TaskRowProps) {
 }
 
 export default function TasksPage() {
+  const { t } = useTranslation();
   const {
     tasks,
     loading,
@@ -216,7 +218,7 @@ export default function TasksPage() {
       <div className="shrink-0 px-6 py-4 border-b border-border">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">后台任务</h1>
+            <h1 className="text-lg font-semibold text-foreground">{t('tasksPage.title')}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               共 {stats.total} 个任务 · 运行中 <span className="text-info font-medium">{stats.running}</span> · 已结束 {stats.ended}
             </p>

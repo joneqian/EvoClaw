@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Clock, RefreshCw, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import Select from '../components/Select';
 
 interface CronTask {
@@ -46,6 +47,7 @@ const STATUS_CONFIG = {
 };
 
 export default function CronPage() {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<CronTask[]>(MOCK_TASKS);
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', expert: '', cronLabel: '', description: '' });
@@ -90,7 +92,7 @@ export default function CronPage() {
       <div className="px-6 pt-5 pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">定时任务</h2>
+            <h2 className="text-lg font-bold text-foreground">{t('cronPage.title')}</h2>
             <p className="text-sm text-muted-foreground mt-1">配置专家的周期性自动执行任务，让健康管理全天候运转</p>
           </div>
           <button
@@ -204,7 +206,7 @@ export default function CronPage() {
             <div className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mb-4">
               <Clock className="w-8 h-8 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
             </div>
-            <p className="text-sm text-muted-foreground mb-1">暂无定时任务</p>
+            <p className="text-sm text-muted-foreground mb-1">{t('cronPage.noTasks')}</p>
             <p className="text-xs text-muted-foreground">点击右上角创建你的第一个自动化任务</p>
           </div>
         ) : (

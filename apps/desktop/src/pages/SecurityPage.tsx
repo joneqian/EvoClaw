@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   FileText,
   FilePen,
@@ -82,6 +83,7 @@ const TABS: { key: TabKey; label: string; Icon: LucideIcon }[] = [
 // ─── 主页面 ───
 
 export default function SecurityPage() {
+  const { t } = useTranslation();
   const { agents } = useAgentStore();
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('guard');
@@ -193,8 +195,8 @@ export default function SecurityPage() {
               <ShieldCheck className="w-5 h-5 text-brand" strokeWidth={1.5} aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">安全中心</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">管理 Agent 权限、审计日志与安全策略</p>
+              <h2 className="text-lg font-bold text-foreground">{t('security.title')}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('security.desc')}</p>
             </div>
           </div>
           <AgentSelect agents={agents} value={selectedAgentId} onChange={setSelectedAgentId} />

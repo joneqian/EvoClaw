@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Search, Zap, X as XIcon, Store, ChevronRight, ChevronLeft, Download, Pin, Archive, FolderClosed } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { get, post, del } from '../lib/api';
 import { BRAND_NAME, SKILL_THREAT_LABELS } from '@evoclaw/shared';
 import type { SkillThreatType } from '@evoclaw/shared';
@@ -213,6 +214,7 @@ const FINDING_TYPE_LABELS: Record<string, string> = {
 // ─── 主页面 ───
 
 export default function SkillPage() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabType>('brand');
   const [category, setCategory] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('score');
@@ -446,7 +448,7 @@ export default function SkillPage() {
           <input type="text" value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={handleSearch}
-            placeholder="搜索技能，回车确认"
+            placeholder={t('skillPage.searchPlaceholder')}
             className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground"
           />
         </div>
@@ -670,7 +672,7 @@ export default function SkillPage() {
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground transition-colors"
             >
               <Store className="w-3.5 h-3.5" strokeWidth={1.5} aria-hidden="true" />
-              探索技能广场
+              {t('skillPage.explore')}
               <ChevronRight className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
@@ -686,7 +688,7 @@ export default function SkillPage() {
               返回精选
             </button>
             <span className="text-xs text-muted-foreground mx-1">|</span>
-            <span className="text-sm font-semibold text-foreground">技能广场</span>
+            <span className="text-sm font-semibold text-foreground">{t('skillPage.tabMarketplace')}</span>
           </div>
 
           {/* 分类 + 排序 */}
@@ -761,7 +763,7 @@ export default function SkillPage() {
           ) : skills.length === 0 && archivedEntries.length === 0 ? (
             <div className="text-center py-20">
               <p className="text-3xl mb-3">📦</p>
-              <p className="text-sm text-muted-foreground">暂无已安装技能</p>
+              <p className="text-sm text-muted-foreground">{t('skillPage.noInstalled')}</p>
               <button onClick={() => setTab('brand')} className="mt-3 text-sm text-brand hover:text-brand-hover">去 {BRAND_NAME} 精选 →</button>
             </div>
           ) : (

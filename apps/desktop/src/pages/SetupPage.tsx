@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BRAND_NAME } from '@evoclaw/shared';
 import { put, post, healthCheck } from '../lib/api';
 import { useAppStore } from '../stores/app-store';
@@ -60,6 +61,7 @@ const EMBEDDING_PROVIDERS = PROVIDER_PRESETS.filter(p => p.embedding);
 type Step = 'welcome' | 'provider' | 'embedding' | 'done';
 
 export default function SetupPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { setInitState, setSidecarConnected } = useAppStore();
 
@@ -368,21 +370,20 @@ export default function SetupPage() {
           <div className="bg-card rounded-2xl shadow-lg p-8 text-center">
             <img src="/brand-logo.png" alt="Logo" className="w-16 h-16 mx-auto mb-4 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             <h1 className="text-2xl font-bold text-foreground mb-2">
-              欢迎使用 {BRAND_NAME}
+              {t('setup.welcomeTitle', { brand: BRAND_NAME })}
             </h1>
             <p className="text-muted-foreground mb-6 leading-relaxed">
-              自进化 AI 伴侣桌面应用。创建具有独立人格、记忆和权限的 AI Agent，
-              与你协同工作和成长。
+              {t('setup.welcomeIntro')}
             </p>
             <p className="text-sm text-muted-foreground mb-8">
-              首先，让我们配置 LLM Provider 来让你的 Agent 拥有思考和记忆能力。
+              {t('setup.welcomeCta')}
             </p>
             <button
               onClick={() => setStep('provider')}
               className="px-6 py-3 bg-brand text-white font-medium rounded-xl
                 hover:bg-brand-hover transition-colors"
             >
-              开始配置
+              {t('setup.start')}
             </button>
           </div>
         )}
@@ -391,10 +392,10 @@ export default function SetupPage() {
         {step === 'provider' && (
           <div className="bg-card rounded-2xl shadow-lg p-8">
             <h2 className="text-lg font-bold text-foreground mb-1">
-              配置对话模型
+              {t('setup.providerTitle')}
             </h2>
             <p className="text-sm text-muted-foreground mb-6">
-              选择一个 LLM Provider 并输入 API Key
+              {t('setup.providerIntro')}
             </p>
 
             {/* Provider 选择 */}
@@ -436,7 +437,7 @@ export default function SetupPage() {
 
             {/* 自定义 Base URL（可选） */}
             <label className="block text-sm font-medium text-foreground mb-1">
-              Base URL <span className="text-muted-foreground font-normal">（可选，留空使用默认）</span>
+              {t('setup.baseUrl')} <span className="text-muted-foreground font-normal">{t('setup.baseUrlOptional')}</span>
             </label>
             <input
               type="text"
@@ -451,7 +452,7 @@ export default function SetupPage() {
 
             {/* 默认模型提示 */}
             <p className="text-xs text-muted-foreground mb-4">
-              默认模型: {selectedProvider.defaultModel.name} ({selectedProvider.defaultModel.id})
+              {t('setup.defaultModel', { name: selectedProvider.defaultModel.name, id: selectedProvider.defaultModel.id })}
             </p>
 
             {/* 测试结果 */}
@@ -461,7 +462,7 @@ export default function SetupPage() {
                   ? 'bg-success/10 text-success'
                   : 'bg-danger/10 text-danger'
               }`}>
-                {testResult.success ? '连接成功！' : `连接失败: ${testResult.error}`}
+                {testResult.success ? t('setup.connectOk') : t('setup.connectErr', { error: testResult.error })}
               </div>
             )}
 
@@ -478,7 +479,7 @@ export default function SetupPage() {
                 onClick={() => setStep('welcome')}
                 className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
               >
-                返回
+                {t('setup.back')}
               </button>
               <button
                 onClick={handleTest}
@@ -487,7 +488,7 @@ export default function SetupPage() {
                   text-muted-foreground rounded-lg hover:bg-muted
                   transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {testing ? '测试中...' : '测试连接'}
+                {testing ? t('setup.testing') : t('setup.testConnection')}
               </button>
               <button
                 onClick={handleSaveLLM}
@@ -496,7 +497,7 @@ export default function SetupPage() {
                   rounded-lg hover:bg-brand-hover transition-colors
                   disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {saving ? '保存中...' : '下一步'}
+                {saving ? t('setup.saving') : t('setup.next')}
               </button>
             </div>
           </div>
@@ -506,10 +507,10 @@ export default function SetupPage() {
         {step === 'embedding' && (
           <div className="bg-card rounded-2xl shadow-lg p-8">
             <h2 className="text-lg font-bold text-foreground mb-1">
-              配置向量模型
+              {t('setup.embeddingTitle')}
             </h2>
             <p className="text-sm text-muted-foreground mb-6">
-              向量模型用于记忆语义搜索和知识库检索，大幅提升 Agent 的记忆能力
+              {t('setup.embeddingIntro')}
             </p>
 
             {llmHasEmbedding ? (
@@ -730,7 +731,7 @@ export default function SetupPage() {
                   rounded-lg hover:bg-brand-hover transition-colors
                   disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {embeddingSaving ? '保存中...' : '保存并完成'}
+                {embeddingSaving ? t('setup.saving') : t('setup.finish')}
               </button>
             </div>
           </div>
@@ -741,17 +742,17 @@ export default function SetupPage() {
           <div className="bg-card rounded-2xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">🎉</div>
             <h2 className="text-xl font-bold text-foreground mb-2">
-              配置完成！
+              {t('setup.doneTitle')}
             </h2>
             <p className="text-muted-foreground mb-6">
-              一切就绪，现在你可以创建你的第一个 AI Agent 了。
+              {t('setup.doneIntro', { brand: BRAND_NAME })}
             </p>
             <button
               onClick={goToMain}
               className="px-6 py-3 bg-brand text-white font-medium rounded-xl
                 hover:bg-brand-hover transition-colors"
             >
-              进入 {BRAND_NAME}
+              {t('setup.enterApp')}
             </button>
           </div>
         )}

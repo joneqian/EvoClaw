@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, AlertCircle, Info, CheckCircle2, ChevronDown, Heart, Bell, Users, type LucideIcon } from 'lucide-react';
 
 type AlertLevel = 'critical' | 'warning' | 'info';
@@ -80,6 +81,7 @@ const STATUS_TABS = [
 ];
 
 export default function AlertPage() {
+  const { t } = useTranslation();
   const [alerts, setAlerts] = useState<AlertItem[]>(MOCK_ALERTS);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'resolved'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -112,8 +114,8 @@ export default function AlertPage() {
       <div className="px-6 pt-5 pb-4 shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-foreground">预警中心</h2>
-            <p className="text-sm text-muted-foreground mt-1">集中展示服务对象的健康预警信息，及时跟进处理</p>
+            <h2 className="text-lg font-bold text-foreground">{t('alertPage.title')}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t('alertPage.titleHint')}</p>
           </div>
           {activeCount > 0 && (
             <button

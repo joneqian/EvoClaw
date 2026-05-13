@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAgentStore } from '../stores/agent-store';
 import AgentSelect from '../components/AgentSelect';
 import { get, post, del } from '../lib/api';
@@ -132,6 +133,7 @@ function FileRow({
 
 /** 知识库管理页面 */
 export default function KnowledgePage() {
+  const { t } = useTranslation();
   const { agents } = useAgentStore();
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [files, setFiles] = useState<KBFile[]>([]);
@@ -187,7 +189,7 @@ export default function KnowledgePage() {
       {/* 顶栏 */}
       <div className="px-6 py-4 border-b border-border bg-card">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-foreground">知识库</h2>
+          <h2 className="text-lg font-bold text-foreground">{t('knowledgePage.title')}</h2>
           <AgentSelect
             agents={agents}
             value={selectedAgentId}
@@ -229,7 +231,7 @@ export default function KnowledgePage() {
           </div>
         ) : files.length === 0 ? (
           <div className="text-center text-muted-foreground mt-20">
-            <p className="text-lg">暂无知识库文件</p>
+            <p className="text-lg">{t('knowledgePage.noFiles')}</p>
             <p className="text-sm mt-1">输入文件路径导入文档，Agent 对话时将自动检索相关内容</p>
           </div>
         ) : (

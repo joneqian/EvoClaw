@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useTranslation } from 'react-i18next';
 import {
   useMemoryStore,
   type MemoryUnit,
@@ -717,6 +718,7 @@ function SessionSummariesTab({ agentId }: { agentId: string }) {
 
 /** 记忆管理页面 — 主从分栏布局 */
 export default function MemoryPage() {
+  const { t } = useTranslation();
   const { agents } = useAgentStore();
   const {
     units,
@@ -812,14 +814,14 @@ export default function MemoryPage() {
       {/* 顶栏: 第 1 行 — 标题 + 搜索 + Agent */}
       <div className="px-4 pt-3 pb-2 border-b border-border bg-card">
         <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-sm font-bold text-foreground shrink-0">记忆管理</h2>
+          <h2 className="text-sm font-bold text-foreground shrink-0">{t('memoryPage.title')}</h2>
           {activeTab === 'memories' ? (
             <form onSubmit={handleSearch} className="flex-1 flex gap-1.5">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索记忆..."
+                placeholder={t('memoryPage.searchPlaceholder')}
                 className="flex-1 px-2.5 py-1.5 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand"
               />
               <button

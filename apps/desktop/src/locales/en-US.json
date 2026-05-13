@@ -224,5 +224,117 @@
     "system": "Follow System",
     "switchTitle": "Theme: {{label}} (click to switch)",
     "switchAriaLabel": "Switch theme, current: {{label}}"
+  },
+  "setup": {
+    "welcomeTitle": "Welcome to {{brand}}",
+    "welcomeIntro": "A self-evolving AI companion desktop app. Create AI agents with their own personality, memory, and permissions to collaborate and grow with you.",
+    "welcomeCta": "First, configure an LLM Provider so your agent can think and remember.",
+    "start": "Get Started",
+    "providerTitle": "Configure Chat Model",
+    "providerIntro": "Pick an LLM Provider and enter the API Key",
+    "embeddingTitle": "Configure Embedding Model",
+    "embeddingIntro": "Embedding models power memory semantic search and knowledge-base retrieval, significantly improving agent recall.",
+    "baseUrl": "Base URL",
+    "baseUrlOptional": "(optional, leave blank for default)",
+    "defaultModel": "Default model: {{name}} ({{id}})",
+    "testConnection": "Test Connection",
+    "testing": "Testing…",
+    "saving": "Saving…",
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip",
+    "finish": "Finish",
+    "connectOk": "Connected!",
+    "connectErr": "Connection failed: {{error}}",
+    "enterApiKey": "Please enter an API Key",
+    "doneTitle": "Setup Complete",
+    "doneIntro": "{{brand}} is ready. Start your AI companion journey!",
+    "enterApp": "Enter App"
+  },
+  "agentCreation": {
+    "title": "Create Expert",
+    "creating": "Creating…",
+    "confirmCreate": "Confirm",
+    "regenerate": "Redo",
+    "send": "Send",
+    "placeholder": "Answer the question above…",
+    "stage": {
+      "name": "Pick a name",
+      "role": "Choose a role",
+      "purpose": "What should it do",
+      "constraints": "Any constraints",
+      "preview": "Preview and confirm"
+    },
+    "generating": "AI is generating personalized workspace files for your expert…"
+  },
+  "skillPage": {
+    "tabInstalled": "Installed",
+    "tabMarketplace": "Marketplace",
+    "searchPlaceholder": "Search skills, press Enter",
+    "noInstalled": "No skills installed yet",
+    "noInstalledHint": "Visit the marketplace to find some",
+    "explore": "Explore Marketplace",
+    "details": "Details",
+    "install": "Install Skill",
+    "installing": "Installing…",
+    "installed": "Installed",
+    "installCount": "Installs",
+    "confirmInstall": "Confirm Install",
+    "blocked": "Blocked",
+    "blockedReason": "Installation blocked by policy",
+    "uninstall": "Uninstall",
+    "uninstallConfirm": "Are you sure you want to uninstall this skill?",
+    "ratingHelpful": "Helpful",
+    "ratingNotHelpful": "Not helpful"
+  },
+  "memoryPage": {
+    "title": "Memory Management",
+    "searchPlaceholder": "Search memories…",
+    "filter": "Filter",
+    "addManually": "Add manually",
+    "noFilterMatch": "No memories match the filter",
+    "deletedTag": "Deleted"
+  },
+  "channelPage": {
+    "title": "Channels",
+    "boundAgent": "Bound to expert: {{name}}"
+  },
+  "alertPage": {
+    "title": "Alert Center",
+    "titleHint": "Centralized health alerts for those you serve. Follow up in time.",
+    "markAllRead": "Mark all read",
+    "ok": "All clear",
+    "okHint": "No alerts requiring attention",
+    "tabAll": "All",
+    "tabActive": "Active",
+    "tabResolved": "Resolved",
+    "criticalCount": "Critical",
+    "patientCount": "Watched",
+    "markResolved": "Mark Resolved",
+    "ignore": "Ignore",
+    "delete": "Delete"
+  },
+  "cronPage": {
+    "title": "Cron Jobs",
+    "addNew": "+ New Job",
+    "noTasks": "No cron jobs yet",
+    "noTasksHint": "Create one through chat or click + New Job",
+    "running": "Running",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "tasksPage": {
+    "title": "Tasks",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "abort": "Abort"
+  },
+  "knowledgePage": {
+    "title": "Knowledge Base",
+    "uploadDoc": "Upload Document",
+    "delete": "Delete",
+    "noFiles": "No documents yet"
   }
 }

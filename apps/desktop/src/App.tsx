@@ -34,6 +34,7 @@ import { useTasksStore } from './stores/tasks-store';
 import CommandPalette from './components/CommandPalette';
 import { useGlobalHotkey } from './hooks/useGlobalHotkey';
 import { Toaster } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from './contexts/ThemeProvider';
 import {
   Sparkles,
@@ -64,6 +65,7 @@ interface RecentConversation {
 // ─── 加载 / 错误状态 ───
 
 function LoadingScreen() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-center h-screen bg-muted">
       <div className="text-center">
@@ -71,7 +73,7 @@ function LoadingScreen() {
           flex items-center justify-center">
           <Sparkles className="w-6 h-6 text-brand" strokeWidth={1.75} aria-hidden="true" />
         </div>
-        <p className="text-sm text-muted-foreground font-medium">正在启动 {BRAND_NAME}...</p>
+        <p className="text-sm text-muted-foreground font-medium">{t('app.loading', { brand: BRAND_NAME })}</p>
         <div className="mt-4 flex justify-center gap-1">
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse" />
           <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
@@ -83,6 +85,7 @@ function LoadingScreen() {
 }
 
 function ErrorScreen({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-center h-screen bg-muted">
       <div className="text-center max-w-sm">
@@ -90,16 +93,16 @@ function ErrorScreen({ onRetry }: { onRetry: () => void }) {
           flex items-center justify-center">
           <AlertTriangle className="w-6 h-6 text-danger" strokeWidth={1.75} aria-hidden="true" />
         </div>
-        <h2 className="text-base font-semibold text-foreground mb-1.5">连接失败</h2>
+        <h2 className="text-base font-semibold text-foreground mb-1.5">{t('app.connectFailed')}</h2>
         <p className="text-sm text-muted-foreground mb-5">
-          无法连接到后端服务，请确保 Node.js 已安装。
+          {t('app.connectFailedDesc')}
         </p>
         <button
           onClick={onRetry}
           className="px-5 py-2 text-sm font-medium text-white bg-brand rounded-lg
             hover:bg-brand-hover active:bg-brand-active transition-colors"
         >
-          重试连接
+          {t('app.retry')}
         </button>
       </div>
     </div>
@@ -109,24 +112,24 @@ function ErrorScreen({ onRetry }: { onRetry: () => void }) {
 // ─── 底部弹出菜单 ───
 
 interface MenuSection {
-  items: { Icon: LucideIcon; label: string; path: string }[];
+  items: { Icon: LucideIcon; labelKey: string; path: string }[];
 }
 
 const MENU_SECTIONS: MenuSection[] = [
   {
     items: [
-      { Icon: Cpu, label: '模型管理', path: '/models' },
+      { Icon: Cpu, labelKey: 'nav.models', path: '/models' },
     ],
   },
   {
     items: [
-      { Icon: BarChart3, label: '进化统计', path: '/evolution' },
-      { Icon: BookOpen, label: '知识库', path: '/knowledge' },
+      { Icon: BarChart3, labelKey: 'nav.evolution', path: '/evolution' },
+      { Icon: BookOpen, labelKey: 'nav.knowledge', path: '/knowledge' },
     ],
   },
   {
     items: [
-      { Icon: SettingsIcon, label: '设置', path: '/settings' },
+      { Icon: SettingsIcon, labelKey: 'nav.settings', path: '/settings' },
     ],
   },
 ];
@@ -145,6 +148,7 @@ function BottomMenu({
   onRestartSidecar: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!open) return;
@@ -176,7 +180,7 @@ function BottomMenu({
                   hover:bg-muted transition-colors text-left"
               >
                 <item.Icon className="w-4 h-4 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-                {item.label}
+                {t(item.labelKey)}
               </button>
             ))}
           </div>
@@ -188,14 +192,14 @@ function BottomMenu({
           sidecarConnected ? 'bg-success' : 'bg-danger animate-pulse'
         }`} />
         <span className="text-xs text-muted-foreground flex-1">
-          Sidecar {sidecarConnected ? '已连接' : '未连接'}
+          {sidecarConnected ? t('app.sidecarConnected') : t('app.sidecarDisconnected')}
         </span>
         {!sidecarConnected && (
           <button
             onClick={() => { onRestartSidecar(); onClose(); }}
             className="text-xs text-brand hover:text-brand-hover font-medium"
           >
-            重启
+            {t('app.restart')}
           </button>
         )}
       </div>
@@ -213,6 +217,7 @@ function isChatRoute(pathname: string): boolean {
 // ─── 主应用 ───
 
 export default function App() {
+  const { t } = useTranslation();
   const {
     sidecarConnected, setSidecarConnected,
     initState, setInitState,
@@ -440,9 +445,9 @@ export default function App() {
           <div className="bg-card rounded-xl shadow-xl p-6 w-[360px]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-base font-semibold text-foreground mb-2">确认删除</h3>
+            <h3 className="text-base font-semibold text-foreground mb-2">{t('agents.deleteConfirmTitle')}</h3>
             <p className="text-sm text-muted-foreground mb-5">
-              确定要删除专家「{deleteConfirm.agentName}」吗？该专家的所有会话记录也将一并删除，此操作不可撤销。
+              {t('agents.deleteConfirmDesc', { name: deleteConfirm.agentName })}
             </p>
             <div className="flex gap-2 justify-end">
               <button
@@ -450,14 +455,14 @@ export default function App() {
                 className="px-4 py-2 text-sm text-muted-foreground border border-border rounded-lg
                   hover:bg-muted transition-colors"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={confirmDeleteAgent}
                 className="px-4 py-2 text-sm font-medium text-white bg-danger rounded-lg
                   hover:bg-danger transition-colors"
               >
-                确认删除
+                {t('agents.deleteConfirmAction')}
               </button>
             </div>
           </div>
@@ -536,8 +541,8 @@ export default function App() {
                   className={`w-10 h-[42px] flex items-center justify-center transition-colors ${
                     menuOpen ? 'text-brand-active' : 'text-muted-foreground hover:bg-accent hover:text-muted-foreground'
                   }`}
-                  title="设置与更多"
-                  aria-label="设置与更多"
+                  title={t('app.menuMore')}
+                  aria-label={t('app.menuMore')}
                   aria-expanded={menuOpen}
                 >
                   <Menu className="w-[18px] h-[18px]" strokeWidth={2} aria-hidden="true" />
@@ -549,8 +554,8 @@ export default function App() {
                 onClick={() => appWindow.minimize()}
                 className="w-10 h-[42px] flex items-center justify-center text-muted-foreground
                   hover:bg-accent hover:text-muted-foreground transition-colors"
-                title="最小化"
-                aria-label="最小化窗口"
+                title={t('app.minimize')}
+                aria-label={t('app.minimize')}
               >
                 <Minus className="w-[18px] h-[18px]" strokeWidth={2} aria-hidden="true" />
               </button>
@@ -560,8 +565,8 @@ export default function App() {
                 onClick={() => appWindow.toggleMaximize()}
                 className="w-10 h-[42px] flex items-center justify-center text-muted-foreground
                   hover:bg-accent hover:text-muted-foreground transition-colors"
-                title="最大化"
-                aria-label="最大化窗口"
+                title={t('app.maximize')}
+                aria-label={t('app.maximize')}
               >
                 <Square className="w-[14px] h-[14px]" strokeWidth={2} aria-hidden="true" />
               </button>
@@ -571,8 +576,8 @@ export default function App() {
                 onClick={() => appWindow.close()}
                 className="w-10 h-[42px] flex items-center justify-center text-muted-foreground
                   hover:bg-danger hover:text-white transition-colors"
-                title="关闭"
-                aria-label="关闭窗口"
+                title={t('app.close')}
+                aria-label={t('app.close')}
               >
                 <X className="w-[18px] h-[18px]" strokeWidth={2} aria-hidden="true" />
               </button>

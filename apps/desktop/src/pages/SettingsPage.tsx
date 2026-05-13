@@ -1,34 +1,52 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { BRAND_NAME } from '@evoclaw/shared';
 import { get, post, put, del } from '../lib/api';
 import Select from '../components/Select';
 import MCPServersPanel from '../components/MCPServersPanel';
 import ApiDocsPanel from '../components/ApiDocsPanel';
 import ProfileManager from '../components/ProfileManager';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useTheme, type ThemeMode } from '../contexts/ThemeProvider';
 
 // ─── 主题切换行（M15 PR-U1） ───
 
 function ThemeRow() {
   const { mode, setMode } = useTheme();
+  const { t } = useTranslation();
   return (
     <div className="px-4 py-3 flex items-center justify-between">
       <div>
-        <div className="text-sm font-medium text-foreground">外观主题</div>
-        <div className="text-xs text-muted-foreground mt-0.5">应用界面主题（跟随系统 / 亮色 / 暗色）</div>
+        <div className="text-sm font-medium text-foreground">{t('settings.theme')}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{t('settings.themeDesc')}</div>
       </div>
       <Select
         value={mode}
         onChange={(val) => setMode(val as ThemeMode)}
         options={[
-          { value: 'system', label: '跟随系统' },
-          { value: 'light', label: '亮色' },
-          { value: 'dark', label: '暗色' },
+          { value: 'system', label: t('settings.themeFollow') },
+          { value: 'light', label: t('settings.themeLight') },
+          { value: 'dark', label: t('settings.themeDark') },
         ]}
         className="w-[140px]"
       />
+    </div>
+  );
+}
+
+// ─── 界面语言切换行（M15 PR-U4） ───
+
+function UILanguageRow() {
+  const { t } = useTranslation();
+  return (
+    <div className="px-4 py-3 flex items-center justify-between">
+      <div>
+        <div className="text-sm font-medium text-foreground">{t('settings.uiLanguage')}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{t('settings.uiLanguageDesc')}</div>
+      </div>
+      <LanguageSwitcher />
     </div>
   );
 }
@@ -66,6 +84,7 @@ function EnforcedBadge() {
 }
 
 function GeneralTab() {
+  const { t } = useTranslation();
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
   const [enforced, setEnforced] = useState<string[]>([]);
 
@@ -97,11 +116,14 @@ function GeneralTab() {
       <ProfileManager showToast={(message, type = 'success') => type === 'error' ? toast.error(message) : toast.success(message)} />
 
       <div className="bg-card rounded-xl border border-border divide-y divide-border">
-        {/* 语言设置 */}
+        {/* 界面语言（M15 PR-U4） */}
+        <UILanguageRow />
+
+        {/* Agent 响应语言 */}
         <div className="px-4 py-3 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-foreground">响应语言{isEnforced(enforced, 'language') && <EnforcedBadge />}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Agent 回复时使用的语言</div>
+            <div className="text-sm font-medium text-foreground">{t('settings.language')}{isEnforced(enforced, 'language') && <EnforcedBadge />}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{t('settings.languageDesc')}</div>
           </div>
           <Select
             value={language}

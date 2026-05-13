@@ -409,14 +409,14 @@ function InlineFeishuConnect({
         value={appId}
         onChange={(e) => setAppId(e.target.value)}
         placeholder="App ID"
-        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
       />
       <input
         type="password"
         value={appSecret}
         onChange={(e) => setAppSecret(e.target.value)}
         placeholder={hasSavedSecret ? 'App Secret（已保存，留空沿用）' : 'App Secret'}
-        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
       />
       {loadingPrefill && (
         <p className="text-[11px] text-muted-foreground">正在读取已保存的配置...</p>
@@ -428,7 +428,7 @@ function InlineFeishuConnect({
         <select
           value={groupScope}
           onChange={(e) => setGroupScope(e.target.value as GroupScope)}
-          className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-card focus:outline-none focus:ring-1 focus:ring-brand"
+          className="w-full px-2 py-1.5 text-sm border border-border rounded-lg bg-card focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
         >
           {GROUP_SCOPE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -465,7 +465,7 @@ function InlineFeishuConnect({
                     Math.max(1, Math.min(100, Number(e.target.value) || 20)),
                   )
                 }
-                className="w-full px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-brand"
+                className="w-full px-2 py-1 text-xs border border-border rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
               />
             </label>
             <label className="text-[11px] text-muted-foreground">
@@ -480,7 +480,7 @@ function InlineFeishuConnect({
                     Math.max(1, Math.min(1440, Number(e.target.value) || 30)),
                   )
                 }
-                className="w-full px-2 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-brand"
+                className="w-full px-2 py-1 text-xs border border-border rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
               />
             </label>
           </div>
@@ -513,7 +513,7 @@ function InlineFeishuConnect({
                     e.target.value as 'mention-first' | 'any-mention' | 'always',
                   )
                 }
-                className="w-full px-2 py-1 text-xs border border-border rounded bg-card focus:outline-none focus:ring-1 focus:ring-brand"
+                className="w-full px-2 py-1 text-xs border border-border rounded bg-card focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
               >
                 <option value="any-mention">任一机器人被 @ 时激活全体（默认）</option>
                 <option value="mention-first">只激活被 @ 到的机器人</option>
@@ -532,7 +532,7 @@ function InlineFeishuConnect({
                 }}
                 placeholder={'{\n  "oc_xxxxx": ["agent-strategy", "agent-finance"]\n}'}
                 rows={4}
-                className="w-full px-2 py-1 text-xs border border-border rounded bg-card font-mono focus:outline-none focus:ring-1 focus:ring-brand"
+                className="w-full px-2 py-1 text-xs border border-border rounded bg-card font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
               />
               {broadcastJsonError && (
                 <span className="block mt-0.5 text-danger">
@@ -560,14 +560,14 @@ function InlineFeishuConnect({
             value={encryptKey}
             onChange={(e) => setEncryptKey(e.target.value)}
             placeholder="Encrypt Key（可选）"
-            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
           />
           <input
             type="password"
             value={verificationToken}
             onChange={(e) => setVerificationToken(e.target.value)}
             placeholder="Verification Token（可选）"
-            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+            className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
           />
         </>
       )}
@@ -641,21 +641,21 @@ function InlineWecomConnect({ agentId, onConnect }: { agentId: string; onConnect
         value={corpId}
         onChange={(e) => setCorpId(e.target.value)}
         placeholder="Corp ID"
-        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
       />
       <input
         type="text"
         value={wecomAgentId}
         onChange={(e) => setWecomAgentId(e.target.value)}
         placeholder="Agent ID"
-        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
       />
       <input
         type="password"
         value={secret}
         onChange={(e) => setSecret(e.target.value)}
         placeholder="Secret"
-        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-brand"
+        className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
       />
       {error && <p className="text-xs text-danger">{error}</p>}
       <button
@@ -1215,7 +1215,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
               onBlur={handleEmojiBlur}
               disabled={saving}
               className="w-full px-2 py-2 text-xl text-center border border-border rounded-lg
-                bg-card focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 disabled:opacity-50"
               maxLength={4}
             />
@@ -1229,7 +1229,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
               disabled={saving}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 disabled:opacity-50"
             />
           </div>
@@ -1244,7 +1244,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
               onChange={(e) => handleCoordinatorChange(e.target.checked)}
               disabled={saving}
               className="mt-0.5 h-4 w-4 rounded border-border text-brand
-                focus:ring-2 focus:ring-brand/40 cursor-pointer disabled:opacity-50"
+                focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer disabled:opacity-50"
             />
             <div className="flex-1">
               <span className="text-xs font-medium text-foreground group-hover:text-foreground">
@@ -1354,6 +1354,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
                   )}
                   <button
                     onClick={() => !modalSaving && setModalFile(null)}
+                    aria-label={t('common.close')}
                     className="w-7 h-7 flex items-center justify-center rounded-lg
                       hover:bg-accent transition-colors text-muted-foreground hover:text-muted-foreground"
                   >
@@ -1368,7 +1369,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
                     value={modalContent}
                     onChange={(e) => setModalContent(e.target.value)}
                     className="w-full h-full px-4 py-3 text-sm font-mono text-foreground bg-muted border border-border
-                      rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                      rounded-xl resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                       leading-relaxed"
                     autoFocus
                   />
@@ -1459,6 +1460,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
             </div>
             <button
               onClick={onClose}
+              aria-label={t('common.close')}
               className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-muted-foreground"
             >
               <XIcon className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
@@ -1479,6 +1481,9 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setShowMenu(!showMenu)}
+                  aria-label={t('expertSettings.menuEditExpert')}
+                  aria-haspopup="menu"
+                  aria-expanded={showMenu}
                   className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground"
                 >
                   <MoreVertical className="w-5 h-5" strokeWidth={2} aria-hidden="true" />

@@ -430,7 +430,7 @@ export default function SetupPage() {
               placeholder={selectedProvider.placeholder}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg mb-4
                 bg-card text-foreground
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
               autoFocus
             />
@@ -446,7 +446,7 @@ export default function SetupPage() {
               placeholder={selectedProvider.baseUrl}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg mb-4
                 bg-card text-foreground
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
             />
 
@@ -622,7 +622,7 @@ export default function SetupPage() {
                     placeholder={embeddingProvider.placeholder}
                     className="w-full px-3 py-2 text-sm border border-border rounded-lg
                       bg-card text-foreground
-                      focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                       placeholder:text-muted-foreground"
                   />
                 </div>
@@ -638,7 +638,7 @@ export default function SetupPage() {
                     placeholder={embeddingProvider.baseUrl}
                     className="w-full px-3 py-2 text-sm border border-border rounded-lg
                       bg-card text-foreground
-                      focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                       placeholder:text-muted-foreground"
                   />
                 </div>

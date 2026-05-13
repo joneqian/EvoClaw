@@ -8,6 +8,7 @@
 import { RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { CheckpointRecord } from '../hooks/useCheckpoints';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface Props {
   record: CheckpointRecord;
@@ -24,6 +25,10 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
   const { t, i18n } = useTranslation();
   const filesAddedByTool = record.files.filter((f) => !f.existedBefore);
   const filesModifiedByTool = record.files.filter((f) => f.existedBefore);
+  const ref = useModalA11y<HTMLDivElement>({
+    isOpen: true,
+    onClose: busy ? () => {} : onCancel,
+  });
 
   return (
     <div
@@ -31,6 +36,11 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
       onClick={busy ? undefined : onCancel}
     >
       <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="checkpoint-revert-title"
+        aria-describedby="checkpoint-revert-desc"
         className="bg-card rounded-2xl shadow-2xl w-full max-w-[520px] mx-4 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
@@ -40,8 +50,8 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             <RotateCcw className="w-5 h-5 text-warning" strokeWidth={1.5} aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-foreground">{t('checkpoint.revertConfirmTitle')}</h3>
-            <p className="text-xs text-muted-foreground">{t('checkpoint.revertConfirmDesc')}</p>
+            <h3 id="checkpoint-revert-title" className="text-base font-semibold text-foreground">{t('checkpoint.revertConfirmTitle')}</h3>
+            <p id="checkpoint-revert-desc" className="text-xs text-muted-foreground">{t('checkpoint.revertConfirmDesc')}</p>
           </div>
         </div>
 

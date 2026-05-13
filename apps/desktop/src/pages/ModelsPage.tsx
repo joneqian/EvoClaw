@@ -372,7 +372,7 @@ function ProviderCard({
                   placeholder={provider.hasApiKey ? '已配置，输入新值可覆盖' : '请输入 API Key'}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg
                     bg-card text-foreground
-                    focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                     placeholder:text-muted-foreground"
                 />
               </div>
@@ -384,7 +384,7 @@ function ProviderCard({
                   onChange={(e) => setEditBaseUrl(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg
                     bg-card text-foreground font-mono
-                    focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </div>
               {testResult && (
@@ -493,7 +493,7 @@ function ProviderCard({
                   placeholder="模型 ID（必填，如 qwen-plus-latest）"
                   className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
                     bg-card text-foreground
-                    focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                    focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:border-brand
                     placeholder:text-muted-foreground"
                 />
                 <input
@@ -502,7 +502,7 @@ function ProviderCard({
                   placeholder="显示名称（可选，默认同 ID）"
                   className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
                     bg-card text-foreground
-                    focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                    focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:border-brand
                     placeholder:text-muted-foreground"
                 />
                 {newModelType === 'emb' && (
@@ -512,7 +512,7 @@ function ProviderCard({
                     placeholder="向量维度（必填，如 1536/1024/768）"
                     className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
                       bg-card text-foreground
-                      focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:border-brand
                       placeholder:text-muted-foreground"
                   />
                 )}
@@ -540,7 +540,7 @@ function ProviderCard({
                       placeholder="搜索模型名称或 ID..."
                       className="w-full px-3 py-1.5 text-xs border border-border rounded-lg
                         bg-card text-foreground
-                        focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                        focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:border-brand
                         placeholder:text-muted-foreground"
                     />
                   </div>
@@ -785,7 +785,7 @@ function AddProviderForm({
               placeholder="如: my-provider"
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground font-mono
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
             />
           </div>
@@ -797,7 +797,7 @@ function AddProviderForm({
               placeholder="如: My Provider"
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
             />
           </div>
@@ -815,7 +815,7 @@ function AddProviderForm({
             placeholder={mode === 'preset' ? selectedPreset?.placeholder ?? '...' : 'API Key'}
             className="w-full px-3 py-2 text-sm border border-border rounded-lg
               bg-card text-foreground
-              focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
               placeholder:text-muted-foreground"
           />
         </div>
@@ -829,7 +829,7 @@ function AddProviderForm({
               placeholder="https://api.example.com/v1"
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground font-mono
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
             />
           </div>
@@ -855,7 +855,7 @@ function AddProviderForm({
               placeholder="如: gpt-4o-mini"
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground font-mono
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
             />
           </div>
@@ -867,7 +867,7 @@ function AddProviderForm({
               placeholder="如: GPT-4o Mini"
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                 placeholder:text-muted-foreground"
             />
           </div>

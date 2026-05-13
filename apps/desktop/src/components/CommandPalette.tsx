@@ -74,7 +74,9 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   const [entries, setEntries] = useState<PaletteEntry[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // 拉取数据（仅首次打开，缓存到 state）
   useEffect(() => {
@@ -122,16 +124,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     }
   }, [isOpen]);
 
-  // Esc 关闭
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
-
   // 搜索 + 分组
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -155,6 +147,12 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
       .slice(0, 12);
   }, [entries, query]);
 
+  // 扁平化结果用于键盘导航
+  const flat = useMemo(() => grouped.flatMap(([, arr]) => arr), [grouped]);
+
+  // 查询变化时重置 selected
+  useEffect(() => { setSelectedIndex(0); }, [query, entries.length]);
+
   const handleEntryClick = useCallback((entry: PaletteEntry) => {
     let text = '';
     switch (entry.kind) {
@@ -170,11 +168,45 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     }
     try {
       void navigator.clipboard.writeText(text);
-      toast.success(`已复制：${text}`);
+      toast.success(t('common.copied', { text }));
     } catch {
-      toast.error('未能复制到剪贴板');
+      toast.error(t('common.copyFailed'));
     }
-  }, []);
+  }, [t]);
+
+  // Esc 关闭 + ↑↓ 导航 + Enter 选中
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.min(i + 1, Math.max(0, flat.length - 1)));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.max(0, i - 1));
+      } else if (e.key === 'Enter') {
+        const entry = flat[selectedIndex];
+        if (entry) {
+          e.preventDefault();
+          handleEntryClick(entry);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose, flat, selectedIndex, handleEntryClick]);
+
+  // 选中项滚动到可视区
+  useEffect(() => {
+    const container = listRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>(`[data-cmd-index="${selectedIndex}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex]);
 
   if (!isOpen) return null;
 
@@ -184,6 +216,9 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('commandPalette.placeholder')}
         className="bg-card rounded-2xl shadow-2xl shadow-foreground/10 w-full max-w-[600px] mx-4
           animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[70vh]"
         onClick={(e) => e.stopPropagation()}
@@ -196,12 +231,14 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('commandPalette.placeholder')}
+            aria-label={t('commandPalette.placeholder')}
+            aria-activedescendant={flat[selectedIndex] ? `cmd-item-${selectedIndex}` : undefined}
             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
 
         {/* 结果列表 */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={listRef} className="flex-1 overflow-y-auto" role="listbox">
           {loading && (
             <div className="px-4 py-4 space-y-2.5">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -221,17 +258,30 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
           {!loading && grouped.length === 0 && entries.length > 0 && (
             <div className="px-4 py-6 text-sm text-muted-foreground text-center">{t('commandPalette.noMatch')}</div>
           )}
-          {grouped.map(([group, arr]) => (
+          {(() => {
+            let runningIndex = -1;
+            return grouped.map(([group, arr]) => (
             <div key={group} className="py-1.5">
               <div className="px-4 py-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                 {group}
               </div>
               <ul>
-                {arr.map((entry, i) => (
+                {arr.map((entry, i) => {
+                  runningIndex += 1;
+                  const flatIndex = runningIndex;
+                  const isSelected = flatIndex === selectedIndex;
+                  return (
                   <li key={`${group}-${i}`}>
                     <button
+                      id={`cmd-item-${flatIndex}`}
+                      data-cmd-index={flatIndex}
+                      role="option"
+                      aria-selected={isSelected}
+                      onMouseEnter={() => setSelectedIndex(flatIndex)}
                       onClick={() => handleEntryClick(entry)}
-                      className="w-full px-4 py-2 text-left hover:bg-muted flex items-center gap-3 group"
+                      className={`w-full px-4 py-2 text-left flex items-center gap-3 group ${
+                        isSelected ? 'bg-muted' : 'hover:bg-muted'
+                      }`}
                     >
                       {entry.kind === 'route' && (
                         <>
@@ -267,10 +317,12 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
                       )}
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
-          ))}
+            ));
+          })()}
         </div>
 
         {/* 底部状态条 */}

@@ -118,7 +118,7 @@ function MemoryRow({
         checked={selected}
         onChange={(e) => { e.stopPropagation(); onToggleCheck(); }}
         onClick={(e) => e.stopPropagation()}
-        className="shrink-0 w-3.5 h-3.5 rounded border-border text-brand focus:ring-brand/30"
+        className="shrink-0 w-3.5 h-3.5 rounded border-border text-brand focus-visible:ring-brand/30"
       />
       <div className="flex-1 min-w-0">
         <p className="text-[13px] text-foreground truncate leading-tight">
@@ -224,7 +224,7 @@ function EditDialog({
               value={l1}
               onChange={(e) => setL1(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/30 focus-visible:border-brand resize-y"
               placeholder="结构化概览"
             />
           </div>
@@ -234,7 +234,7 @@ function EditDialog({
               value={l2}
               onChange={(e) => setL2(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/30 focus-visible:border-brand resize-y"
               placeholder="完整内容"
             />
           </div>
@@ -319,7 +319,7 @@ function FeedbackDialog({
                     value={key}
                     checked={type === key}
                     onChange={() => setType(key)}
-                    className="text-brand focus:ring-brand/30"
+                    className="text-brand focus-visible:ring-brand/30"
                   />
                   <span className="text-sm text-foreground">{label}</span>
                 </label>
@@ -332,7 +332,7 @@ function FeedbackDialog({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand resize-y"
+              className="w-full px-3 py-2 text-sm border border-border rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/30 focus-visible:border-brand resize-y"
               placeholder="补充说明，例如哪里不对、应该是什么"
             />
           </div>
@@ -822,7 +822,7 @@ export default function MemoryPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('memoryPage.searchPlaceholder')}
-                className="flex-1 px-2.5 py-1.5 text-xs border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-brand/30 focus:border-brand"
+                className="flex-1 px-2.5 py-1.5 text-xs border border-border rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/30 focus-visible:border-brand"
               />
               <button
                 type="submit"

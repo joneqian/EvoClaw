@@ -160,7 +160,7 @@ export default function AgentEditPage() {
               value={editEmoji}
               onChange={(e) => setEditEmoji(e.target.value)}
               className="w-full px-3 py-2.5 text-2xl text-center border border-border rounded-lg
-                bg-card focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               maxLength={4}
             />
           </div>
@@ -172,7 +172,7 @@ export default function AgentEditPage() {
               onChange={(e) => setEditName(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg
                 bg-card text-foreground
-                focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
             />
           </div>
 
@@ -184,7 +184,7 @@ export default function AgentEditPage() {
                 checked={editIsCoordinator}
                 onChange={(e) => setEditIsCoordinator(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded border-border text-brand
-                  focus:ring-2 focus:ring-brand/40 cursor-pointer"
+                  focus-visible:ring-2 focus-visible:ring-brand/40 cursor-pointer"
               />
               <div className="flex-1">
                 <span className="text-xs font-medium text-foreground group-hover:text-foreground">
@@ -283,7 +283,7 @@ export default function AgentEditPage() {
                             onChange={(e) => setFiles((prev) => ({ ...prev, [filename]: e.target.value }))}
                             className="mt-2 w-full text-xs text-foreground bg-card
                               border border-border rounded-lg p-3 font-mono leading-relaxed
-                              focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                              focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:border-brand
                               resize-y"
                             style={{ minHeight: '160px', maxHeight: '400px' }}
                           />

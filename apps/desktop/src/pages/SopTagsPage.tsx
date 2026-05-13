@@ -315,7 +315,7 @@ export default function SopTagsPage() {
             onChange={(e) => setAiInstruction(e.target.value)}
             placeholder="（可选）补充指令，例如：分 5 个阶段、聚焦售后场景、参考已有草稿完善..."
             disabled={generating || docs.length === 0}
-            className="flex-1 text-xs text-foreground px-3 py-1.5 border border-border rounded-lg focus:outline-none focus:border-brand/60 disabled:bg-muted disabled:text-muted-foreground"
+            className="flex-1 text-xs text-foreground px-3 py-1.5 border border-border rounded-lg focus-visible:outline-none focus-visible:border-brand/60 disabled:bg-muted disabled:text-muted-foreground"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !generating && docs.length > 0) {
                 handleGenerate();
@@ -545,7 +545,7 @@ function DraftEditor({
               value={parent.name}
               onChange={(e) => onUpdateParent(pi, { name: e.target.value })}
               placeholder="父标签名称（如：咨询阶段）"
-              className="flex-1 text-sm font-medium text-foreground bg-transparent border-0 focus:outline-none focus:ring-0 px-2"
+              className="flex-1 text-sm font-medium text-foreground bg-transparent border-0 focus-visible:outline-none focus-visible:ring-0 px-2"
             />
             <button
               onClick={() => onRemoveParent(pi)}
@@ -564,7 +564,7 @@ function DraftEditor({
                   <input
                     value={child.name}
                     onChange={(e) => onUpdateChild(pi, ci, { name: e.target.value })}
-                    className="w-full text-sm text-foreground px-2 py-1 border border-border rounded focus:outline-none focus:border-brand/60"
+                    className="w-full text-sm text-foreground px-2 py-1 border border-border rounded focus-visible:outline-none focus-visible:border-brand/60"
                   />
                 </div>
                 <div className="flex items-start justify-between gap-2">
@@ -574,7 +574,7 @@ function DraftEditor({
                       value={child.meaning}
                       onChange={(e) => onUpdateChild(pi, ci, { meaning: e.target.value })}
                       placeholder="什么样的客户属于此标签"
-                      className="w-full text-sm text-foreground px-2 py-1 border border-border rounded focus:outline-none focus:border-brand/60"
+                      className="w-full text-sm text-foreground px-2 py-1 border border-border rounded focus-visible:outline-none focus-visible:border-brand/60"
                     />
                   </div>
                   <button
@@ -591,7 +591,7 @@ function DraftEditor({
                     onChange={(e) => onUpdateChild(pi, ci, { mustDo: e.target.value })}
                     rows={2}
                     placeholder="具体可执行的动作（避免空话）"
-                    className="w-full text-sm text-foreground px-2 py-1 border border-border rounded resize-none focus:outline-none focus:border-success/60"
+                    className="w-full text-sm text-foreground px-2 py-1 border border-border rounded resize-none focus-visible:outline-none focus-visible:border-success/60"
                   />
                 </div>
                 <div className="col-span-2">
@@ -601,7 +601,7 @@ function DraftEditor({
                     onChange={(e) => onUpdateChild(pi, ci, { mustNotDo: e.target.value })}
                     rows={2}
                     placeholder="具体禁止的动作"
-                    className="w-full text-sm text-foreground px-2 py-1 border border-border rounded resize-none focus:outline-none focus:border-danger/60"
+                    className="w-full text-sm text-foreground px-2 py-1 border border-border rounded resize-none focus-visible:outline-none focus-visible:border-danger/60"
                   />
                 </div>
               </div>

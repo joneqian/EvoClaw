@@ -4,6 +4,7 @@
  * M15 PR-U2: 改用 lucide-react 替代手写 SVG path（统一图标系统、a11y 友好）
  */
 
+import { useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -49,6 +50,22 @@ export default function IconNav() {
   const { t } = useTranslation();
   // 全局监听 SOP 草稿生成状态 — 用户离开 SOP 页后仍能感知到后台进度
   const sopGenerating = useSopStore((s) => s.generating);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  /** 上下方向键在 nav 项间循环移焦 */
+  const handleKeyNav = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+    const items = Array.from(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[href]') ?? []);
+    if (items.length === 0) return;
+    const idx = items.indexOf(document.activeElement as HTMLAnchorElement);
+    e.preventDefault();
+    let next = idx;
+    if (e.key === 'ArrowDown') next = idx < 0 ? 0 : (idx + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = idx < 0 ? items.length - 1 : (idx - 1 + items.length) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    items[next]?.focus();
+  };
 
   return (
     <nav
@@ -66,7 +83,7 @@ export default function IconNav() {
       </div>
 
       {/* 导航项 */}
-      <div className="flex-1 flex flex-col items-center gap-2 px-1.5 pt-1">
+      <div ref={listRef} role="menu" onKeyDown={handleKeyNav} className="flex-1 flex flex-col items-center gap-2 px-1.5 pt-1">
         {NAV_ITEMS.map((item) => {
           const showSpinner = item.path === '/sop-tags' && sopGenerating;
           const label = t(item.labelKey);
@@ -74,6 +91,7 @@ export default function IconNav() {
             <NavLink
               key={item.path}
               to={item.path}
+              role="menuitem"
               aria-label={label}
               className={({ isActive }) => {
                 const active = isActive || (item.path === '/chat' && isChatRoute(window.location.pathname));

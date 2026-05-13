@@ -7,6 +7,7 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface DestructiveConfirmDialogProps {
   toolName: string;
@@ -35,12 +36,18 @@ export default function DestructiveConfirmDialog({
   onDeny,
 }: DestructiveConfirmDialogProps) {
   const { t } = useTranslation();
+  const ref = useModalA11y<HTMLDivElement>({ isOpen: true, onClose: onDeny });
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
       onClick={onDeny}
     >
       <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="destructive-title"
+        aria-describedby="destructive-desc"
         className="bg-card rounded-2xl shadow-2xl w-full max-w-[420px] mx-4 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
@@ -50,8 +57,8 @@ export default function DestructiveConfirmDialog({
             <AlertTriangle className="w-5 h-5 text-danger" strokeWidth={1.5} aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-foreground">{t('destructive.title')}</h3>
-            <p className="text-xs text-muted-foreground">{t('destructive.subtitle')}</p>
+            <h3 id="destructive-title" className="text-base font-semibold text-foreground">{t('destructive.title')}</h3>
+            <p id="destructive-desc" className="text-xs text-muted-foreground">{t('destructive.subtitle')}</p>
           </div>
         </div>
 

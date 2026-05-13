@@ -63,7 +63,7 @@ export default function Select({ options, value, onChange, placeholder = '请选
         onClick={() => setOpen((v) => !v)}
         onKeyDown={handleKeyDown}
         className="flex items-center justify-between gap-2 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-card
-          hover:border-border focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
+          hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:border-brand
           transition-colors"
       >
         <span className={selected ? 'text-foreground' : 'text-muted-foreground'}>

@@ -53,7 +53,7 @@ export default function AgentSelect({ agents, value, onChange, placeholder = 'æš
         onClick={() => setOpen((v) => !v)}
         onKeyDown={handleKeyDown}
         className="flex items-center gap-2 px-3 py-1.5 text-sm border border-border rounded-lg bg-card
-          hover:border-border focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
+          hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:border-brand
           transition-colors min-w-[140px]"
       >
         {selected ? (

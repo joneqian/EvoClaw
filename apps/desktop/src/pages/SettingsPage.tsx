@@ -523,11 +523,11 @@ function SkillEvolverTab() {
       setCuratorDraft(curCfgRes.curator);
       setCurator(curRes);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '加载配置失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.loadFailed'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   useEffect(() => { void loadAll(); }, [loadAll]);
 
@@ -544,25 +544,25 @@ function SkillEvolverTab() {
       );
       setOriginal(res.evolver);
       setDraft(res.evolver);
-      showToast('已保存（scheduler 自动热重载）', 'success');
+      showToast(t('settings.saveSuccessHotReload'), 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('common.saveFailed'), 'error');
     } finally {
       setSaving(false);
     }
-  }, [draft, showToast]);
+  }, [draft, showToast, t]);
 
   const handleRunEvolver = useCallback(async () => {
     setRunning('evolver');
     try {
       await post('/skill-evolution/run-now', {});
-      showToast('Evolver 已触发（异步运行，请查看进化历史）', 'success');
+      showToast(t('settings.evolverTriggered'), 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '触发失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.triggerFailed'), 'error');
     } finally {
       setRunning(null);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   // M7-Tier3 PR-T3-1c: 立即跑一次 A-B 评估器
   const handleRunAbEvaluator = useCallback(async () => {
@@ -573,28 +573,34 @@ function SkillEvolverTab() {
         {},
       );
       showToast(
-        `已评估：扫描 ${res.scanned} · 升级 ${res.promoted} · 回滚 ${res.rolledBack} · 不显著 ${res.inconclusive} · 继续 ${res.continued}`,
+        t('settings.abEvaluatorResult', {
+          scanned: res.scanned,
+          promoted: res.promoted,
+          rolledBack: res.rolledBack,
+          inconclusive: res.inconclusive,
+          continued: res.continued,
+        }),
         'success',
       );
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '触发失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.triggerFailed'), 'error');
     } finally {
       setRunning(null);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   const handleRunCurator = useCallback(async () => {
     setRunning('curator');
     try {
       await post('/curator/run', {});
-      showToast('Curator 已触发（后台运行，可能需 30s+）', 'success');
+      showToast(t('settings.curatorTriggered'), 'success');
       await loadAll();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '触发失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.triggerFailed'), 'error');
     } finally {
       setRunning(null);
     }
-  }, [showToast, loadAll]);
+  }, [showToast, loadAll, t]);
 
   const handleToggleCuratorPause = useCallback(async () => {
     if (!curator) return;
@@ -603,9 +609,9 @@ function SkillEvolverTab() {
       await post(`/curator/${target}`, {});
       await loadAll();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '切换失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.switchFailed'), 'error');
     }
-  }, [curator, loadAll, showToast]);
+  }, [curator, loadAll, showToast, t]);
 
   /** PR6: Curator 配置保存 */
   const handleCuratorSave = useCallback(async () => {
@@ -618,19 +624,19 @@ function SkillEvolverTab() {
       );
       setCuratorOriginal(res.curator);
       setCuratorDraft(res.curator);
-      showToast('Curator 配置已保存（自动热重载）', 'success');
+      showToast(t('settings.curatorSaved'), 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('common.saveFailed'), 'error');
     } finally {
       setSavingCurator(false);
     }
-  }, [curatorDraft, showToast]);
+  }, [curatorDraft, showToast, t]);
 
   const isCuratorDirty = curatorOriginal !== null && curatorDraft !== null
     && JSON.stringify(curatorOriginal) !== JSON.stringify(curatorDraft);
 
   if (loading || !draft || !original || !curatorDraft || !curatorOriginal) {
-    return <div className="text-center py-20 text-muted-foreground text-sm">加载中…</div>;
+    return <div className="text-center py-20 text-muted-foreground text-sm">{t('common.loading')}</div>;
   }
 
   return (
@@ -639,20 +645,20 @@ function SkillEvolverTab() {
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-semibold text-foreground">Cron Evolver</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">按定时调度对失败率高的 skill 自动微调（可审计 + 可回滚）</p>
+            <h3 className="text-base font-semibold text-foreground">{t('settings.evolverTitle')}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{t('settings.evolverDesc')}</p>
           </div>
           <button
             onClick={handleRunEvolver}
             disabled={running !== null}
             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {running === 'evolver' ? '触发中…' : '立即触发'}
+            {running === 'evolver' ? t('settings.evolverTriggering') : t('settings.evolverTriggerNow')}
           </button>
         </header>
 
         <div className="space-y-3">
-          <Field label="启用" hint="关闭后 cron 不会触发任何决策（inline review 走另一通道，独立开关）">
+          <Field label={t('settings.evolverEnabled')} hint={t('settings.evolverEnabledHint')}>
             <label className="inline-flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -660,11 +666,11 @@ function SkillEvolverTab() {
                 onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
                 className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
               />
-              <span className="text-sm text-foreground">{draft.enabled ? '已启用' : '已禁用'}</span>
+              <span className="text-sm text-foreground">{draft.enabled ? t('settings.evolverStatusEnabled') : t('settings.evolverStatusDisabled')}</span>
             </label>
           </Field>
 
-          <Field label="Cron 调度" hint="标准 5 段 cron 表达式，每分钟检查一次。例：0 3 * * * = 每日 03:00">
+          <Field label={t('settings.evolverCron')} hint={t('settings.evolverCronHint')}>
             <input
               type="text"
               value={draft.cronSchedule}
@@ -676,13 +682,13 @@ function SkillEvolverTab() {
 
           {/* M7-Tier3 PR-T3-2a/2b: 执行模式 */}
           <Field
-            label="执行模式"
+            label={t('settings.evolverMode')}
             hint={
               draft.mode === 'dryRun'
-                ? 'dryRun 决策仅落审计日志，需在「进化历史」Tab 手动应用/拒绝（与 A-B 互斥）'
+                ? t('settings.evolverModeHintDryRun')
                 : draft.mode === 'canary'
-                  ? `canary 决策直接落地 + 启动 A-B，但仅 ${Math.round((draft.canaryRatioB ?? 0.1) * 100)}% 流量读新版（90/10 默认）`
-                  : 'apply 直接生效；dryRun 待审核；canary 灰度推送 N% 流量'
+                  ? t('settings.evolverModeHintCanary', { percent: Math.round((draft.canaryRatioB ?? 0.1) * 100) })
+                  : t('settings.evolverModeHintApply')
             }
           >
             <select
@@ -700,17 +706,17 @@ function SkillEvolverTab() {
               }}
               className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
             >
-              <option value="apply">apply — 直接生效</option>
-              <option value="dryRun">dryRun — 待审核（手动应用/拒绝）</option>
-              <option value="canary">canary — 灰度推送（仅 N% 流量到新版）</option>
+              <option value="apply">{t('settings.evolverModeApply')}</option>
+              <option value="dryRun">{t('settings.evolverModeDryRun')}</option>
+              <option value="canary">{t('settings.evolverModeCanary')}</option>
             </select>
           </Field>
 
           {/* M7-Tier3 PR-T3-2b: canary B 桶比例 — 仅 mode='canary' 显示 */}
           {draft.mode === 'canary' && (
             <Field
-              label="Canary B 桶比例"
-              hint="新版本承载流量比例（5% ~ 50%，默认 10%）。比例越低风险越小但样本积累越慢"
+              label={t('settings.evolverCanaryRatio')}
+              hint={t('settings.evolverCanaryRatioHint')}
             >
               <div className="flex items-center gap-3">
                 <input
@@ -739,7 +745,7 @@ function SkillEvolverTab() {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="最少证据数" hint="单 skill 至少积累多少条 usage 才进入 LLM 决策（1~50）">
+            <Field label={t('settings.evolverMinEvidence')} hint={t('settings.evolverMinEvidenceHint')}>
               <input
                 type="number"
                 min={1}
@@ -750,7 +756,7 @@ function SkillEvolverTab() {
               />
             </Field>
 
-            <Field label="成功率阈值" hint="低于此值才进候选（0~1）。例 0.8 = 失败率 > 20% 触发">
+            <Field label={t('settings.evolverSuccessRate')} hint={t('settings.evolverSuccessRateHint')}>
               <input
                 type="number"
                 min={0}
@@ -763,7 +769,7 @@ function SkillEvolverTab() {
             </Field>
           </div>
 
-          <Field label="单次最多进化数" hint="每次 cycle 最多动几个 skill，硬上限 20">
+          <Field label={t('settings.evolverMaxCandidates')} hint={t('settings.evolverMaxCandidatesHint')}>
             <input
               type="number"
               min={1}
@@ -774,13 +780,13 @@ function SkillEvolverTab() {
             />
           </Field>
 
-          <Field label="辅助模型 ID（可选）" hint="留空走 ModelRouter 默认辅助模型。格式：provider/modelId">
+          <Field label={t('settings.evolverModel')} hint={t('settings.evolverModelHint')}>
             <input
               type="text"
               value={draft.model ?? ''}
               onChange={(e) => setDraft({ ...draft, model: e.target.value || undefined })}
               className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
-              placeholder="例：openai/gpt-4o-mini"
+              placeholder={t('settings.evolverModelPlaceholder')}
             />
           </Field>
         </div>
@@ -789,8 +795,8 @@ function SkillEvolverTab() {
         <details className="mt-4 pt-4 border-t border-border" open={draft.abTestEnabled}>
           <summary className="cursor-pointer flex items-center justify-between -mx-1 px-1 py-1 rounded hover:bg-muted">
             <div>
-              <span className="text-sm font-semibold text-foreground">A-B 对照实验</span>
-              <span className="ml-2 text-xs text-muted-foreground">refine 后启动 A/B 桶位 + 统计学验证</span>
+              <span className="text-sm font-semibold text-foreground">{t('settings.abTitle')}</span>
+              <span className="ml-2 text-xs text-muted-foreground">{t('settings.abSubtitle')}</span>
             </div>
             <button
               type="button"
@@ -798,17 +804,17 @@ function SkillEvolverTab() {
               disabled={running !== null}
               className="px-3 py-1 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {running === 'ab-evaluator' ? '评估中…' : '立即评估'}
+              {running === 'ab-evaluator' ? t('settings.abEvaluating') : t('settings.abEvaluateNow')}
             </button>
           </summary>
 
           <div className="mt-3 space-y-3">
             <Field
-              label="启用 A-B"
+              label={t('settings.abEnable')}
               hint={
                 draft.mode === 'dryRun'
-                  ? 'dryRun 模式下不写 SKILL.md → 没法启动 A-B（自动禁用）'
-                  : '关闭后 refine 直接落地，不进入桶位对照'
+                  ? t('settings.abEnableHintDryRun')
+                  : t('settings.abEnableHintNormal')
               }
             >
               <label className={`inline-flex items-center gap-2 ${draft.mode === 'dryRun' ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
@@ -820,13 +826,13 @@ function SkillEvolverTab() {
                   className="w-4 h-4 rounded border-border text-brand focus:ring-brand disabled:opacity-50"
                 />
                 <span className="text-sm text-foreground">
-                  {draft.mode === 'dryRun' ? '已禁用（dryRun 互斥）' : draft.abTestEnabled ? '已启用' : '已禁用'}
+                  {draft.mode === 'dryRun' ? t('settings.abDisabledDryRun') : draft.abTestEnabled ? t('settings.evolverStatusEnabled') : t('settings.evolverStatusDisabled')}
                 </span>
               </label>
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="每变体最少调用数" hint="A/B 各跑满此数才进入统计检验（5~1000，默认 30）">
+              <Field label={t('settings.abMinCalls')} hint={t('settings.abMinCallsHint')}>
                 <input
                   type="number"
                   min={5}
@@ -837,7 +843,7 @@ function SkillEvolverTab() {
                 />
               </Field>
 
-              <Field label="测试期上限（天）" hint="超过即按现有数据强制评估（1~365，默认 7）">
+              <Field label={t('settings.abMaxDays')} hint={t('settings.abMaxDaysHint')}>
                 <input
                   type="number"
                   min={1}
@@ -849,7 +855,7 @@ function SkillEvolverTab() {
               </Field>
             </div>
 
-            <Field label="评估器 Cron" hint="独立调度，建议错峰 evolver。例 30 4 * * * = 每日 04:30">
+            <Field label={t('settings.abEvaluatorCron')} hint={t('settings.abEvaluatorCronHint')}>
               <input
                 type="text"
                 value={draft.abEvaluatorCron}
@@ -860,7 +866,7 @@ function SkillEvolverTab() {
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="升级 success Δ ≥" hint="B 比 A 成功率至少高多少（且 p<阈值）才升级（0~1，默认 0.05）">
+              <Field label={t('settings.abPromoteDelta')} hint={t('settings.abPromoteDeltaHint')}>
                 <input
                   type="number"
                   min={0}
@@ -872,7 +878,7 @@ function SkillEvolverTab() {
                 />
               </Field>
 
-              <Field label="回滚 success Δ ≥" hint="B 比 A 成功率至少低多少（且 p<阈值）才回滚（0~1，默认 0.10）">
+              <Field label={t('settings.abRollbackDelta')} hint={t('settings.abRollbackDeltaHint')}>
                 <input
                   type="number"
                   min={0}
@@ -886,7 +892,7 @@ function SkillEvolverTab() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="p 值阈值" hint="Mann-Whitney U 检验显著性阈值（0~1，默认 0.05）">
+              <Field label={t('settings.abPValue')} hint={t('settings.abPValueHint')}>
                 <input
                   type="number"
                   min={0}
@@ -898,7 +904,7 @@ function SkillEvolverTab() {
                 />
               </Field>
 
-              <Field label="耗时倍数回滚阈值" hint="B 平均耗时 ≥ A × 此倍数则强制回滚（1~10，默认 1.5）">
+              <Field label={t('settings.abDurationRatio')} hint={t('settings.abDurationRatioHint')}>
                 <input
                   type="number"
                   min={1}
@@ -919,7 +925,7 @@ function SkillEvolverTab() {
               onClick={() => setDraft(original)}
               disabled={saving}
               className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40"
-            >放弃改动</button>
+            >{t('settings.discardChanges')}</button>
           )}
           <button
             onClick={handleSave}
@@ -929,7 +935,7 @@ function SkillEvolverTab() {
                 ? 'bg-brand text-white hover:bg-brand-hover'
                 : 'bg-accent text-muted-foreground cursor-not-allowed'
             }`}
-          >{saving ? '保存中…' : isDirty ? '保存改动' : '已保存'}</button>
+          >{saving ? t('common.saving') : isDirty ? t('settings.saveChanges') : t('common.saved')}</button>
         </div>
       </section>
 
@@ -937,9 +943,9 @@ function SkillEvolverTab() {
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-semibold text-foreground">Skill Curator</h3>
+            <h3 className="text-base font-semibold text-foreground">{t('settings.curatorTitle')}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              跨 session umbrella consolidation + 自动 stale/archive 治理
+              {t('settings.curatorDesc')}
             </p>
           </div>
           <button
@@ -947,13 +953,13 @@ function SkillEvolverTab() {
             disabled={running !== null}
             className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {running === 'curator' ? '触发中…' : '立即触发'}
+            {running === 'curator' ? t('settings.evolverTriggering') : t('settings.evolverTriggerNow')}
           </button>
         </header>
 
         {/* 配置区 */}
         <div className="space-y-3">
-          <Field label="启用" hint="关闭后调度器不会自动触发；立即触发按钮仍然可用">
+          <Field label={t('settings.curatorEnabled')} hint={t('settings.curatorEnabledHint')}>
             <label className="inline-flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -961,12 +967,12 @@ function SkillEvolverTab() {
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, enabled: e.target.checked })}
                 className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
               />
-              <span className="text-sm text-foreground">{curatorDraft.enabled ? '已启用' : '已禁用'}</span>
+              <span className="text-sm text-foreground">{curatorDraft.enabled ? t('settings.evolverStatusEnabled') : t('settings.evolverStatusDisabled')}</span>
             </label>
           </Field>
 
           <div className="grid grid-cols-3 gap-3">
-            <Field label="触发间隔（天）" hint="跨 session 治理周期，默认 7">
+            <Field label={t('settings.curatorInterval')} hint={t('settings.curatorIntervalHint')}>
               <input
                 type="number"
                 min={1}
@@ -977,7 +983,7 @@ function SkillEvolverTab() {
               />
             </Field>
 
-            <Field label="陈旧阈值（天）" hint="N 天未用 → stale 状态">
+            <Field label={t('settings.curatorStale')} hint={t('settings.curatorStaleHint')}>
               <input
                 type="number"
                 min={1}
@@ -988,7 +994,7 @@ function SkillEvolverTab() {
               />
             </Field>
 
-            <Field label="归档阈值（天）" hint="N 天未用 → 物理归档（须 > 陈旧阈值）">
+            <Field label={t('settings.curatorArchived')} hint={t('settings.curatorArchivedHint')}>
               <input
                 type="number"
                 min={1}
@@ -1002,7 +1008,7 @@ function SkillEvolverTab() {
             </Field>
           </div>
 
-          <Field label="保护 bundled" hint="开启时内置 skill 永远不被自动归档（推荐保持开启）">
+          <Field label={t('settings.curatorProtect')} hint={t('settings.curatorProtectHint')}>
             <label className="inline-flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -1010,7 +1016,7 @@ function SkillEvolverTab() {
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, protectBundled: e.target.checked })}
                 className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
               />
-              <span className="text-sm text-foreground">{curatorDraft.protectBundled ? '已保护' : '未保护（不推荐）'}</span>
+              <span className="text-sm text-foreground">{curatorDraft.protectBundled ? t('settings.curatorProtected') : t('settings.curatorUnprotected')}</span>
             </label>
           </Field>
         </div>
@@ -1021,7 +1027,7 @@ function SkillEvolverTab() {
               onClick={() => setCuratorDraft(curatorOriginal)}
               disabled={savingCurator}
               className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40"
-            >放弃改动</button>
+            >{t('settings.discardChanges')}</button>
           )}
           <button
             onClick={handleCuratorSave}
@@ -1031,7 +1037,7 @@ function SkillEvolverTab() {
                 ? 'bg-brand text-white hover:bg-brand-hover'
                 : 'bg-accent text-muted-foreground cursor-not-allowed'
             }`}
-          >{savingCurator ? '保存中…' : isCuratorDirty ? '保存改动' : '已保存'}</button>
+          >{savingCurator ? t('common.saving') : isCuratorDirty ? t('settings.saveChanges') : t('common.saved')}</button>
         </div>
 
         {/* 状态区 */}
@@ -1045,22 +1051,25 @@ function SkillEvolverTab() {
 
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
               <div>
-                <p className="text-sm text-foreground">{curator.state.paused ? '已暂停' : '正常调度'}</p>
+                <p className="text-sm text-foreground">{curator.state.paused ? t('settings.curatorPaused') : t('settings.curatorRunning')}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{curator.nextRun.reason}</p>
               </div>
               <button
                 onClick={handleToggleCuratorPause}
                 className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground bg-card hover:bg-muted"
               >
-                {curator.state.paused ? '恢复调度' : '暂停调度'}
+                {curator.state.paused ? t('settings.curatorResume') : t('settings.curatorPause')}
               </button>
             </div>
 
             <div className="text-xs text-muted-foreground space-y-0.5">
-              <p>已钉住：<strong className="text-foreground">{curator.pinnedCount}</strong> 个 skill（不会被自动归档）</p>
-              <p>累计运行：<strong className="text-foreground">{curator.state.runCount}</strong> 次</p>
+              <p>{t('settings.curatorPinnedCountPrefix')}<strong className="text-foreground">{curator.pinnedCount}</strong>{t('settings.curatorPinnedCountSuffix')}</p>
+              <p>{t('settings.curatorRunCountPrefix')}<strong className="text-foreground">{curator.state.runCount}</strong>{t('settings.curatorRunCountSuffix')}</p>
               {curator.state.lastRunAt && (
-                <p>最近一次：<span className="text-foreground">{new Date(curator.state.lastRunAt).toLocaleString('zh-CN')}</span> — {curator.state.lastRunSummary ?? '—'}</p>
+                <p>{t('settings.curatorLastRun', {
+                  time: new Date(curator.state.lastRunAt).toLocaleString(),
+                  summary: curator.state.lastRunSummary ?? '—',
+                })}</p>
               )}
             </div>
           </div>
@@ -1101,24 +1110,24 @@ type SkillSourceKey = 'bundled' | 'local' | 'clawhub' | 'github' | 'mcp';
 type RiskKey = 'low' | 'medium' | 'high';
 type PolicyValue = 'auto' | 'require-confirm' | 'block';
 
-const SOURCE_LABELS: Record<SkillSourceKey, string> = {
-  bundled: '内置',
-  local: '本地',
-  clawhub: 'ClawHub',
-  github: 'GitHub',
-  mcp: 'MCP',
+const SOURCE_LABEL_KEYS: Record<SkillSourceKey, string> = {
+  bundled: 'settings.policySourceBundled',
+  local: 'settings.policySourceLocal',
+  clawhub: 'settings.policySourceClawhub',
+  github: 'settings.policySourceGithub',
+  mcp: 'settings.policySourceMcp',
 };
 
-const RISK_LABELS: Record<RiskKey, string> = {
-  low: '低风险',
-  medium: '中风险',
-  high: '高风险',
+const RISK_LABEL_KEYS: Record<RiskKey, string> = {
+  low: 'settings.policyRiskLow',
+  medium: 'settings.policyRiskMedium',
+  high: 'settings.policyRiskHigh',
 };
 
-const POLICY_LABELS: Record<PolicyValue, { label: string; bg: string; text: string }> = {
-  auto: { label: '直接安装', bg: 'bg-success/10', text: 'text-success' },
-  'require-confirm': { label: '需确认', bg: 'bg-warning/10', text: 'text-warning' },
-  block: { label: '阻止', bg: 'bg-rose-50 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300' },
+const POLICY_META: Record<PolicyValue, { labelKey: string; bg: string; text: string }> = {
+  auto: { labelKey: 'settings.policyValueAuto', bg: 'bg-success/10', text: 'text-success' },
+  'require-confirm': { labelKey: 'settings.policyValueConfirm', bg: 'bg-warning/10', text: 'text-warning' },
+  block: { labelKey: 'settings.policyValueBlock', bg: 'bg-rose-50 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300' },
 };
 
 const POLICY_CYCLE: PolicyValue[] = ['auto', 'require-confirm', 'block'];
@@ -1149,11 +1158,11 @@ function SecurityPolicyTab() {
       setMatrix(res);
       setDraft(res.override);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '加载失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.loadFailed'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -1202,12 +1211,12 @@ function SecurityPolicyTab() {
 
   const handleResetAll = useCallback(() => {
     if (!matrix) return;
-    if (!window.confirm('确定清空所有覆盖，恢复默认矩阵？')) return;
+    if (!window.confirm(t('settings.policyResetConfirm'))) return;
     setDraft({});
-  }, [matrix]);
+  }, [matrix, t]);
 
   if (loading || !matrix) {
-    return <div className="text-center py-20 text-muted-foreground text-sm">加载中…</div>;
+    return <div className="text-center py-20 text-muted-foreground text-sm">{t('common.loading')}</div>;
   }
 
   const overrideCount = Object.keys(draft).length;
@@ -1216,13 +1225,13 @@ function SecurityPolicyTab() {
     <div className="max-w-3xl space-y-4">
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="mb-4">
-          <h3 className="text-base font-semibold text-foreground">Skill 安装策略矩阵</h3>
+          <h3 className="text-base font-semibold text-foreground">{t('settings.policyTitle')}</h3>
           <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            按"来源 × 风险等级"决定 Skill 安装时的处理：
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-success/10 text-success font-medium">直接安装</span>
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-warning/10 text-warning font-medium">需确认</span>
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-medium">阻止</span>。
-            点击单元格在三态间切换。覆盖项以蓝框标记，与默认相同时自动清除（节省存储 + 避免误判)。
+            {t('settings.policyDescPrefix')}
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-success/10 text-success font-medium">{t('settings.policyValueAuto')}</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-warning/10 text-warning font-medium">{t('settings.policyValueConfirm')}</span>
+            <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-medium">{t('settings.policyValueBlock')}</span>
+            {t('settings.policyDescSuffix')}
           </p>
         </header>
 
@@ -1230,10 +1239,10 @@ function SecurityPolicyTab() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border">来源 \ 风险</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border">{t('settings.policyHeaderSource')}</th>
                 {RISKS.map((r) => (
                   <th key={r} className="px-3 py-2 text-center text-xs font-medium text-muted-foreground border-b border-border">
-                    {RISK_LABELS[r]}
+                    {t(RISK_LABEL_KEYS[r])}
                   </th>
                 ))}
               </tr>
@@ -1241,12 +1250,13 @@ function SecurityPolicyTab() {
             <tbody>
               {SOURCES.map((src) => (
                 <tr key={src} className="border-b border-border">
-                  <td className="px-3 py-2 text-sm font-medium text-foreground">{SOURCE_LABELS[src]}</td>
+                  <td className="px-3 py-2 text-sm font-medium text-foreground">{t(SOURCE_LABEL_KEYS[src])}</td>
                   {RISKS.map((r) => {
                     const key = `${src}:${r}`;
                     const value = effective(src, r);
                     const isOverridden = draft[key] !== undefined;
-                    const meta = POLICY_LABELS[value];
+                    const meta = POLICY_META[value];
+                    const defaultPolicy = matrix.default[key] ?? 'require-confirm';
                     return (
                       <td key={r} className="px-2 py-2 text-center">
                         <button
@@ -1255,9 +1265,11 @@ function SecurityPolicyTab() {
                           className={`w-full px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${meta.bg} ${meta.text} ${
                             isOverridden ? 'ring-2 ring-info/60' : 'hover:ring-1 hover:ring-border'
                           }`}
-                          title={isOverridden ? `已覆盖（默认：${POLICY_LABELS[matrix.default[key] ?? 'require-confirm'].label}）` : '点击修改'}
+                          title={isOverridden
+                            ? t('settings.policyOverridden', { label: t(POLICY_META[defaultPolicy].labelKey) })
+                            : t('settings.policyCellHint')}
                         >
-                          {meta.label}
+                          {t(meta.labelKey)}
                         </button>
                       </td>
                     );
@@ -1270,7 +1282,7 @@ function SecurityPolicyTab() {
 
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
           <div className="text-xs text-muted-foreground">
-            当前覆盖：<strong className="text-foreground">{overrideCount}</strong> 个单元格（共 15 个）
+            {t('settings.policyOverridePrefix')}<strong className="text-foreground">{overrideCount}</strong>{t('settings.policyOverrideSuffix')}
           </div>
           <div className="flex items-center gap-2">
             {overrideCount > 0 && (
@@ -1278,14 +1290,14 @@ function SecurityPolicyTab() {
                 onClick={handleResetAll}
                 disabled={saving}
                 className="px-3 py-1.5 text-xs font-medium rounded-lg text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40 disabled:opacity-40"
-              >全部恢复默认</button>
+              >{t('settings.policyResetAll')}</button>
             )}
             {isDirty && (
               <button
                 onClick={() => setDraft(matrix.override)}
                 disabled={saving}
                 className="px-3 py-1.5 text-xs font-medium rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-40"
-              >放弃改动</button>
+              >{t('settings.discardChanges')}</button>
             )}
             <button
               onClick={handleSave}
@@ -1295,7 +1307,7 @@ function SecurityPolicyTab() {
                   ? 'bg-brand text-white hover:bg-brand-hover'
                   : 'bg-accent text-muted-foreground cursor-not-allowed'
               }`}
-            >{saving ? '保存中…' : isDirty ? '保存改动' : '已保存'}</button>
+            >{saving ? t('common.saving') : isDirty ? t('settings.saveChanges') : t('common.saved')}</button>
           </div>
         </div>
       </section>
@@ -1304,15 +1316,16 @@ function SecurityPolicyTab() {
 }
 
 function AboutTab() {
+  const { t } = useTranslation();
   return (
     <div className="bg-card rounded-xl border border-border p-4">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">应用名称</span>
+          <span className="text-sm text-muted-foreground">{t('settings.aboutAppName')}</span>
           <span className="text-sm text-foreground font-medium">{BRAND_NAME}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">架构</span>
+          <span className="text-sm text-muted-foreground">{t('settings.aboutArch')}</span>
           <span className="text-sm text-foreground">Tauri 2.0 + Node.js Sidecar</span>
         </div>
       </div>
@@ -1331,9 +1344,9 @@ interface IdentityLink {
 }
 
 const CHANNEL_OPTIONS = [
-  { value: 'feishu', label: '飞书' },
-  { value: 'wecom', label: '企业微信' },
-  { value: 'weixin', label: '微信' },
+  { value: 'feishu', labelKey: 'settings.identityChannelFeishu' },
+  { value: 'wecom', labelKey: 'settings.identityChannelWecom' },
+  { value: 'weixin', labelKey: 'settings.identityChannelWeixin' },
 ];
 
 function IdentityLinksTab() {
@@ -1354,17 +1367,17 @@ function IdentityLinksTab() {
       const res = await get<{ links: IdentityLink[] }>('/identity-links');
       setLinks(res.links);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '加载失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.loadFailed'), 'error');
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, t]);
 
   useEffect(() => { void loadLinks(); }, [loadLinks]);
 
   const handleAdd = async () => {
     if (!draft.canonicalId || !draft.channel || !draft.peerId.trim()) {
-      showToast('请填写完整：身份名 + 渠道 + ID', 'error');
+      showToast(t('settings.identityIncomplete'), 'error');
       return;
     }
     setSaving(true);
@@ -1374,24 +1387,28 @@ function IdentityLinksTab() {
         channel: draft.channel,
         peerId: draft.peerId.trim(),
       });
-      showToast(`已绑定 ${draft.channel}:${draft.peerId.trim()} 到 ${draft.canonicalId}`, 'success');
+      showToast(t('settings.identityBindSuccess', {
+        channel: draft.channel,
+        peer: draft.peerId.trim(),
+        canonical: draft.canonicalId,
+      }), 'success');
       setDraft({ ...draft, peerId: '' });
       await loadLinks();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '绑定失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.identityBindFailed'), 'error');
     } finally {
       setSaving(false);
     }
   };
 
   const handleRemove = async (channel: string, peerId: string) => {
-    if (!window.confirm(`确认解除 ${channel}:${peerId} 的身份绑定？\n相关记忆会重新按渠道隔离。`)) return;
+    if (!window.confirm(t('settings.identityUnbindConfirm', { channel, peer: peerId }))) return;
     try {
       await del(`/identity-links?channel=${encodeURIComponent(channel)}&peer=${encodeURIComponent(peerId)}`);
-      showToast(`已解绑 ${channel}:${peerId}`, 'success');
+      showToast(t('settings.identityUnbindSuccess', { channel, peer: peerId }), 'success');
       await loadLinks();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '解绑失败', 'error');
+      showToast(err instanceof Error ? err.message : t('settings.identityUnbindFailed'), 'error');
     }
   };
 
@@ -1410,17 +1427,16 @@ function IdentityLinksTab() {
     <div className="max-w-3xl space-y-6">
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="mb-4">
-          <h3 className="text-base font-semibold text-foreground">我的多渠道身份</h3>
+          <h3 className="text-base font-semibold text-foreground">{t('settings.identityTitle')}</h3>
           <p className="text-xs text-muted-foreground mt-1">
-            把同一员工在飞书 / 企微 / 微信的不同 ID 绑定到同一逻辑身份（如 'self'），
-            让 Agent 在跨渠道时识别员工是同一个人 + 跨渠道偏好/角色记忆按员工合并。
+            {t('settings.identityDesc')}
           </p>
         </header>
 
         {/* 添加表单 */}
         <div className="bg-muted rounded-lg p-3 mb-4 grid grid-cols-12 gap-2 items-end">
           <div className="col-span-3">
-            <label className="text-xs text-muted-foreground block mb-1">身份名（canonical）</label>
+            <label className="text-xs text-muted-foreground block mb-1">{t('settings.identityCanonical')}</label>
             <input
               type="text"
               value={draft.canonicalId}
@@ -1430,17 +1446,17 @@ function IdentityLinksTab() {
             />
           </div>
           <div className="col-span-3">
-            <label className="text-xs text-muted-foreground block mb-1">渠道</label>
+            <label className="text-xs text-muted-foreground block mb-1">{t('settings.identityChannel')}</label>
             <select
               value={draft.channel}
               onChange={(e) => setDraft({ ...draft, channel: e.target.value })}
               className="w-full px-2 py-1 text-sm rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
             >
-              {CHANNEL_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              {CHANNEL_OPTIONS.map(c => <option key={c.value} value={c.value}>{t(c.labelKey)}</option>)}
             </select>
           </div>
           <div className="col-span-4">
-            <label className="text-xs text-muted-foreground block mb-1">渠道 ID（如飞书 ou_xxx）</label>
+            <label className="text-xs text-muted-foreground block mb-1">{t('settings.identityPeerId')}</label>
             <input
               type="text"
               value={draft.peerId}
@@ -1454,15 +1470,15 @@ function IdentityLinksTab() {
               onClick={handleAdd}
               disabled={saving}
               className="w-full px-3 py-1.5 text-sm font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40"
-            >{saving ? '绑定中…' : '绑定'}</button>
+            >{saving ? t('settings.identityBinding') : t('settings.identityBind')}</button>
           </div>
         </div>
 
         {loading ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">加载中…</div>
+          <div className="text-center py-8 text-muted-foreground text-sm">{t('common.loading')}</div>
         ) : links.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            暂无身份绑定。Agent 当前按渠道独立识别员工。
+            {t('settings.identityEmpty')}
           </div>
         ) : (
           <div className="space-y-3">
@@ -1470,22 +1486,25 @@ function IdentityLinksTab() {
               <div key={canonical} className="rounded-lg border border-border p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold text-foreground">
-                    {canonical} <span className="text-xs text-muted-foreground">（{items.length} 个渠道身份）</span>
+                    {canonical} <span className="text-xs text-muted-foreground">{t('settings.identityChannelCount', { count: items.length })}</span>
                   </span>
                 </div>
                 <div className="space-y-1">
-                  {items.map(link => (
-                    <div key={link.id} className="flex items-center justify-between text-sm">
-                      <span className="text-foreground">
-                        <span className="text-muted-foreground">{CHANNEL_OPTIONS.find(c => c.value === link.channel)?.label ?? link.channel}：</span>
-                        <code className="ml-1 font-mono text-xs bg-accent px-1 py-0.5 rounded">{link.peerId}</code>
-                      </span>
-                      <button
-                        onClick={() => handleRemove(link.channel, link.peerId)}
-                        className="text-xs px-2 py-0.5 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40 rounded"
-                      >解绑</button>
-                    </div>
-                  ))}
+                  {items.map(link => {
+                    const channelOption = CHANNEL_OPTIONS.find(c => c.value === link.channel);
+                    return (
+                      <div key={link.id} className="flex items-center justify-between text-sm">
+                        <span className="text-foreground">
+                          <span className="text-muted-foreground">{channelOption ? t(channelOption.labelKey) : link.channel}：</span>
+                          <code className="ml-1 font-mono text-xs bg-accent px-1 py-0.5 rounded">{link.peerId}</code>
+                        </span>
+                        <button
+                          onClick={() => handleRemove(link.channel, link.peerId)}
+                          className="text-xs px-2 py-0.5 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:bg-rose-950/40 rounded"
+                        >{t('settings.identityUnbind')}</button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

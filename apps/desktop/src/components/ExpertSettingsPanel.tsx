@@ -672,6 +672,7 @@ function InlineWecomConnect({ agentId, onConnect }: { agentId: string; onConnect
 // ─── 连接标签页 ───
 
 function ChannelsTab({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [bindings, setBindings] = useState<ChannelBinding[]>([]);
   const [loading, setLoading] = useState(true);
@@ -754,7 +755,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
         <p className="text-sm text-muted-foreground">
           连接渠道并绑定到当前专家，实现跨平台通信。
         </p>
-        <p className="text-xs text-muted-foreground mt-1">已连接: {connectedCount}</p>
+        <p className="text-xs text-muted-foreground mt-1">{t('expertSettings.channelsTotal', { count: connectedCount })}</p>
       </div>
 
       <div className="space-y-2">
@@ -797,7 +798,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                     )}
                   </div>
                   {isConnected && !isBoundToMe && !isBoundToOther && (
-                    <p className="text-xs text-success">已连接</p>
+                    <p className="text-xs text-success">{t('expertSettings.channelConnected')}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -824,7 +825,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                       </button>
                     </>
                   ) : isConnected && isBoundToOther ? (
-                    <span className="text-xs text-muted-foreground">已占用</span>
+                    <span className="text-xs text-muted-foreground">{t('expertSettings.channelInUse')}</span>
                   ) : isConnected ? (
                     <button
                       onClick={() => handleDisconnect(p.type)}
@@ -864,7 +865,7 @@ function ChannelsTab({ agentId }: { agentId: string }) {
                   )}
                   {(p.type === 'dingtalk' || p.type === 'qq') && (
                     <div className="p-3 bg-muted rounded-xl">
-                      <p className="text-xs text-muted-foreground text-center">即将支持，敬请期待</p>
+                      <p className="text-xs text-muted-foreground text-center">{t('expertSettings.channelComingSoon')}</p>
                     </div>
                   )}
                 </div>
@@ -888,6 +889,7 @@ interface AgentSkillItem {
 }
 
 function SkillsTab({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const [skills, setSkills] = useState<AgentSkillItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -936,8 +938,8 @@ function SkillsTab({ agentId }: { agentId: string }) {
           <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center mb-3">
             <Sparkles className="w-6 h-6 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
           </div>
-          <p className="text-sm text-muted-foreground mb-1">暂无已安装技能</p>
-          <p className="text-xs text-muted-foreground mb-4">技能可以扩展专家的能力</p>
+          <p className="text-sm text-muted-foreground mb-1">{t('expertSettings.skillsEmpty')}</p>
+          <p className="text-xs text-muted-foreground mb-4">{t('expertSettings.skillsEmptyHint')}</p>
           <button className="px-4 py-2 text-sm font-medium text-brand border border-brand/30
             rounded-lg hover:bg-brand/5 transition-colors">
             去技能商店
@@ -989,6 +991,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
 // ─── 自动化标签页（只读状态面板） ───
 
 function AutomationTab({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const [heartbeat, setHeartbeat] = useState<HeartbeatConfig>({
     intervalMinutes: 30,
     activeHours: { start: '08:00', end: '22:00' },
@@ -1013,47 +1016,44 @@ function AutomationTab({ agentId }: { agentId: string }) {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   if (loading) {
-    return <div className="text-center text-muted-foreground mt-10"><p className="text-sm">加载中...</p></div>;
+    return <div className="text-center text-muted-foreground mt-10"><p className="text-sm">{t('expertSettings.loading')}</p></div>;
   }
 
   return (
     <div className="space-y-5">
       {/* 心跳状态 */}
       <div>
-        <h3 className="text-sm font-medium text-foreground mb-2">💓 心跳巡检</h3>
+        <h3 className="text-sm font-medium text-foreground mb-2">💓 {t('expertSettings.tabAutomation')}</h3>
         <div className="p-3 bg-muted rounded-lg space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">状态</span>
-            <span className="text-xs font-medium text-success">运行中</span>
+            <span className="text-xs text-muted-foreground">{t('expertSettings.autoStatus')}</span>
+            <span className="text-xs font-medium text-success">{t('expertSettings.autoStatusRunning')}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">巡检间隔</span>
-            <span className="text-xs text-foreground">每 {heartbeat.intervalMinutes} 分钟</span>
+            <span className="text-xs text-muted-foreground">{t('expertSettings.autoInterval')}</span>
+            <span className="text-xs text-foreground">{t('expertSettings.autoIntervalUnit', { minutes: heartbeat.intervalMinutes })}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">活跃时段</span>
+            <span className="text-xs text-muted-foreground">{t('expertSettings.autoActiveHours')}</span>
             <span className="text-xs text-foreground">{heartbeat.activeHours.start} - {heartbeat.activeHours.end}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">告警投递</span>
+            <span className="text-xs text-muted-foreground">{t('expertSettings.autoAlertDelivery')}</span>
             <span className="text-xs text-foreground">
               {heartbeat.target === 'last' ? '最近渠道' : heartbeat.target === 'none' || !heartbeat.target ? '不投递' : heartbeat.target}
             </span>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          在对话中告诉专家你想定期检查什么，它会自动更新 HEARTBEAT.md
-        </p>
       </div>
 
       <div className="border-t border-border" />
 
       {/* 定时任务列表 */}
       <div>
-        <h3 className="text-sm font-medium text-foreground mb-2">⏰ 定时任务</h3>
+        <h3 className="text-sm font-medium text-foreground mb-2">⏰ {t('nav.cron')}</h3>
         {cronJobs.length === 0 ? (
           <div className="p-3 bg-muted rounded-lg">
-            <p className="text-xs text-muted-foreground text-center">暂无定时任务</p>
+            <p className="text-xs text-muted-foreground text-center">{t('expertSettings.autoCronEmpty')}</p>
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -1063,15 +1063,15 @@ function AutomationTab({ agentId }: { agentId: string }) {
                 <p className="text-xs text-muted-foreground truncate">
                   <span className="font-mono">{job.cronExpression}</span>
                   {' · '}{job.actionType === 'event' ? '事件注入' : '独立执行'}
-                  {' · '}{job.enabled ? '启用' : '已暂停'}
-                  {job.nextRunAt && ` · 下次: ${parseUtcDate(job.nextRunAt).toLocaleString('zh-CN')}`}
+                  {' · '}{job.enabled ? t('cronPage.enabled') : t('cronPage.paused')}
+                  {job.nextRunAt && ` · 下次: ${parseUtcDate(job.nextRunAt).toLocaleString()}`}
                 </p>
               </div>
             ))}
           </div>
         )}
         <p className="text-xs text-muted-foreground mt-2">
-          在对话中说 "5 分钟后提醒我喝水" 或 "每天 9 点汇报天气" 来创建任务
+          {t('expertSettings.autoCronTipHint')}
         </p>
       </div>
     </div>
@@ -1081,6 +1081,7 @@ function AutomationTab({ agentId }: { agentId: string }) {
 // ─── 设置标签页 ───
 
 function SettingsTab({ agentId }: { agentId: string }) {
+  const { t } = useTranslation();
   const { agents, updateAgent, fetchWorkspaceFiles, updateWorkspaceFile } = useAgentStore();
   const agent = agents.find((a) => a.id === agentId);
 
@@ -1199,7 +1200,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
       {/* 基本信息 */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">基本信息</h4>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('expertSettings.settingsBasic')}</h4>
           {savedHint && (
             <span className="text-xs text-success animate-pulse">{savedHint}</span>
           )}
@@ -1220,7 +1221,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
             />
           </div>
           <div className="flex-1">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">名称</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t('expertSettings.settingsName')}</label>
             <input
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
@@ -1260,8 +1261,8 @@ function SettingsTab({ agentId }: { agentId: string }) {
       {/* 工作区文件 */}
       <div className="space-y-3">
         <div>
-          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">工作区文件</h4>
-          <p className="text-xs text-muted-foreground mt-1">定义专家的人格、行为和能力</p>
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('expertSettings.settingsWorkspaceFiles')}</h4>
+          <p className="text-xs text-muted-foreground mt-1">{t('expertSettings.settingsWorkspaceFilesDesc')}</p>
         </div>
 
         {filesLoading ? (
@@ -1331,7 +1332,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
                   <h3 className="text-sm font-bold text-foreground whitespace-nowrap">{meta.label}</h3>
                   <span className="text-xs text-muted-foreground whitespace-nowrap">{modalFile}</span>
                   {!meta.editable && (
-                    <span className="text-[10px] text-muted-foreground bg-accent/60 px-1.5 py-0.5 rounded-full whitespace-nowrap">只读</span>
+                    <span className="text-[10px] text-muted-foreground bg-accent/60 px-1.5 py-0.5 rounded-full whitespace-nowrap">{t('expertSettings.settingsReadOnly')}</span>
                   )}
                   {mtimes[modalFile] && (
                     <span className="text-[10px] text-muted-foreground whitespace-nowrap">{formatDateTime(mtimes[modalFile])}</span>
@@ -1454,7 +1455,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
           <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
             <div className="flex items-center gap-2">
               <SettingsIcon className="w-5 h-5 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
-              <h2 className="text-base font-bold text-foreground">专家设置</h2>
+              <h2 className="text-base font-bold text-foreground">{t('expertSettings.panelTitle')}</h2>
             </div>
             <button
               onClick={onClose}
@@ -1471,7 +1472,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-bold text-foreground truncate">{agent.name}</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {agent.status === 'active' ? '活跃' : agent.status === 'draft' ? '草稿' : agent.status}
+                  {agent.status === 'active' ? t('expertSettings.statusActive') : agent.status === 'draft' ? t('expertSettings.statusDraft') : agent.status}
                 </p>
               </div>
               {/* 更多菜单 */}
@@ -1491,7 +1492,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
                       className="w-full text-left px-4 py-2 text-sm text-foreground
                         hover:bg-muted transition-colors"
                     >
-                      编辑专家
+                      {t('expertSettings.menuEditExpert')}
                     </button>
                   </div>
                 )}

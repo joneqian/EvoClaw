@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useCheckpoints, type CheckpointRecord } from '../hooks/useCheckpoints';
 import CheckpointList from '../components/CheckpointList';
 import CheckpointRevertDialog from '../components/CheckpointRevertDialog';
@@ -16,7 +17,6 @@ export default function CheckpointPage() {
   const { list, loading, error, refresh, revert } = useCheckpoints(50);
   const [pending, setPending] = useState<CheckpointRecord | null>(null);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
 
   const handleConfirm = async () => {
     if (!pending) return;
@@ -25,15 +25,10 @@ export default function CheckpointPage() {
     setBusy(false);
     setPending(null);
     if (result.ok) {
-      setToast({
-        kind: 'ok',
-        msg: `已撤销 ${result.restored ?? 0} 个文件`,
-      });
+      toast.success(`已撤销 ${result.restored ?? 0} 个文件`);
     } else {
-      setToast({ kind: 'err', msg: result.error ?? '撤销失败' });
+      toast.error(result.error ?? '撤销失败');
     }
-    // 4 秒后自动消失
-    setTimeout(() => setToast(null), 4000);
   };
 
   return (
@@ -84,19 +79,6 @@ export default function CheckpointPage() {
             if (!busy) setPending(null);
           }}
         />
-      )}
-
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-bottom-2 ${
-            toast.kind === 'ok'
-              ? 'bg-success/10 text-success border border-success/30'
-              : 'bg-danger/10 text-danger border border-danger/30'
-          }`}
-        >
-          {toast.msg}
-        </div>
       )}
     </div>
   );

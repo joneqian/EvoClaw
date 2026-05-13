@@ -19,6 +19,7 @@
     "react-diff-viewer-continued": "^4.2.2",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.6.0",
+    "sonner": "^2.0.7",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

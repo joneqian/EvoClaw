@@ -6,7 +6,9 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { get } from '../lib/api';
+import { Skeleton } from './Skeleton';
 
 // ─── 类型 ───
 
@@ -70,7 +72,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
   const [entries, setEntries] = useState<PaletteEntry[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 拉取数据（仅首次打开，缓存到 state）
@@ -129,13 +130,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
-  // Toast 自动消失
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   // 搜索 + 分组
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -174,9 +168,9 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
     }
     try {
       void navigator.clipboard.writeText(text);
-      setToast(`已复制：${text}`);
+      toast.success(`已复制：${text}`);
     } catch {
-      setToast(`未能复制到剪贴板`);
+      toast.error('未能复制到剪贴板');
     }
   }, []);
 
@@ -206,7 +200,19 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
 
         {/* 结果列表 */}
         <div className="flex-1 overflow-y-auto">
-          {loading && <div className="px-4 py-6 text-sm text-muted-foreground text-center">加载中…</div>}
+          {loading && (
+            <div className="px-4 py-4 space-y-2.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton className="h-4 w-4 rounded shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3 w-1/3" />
+                    <Skeleton className="h-2.5 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {!loading && entries.length === 0 && (
             <div className="px-4 py-6 text-sm text-muted-foreground text-center">Sidecar 未就绪或无命令数据</div>
           )}
@@ -272,12 +278,6 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
         </div>
       </div>
 
-      {/* 复制成功 toast */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg bg-foreground text-background text-xs shadow-lg">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

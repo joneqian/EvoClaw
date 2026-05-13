@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { get } from '../lib/api';
 import { Skeleton } from './Skeleton';
 
@@ -69,6 +70,7 @@ export interface CommandPaletteProps {
 }
 
 export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<PaletteEntry[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -193,7 +195,7 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索命令、API 路径、工具名…"
+            placeholder={t('commandPalette.placeholder')}
             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
         </div>
@@ -214,10 +216,10 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
             </div>
           )}
           {!loading && entries.length === 0 && (
-            <div className="px-4 py-6 text-sm text-muted-foreground text-center">Sidecar 未就绪或无命令数据</div>
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center">{t('commandPalette.notReady')}</div>
           )}
           {!loading && grouped.length === 0 && entries.length > 0 && (
-            <div className="px-4 py-6 text-sm text-muted-foreground text-center">没有匹配的命令</div>
+            <div className="px-4 py-6 text-sm text-muted-foreground text-center">{t('commandPalette.noMatch')}</div>
           )}
           {grouped.map(([group, arr]) => (
             <div key={group} className="py-1.5">
@@ -273,8 +275,8 @@ export default function CommandPalette({ isOpen, onClose }: CommandPaletteProps)
 
         {/* 底部状态条 */}
         <div className="px-4 py-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>点击条目复制到剪贴板 · Esc 关闭</span>
-          {entries.length > 0 && <span>共 {entries.length} 项</span>}
+          <span>{t('commandPalette.footer')}</span>
+          {entries.length > 0 && <span>{t('commandPalette.totalItems', { count: entries.length })}</span>}
         </div>
       </div>
 

@@ -9,6 +9,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ThinkingBlockProps {
   content: string;
@@ -18,6 +19,7 @@ interface ThinkingBlockProps {
 }
 
 export default function ThinkingBlock({ content, isExpanded, onToggle, isStreaming }: ThinkingBlockProps) {
+  const { t } = useTranslation();
   return (
     <div className="my-2 rounded-lg border border-border bg-muted overflow-hidden">
       {/* Header — 始终可见 */}
@@ -29,7 +31,7 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
           <span className="text-base">💭</span>
           {isStreaming && !isExpanded ? (
             <span className="flex items-center gap-1">
-              正在思考
+              {t('chat.thinking')}
               <span className="flex gap-0.5 ml-1">
                 <span className="w-1 h-1 bg-muted-foreground rounded-full animate-pulse" />
                 <span className="w-1 h-1 bg-muted-foreground rounded-full animate-pulse [animation-delay:150ms]" />
@@ -37,7 +39,7 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
               </span>
             </span>
           ) : (
-            <span>思考过程</span>
+            <span>{t('chat.thinkingTitle')}</span>
           )}
         </span>
         <ChevronDown
@@ -56,7 +58,7 @@ export default function ThinkingBlock({ content, isExpanded, onToggle, isStreami
         <div className="px-3 pb-3 border-t border-border">
           <div className="mt-2 max-h-80 overflow-y-auto text-sm text-muted-foreground prose prose-sm prose-slate">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {content || '(思考中...)'}
+              {content || t('chat.thinkingProgress')}
             </ReactMarkdown>
           </div>
         </div>

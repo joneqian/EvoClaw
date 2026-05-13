@@ -120,7 +120,8 @@ bun:sqlite / better-sqlite3（运行时自动选择）+ WAL 模式，MigrationRu
 - **当前冲刺**: M15 UI 现代化 5 件套（2026-05-12 启动）— 对齐 2025-2026 Anthropic/Claude AI 极简流派 + 反超 Hermes 工业级 UI 标准
   - **U1 暗色主题 + dual-theme 设计系统** ✅（PR #155，2026-05-12）：shadcn 命名 token + CSS variables + ThemeProvider 三态 + 2000+ 处颜色硬编码 sweep + ThemeSwitcher + brand-apply 模板升级 v3
   - **U2 lucide-react 图标库** ✅（PR #156 + PR #157，2026-05-12）：86 处内联 SVG 全部换 Lucide 标准组件，25 文件全覆盖；删 PathIcon 过渡 wrapper；SecurityPage 5 个 config 数组（TOOL_DISPLAY / GUARD_FEATURES / GUARD_PROTECTIONS / PERMISSION_MODES / STATUS_CONFIG）全迁移；同步修 PR-U1 留下的 brand-apply 模板未升级 bug
-  - **U3 Toast (sonner) + Skeleton 系统** ✅（feat/ui-toast-skeleton，2026-05-13）：sonner 全局 Toaster 跟随主题；9 个文件 12 处零散 `setToast` 状态迁移（SettingsPage 4 个 Tab + SecurityPage + ModelsPage + MCPServersPanel + CheckpointPage + CommandPalette + ProfileManager/CredentialPoolEditor showToast prop 透传）；新增 `components/Skeleton.tsx` (Skeleton/SkeletonText/SkeletonCard)；CommandPalette loading state 接入示范
+  - **U3 Toast (sonner) + Skeleton 系统** ✅（PR #158，2026-05-12）：sonner 全局 Toaster 跟随主题；9 个文件 12 处零散 `setToast` 状态迁移；新增 `components/Skeleton.tsx` (Skeleton/SkeletonText/SkeletonCard)；CommandPalette loading state 接入示范
+  - **U4 i18n 中英双语**：feat/ui-i18n-zh-en 进行中（react-i18next + browser-languagedetector + localStorage 持久化 + `<LanguageSwitcher>` 入 SettingsPage；核心命名空间 zh-CN.json/en-US.json 约 130 个 key 覆盖 app / nav / common / chat / agents / skills / memory / settings / security / models / checkpoint / permission / theme；高频可视文案 sweep：IconNav 10 项导航 / App.tsx 加载/错误/窗口控制/底部菜单/删除确认 / ChatPage 占位+思考中 / ThemeSwitcher / ThinkingBlock）；**长尾翻译留 PR-U4b**
   - **U4 i18n 中英双语**：2203 处中文字面量抽离（待启动）
   - **U5 ARIA + 键盘导航**：8 个 modal + 60+ 图标按钮 a11y 全覆盖（待启动）
   - 详见 `docs/iteration-plans/M15-UIModernization-Plan.md` + `docs/architecture/design-system.md`

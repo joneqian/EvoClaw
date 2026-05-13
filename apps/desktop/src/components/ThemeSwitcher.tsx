@@ -7,13 +7,8 @@
  * 用法：放到 SettingsPage 顶部 或 任何全局位置
  */
 import { Sun, Moon, Monitor } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useTheme, type ThemeMode } from '../contexts/ThemeProvider';
-
-const MODE_LABELS: Record<ThemeMode, string> = {
-  light: '亮色',
-  dark: '暗色',
-  system: '跟随系统',
-};
 
 const NEXT_MODE: Record<ThemeMode, ThemeMode> = {
   light: 'dark',
@@ -27,15 +22,17 @@ interface ThemeSwitcherProps {
 
 export default function ThemeSwitcher({ className = '' }: ThemeSwitcherProps) {
   const { mode, setMode } = useTheme();
+  const { t } = useTranslation();
 
   const Icon = mode === 'light' ? Sun : mode === 'dark' ? Moon : Monitor;
+  const label = t(`theme.${mode}`);
 
   return (
     <button
       type="button"
       onClick={() => setMode(NEXT_MODE[mode])}
-      title={`主题：${MODE_LABELS[mode]}（点击切换）`}
-      aria-label={`切换主题，当前为${MODE_LABELS[mode]}`}
+      title={t('theme.switchTitle', { label })}
+      aria-label={t('theme.switchAriaLabel', { label })}
       className={`inline-flex items-center justify-center w-9 h-9 rounded-lg
         text-muted-foreground hover:text-foreground hover:bg-accent
         transition-colors ${className}`}

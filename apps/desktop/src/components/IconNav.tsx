@@ -5,6 +5,7 @@
  */
 
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   MessageSquare,
   Sparkles,
@@ -23,20 +24,20 @@ import { useSopStore } from '../stores/sop-store';
 interface NavItem {
   path: string;
   Icon: LucideIcon;
-  label: string;
+  labelKey: string;
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { path: '/chat', Icon: MessageSquare, label: '对话' },
-  { path: '/skills', Icon: Sparkles, label: '技能商店' },
-  { path: '/agents', Icon: Users, label: '专家中心' },
-  { path: '/memory', Icon: Brain, label: '记忆' },
-  { path: '/cron', Icon: Clock, label: '定时任务' },
-  { path: '/tasks', Icon: ListChecks, label: '后台任务' },
-  { path: '/sop-tags', Icon: Tag, label: 'SOP 标签' },
-  { path: '/checkpoints', Icon: RotateCcw, label: '撤销改动' },
-  { path: '/channel', Icon: Plug, label: '连接' },
-  { path: '/security', Icon: ShieldCheck, label: '安全中心' },
+  { path: '/chat', Icon: MessageSquare, labelKey: 'nav.chat' },
+  { path: '/skills', Icon: Sparkles, labelKey: 'nav.skills' },
+  { path: '/agents', Icon: Users, labelKey: 'nav.agents' },
+  { path: '/memory', Icon: Brain, labelKey: 'nav.memory' },
+  { path: '/cron', Icon: Clock, labelKey: 'nav.cron' },
+  { path: '/tasks', Icon: ListChecks, labelKey: 'nav.tasks' },
+  { path: '/sop-tags', Icon: Tag, labelKey: 'nav.sopTags' },
+  { path: '/checkpoints', Icon: RotateCcw, labelKey: 'nav.undo' },
+  { path: '/channel', Icon: Plug, labelKey: 'nav.channel' },
+  { path: '/security', Icon: ShieldCheck, labelKey: 'nav.security' },
 ] as const;
 
 /** 判断是否是"对话"相关路由 */
@@ -45,13 +46,14 @@ function isChatRoute(pathname: string): boolean {
 }
 
 export default function IconNav() {
+  const { t } = useTranslation();
   // 全局监听 SOP 草稿生成状态 — 用户离开 SOP 页后仍能感知到后台进度
   const sopGenerating = useSopStore((s) => s.generating);
 
   return (
     <nav
       className="w-[88px] bg-muted border-r border-border/60 flex flex-col items-center shrink-0 select-none"
-      aria-label="主导航"
+      aria-label={t('nav.chat')}
     >
       {/* 顶部品牌 logo + 拖拽区域 */}
       <div className="h-[80px] shrink-0 flex items-center justify-center px-1" data-tauri-drag-region>
@@ -67,11 +69,12 @@ export default function IconNav() {
       <div className="flex-1 flex flex-col items-center gap-2 px-1.5 pt-1">
         {NAV_ITEMS.map((item) => {
           const showSpinner = item.path === '/sop-tags' && sopGenerating;
+          const label = t(item.labelKey);
           return (
             <NavLink
               key={item.path}
               to={item.path}
-              aria-label={item.label}
+              aria-label={label}
               className={({ isActive }) => {
                 const active = isActive || (item.path === '/chat' && isChatRoute(window.location.pathname));
                 return `relative w-[76px] flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl transition-all duration-150 ${
@@ -86,11 +89,10 @@ export default function IconNav() {
                 {showSpinner && (
                   <span
                     className="absolute -top-1 -right-1 w-3 h-3 border-2 border-brand/30 border-t-brand rounded-full animate-spin"
-                    title="AI 正在生成 SOP 标签草稿"
                   />
                 )}
               </div>
-              <span className="text-xs leading-tight font-medium">{item.label}</span>
+              <span className="text-xs leading-tight font-medium">{label}</span>
             </NavLink>
           );
         })}

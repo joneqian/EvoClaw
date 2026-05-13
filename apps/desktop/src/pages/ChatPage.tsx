@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Paperclip, Sparkles, Square, ArrowUp, ListChecks, MessageSquare, Clock, ChevronRight, Check, Trash2 } from 'lucide-react';
 import { BRAND_EVENT_PREFIX, parseQuotedPrefix } from '@evoclaw/shared';
 import { useChatStore, type Message, type ToolCall, type ToolSegment, type RecallMeta } from '../stores/chat-store';
@@ -33,6 +34,7 @@ function parseSSELine(line: string): { event?: string; data?: string } | null {
 // ─── 对话视图 ───
 
 function ChatView() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const {
     messages,
@@ -507,7 +509,7 @@ function ChatView() {
               }
             }
           }}
-          placeholder="任何问题，尽管吩咐~"
+          placeholder={t('chat.placeholder')}
           rows={3}
           className="w-full resize-none px-4 py-3 text-sm bg-transparent text-foreground
             focus:outline-none placeholder:text-muted-foreground min-h-[80px]"
@@ -1034,6 +1036,7 @@ function RecallMetaBar({ meta }: { meta: RecallMeta }) {
 }
 
 function MessageBubble({ message }: { message: Message }) {
+  const { t } = useTranslation();
   const { isStreaming, toggleThinkingExpanded } = useChatStore();
   const isUser = message.role === 'user';
   const hasSegments = message.segments && message.segments.length > 0;
@@ -1098,7 +1101,7 @@ function MessageBubble({ message }: { message: Message }) {
             <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:150ms]" />
             <span className="w-1.5 h-1.5 bg-brand rounded-full animate-pulse [animation-delay:300ms]" />
           </span>
-          正在思考...
+          {t('chat.thinking')}...
         </div>
       ) : hasSegments ? (
         /* 新渲染：segments 交错显示 */

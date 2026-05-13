@@ -6,6 +6,7 @@
  */
 
 import { RotateCcw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { CheckpointRecord } from '../hooks/useCheckpoints';
 
 interface Props {
@@ -13,32 +14,34 @@ interface Props {
   onRequestRevert: (record: CheckpointRecord) => void;
 }
 
-function formatTs(ms: number): string {
+function formatTs(ms: number, locale: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const date = new Date(ms);
   const diffMs = Date.now() - ms;
-  if (diffMs < 60_000) return '刚刚';
-  if (diffMs < 60 * 60_000) return `${Math.floor(diffMs / 60_000)} 分钟前`;
-  if (diffMs < 24 * 60 * 60_000) return `${Math.floor(diffMs / 3_600_000)} 小时前`;
-  return date.toLocaleString('zh-CN', { hour12: false });
+  if (diffMs < 60_000) return t('checkpoint.timeJustNow');
+  if (diffMs < 60 * 60_000) return t('checkpoint.timeMinutesAgo', { count: Math.floor(diffMs / 60_000) });
+  if (diffMs < 24 * 60 * 60_000) return t('checkpoint.timeHoursAgo', { count: Math.floor(diffMs / 3_600_000) });
+  return date.toLocaleString(locale, { hour12: false });
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  write: '写入文件',
-  edit: '编辑文件',
-  apply_patch: '应用补丁',
+const TOOL_LABEL_KEYS: Record<string, string> = {
+  write: 'tool.write',
+  edit: 'tool.edit',
+  apply_patch: 'tool.applyPatch',
 };
 
-function toolLabel(name: string): string {
-  return TOOL_LABELS[name] ?? name;
+function toolLabel(name: string, t: (key: string) => string): string {
+  const key = TOOL_LABEL_KEYS[name];
+  return key ? t(key) : name;
 }
 
 export default function CheckpointList({ list, onRequestRevert }: Props) {
+  const { t, i18n } = useTranslation();
   if (list.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground text-sm">
         <RotateCcw className="w-12 h-12 mx-auto mb-3 text-muted-foreground" strokeWidth={1.5} aria-hidden="true" />
-        <p>还没有可撤销的改动</p>
-        <p className="text-xs mt-1 text-muted-foreground">Agent 修改文件后会在这里出现</p>
+        <p>{t('checkpoint.noCheckpoints')}</p>
+        <p className="text-xs mt-1 text-muted-foreground">{t('checkpoint.noCheckpointsHint')}</p>
       </div>
     );
   }
@@ -60,18 +63,18 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
             <div className="flex items-start justify-between gap-3 mb-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium text-foreground">{toolLabel(r.toolName)}</span>
-                  <span className="text-xs text-muted-foreground">{formatTs(r.createdAt)}</span>
+                  <span className="text-sm font-medium text-foreground">{toolLabel(r.toolName, t)}</span>
+                  <span className="text-xs text-muted-foreground">{formatTs(r.createdAt, i18n.language, t)}</span>
                   {reverted && (
                     <span className="text-xs px-1.5 py-0.5 bg-accent text-muted-foreground rounded">
-                      已撤销
+                      {t('checkpointList.reverted')}
                     </span>
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {editedFiles > 0 && <span>修改 {editedFiles} 个文件</span>}
+                  {editedFiles > 0 && <span>{t('checkpointList.filesEdited', { count: editedFiles })}</span>}
                   {editedFiles > 0 && newFiles > 0 && <span className="mx-1">·</span>}
-                  {newFiles > 0 && <span>新建 {newFiles} 个文件</span>}
+                  {newFiles > 0 && <span>{t('checkpointList.filesAdded', { count: newFiles })}</span>}
                 </div>
               </div>
               {!reverted && (
@@ -80,7 +83,7 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
                   onClick={() => onRequestRevert(r)}
                   className="text-xs px-3 py-1.5 bg-warning/10 hover:bg-warning/15 text-warning rounded-md font-medium transition-colors flex-shrink-0"
                 >
-                  撤销
+                  {t('checkpointList.revert')}
                 </button>
               )}
             </div>
@@ -97,7 +100,7 @@ export default function CheckpointList({ list, onRequestRevert }: Props) {
                 </li>
               ))}
               {r.files.length > 5 && (
-                <li className="text-xs text-muted-foreground">…还有 {r.files.length - 5} 个</li>
+                <li className="text-xs text-muted-foreground">{t('checkpointList.moreFiles', { count: r.files.length - 5 })}</li>
               )}
             </ul>
           </li>

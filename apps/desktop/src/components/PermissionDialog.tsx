@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   FileText,
   FilePen,
@@ -89,6 +90,7 @@ export default function PermissionDialog({
   onDecision,
   onClose,
 }: PermissionDialogProps) {
+  const { t } = useTranslation();
   const handleOverlayClick = useCallback(() => {
     onDecision('deny');
     onClose();
@@ -117,7 +119,7 @@ export default function PermissionDialog({
         {/* 顶部安全标识栏 */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-muted/50 rounded-t-2xl">
           <Shield className="w-4 h-4 text-warning" strokeWidth={2} aria-hidden="true" />
-          <span className="text-xs font-medium text-muted-foreground">权限请求</span>
+          <span className="text-xs font-medium text-muted-foreground">{t('permission.title')}</span>
         </div>
 
         {/* 主体 */}
@@ -127,7 +129,7 @@ export default function PermissionDialog({
             <AgentAvatar name={agentName} size="lg" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-foreground truncate">{agentName}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">请求以下操作权限</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('permission.requesting')}</p>
             </div>
           </div>
 
@@ -157,7 +159,7 @@ export default function PermissionDialog({
             <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10/60 px-3 py-2.5">
               <div className="flex items-center gap-1.5 mb-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-warning" strokeWidth={2} aria-hidden="true" />
-                <span className="text-[11px] font-semibold text-warning">AI 风险评估 · 建议人工确认</span>
+                <span className="text-[11px] font-semibold text-warning">{t('permission.smartReview')}</span>
               </div>
               <p className="text-xs text-warning/90 leading-relaxed">
                 {smartApprove.reason}
@@ -166,7 +168,7 @@ export default function PermissionDialog({
           )}
 
           <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-            允许后该专家将永久获得此类权限，你可以随时在安全中心撤销。
+            {t('permission.permanentHint')}
           </p>
 
           {/* 两个按钮 */}
@@ -176,14 +178,14 @@ export default function PermissionDialog({
               className="flex-1 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-150
                 border border-border text-muted-foreground hover:bg-muted hover:border-border"
             >
-              拒绝
+              {t('permission.deny')}
             </button>
             <button
               onClick={() => { onDecision('always'); onClose(); }}
               className="flex-1 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-150
                 bg-brand text-white hover:bg-brand-hover shadow-sm"
             >
-              允许
+              {t('permission.allow')}
             </button>
           </div>
         </div>

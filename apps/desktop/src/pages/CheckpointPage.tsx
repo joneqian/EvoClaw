@@ -9,11 +9,13 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { useCheckpoints, type CheckpointRecord } from '../hooks/useCheckpoints';
 import CheckpointList from '../components/CheckpointList';
 import CheckpointRevertDialog from '../components/CheckpointRevertDialog';
 
 export default function CheckpointPage() {
+  const { t } = useTranslation();
   const { list, loading, error, refresh, revert } = useCheckpoints(50);
   const [pending, setPending] = useState<CheckpointRecord | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,9 +27,9 @@ export default function CheckpointPage() {
     setBusy(false);
     setPending(null);
     if (result.ok) {
-      toast.success(`已撤销 ${result.restored ?? 0} 个文件`);
+      toast.success(t('checkpoint.revertSuccess', { count: result.restored ?? 0 }));
     } else {
-      toast.error(result.error ?? '撤销失败');
+      toast.error(result.error ?? t('checkpoint.revertFailed'));
     }
   };
 
@@ -37,9 +39,9 @@ export default function CheckpointPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold text-foreground">撤销改动</h1>
+            <h1 className="text-xl font-semibold text-foreground">{t('checkpoint.title')}</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Agent 修改 / 创建文件前会自动备份，遇到问题可一键撤销最近 7 天的改动。
+              {t('checkpoint.desc')}
             </p>
           </div>
           <button
@@ -48,14 +50,14 @@ export default function CheckpointPage() {
             disabled={loading}
             className="text-xs px-3 py-1.5 border border-border hover:bg-accent rounded-md text-muted-foreground transition-colors disabled:opacity-50"
           >
-            {loading ? '刷新中…' : '刷新'}
+            {loading ? t('common.refreshing') : t('common.refresh')}
           </button>
         </div>
 
         {/* Error */}
         {error && !loading && (
           <div className="mb-4 px-4 py-3 bg-danger/10 border border-danger/30 rounded-lg text-sm text-danger">
-            加载失败：{error}
+            {t('checkpoint.loadFailed', { error })}
           </div>
         )}
 
@@ -65,7 +67,7 @@ export default function CheckpointPage() {
         )}
 
         {loading && list.length === 0 && (
-          <div className="text-center py-16 text-muted-foreground text-sm">加载中…</div>
+          <div className="text-center py-16 text-muted-foreground text-sm">{t('common.loading')}</div>
         )}
       </div>
 

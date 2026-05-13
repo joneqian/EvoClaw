@@ -73,14 +73,18 @@
   "agents": {
     "title": "Experts",
     "createNew": "Create Expert",
+    "createNewBtn": "+ New Expert",
     "deleteExpert": "Delete Expert",
     "deleteConfirmTitle": "Confirm Delete",
     "deleteConfirmDesc": "Are you sure you want to delete the expert \"{{name}}\"? All conversation history will also be deleted. This action cannot be undone.",
     "deleteConfirmAction": "Confirm Delete",
     "noAgents": "Please create an Agent first",
     "noAgentsHint": "Once you create an agent in the Experts center, you can manage its security settings here.",
+    "noAgentsInPanel": "No experts yet",
     "edit": "Edit Expert",
-    "switchExpert": "Switch Expert"
+    "switchExpert": "Switch Expert",
+    "noConversations": "No conversations",
+    "deleteConversation": "Delete conversation"
   },
   "skills": {
     "title": "Skills",
@@ -163,7 +167,40 @@
     "noCheckpointsHint": "Files modified by agents will appear here",
     "revertSuccess": "Reverted {{count}} files",
     "revertFailed": "Revert failed",
-    "loadFailed": "Load failed: {{error}}"
+    "loadFailed": "Load failed: {{error}}",
+    "revertConfirmTitle": "Confirm Undo",
+    "revertConfirmDesc": "The following files will be restored or deleted",
+    "reverting": "Reverting…",
+    "confirmRevert": "Confirm Revert",
+    "revertTime": "Time",
+    "willRestore": "Will restore {{count}} modified file(s)",
+    "willDelete": "Will delete {{count}} agent-created file(s)",
+    "revertWarning": "⚠ This action is irreversible. Current file contents will be overwritten, and new files created by the agent will be deleted.",
+    "timeJustNow": "just now",
+    "timeMinutesAgo": "{{count}} min ago",
+    "timeHoursAgo": "{{count}} hr ago"
+  },
+  "destructive": {
+    "title": "Confirm Action",
+    "subtitle": "This action is irreversible",
+    "intro": "About to execute an irreversible action:",
+    "tool": "Tool",
+    "args": "Arguments",
+    "noArgs": "(no arguments)",
+    "warning": "Once confirmed, the action runs immediately and cannot be undone.",
+    "confirm": "Run"
+  },
+  "tool": {
+    "write": "Write file",
+    "edit": "Edit file",
+    "applyPatch": "Apply patch"
+  },
+  "checkpointList": {
+    "reverted": "Reverted",
+    "revert": "Undo",
+    "filesEdited": "{{count}} file(s) edited",
+    "filesAdded": "{{count}} new file(s)",
+    "moreFiles": "…and {{count}} more"
   },
   "permission": {
     "title": "Permission Request",
@@ -176,6 +213,9 @@
     "categorySkill": "Skill",
     "always": "Always Allow",
     "deny": "Deny",
+    "allow": "Allow",
+    "requesting": "is requesting the following permission",
+    "permanentHint": "After granting, this expert will keep this permission permanently. You can revoke it anytime from the Security Center.",
     "smartReview": "AI Risk Assessment · Manual review suggested"
   },
   "theme": {

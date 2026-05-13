@@ -6,6 +6,7 @@
  */
 
 import { RotateCcw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { CheckpointRecord } from '../hooks/useCheckpoints';
 
 interface Props {
@@ -15,11 +16,12 @@ interface Props {
   onCancel: () => void;
 }
 
-function formatTs(ms: number): string {
-  return new Date(ms).toLocaleString('zh-CN', { hour12: false });
+function formatTs(ms: number, locale: string): string {
+  return new Date(ms).toLocaleString(locale, { hour12: false });
 }
 
 export default function CheckpointRevertDialog({ record, busy, onConfirm, onCancel }: Props) {
+  const { t, i18n } = useTranslation();
   const filesAddedByTool = record.files.filter((f) => !f.existedBefore);
   const filesModifiedByTool = record.files.filter((f) => f.existedBefore);
 
@@ -38,8 +40,8 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             <RotateCcw className="w-5 h-5 text-warning" strokeWidth={1.5} aria-hidden="true" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-foreground">撤销改动确认</h3>
-            <p className="text-xs text-muted-foreground">即将还原 / 删除以下文件</p>
+            <h3 className="text-base font-semibold text-foreground">{t('checkpoint.revertConfirmTitle')}</h3>
+            <p className="text-xs text-muted-foreground">{t('checkpoint.revertConfirmDesc')}</p>
           </div>
         </div>
 
@@ -47,12 +49,12 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
         <div className="px-5 pb-4">
           <div className="bg-muted rounded-lg p-3 mb-3 text-xs text-muted-foreground space-y-1">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">工具</span>
+              <span className="text-muted-foreground">{t('destructive.tool')}</span>
               <span className="font-mono">{record.toolName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">时间</span>
-              <span>{formatTs(record.createdAt)}</span>
+              <span className="text-muted-foreground">{t('checkpoint.revertTime')}</span>
+              <span>{formatTs(record.createdAt, i18n.language)}</span>
             </div>
             {record.agentId && (
               <div className="flex justify-between">
@@ -65,7 +67,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
           {filesModifiedByTool.length > 0 && (
             <div className="mb-3">
               <div className="text-xs text-muted-foreground mb-1">
-                将还原 {filesModifiedByTool.length} 个被修改的文件
+                {t('checkpoint.willRestore', { count: filesModifiedByTool.length })}
               </div>
               <ul className="space-y-1 max-h-32 overflow-auto">
                 {filesModifiedByTool.map((f) => (
@@ -84,7 +86,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
           {filesAddedByTool.length > 0 && (
             <div className="mb-3">
               <div className="text-xs text-muted-foreground mb-1">
-                将删除 {filesAddedByTool.length} 个 agent 新建的文件
+                {t('checkpoint.willDelete', { count: filesAddedByTool.length })}
               </div>
               <ul className="space-y-1 max-h-32 overflow-auto">
                 {filesAddedByTool.map((f) => (
@@ -101,7 +103,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
           )}
 
           <p className="text-xs text-warning bg-warning/10/60 rounded px-3 py-2">
-            ⚠ 此操作不可逆。撤销后当前文件内容将被覆盖，新建的文件会被删除。
+            {t('checkpoint.revertWarning')}
           </p>
         </div>
 
@@ -113,7 +115,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             disabled={busy}
             className="flex-1 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors disabled:opacity-50"
           >
-            取消
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -121,7 +123,7 @@ export default function CheckpointRevertDialog({ record, busy, onConfirm, onCanc
             disabled={busy}
             className="flex-1 px-4 py-2 text-sm font-medium bg-warning hover:bg-warning text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {busy ? '撤销中…' : '确认撤销'}
+            {busy ? t('checkpoint.reverting') : t('checkpoint.confirmRevert')}
           </button>
         </div>
       </div>

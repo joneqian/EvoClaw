@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Users, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAgentStore } from '../stores/agent-store';
 import { useChatStore } from '../stores/chat-store';
@@ -9,6 +10,7 @@ import ExpertSettingsPanel from '../components/ExpertSettingsPanel';
 import { parseUtcDate } from '../lib/date';
 
 export default function AgentsPage() {
+  const { t } = useTranslation();
   const {
     agents, loading, fetchAgents, deleteAgent,
     startGuidedCreation, sendBuilderMessage,
@@ -115,7 +117,7 @@ export default function AgentsPage() {
                 bg-brand rounded-lg
                 hover:bg-brand-hover transition-all"
             >
-              + 创建专家
+              {t('agents.createNewBtn')}
             </button>
           )}
         </div>

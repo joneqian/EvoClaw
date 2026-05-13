@@ -73,14 +73,18 @@
   "agents": {
     "title": "专家中心",
     "createNew": "创建专家",
+    "createNewBtn": "+ 创建专家",
     "deleteExpert": "删除专家",
     "deleteConfirmTitle": "确认删除",
     "deleteConfirmDesc": "确定要删除专家「{{name}}」吗？该专家的所有会话记录也将一并删除，此操作不可撤销。",
     "deleteConfirmAction": "确认删除",
     "noAgents": "请先创建一个 Agent",
     "noAgentsHint": "在专家中心创建后即可管理安全设置",
+    "noAgentsInPanel": "暂无专家",
     "edit": "编辑专家",
-    "switchExpert": "切换专家"
+    "switchExpert": "切换专家",
+    "noConversations": "暂无对话",
+    "deleteConversation": "删除会话"
   },
   "skills": {
     "title": "技能商店",
@@ -163,7 +167,40 @@
     "noCheckpointsHint": "Agent 修改文件后会在这里出现",
     "revertSuccess": "已撤销 {{count}} 个文件",
     "revertFailed": "撤销失败",
-    "loadFailed": "加载失败：{{error}}"
+    "loadFailed": "加载失败：{{error}}",
+    "revertConfirmTitle": "撤销改动确认",
+    "revertConfirmDesc": "即将还原 / 删除以下文件",
+    "reverting": "撤销中…",
+    "confirmRevert": "确认撤销",
+    "revertTime": "时间",
+    "willRestore": "将还原 {{count}} 个被修改的文件",
+    "willDelete": "将删除 {{count}} 个 agent 新建的文件",
+    "revertWarning": "⚠ 此操作不可逆。撤销后当前文件内容将被覆盖，新建的文件会被删除。",
+    "timeJustNow": "刚刚",
+    "timeMinutesAgo": "{{count}} 分钟前",
+    "timeHoursAgo": "{{count}} 小时前"
+  },
+  "destructive": {
+    "title": "操作确认",
+    "subtitle": "此操作不可逆",
+    "intro": "即将执行不可逆操作：",
+    "tool": "工具",
+    "args": "参数",
+    "noArgs": "(无参数)",
+    "warning": "确认后操作将立即执行，无法撤回。",
+    "confirm": "确认执行"
+  },
+  "tool": {
+    "write": "写入文件",
+    "edit": "编辑文件",
+    "applyPatch": "应用补丁"
+  },
+  "checkpointList": {
+    "reverted": "已撤销",
+    "revert": "撤销",
+    "filesEdited": "修改 {{count}} 个文件",
+    "filesAdded": "新建 {{count}} 个文件",
+    "moreFiles": "…还有 {{count}} 个"
   },
   "permission": {
     "title": "权限请求",
@@ -176,6 +213,9 @@
     "categorySkill": "技能调用",
     "always": "始终允许",
     "deny": "拒绝",
+    "allow": "允许",
+    "requesting": "请求以下操作权限",
+    "permanentHint": "允许后该专家将永久获得此类权限，你可以随时在安全中心撤销。",
     "smartReview": "AI 风险评估 · 建议人工确认"
   },
   "theme": {

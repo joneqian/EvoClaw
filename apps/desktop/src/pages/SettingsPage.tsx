@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Lock, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { BRAND_NAME } from '@evoclaw/shared';
 import { get, post, put, del } from '../lib/api';
 import Select from '../components/Select';
@@ -67,7 +68,6 @@ function EnforcedBadge() {
 function GeneralTab() {
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
   const [enforced, setEnforced] = useState<string[]>([]);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // 加载当前配置
   // 注：thinkingMode 不再暴露给普通用户（默认值由 catalog 的 defaultThinkLevel 决定）；
@@ -82,25 +82,19 @@ function GeneralTab() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   const saveConfig = useCallback(async (patch: Record<string, unknown>) => {
     try {
       await put('/config', patch);
-      setToast({ message: '已保存', type: 'success' });
+      toast.success('已保存');
     } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : '保存失败', type: 'error' });
+      toast.error(err instanceof Error ? err.message : '保存失败');
     }
   }, []);
 
   return (
     <>
       {/* M6 T2: Profile 管理（置顶，影响面最大） */}
-      <ProfileManager showToast={(message, type = 'success') => setToast({ message, type })} />
+      <ProfileManager showToast={(message, type = 'success') => type === 'error' ? toast.error(message) : toast.success(message)} />
 
       <div className="bg-card rounded-xl border border-border divide-y divide-border">
         {/* 语言设置 */}
@@ -124,14 +118,6 @@ function GeneralTab() {
         <ThemeRow />
 
       </div>
-
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-50 ${
-          toast.type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
     </>
   );
 }
@@ -182,10 +168,10 @@ function EnvVarsTab() {
   const [addingNew, setAddingNew] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   }, []);
 
   const fetchEnvVars = useCallback(async () => {
@@ -210,12 +196,6 @@ function EnvVarsTab() {
       } catch { /* ignore */ }
     })();
   }, [showToast]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const saveVars = useCallback(async (vars: Record<string, string>) => {
     try {
@@ -441,13 +421,6 @@ function EnvVarsTab() {
         )}
       </div>
 
-      {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-medium shadow-lg z-50 ${
-          toast.type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
     </>
   );
 }
@@ -506,11 +479,9 @@ function SkillEvolverTab() {
   const [saving, setSaving] = useState(false);
   const [savingCurator, setSavingCurator] = useState(false);
   const [running, setRunning] = useState<'evolver' | 'curator' | 'ab-evaluator' | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   }, []);
 
   const loadAll = useCallback(async () => {
@@ -639,12 +610,6 @@ function SkillEvolverTab() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      {toast && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${
-          toast.type === 'success' ? 'bg-success/10 text-success' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
-        }`}>{toast.message}</div>
-      )}
-
       {/* ─── Evolver 子区 ─── */}
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="flex items-center justify-between mb-4">
@@ -1146,11 +1111,9 @@ function SecurityPolicyTab() {
   const [draft, setDraft] = useState<Record<string, PolicyValue>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   }, []);
 
   const load = useCallback(async () => {
@@ -1225,12 +1188,6 @@ function SecurityPolicyTab() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      {toast && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${
-          toast.type === 'success' ? 'bg-success/10 text-success' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
-        }`}>{toast.message}</div>
-      )}
-
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="mb-4">
           <h3 className="text-base font-semibold text-foreground">Skill 安装策略矩阵</h3>
@@ -1356,13 +1313,12 @@ const CHANNEL_OPTIONS = [
 function IdentityLinksTab() {
   const [links, setLinks] = useState<IdentityLink[]>([]);
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [draft, setDraft] = useState({ canonicalId: 'self', channel: 'feishu', peerId: '' });
   const [saving, setSaving] = useState(false);
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   }, []);
 
   const loadLinks = useCallback(async () => {
@@ -1425,12 +1381,6 @@ function IdentityLinksTab() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      {toast && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${
-          toast.type === 'success' ? 'bg-success/10 text-success' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
-        }`}>{toast.message}</div>
-      )}
-
       <section className="rounded-xl border border-border p-5 bg-card">
         <header className="mb-4">
           <h3 className="text-base font-semibold text-foreground">我的多渠道身份</h3>

@@ -33,6 +33,8 @@ import TaskBadge from './components/TaskBadge';
 import { useTasksStore } from './stores/tasks-store';
 import CommandPalette from './components/CommandPalette';
 import { useGlobalHotkey } from './hooks/useGlobalHotkey';
+import { Toaster } from 'sonner';
+import { useTheme } from './contexts/ThemeProvider';
 import {
   Sparkles,
   Cpu,
@@ -414,9 +416,22 @@ export default function App() {
 
   const appWindow = getCurrentWindow();
   const showExpertPanel = isChatRoute(location.pathname);
+  const { resolved: resolvedTheme } = useTheme();
 
   return (
     <div className="flex flex-col h-screen bg-card text-foreground">
+      {/* 全局 Toast 系统（M15 PR-U3） */}
+      <Toaster
+        position="bottom-right"
+        theme={resolvedTheme}
+        richColors
+        closeButton
+        toastOptions={{
+          classNames: {
+            toast: 'rounded-xl border border-border shadow-lg',
+          },
+        }}
+      />
       {/* 删除专家确认弹窗 */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"

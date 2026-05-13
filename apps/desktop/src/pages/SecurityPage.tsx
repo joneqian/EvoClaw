@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import {
   FileText,
   FilePen,
@@ -94,12 +95,11 @@ export default function SecurityPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkConfirm, setBulkConfirm] = useState<string | null>(null);
   const [auditFilter, setAuditFilter] = useState({ toolName: '', status: '' });
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const PAGE_SIZE = 20;
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   }, []);
 
   useEffect(() => {
@@ -246,15 +246,6 @@ export default function SecurityPage() {
         )}
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium shadow-lg shadow-foreground/10 transition-all ${
-          toast.type === 'success' ? 'bg-foreground text-background' : 'bg-danger text-white'
-        }`}>
-          {toast.type === 'success' ? <Check className="w-4 h-4" strokeWidth={2} aria-hidden="true" /> : <XIcon className="w-4 h-4" strokeWidth={2} aria-hidden="true" />}
-          {toast.message}
-        </div>
-      )}
     </div>
   );
 }

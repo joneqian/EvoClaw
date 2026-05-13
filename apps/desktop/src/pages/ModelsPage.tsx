@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { get, put, post, del } from '../lib/api';
 import Select from '../components/Select';
 import CredentialPoolEditor, { type CredentialPool } from '../components/CredentialPoolEditor';
@@ -45,11 +46,6 @@ interface ModelInfo {
   supportsToolUse: boolean;
   isDefault: boolean;
   dimension?: number;
-}
-
-interface Toast {
-  message: string;
-  type: 'success' | 'error';
 }
 
 /** API 协议友好名称 */
@@ -925,13 +921,12 @@ export default function ModelsPage() {
   const [loading, setLoading] = useState(true);
   const [defaultLLM, setDefaultLLM] = useState({ provider: '', modelId: '' });
   const [defaultEMB, setDefaultEMB] = useState({ provider: '', modelId: '' });
-  const [toast, setToast] = useState<Toast | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 2500);
+    if (type === 'error') toast.error(message);
+    else toast.success(message);
   }, []);
 
   const fetchProviders = useCallback(async () => {
@@ -1095,14 +1090,6 @@ export default function ModelsPage() {
         </div>
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg ${
-          toast.type === 'success' ? 'bg-brand text-white' : 'bg-danger text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
     </div>
   );
 }

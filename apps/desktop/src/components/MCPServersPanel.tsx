@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { get, post } from '../lib/api';
 
 /** MCP 服务器状态（对齐后端 McpManager.getStates() 返回结构） */
@@ -43,7 +44,6 @@ export default function MCPServersPanel() {
   const [servers, setServers] = useState<McpServerState[]>([]);
   const [loading, setLoading] = useState(true);
   const [reconnecting, setReconnecting] = useState<Set<string>>(new Set());
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const mountedRef = useRef(true);
 
   const fetchStates = useCallback(async () => {
@@ -74,26 +74,19 @@ export default function MCPServersPanel() {
     };
   }, [fetchStates]);
 
-  // Toast 自动消失
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   const handleReconnect = useCallback(async (name: string) => {
     setReconnecting((prev) => new Set(prev).add(name));
     try {
       const res = await post<ReconnectResponse>(`/mcp/servers/${encodeURIComponent(name)}/reconnect`);
       if (res.success) {
-        setToast({ message: `"${name}" 重连成功`, type: 'success' });
+        toast.success(`"${name}" 重连成功`);
       } else {
-        setToast({ message: `"${name}" 重连失败，已达最大尝试次数`, type: 'error' });
+        toast.error(`"${name}" 重连失败，已达最大尝试次数`);
       }
       // 立即刷新一次状态
       await fetchStates();
     } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : '重连请求失败', type: 'error' });
+      toast.error(err instanceof Error ? err.message : '重连请求失败');
     } finally {
       setReconnecting((prev) => {
         const next = new Set(prev);
@@ -161,13 +154,6 @@ export default function MCPServersPanel() {
         })}
       </div>
 
-      {toast && (
-        <div className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm ${
-          toast.type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
     </>
   );
 }

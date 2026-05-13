@@ -251,21 +251,53 @@
     "doneIntro": "{{brand}} 已就绪，开始你的 AI 伴侣之旅吧！",
     "enterApp": "进入主界面"
   },
+  "expertSettings": {
+    "tabChannels": "连接",
+    "tabSkills": "技能",
+    "tabAutomation": "自动化",
+    "tabSettings": "设置"
+  },
+  "envVars": {
+    "title": "环境变量",
+    "desc": "Agent 子进程读取的额外环境变量（自动持久化）",
+    "addCustom": "+ 自定义变量",
+    "presetTitle": "预设变量",
+    "key": "变量名",
+    "value": "变量值",
+    "noVars": "暂无环境变量"
+  },
   "agentCreation": {
-    "title": "创建专家",
+    "title": "创建新专家",
     "creating": "创建中...",
     "confirmCreate": "确认创建",
+    "confirm": "确认",
     "regenerate": "重来",
+    "restart": "重新开始",
     "send": "发送",
-    "placeholder": "回答上面的问题…",
+    "placeholder": "输入你的回答...",
+    "noneOption": "无",
     "stage": {
-      "name": "起个名字",
-      "role": "选个角色",
-      "purpose": "他要做什么",
-      "constraints": "有什么注意事项",
-      "preview": "预览并确认"
+      "role": "角色",
+      "expertise": "专长",
+      "style": "风格",
+      "constraints": "约束",
+      "preview": "预览"
     },
-    "generating": "AI 正在为你的专家生成个性化工作区文件..."
+    "generating": "AI 正在为你的专家生成个性化工作区文件...",
+    "workspacePreview": "工作区文件预览",
+    "runtimeGenerated": "运行时生成",
+    "finishEdit": "完成编辑",
+    "edit": "编辑",
+    "fileLabel": {
+      "soul": "行为哲学",
+      "identity": "身份配置",
+      "agents": "操作规程",
+      "bootstrap": "首次对话引导",
+      "tools": "环境笔记",
+      "heartbeat": "定时检查",
+      "user": "用户画像",
+      "memory": "长期记忆"
+    }
   },
   "skillPage": {
     "tabInstalled": "已安装",
@@ -296,8 +328,12 @@
     "deletedTag": "已删除"
   },
   "channelPage": {
-    "title": "连接渠道",
-    "boundAgent": "已绑定专家：{{name}}"
+    "title": "连接总览",
+    "desc": "查看所有渠道的连接与绑定状态",
+    "boundAgent": "已绑定专家：{{name}}",
+    "connectedCount": "{{count}} 个已连接",
+    "connected": "已连接",
+    "disconnected": "未连接"
   },
   "alertPage": {
     "title": "预警中心",

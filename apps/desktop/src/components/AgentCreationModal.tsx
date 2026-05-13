@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAgentStore, type BuilderStage } from '../stores/agent-store';
 
 /** role 阶段的默认快捷建议（后续阶段由后端动态生成） */
@@ -16,25 +17,25 @@ function extractSuggestionsFromMessage(message: string): string[] | null {
   return items.length > 0 ? items : null;
 }
 
-/** 阶段进度指示器配置 */
-const STAGE_STEPS: { key: BuilderStage; label: string }[] = [
-  { key: 'role', label: '角色' },
-  { key: 'expertise', label: '专长' },
-  { key: 'style', label: '风格' },
-  { key: 'constraints', label: '约束' },
-  { key: 'preview', label: '预览' },
+/** 阶段进度指示器配置 — 显示标签从 i18n 取 */
+const STAGE_STEPS: { key: BuilderStage; labelKey: string }[] = [
+  { key: 'role', labelKey: 'agentCreation.stage.role' },
+  { key: 'expertise', labelKey: 'agentCreation.stage.expertise' },
+  { key: 'style', labelKey: 'agentCreation.stage.style' },
+  { key: 'constraints', labelKey: 'agentCreation.stage.constraints' },
+  { key: 'preview', labelKey: 'agentCreation.stage.preview' },
 ];
 
-/** 工作区文件图标和标签 */
-const FILE_LABELS: Record<string, { icon: string; label: string; desc: string; editable: boolean }> = {
-  'SOUL.md': { icon: '💎', label: '行为哲学', desc: '核心真理 + 角色人格 — 专家的灵魂', editable: true },
-  'IDENTITY.md': { icon: '🪪', label: '身份配置', desc: '名称、气质、标志 — 外在表现', editable: true },
-  'AGENTS.md': { icon: '📋', label: '操作规程', desc: '通用准则 + 角色工作规范', editable: true },
-  'BOOTSTRAP.md': { icon: '🌅', label: '首次对话引导', desc: '专家醒来后的"出生仪式"', editable: true },
-  'TOOLS.md': { icon: '🔧', label: '环境笔记', desc: '你的环境特有的备忘信息', editable: true },
-  'HEARTBEAT.md': { icon: '💓', label: '定时检查', desc: '周期性自动执行的检查清单', editable: true },
-  'USER.md': { icon: '👤', label: '用户画像', desc: '运行时从记忆中动态渲染', editable: false },
-  'MEMORY.md': { icon: '🧠', label: '长期记忆', desc: '运行时从记忆中动态渲染', editable: false },
+/** 工作区文件图标和标签 key（label/desc 走 i18n） */
+const FILE_META: Record<string, { icon: string; labelKey: string; editable: boolean }> = {
+  'SOUL.md': { icon: '💎', labelKey: 'soul', editable: true },
+  'IDENTITY.md': { icon: '🪪', labelKey: 'identity', editable: true },
+  'AGENTS.md': { icon: '📋', labelKey: 'agents', editable: true },
+  'BOOTSTRAP.md': { icon: '🌅', labelKey: 'bootstrap', editable: true },
+  'TOOLS.md': { icon: '🔧', labelKey: 'tools', editable: true },
+  'HEARTBEAT.md': { icon: '💓', labelKey: 'heartbeat', editable: true },
+  'USER.md': { icon: '👤', labelKey: 'user', editable: false },
+  'MEMORY.md': { icon: '🧠', labelKey: 'memory', editable: false },
 };
 
 interface AgentCreationModalProps {
@@ -46,6 +47,7 @@ interface AgentCreationModalProps {
 }
 
 export default function AgentCreationModal({ isOpen, onClose, onCreated, initialMessage }: AgentCreationModalProps) {
+  const { t } = useTranslation();
   const {
     builderMessages, builderStage, builderPreview, builderLoading, builderCreatedAgentId,
     startGuidedCreation, sendBuilderMessage, resetBuilder, updatePreviewFile,
@@ -172,7 +174,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
       : dynamicSuggestions ?? undefined;
   // constraints 阶段末尾追加"无"选项
   const suggestions = baseSuggestions && builderStage === 'constraints'
-    ? [...baseSuggestions, '无']
+    ? [...baseSuggestions, t('agentCreation.noneOption')]
     : baseSuggestions;
 
   return (
@@ -188,7 +190,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
         {/* 头部 + 进度条 */}
         <div className="px-5 pt-4 pb-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-foreground">创建新专家</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('agentCreation.title')}</h3>
             <button
               onClick={handleClose}
               className="text-muted-foreground hover:text-muted-foreground text-lg leading-none"
@@ -220,7 +222,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     }`}>
                       {isDone ? '✓' : i + 1}
                     </span>
-                    <span className="hidden sm:inline">{step.label}</span>
+                    <span className="hidden sm:inline">{t(step.labelKey)}</span>
                   </div>
                   {i < STAGE_STEPS.length - 1 && (
                     <div className={`flex-1 h-px ${isDone ? 'bg-success/50' : 'bg-accent'}`} />
@@ -261,7 +263,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     {builderStage === 'constraints' ? (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} aria-hidden="true" />
-                        <span>AI 正在为你的专家生成个性化工作区文件...</span>
+                        <span>{t('agentCreation.generating')}</span>
                       </div>
                     ) : (
                       <span className="inline-flex gap-1">
@@ -307,23 +309,23 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
               {builderStage === 'preview' && !builderCreatedAgentId ? (
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleSuggestion('确认')}
+                    onClick={() => handleSuggestion(t('agentCreation.confirm'))}
                     disabled={builderLoading}
                     className="flex-1 px-4 py-2 text-sm font-medium text-white bg-brand
                       rounded-lg hover:bg-brand-hover transition-colors
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {builderLoading ? '创建中...' : '确认创建'}
+                    {builderLoading ? t('agentCreation.creating') : t('agentCreation.confirmCreate')}
                   </button>
                   <button
-                    onClick={() => handleSuggestion('重来')}
+                    onClick={() => handleSuggestion(t('agentCreation.regenerate'))}
                     disabled={builderLoading}
                     className="px-4 py-2 text-sm text-muted-foreground
                       hover:text-foreground
                       border border-border rounded-lg
                       disabled:opacity-50"
                   >
-                    重新开始
+                    {t('agentCreation.restart')}
                   </button>
                 </div>
               ) : (
@@ -333,7 +335,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && (inputValue.trim() || selectedSuggestions.size > 0)) handleSend(); }}
-                    placeholder="输入你的回答..."
+                    placeholder={t('agentCreation.placeholder')}
                     disabled={builderLoading}
                     className="flex-1 px-3 py-2 text-sm border border-border rounded-lg
                       bg-card text-foreground
@@ -348,7 +350,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                       rounded-lg hover:bg-brand-hover transition-colors
                       disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    发送
+                    {t('agentCreation.send')}
                   </button>
                 </div>
               )}
@@ -360,12 +362,15 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
             <div className="w-80 lg:w-96 flex flex-col min-h-0 shrink-0">
               <div className="px-4 pt-4 pb-2 shrink-0">
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  工作区文件预览
+                  {t('agentCreation.workspacePreview')}
                 </h4>
               </div>
               <div className="px-4 pb-4 overflow-y-auto flex-1 space-y-2">
                 {Object.entries(builderPreview).map(([filename, content]) => {
-                  const meta = FILE_LABELS[filename] || { icon: '📄', label: filename, desc: '', editable: false };
+                  const fileMeta = FILE_META[filename];
+                  const meta = fileMeta
+                    ? { icon: fileMeta.icon, label: t(`agentCreation.fileLabel.${fileMeta.labelKey}`), editable: fileMeta.editable }
+                    : { icon: '📄', label: filename, editable: false };
                   const isExpanded = expandedFile === filename;
                   const isEditing = editingFile === filename;
                   const hasContent = content.trim().length > 0;
@@ -386,10 +391,9 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                             <span className="text-xs font-medium text-foreground">{meta.label}</span>
                             <code className="text-xs px-1 py-0.5 bg-accent text-muted-foreground rounded font-mono">{filename}</code>
                           </div>
-                          <div className="text-xs text-muted-foreground truncate mt-0.5">{meta.desc}</div>
                         </div>
                         {isRuntime ? (
-                          <span className="text-xs text-muted-foreground italic shrink-0">运行时生成</span>
+                          <span className="text-xs text-muted-foreground italic shrink-0">{t('agentCreation.runtimeGenerated')}</span>
                         ) : hasContent ? (
                           <span className={`text-muted-foreground text-xs transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
                             ▶
@@ -414,7 +418,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                                   onClick={() => setEditingFile(null)}
                                   className="text-xs text-brand hover:text-brand-hover"
                                 >
-                                  完成编辑
+                                  {t('agentCreation.finishEdit')}
                                 </button>
                               </div>
                             </div>
@@ -431,7 +435,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                                   opacity-0 group-hover:opacity-100 hover:text-brand hover:border-brand/30
                                   transition-all"
                               >
-                                编辑
+                                {t('agentCreation.edit')}
                               </button>
                             </div>
                           )}

@@ -6,6 +6,7 @@
 import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Plus } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useChatStore } from '../stores/chat-store';
 import { useAgentStore } from '../stores/agent-store';
 import AgentAvatar from './AgentAvatar';
@@ -79,6 +80,7 @@ export default function ExpertPanel({
   onDeleteAgent,
 }: ExpertPanelProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { agents, fetchAgents } = useAgentStore();
   const { currentAgentId, newConversation, setCurrentAgent } = useChatStore();
 
@@ -120,7 +122,7 @@ export default function ExpertPanel({
       {/* 专家列表 */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2">
         {agents.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-muted-foreground">暂无专家</p>
+          <p className="px-2 py-3 text-xs text-muted-foreground">{t('agents.noAgentsInPanel')}</p>
         ) : (
           <div className="space-y-0.5">
             {agents.map((agent) => (
@@ -148,7 +150,7 @@ export default function ExpertPanel({
                   className="shrink-0 w-6 h-6 mr-1.5 flex items-center justify-center rounded
                     opacity-0 group-hover:opacity-100
                     text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all"
-                  title="删除专家"
+                  title={t('agents.deleteExpert')}
                 >
                   <X className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
                 </button>
@@ -164,7 +166,7 @@ export default function ExpertPanel({
             font-medium text-foreground border border-border hover:border-muted-foreground hover:bg-muted transition-colors"
         >
           <Plus className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden="true" />
-          创建专家
+          {t('agents.createNew')}
         </button>
       </div>
 
@@ -188,7 +190,7 @@ export default function ExpertPanel({
         }}
       >
         {recents.length === 0 ? (
-          <p className="px-2.5 py-3 text-xs text-muted-foreground">暂无对话</p>
+          <p className="px-2.5 py-3 text-xs text-muted-foreground">{t('agents.noConversations')}</p>
         ) : (
           <div className="space-y-0.5">
             {recents.map((conv) => {
@@ -224,7 +226,7 @@ export default function ExpertPanel({
                   className="shrink-0 w-6 h-6 mr-1 flex items-center justify-center rounded
                     opacity-0 group-hover:opacity-100
                     text-muted-foreground hover:text-danger hover:bg-danger/10 transition-all"
-                  title="删除会话"
+                  title={t('agents.deleteConversation')}
                 >
                   <X className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
                 </button>

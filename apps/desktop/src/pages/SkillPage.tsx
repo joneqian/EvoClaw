@@ -429,16 +429,16 @@ export default function SkillPage() {
         <div className="flex bg-accent rounded-lg p-0.5 shrink-0">
           <button onClick={() => setTab('brand')}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'brand' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
-          >{BRAND_NAME} 精选</button>
+          >{t('skillPage.tabBrand', { brand: BRAND_NAME })}</button>
           <button onClick={() => setTab('my')}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'my' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
-          >我的技能{skills.length > 0 && ` (${skills.length})`}</button>
+          >{t('skillPage.tabMy')}{skills.length > 0 && ` (${skills.length})`}</button>
           <button onClick={() => setTab('effectiveness')}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'effectiveness' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
-          >效能</button>
+          >{t('skillPage.tabEffectiveness')}</button>
           <button onClick={() => setTab('evolution')}
             className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${tab === 'evolution' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
-          >进化历史</button>
+          >{t('skillPage.tabEvolution')}</button>
         </div>
         <div className="flex-1" />
 
@@ -468,7 +468,7 @@ export default function SkillPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeDialog}>
           <div className="bg-card rounded-xl shadow-xl w-[460px] p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-foreground mb-1">
-              安装 {prepareResult.metadata.name}
+              {t('skillPage.installTitle', { name: prepareResult.metadata.name })}
               {prepareResult.metadata.version && <span className="text-xs text-muted-foreground ml-1.5">v{prepareResult.metadata.version}</span>}
             </h3>
             <p className="text-xs text-muted-foreground mb-3">{prepareResult.metadata.description}</p>
@@ -500,7 +500,7 @@ export default function SkillPage() {
 
             {prepareResult.gateResults && prepareResult.gateResults.length > 0 && (
               <div className="mb-3 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">环境要求：</p>
+                <p className="text-xs font-medium text-muted-foreground">{t('skillPage.envRequirements')}</p>
                 {prepareResult.gateResults.map((g, i) => (
                   <div key={i} className={`text-xs ${g.satisfied ? 'text-success' : 'text-danger'}`}>
                     {g.satisfied ? '✓' : '✗'} {g.name}
@@ -518,18 +518,18 @@ export default function SkillPage() {
                   onChange={(e) => setRiskAcknowledged(e.target.checked)}
                   className="mt-0.5 shrink-0"
                 />
-                <span className="text-xs text-warning">我已核实代码无异常，理解该来源的风险，确认安装。</span>
+                <span className="text-xs text-warning">{t('skillPage.riskAck')}</span>
               </label>
             )}
 
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={closeDialog} className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:bg-muted">取消</button>
+              <button onClick={closeDialog} className="px-3.5 py-1.5 text-xs font-medium rounded-lg border border-border text-muted-foreground hover:bg-muted">{t('skillPage.cancel')}</button>
               <button
                 onClick={handleConfirm}
                 disabled={!canConfirm}
-                title={isBlocked ? (prepareResult.installPolicy?.reason ?? '安装被策略阻止') : undefined}
+                title={isBlocked ? (prepareResult.installPolicy?.reason ?? t('skillPage.blockedReason')) : undefined}
                 className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-brand text-white hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              >{installing ? '安装中...' : isBlocked ? '已被阻止' : '确认安装'}</button>
+              >{installing ? t('skillPage.installing') : isBlocked ? t('skillPage.blocked') : t('skillPage.confirmInstall')}</button>
             </div>
           </div>
         </div>
@@ -560,7 +560,7 @@ export default function SkillPage() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => setDetailSkill(null)} className="text-muted-foreground hover:text-muted-foreground transition-colors shrink-0 mt-1" aria-label="关闭">
+                <button onClick={() => setDetailSkill(null)} className="text-muted-foreground hover:text-muted-foreground transition-colors shrink-0 mt-1" aria-label={t('skillPage.close')}>
                   <XIcon className="w-5 h-5" strokeWidth={2} aria-hidden="true" />
                 </button>
               </div>
@@ -568,15 +568,15 @@ export default function SkillPage() {
 
             {/* 统计数据 */}
             <div className="px-5 py-3 flex items-center gap-6 border-b border-border">
-              <Stat label="下载" value={formatCount(detailSkill.downloads)} />
-              <Stat label="安装" value={formatCount(detailSkill.installs)} />
-              <Stat label="收藏" value={formatCount(detailSkill.stars)} />
-              {detailSkill.score !== undefined && <Stat label="热度" value={Math.round(detailSkill.score).toLocaleString()} />}
+              <Stat label={t('skillPage.statDownloads')} value={formatCount(detailSkill.downloads)} />
+              <Stat label={t('skillPage.statInstalls')} value={formatCount(detailSkill.installs)} />
+              <Stat label={t('skillPage.statStars')} value={formatCount(detailSkill.stars)} />
+              {detailSkill.score !== undefined && <Stat label={t('skillPage.statScore')} value={Math.round(detailSkill.score).toLocaleString()} />}
             </div>
 
             {/* 描述 */}
             <div className="px-5 py-4">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">介绍</h4>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t('skillPage.introHeader')}</h4>
               {detailSkill.descriptionZh && (
                 <p className="text-sm text-foreground leading-relaxed mb-3">{detailSkill.descriptionZh}</p>
               )}
@@ -588,12 +588,12 @@ export default function SkillPage() {
             {/* 操作 */}
             <div className="px-5 pb-5 flex items-center gap-3">
               {installedNames.has(detailSkill.name) ? (
-                <span className="px-4 py-2 text-sm font-medium text-brand bg-brand/10 rounded-lg">已安装</span>
+                <span className="px-4 py-2 text-sm font-medium text-brand bg-brand/10 rounded-lg">{t('skillPage.installed')}</span>
               ) : (
                 <button
                   onClick={() => { setDetailSkill(null); handlePrepare(detailSkill.slug ?? detailSkill.name); }}
                   className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-hover transition-colors"
-                >安装技能</button>
+                >{t('skillPage.install')}</button>
               )}
               {detailSkill.slug && (
                 <a
@@ -601,7 +601,7 @@ export default function SkillPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2 text-sm font-medium text-muted-foreground border border-border rounded-lg hover:bg-muted transition-colors"
-                >在 ClawHub 查看</a>
+                >{t('skillPage.viewOnClawhub')}</a>
               )}
             </div>
           </div>

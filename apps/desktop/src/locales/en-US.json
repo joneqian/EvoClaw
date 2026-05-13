@@ -251,21 +251,53 @@
     "doneIntro": "{{brand}} is ready. Start your AI companion journey!",
     "enterApp": "Enter App"
   },
+  "expertSettings": {
+    "tabChannels": "Channels",
+    "tabSkills": "Skills",
+    "tabAutomation": "Automation",
+    "tabSettings": "Settings"
+  },
+  "envVars": {
+    "title": "Environment Variables",
+    "desc": "Extra environment variables read by agent subprocesses (auto-persisted)",
+    "addCustom": "+ Custom Variable",
+    "presetTitle": "Preset Variables",
+    "key": "Name",
+    "value": "Value",
+    "noVars": "No environment variables"
+  },
   "agentCreation": {
-    "title": "Create Expert",
+    "title": "Create New Expert",
     "creating": "Creating…",
-    "confirmCreate": "Confirm",
+    "confirmCreate": "Confirm & Create",
+    "confirm": "Confirm",
     "regenerate": "Redo",
+    "restart": "Start Over",
     "send": "Send",
-    "placeholder": "Answer the question above…",
+    "placeholder": "Type your answer…",
+    "noneOption": "None",
     "stage": {
-      "name": "Pick a name",
-      "role": "Choose a role",
-      "purpose": "What should it do",
-      "constraints": "Any constraints",
-      "preview": "Preview and confirm"
+      "role": "Role",
+      "expertise": "Expertise",
+      "style": "Style",
+      "constraints": "Constraints",
+      "preview": "Preview"
     },
-    "generating": "AI is generating personalized workspace files for your expert…"
+    "generating": "AI is generating personalized workspace files for your expert…",
+    "workspacePreview": "Workspace File Preview",
+    "runtimeGenerated": "generated at runtime",
+    "finishEdit": "Finish Edit",
+    "edit": "Edit",
+    "fileLabel": {
+      "soul": "Behavior Philosophy",
+      "identity": "Identity Config",
+      "agents": "Operating Rules",
+      "bootstrap": "First-Chat Guide",
+      "tools": "Environment Notes",
+      "heartbeat": "Heartbeat Checks",
+      "user": "User Profile",
+      "memory": "Long-term Memory"
+    }
   },
   "skillPage": {
     "tabInstalled": "Installed",
@@ -296,8 +328,12 @@
     "deletedTag": "Deleted"
   },
   "channelPage": {
-    "title": "Channels",
-    "boundAgent": "Bound to expert: {{name}}"
+    "title": "Channel Overview",
+    "desc": "Connection and binding status of all channels",
+    "boundAgent": "Bound to expert: {{name}}",
+    "connectedCount": "{{count}} connected",
+    "connected": "Connected",
+    "disconnected": "Disconnected"
   },
   "alertPage": {
     "title": "Alert Center",

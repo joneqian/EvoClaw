@@ -12,6 +12,7 @@ function formatDateTime(isoStr: string): string {
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Sparkles, Pencil, Eye, X as XIcon, Settings as SettingsIcon, MoreVertical } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { useAgentStore } from '../stores/agent-store';
 import { get, post, put } from '../lib/api';
@@ -76,11 +77,11 @@ const FILE_LABELS: Record<string, { icon: string; label: string; desc: string; e
 
 const FILE_ORDER = ['SOUL.md', 'IDENTITY.md', 'AGENTS.md', 'BOOTSTRAP.md', 'TOOLS.md', 'HEARTBEAT.md', 'USER.md', 'MEMORY.md'];
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'channels', label: '连接' },
-  { id: 'skills', label: '技能' },
-  { id: 'automation', label: '自动化' },
-  { id: 'settings', label: '设置' },
+const TABS: { id: TabId; labelKey: string }[] = [
+  { id: 'channels', labelKey: 'expertSettings.tabChannels' },
+  { id: 'skills', labelKey: 'expertSettings.tabSkills' },
+  { id: 'automation', labelKey: 'expertSettings.tabAutomation' },
+  { id: 'settings', labelKey: 'expertSettings.tabSettings' },
 ];
 
 // ─── 微信 QR 扫码连接（内联） ───
@@ -1388,6 +1389,7 @@ function SettingsTab({ agentId }: { agentId: string }) {
 // ─── 主面板 ───
 
 export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: ExpertSettingsPanelProps) {
+  const { t } = useTranslation();
   const { agents } = useAgentStore();
   const agent = agents.find((a) => a.id === agentId);
   const [activeTab, setActiveTab] = useState<TabId>('channels');
@@ -1509,7 +1511,7 @@ export default function ExpertSettingsPanel({ agentId, isOpen, onClose }: Expert
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {tab.label}
+                {t(tab.labelKey)}
                 {activeTab === tab.id && (
                   <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-brand rounded-full" />
                 )}

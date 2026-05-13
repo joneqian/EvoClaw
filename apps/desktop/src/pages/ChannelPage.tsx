@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link2, Info } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { get, post } from '../lib/api';
 
 /** Channel 状态信息 */
@@ -39,6 +40,7 @@ const PLATFORMS: Record<string, { name: string; logo: string }> = {
 const PLATFORM_ORDER = ['weixin', 'feishu', 'wecom', 'dingtalk', 'qq'];
 
 export default function ChannelPage() {
+  const { t } = useTranslation();
   const [channels, setChannels] = useState<ChannelStatus[]>([]);
   const [bindings, setBindings] = useState<ChannelBinding[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
@@ -108,9 +110,9 @@ export default function ChannelPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-5 pb-4 shrink-0">
-        <h2 className="text-lg font-bold text-foreground">连接总览</h2>
+        <h2 className="text-lg font-bold text-foreground">{t('channelPage.title')}</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          查看所有渠道的连接与绑定状态
+          {t('channelPage.desc')}
         </p>
       </div>
 
@@ -125,7 +127,7 @@ export default function ChannelPage() {
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>共 {PLATFORM_ORDER.length} 个渠道</span>
               <span className="text-muted-foreground">|</span>
-              <span className="text-success">{connectedCount} 个已连接</span>
+              <span className="text-success">{t('channelPage.connectedCount', { count: connectedCount })}</span>
             </div>
 
             {/* 渠道列表 */}
@@ -174,7 +176,7 @@ export default function ChannelPage() {
                           )}
                         </div>
                         <p className={`text-xs mt-0.5 ${isConnected ? 'text-success' : 'text-muted-foreground'}`}>
-                          {isConnected ? '已连接' : '未连接'}
+                          {isConnected ? t('channelPage.connected') : t('channelPage.disconnected')}
                         </p>
                       </div>
 

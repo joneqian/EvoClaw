@@ -132,7 +132,7 @@ export default function CronPage() {
                   onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                   placeholder={t('cronPage.taskNamePlaceholder')}
                   className="w-full px-3.5 py-2.5 text-sm border border-border rounded-xl bg-muted
-                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground"
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:border-brand placeholder:text-muted-foreground"
                   autoFocus
                 />
               </div>
@@ -174,7 +174,7 @@ export default function CronPage() {
                   placeholder={t('cronPage.taskDescriptionPlaceholder')}
                   rows={3}
                   className="w-full px-3.5 py-2.5 text-sm border border-border rounded-xl bg-muted
-                    focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground resize-none"
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:border-brand placeholder:text-muted-foreground resize-none"
                 />
               </div>
               <div className="flex gap-3 pt-2">

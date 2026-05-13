@@ -348,7 +348,7 @@ function EnvVarsTab() {
                     onBlur={handleSaveEdit}
                     placeholder={t('settings.envValue')}
                     className="w-full px-2.5 py-1 text-xs border border-border rounded-lg
-                      focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand font-mono"
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand font-mono"
                     autoFocus
                   />
                 </div>
@@ -386,7 +386,7 @@ function EnvVarsTab() {
                 onChange={(e) => setNewKey(e.target.value.toUpperCase())}
                 placeholder="VARIABLE_NAME"
                 className="w-[160px] px-2.5 py-1 text-xs border border-border rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-brand/40 font-mono font-semibold"
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 font-mono font-semibold"
                 autoFocus
               />
               <input
@@ -396,7 +396,7 @@ function EnvVarsTab() {
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddNew(); if (e.key === 'Escape') { setAddingNew(false); setNewKey(''); setNewValue(''); } }}
                 placeholder="Value"
                 className="flex-1 px-2.5 py-1 text-xs border border-border rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-brand/40 font-mono"
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 font-mono"
               />
               <button
                 onClick={handleAddNew}
@@ -664,7 +664,7 @@ function SkillEvolverTab() {
                 type="checkbox"
                 checked={draft.enabled}
                 onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+                className="w-4 h-4 rounded border-border text-brand focus-visible:ring-brand"
               />
               <span className="text-sm text-foreground">{draft.enabled ? t('settings.evolverStatusEnabled') : t('settings.evolverStatusDisabled')}</span>
             </label>
@@ -675,7 +675,7 @@ function SkillEvolverTab() {
               type="text"
               value={draft.cronSchedule}
               onChange={(e) => setDraft({ ...draft, cronSchedule: e.target.value })}
-              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               placeholder="0 3 * * *"
             />
           </Field>
@@ -704,7 +704,7 @@ function SkillEvolverTab() {
                   ...(next === 'dryRun' ? { abTestEnabled: false } : {}),
                 });
               }}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
             >
               <option value="apply">{t('settings.evolverModeApply')}</option>
               <option value="dryRun">{t('settings.evolverModeDryRun')}</option>
@@ -735,7 +735,7 @@ function SkillEvolverTab() {
                   step={0.05}
                   value={draft.canaryRatioB}
                   onChange={(e) => setDraft({ ...draft, canaryRatioB: Number(e.target.value) })}
-                  className="w-20 px-2 py-1 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-20 px-2 py-1 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
                 <span className="text-sm text-muted-foreground tabular-nums w-12">
                   {Math.round(draft.canaryRatioB * 100)}%
@@ -752,7 +752,7 @@ function SkillEvolverTab() {
                 max={50}
                 value={draft.minEvidenceCount}
                 onChange={(e) => setDraft({ ...draft, minEvidenceCount: Number(e.target.value) || 1 })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               />
             </Field>
 
@@ -764,7 +764,7 @@ function SkillEvolverTab() {
                 step={0.05}
                 value={draft.successRateThreshold}
                 onChange={(e) => setDraft({ ...draft, successRateThreshold: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               />
             </Field>
           </div>
@@ -776,7 +776,7 @@ function SkillEvolverTab() {
               max={20}
               value={draft.maxCandidatesPerRun}
               onChange={(e) => setDraft({ ...draft, maxCandidatesPerRun: Number(e.target.value) || 1 })}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
             />
           </Field>
 
@@ -785,7 +785,7 @@ function SkillEvolverTab() {
               type="text"
               value={draft.model ?? ''}
               onChange={(e) => setDraft({ ...draft, model: e.target.value || undefined })}
-              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               placeholder={t('settings.evolverModelPlaceholder')}
             />
           </Field>
@@ -823,7 +823,7 @@ function SkillEvolverTab() {
                   checked={draft.abTestEnabled && draft.mode !== 'dryRun'}
                   disabled={draft.mode === 'dryRun'}
                   onChange={(e) => setDraft({ ...draft, abTestEnabled: e.target.checked })}
-                  className="w-4 h-4 rounded border-border text-brand focus:ring-brand disabled:opacity-50"
+                  className="w-4 h-4 rounded border-border text-brand focus-visible:ring-brand disabled:opacity-50"
                 />
                 <span className="text-sm text-foreground">
                   {draft.mode === 'dryRun' ? t('settings.abDisabledDryRun') : draft.abTestEnabled ? t('settings.evolverStatusEnabled') : t('settings.evolverStatusDisabled')}
@@ -839,7 +839,7 @@ function SkillEvolverTab() {
                   max={1000}
                   value={draft.abMinCallsPerVariant}
                   onChange={(e) => setDraft({ ...draft, abMinCallsPerVariant: Number(e.target.value) || 5 })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </Field>
 
@@ -850,7 +850,7 @@ function SkillEvolverTab() {
                   max={365}
                   value={draft.abMaxTestDays}
                   onChange={(e) => setDraft({ ...draft, abMaxTestDays: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </Field>
             </div>
@@ -860,7 +860,7 @@ function SkillEvolverTab() {
                 type="text"
                 value={draft.abEvaluatorCron}
                 onChange={(e) => setDraft({ ...draft, abEvaluatorCron: e.target.value })}
-                className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm font-mono rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 placeholder="30 4 * * *"
               />
             </Field>
@@ -874,7 +874,7 @@ function SkillEvolverTab() {
                   step={0.01}
                   value={draft.abPromoteSuccessDeltaMin}
                   onChange={(e) => setDraft({ ...draft, abPromoteSuccessDeltaMin: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </Field>
 
@@ -886,7 +886,7 @@ function SkillEvolverTab() {
                   step={0.01}
                   value={draft.abRollbackSuccessDeltaMin}
                   onChange={(e) => setDraft({ ...draft, abRollbackSuccessDeltaMin: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </Field>
             </div>
@@ -900,7 +900,7 @@ function SkillEvolverTab() {
                   step={0.01}
                   value={draft.abPValueThreshold}
                   onChange={(e) => setDraft({ ...draft, abPValueThreshold: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </Field>
 
@@ -912,7 +912,7 @@ function SkillEvolverTab() {
                   step={0.1}
                   value={draft.abDurationRatioRollback}
                   onChange={(e) => setDraft({ ...draft, abDurationRatioRollback: Number(e.target.value) })}
-                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                  className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
                 />
               </Field>
             </div>
@@ -965,7 +965,7 @@ function SkillEvolverTab() {
                 type="checkbox"
                 checked={curatorDraft.enabled}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+                className="w-4 h-4 rounded border-border text-brand focus-visible:ring-brand"
               />
               <span className="text-sm text-foreground">{curatorDraft.enabled ? t('settings.evolverStatusEnabled') : t('settings.evolverStatusDisabled')}</span>
             </label>
@@ -979,7 +979,7 @@ function SkillEvolverTab() {
                 max={365}
                 value={curatorDraft.intervalDays}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, intervalDays: Number(e.target.value) || 1 })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               />
             </Field>
 
@@ -990,7 +990,7 @@ function SkillEvolverTab() {
                 max={3650}
                 value={curatorDraft.staleDays}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, staleDays: Number(e.target.value) || 1 })}
-                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+                className="w-full px-3 py-1.5 text-sm rounded-lg border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               />
             </Field>
 
@@ -1001,7 +1001,7 @@ function SkillEvolverTab() {
                 max={3650}
                 value={curatorDraft.archivedDays}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, archivedDays: Number(e.target.value) || 1 })}
-                className={`w-full px-3 py-1.5 text-sm rounded-lg border focus:ring-2 focus:ring-brand/40 focus:border-brand ${
+                className={`w-full px-3 py-1.5 text-sm rounded-lg border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand ${
                   curatorDraft.archivedDays <= curatorDraft.staleDays ? 'border-rose-300 bg-rose-50 dark:bg-rose-950/40' : 'border-border'
                 }`}
               />
@@ -1014,7 +1014,7 @@ function SkillEvolverTab() {
                 type="checkbox"
                 checked={curatorDraft.protectBundled}
                 onChange={(e) => setCuratorDraft({ ...curatorDraft, protectBundled: e.target.checked })}
-                className="w-4 h-4 rounded border-border text-brand focus:ring-brand"
+                className="w-4 h-4 rounded border-border text-brand focus-visible:ring-brand"
               />
               <span className="text-sm text-foreground">{curatorDraft.protectBundled ? t('settings.curatorProtected') : t('settings.curatorUnprotected')}</span>
             </label>
@@ -1441,7 +1441,7 @@ function IdentityLinksTab() {
               type="text"
               value={draft.canonicalId}
               onChange={(e) => setDraft({ ...draft, canonicalId: e.target.value })}
-              className="w-full px-2 py-1 text-sm rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-2 py-1 text-sm rounded border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               placeholder="self"
             />
           </div>
@@ -1450,7 +1450,7 @@ function IdentityLinksTab() {
             <select
               value={draft.channel}
               onChange={(e) => setDraft({ ...draft, channel: e.target.value })}
-              className="w-full px-2 py-1 text-sm rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-2 py-1 text-sm rounded border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
             >
               {CHANNEL_OPTIONS.map(c => <option key={c.value} value={c.value}>{t(c.labelKey)}</option>)}
             </select>
@@ -1461,7 +1461,7 @@ function IdentityLinksTab() {
               type="text"
               value={draft.peerId}
               onChange={(e) => setDraft({ ...draft, peerId: e.target.value })}
-              className="w-full px-2 py-1 text-sm font-mono rounded border border-border focus:ring-2 focus:ring-brand/40 focus:border-brand"
+              className="w-full px-2 py-1 text-sm font-mono rounded border border-border focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand"
               placeholder="ou_xxx / userid_yyy / wxid_zzz"
             />
           </div>

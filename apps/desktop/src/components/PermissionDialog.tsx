@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useModalA11y } from '../hooks/useModalA11y';
 import {
   FileText,
   FilePen,
@@ -100,6 +101,8 @@ export default function PermissionDialog({
     e.stopPropagation();
   }, []);
 
+  const ref = useModalA11y<HTMLDivElement>({ isOpen, onClose: handleOverlayClick });
+
   if (!isOpen) return null;
 
   const config: CategoryConfig = CATEGORY_CONFIG[category] ?? {
@@ -112,6 +115,11 @@ export default function PermissionDialog({
       onClick={handleOverlayClick}
     >
       <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="permission-title"
+        aria-describedby="permission-desc"
         className="bg-card rounded-2xl shadow-2xl shadow-foreground/10 w-full max-w-[420px] mx-4
           animate-in fade-in zoom-in-95 duration-200"
         onClick={handleDialogClick}
@@ -119,7 +127,7 @@ export default function PermissionDialog({
         {/* 顶部安全标识栏 */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-border bg-muted/50 rounded-t-2xl">
           <Shield className="w-4 h-4 text-warning" strokeWidth={2} aria-hidden="true" />
-          <span className="text-xs font-medium text-muted-foreground">{t('permission.title')}</span>
+          <span id="permission-title" className="text-xs font-medium text-muted-foreground">{t('permission.title')}</span>
         </div>
 
         {/* 主体 */}
@@ -129,7 +137,7 @@ export default function PermissionDialog({
             <AgentAvatar name={agentName} size="lg" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-foreground truncate">{agentName}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{t('permission.requesting')}</p>
+              <p id="permission-desc" className="text-xs text-muted-foreground mt-0.5">{t('permission.requesting')}</p>
             </div>
           </div>
 

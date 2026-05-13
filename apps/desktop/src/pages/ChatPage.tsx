@@ -512,7 +512,7 @@ function ChatView() {
           placeholder={t('chat.placeholder')}
           rows={3}
           className="w-full resize-none px-4 py-3 text-sm bg-transparent text-foreground
-            focus:outline-none placeholder:text-muted-foreground min-h-[80px]"
+            focus-visible:outline-none placeholder:text-muted-foreground min-h-[80px]"
         />
 
         {/* 底部操作栏 */}

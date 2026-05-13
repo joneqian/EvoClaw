@@ -204,7 +204,7 @@ export default function KnowledgePage() {
             value={importPath}
             onChange={(e) => setImportPath(e.target.value)}
             placeholder="输入文件路径（支持 .md / .txt / .pdf / 代码文件）"
-            className="flex-1 px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+            className="flex-1 px-3 py-2 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:border-brand"
           />
           <button
             type="submit"

@@ -339,7 +339,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                     disabled={builderLoading}
                     className="flex-1 px-3 py-2 text-sm border border-border rounded-lg
                       bg-card text-foreground
-                      focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:border-brand
                       disabled:opacity-50"
                     autoFocus
                   />
@@ -409,7 +409,7 @@ export default function AgentCreationModal({ isOpen, onClose, onCreated, initial
                                 onChange={(e) => updatePreviewFile(filename, e.target.value)}
                                 className="w-full text-xs text-foreground bg-card
                                   border border-border rounded p-2 font-mono leading-relaxed
-                                  focus:outline-none focus:ring-1 focus:ring-brand/40 focus:border-brand
+                                  focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40 focus-visible:border-brand
                                   resize-y"
                                 style={{ minHeight: '120px', maxHeight: '300px' }}
                               />

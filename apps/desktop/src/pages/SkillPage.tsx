@@ -449,7 +449,7 @@ export default function SkillPage() {
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={handleSearch}
             placeholder={t('skillPage.searchPlaceholder')}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand placeholder:text-muted-foreground"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:border-brand placeholder:text-muted-foreground"
           />
         </div>
       </div>

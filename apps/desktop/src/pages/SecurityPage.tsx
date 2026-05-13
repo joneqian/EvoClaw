@@ -359,7 +359,7 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
                     onToggleAll();
                   }
                 }}
-                className="rounded border-border text-brand focus:ring-brand/30" />
+                className="rounded border-border text-brand focus-visible:ring-brand/30" />
               {selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : '全选'}
             </label>
             {selectedIds.size > 0 && (
@@ -424,7 +424,7 @@ function PermissionsTab({ permissions, stats, selectedIds, revoking, bulkConfirm
                         idx > 0 ? 'border-t border-border' : ''
                       } ${selectedIds.has(perm.id) ? 'bg-brand/[0.02]' : 'hover:bg-muted/50'}`}>
                         <input type="checkbox" checked={selectedIds.has(perm.id)} onChange={() => onToggle(perm.id)}
-                          className="rounded border-border text-brand focus:ring-brand/30 shrink-0 ml-7" />
+                          className="rounded border-border text-brand focus-visible:ring-brand/30 shrink-0 ml-7" />
                         <div className="flex-1 min-w-0">
                           <span className="text-sm text-foreground">
                             {perm.resource === '*' ? '所有操作' : perm.resource}
@@ -539,7 +539,7 @@ function AuditTab({ logs, filter, hasMore, loading, onFilterChange, onSearch, on
             onKeyDown={(e) => e.key === 'Enter' && onSearch()}
             placeholder="搜索工具..."
             className="w-full pl-8 pr-3 py-1.5 text-xs border border-border rounded-lg bg-card
-              focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand/40
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20 focus-visible:border-brand/40
               placeholder:text-muted-foreground transition-all"
           />
         </div>
